@@ -19,7 +19,7 @@ set_property -dict { PACKAGE_PIN Y19 IOSTANDARD LVCMOS33 } [get_ports { gpio_1_t
 ####################################################################################################
 # Pin assignment for PWM
 ####################################################################################################
-set_property -dict { PACKAGE_PIN J18 IOSTANDARD LVCMOS33 } [get_ports { pwm0  }];  # S9: FAN1_4 ... FAN6_4, PWM
+set_property -dict { PACKAGE_PIN J18 IOSTANDARD LVCMOS33 } [get_ports { pwm0[0] }];  # S9: FAN1_4 ... FAN6_4, PWM
 
 
 ####################################################################################################
