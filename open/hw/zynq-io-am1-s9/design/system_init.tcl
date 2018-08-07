@@ -63,7 +63,7 @@ set_property -dict [list CONFIG.PCW_USB0_PERIPHERAL_ENABLE {0}] [get_bd_cells pr
 
 # SD0 pin swap
 set_property -dict [list CONFIG.PCW_SD0_GRP_CD_IO {MIO 46}] [get_bd_cells processing_system7_0]
-set_property -dict [list CONFIG.PCW_SD0_GRP_WP_ENABLE {1} CONFIG.PCW_SD0_GRP_WP_IO {MIO 50}] [get_bd_cells processing_system7_0]
+# set_property -dict [list CONFIG.PCW_SD0_GRP_WP_ENABLE {1} CONFIG.PCW_SD0_GRP_WP_IO {MIO 50}] [get_bd_cells processing_system7_0]
 
 ### MIO configuration
 set_property -dict [list CONFIG.PCW_MIO_0_PULLUP {disabled}] [get_bd_cells processing_system7_0]
