@@ -59,7 +59,8 @@ set_property -dict { PACKAGE_PIN W15 IOSTANDARD LVCMOS33 PULLUP true } [get_port
 set_property -dict { PACKAGE_PIN U19 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_5 }];  # S9: J6_12, RX
 set_property -dict { PACKAGE_PIN W20 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_6 }];  # S9: J7_12, RX
 set_property -dict { PACKAGE_PIN W16 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_7 }];  # S9: J8_12, RX
-set_property -dict { PACKAGE_PIN R18 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_8 }];  # S9: J9_12, RX
+# !!! now J9.RX is output (used for debug purposes) !!!
+set_property -dict { PACKAGE_PIN R18 IOSTANDARD LVCMOS33 } [get_ports { rxd_8 }];  # S9: J9_12, RX
 
 # connectors J1..J9 - TXD
 set_property -dict { PACKAGE_PIN T12 IOSTANDARD LVCMOS33 } [get_ports { txd_0 }];  # S9: J1_11, TX
