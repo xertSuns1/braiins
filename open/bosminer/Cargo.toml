@@ -1,0 +1,19 @@
+[package]
+name = "rminer"
+version = "0.1.0"
+authors = ["Jan Čapek <jan.capek@braiins.cz>"]
+
+[workspace]
+
+members = [
+    "hal",
+    "s9-io"
+]
+
+[dependencies]
+s9-io = { path = "s9-io" }
+libc = "0.2.43"
+memmap = "0.6.2"
+nix = "0.11.0"
+bitfield = "0.13.0"
+bitflags="1.0.3"
