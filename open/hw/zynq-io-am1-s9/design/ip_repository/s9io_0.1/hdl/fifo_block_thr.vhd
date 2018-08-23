@@ -24,9 +24,13 @@ entity fifo_block_thr is
 		-- synchronous clear of FIFO
 		clear  : in std_logic;
 
-		-- threshold value and signalization
+		-- threshold value and signalization for IRQ
 		thr_value : in  std_logic_vector(A-1 downto 0);
 		thr_irq   : out std_logic;
+
+		-- threshold value and signalization for work send
+		thr_work_value : in  std_logic_vector(A-1 downto 0);
+		thr_work_ready : out std_logic;
 
 		-- write port
 		wr     : in  std_logic;
@@ -173,8 +177,11 @@ begin
 	-- volume of buffer is calculated as difference between write and read pointer
 	volume <= w_ptr_q - r_ptr_q;
 
-	-- when we comparing volume, we must consider also empty flag
+	-- threshold for IRQ, when we comparing volume, we must consider also empty flag
 	thr_irq <= '1' when ((volume < unsigned(thr_value)) or (empty_q = '1')) else '0';
+
+	-- threshold for work send - check of min. value
+	thr_work_ready <= '1' when (volume >= unsigned(thr_work_value)) else '0';
 
 	------------------------------------------------------------------------------------------------
 	-- output signals

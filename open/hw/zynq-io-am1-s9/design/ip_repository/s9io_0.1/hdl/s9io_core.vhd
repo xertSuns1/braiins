@@ -81,7 +81,7 @@ architecture RTL of s9io_core is
 		st_idle, st_wait_sync, st_check,
 		st_work_cmd, st_work_length, st_work_id, st_work_optv, st_work_nonce, st_work_chunk2,
 		st_work_midstate, st_work_crc16,
-		st_cmd_read, st_cmd_cmd, st_cmd_data, st_cmd_crc5
+		st_cmd_read, st_cmd_check, st_cmd_cmd, st_cmd_data, st_cmd_crc5
 	);
     signal fsm_d                : fsm_type_t;
     signal fsm_q                : fsm_type_t;
@@ -220,6 +220,10 @@ architecture RTL of s9io_core is
 	-- error counter
 	signal err_cnt_q            : unsigned(31 downto 0);
 
+	-- work TX FIFO threshold for work send
+	signal work_tx_fifo_thr_value : std_logic_vector(10 downto 0);
+	signal work_tx_fifo_thr_ready : std_logic;
+
 begin
 
 	------------------------------------------------------------------------------------------------
@@ -295,7 +299,7 @@ begin
 		ctrl_enable, ctrl_midstate_cnt,
 		ctrl_rst_work_tx, ctrl_rst_work_rx, ctrl_rst_cmd_tx, ctrl_rst_cmd_rx,
 		work_time_out_q,
-		work_tx_fifo_empty, work_tx_fifo_data_r,
+		work_tx_fifo_empty, work_tx_fifo_data_r, work_tx_fifo_thr_ready,
 		cmd_tx_fifo_empty, cmd_tx_fifo_data_r,
 		work_ready, cmd_tx_ready,
 		byte_cnt_q, word_cnt_q, byte_rest_q, job_id_tx_q,
@@ -361,7 +365,7 @@ begin
 				end if;
 
 			when st_check =>                        -- check of reset FIFOs, reload of baudrate, ...
-				if (work_tx_fifo_empty = '0') then    -- work has higher priority
+				if (work_tx_fifo_thr_ready = '1') then    -- work has higher priority, start only when complete job is in FIFO
 					fsm_d <= st_work_cmd;
 					crc16_clear <= '1';
 				elsif (cmd_tx_fifo_empty = '0') then  -- control has lower priority
@@ -518,24 +522,28 @@ begin
 				end if;
 
 			when st_cmd_read =>
-				fsm_d <= st_cmd_cmd;
+				fsm_d <= st_cmd_check;
 				cmd_tx_fifo_rd <= '1';
 
+			when st_cmd_check =>
+				fsm_d <= st_cmd_cmd;
+				byte_cnt_d <= "00";    -- first to send is command
+				word_cnt_d <= resize(shift_right(unsigned(cmd_tx_fifo_data_r(15 downto 8)) - X"02", 2), 5);
+				byte_rest_d <= unsigned(cmd_tx_fifo_data_r(9 downto 8)) - "10";  -- skip CRC
+
 			when st_cmd_cmd =>
-				if (cmd_tx_ready = '1') then
+				if ((cmd_tx_ready = '1') and ((cmd_tx_fifo_empty = '0') or (word_cnt_q = "00000"))) then
 					fsm_d <= st_cmd_data;
+
+					byte_cnt_d <= byte_cnt_q + 1;
 
 					uart_tx_write <= '1';
 					crc5_tx_wr <= '1';
 					uart_tx_data_wr <= cmd_tx_fifo_data_r(7 downto 0); -- send command
-
-					byte_cnt_d <= "01";    -- next to send is length
-					word_cnt_d <= resize(shift_right(unsigned(cmd_tx_fifo_data_r(15 downto 8)) - X"02", 2), 5);
-					byte_rest_d <= unsigned(cmd_tx_fifo_data_r(9 downto 8)) - "10";  -- skip CRC
 				end if;
 
 			when st_cmd_data =>
-				if ((cmd_tx_ready = '1') and ((cmd_tx_fifo_empty = '0')  or (word_cnt_q = "00000"))) then
+				if ((cmd_tx_ready = '1') and ((cmd_tx_fifo_empty = '0') or (word_cnt_q = "00000"))) then
 					uart_tx_write <= '1';
 					crc5_tx_wr <= '1';
 
@@ -665,9 +673,13 @@ begin
 		-- synchronous clear of FIFO
 		clear  => rst_fifo_work_tx,
 
-		-- threshold value and signalization
-		thr_value => reg_irq_fifo_thr(10 downto 0),
+		-- threshold value and signalization for IRQ
+		thr_value => reg_irq_fifo_thr,
 		thr_irq   => irq_pending_work_tx,
+
+		-- threshold value and signalization for work send
+		thr_work_value => work_tx_fifo_thr_value,
+		thr_work_ready => work_tx_fifo_thr_ready,
 
 		-- write port - from CPU
 		wr     => work_tx_fifo_wr,
@@ -679,6 +691,11 @@ begin
 		empty  => work_tx_fifo_empty,
 		data_r => work_tx_fifo_data_r
 	);
+
+	work_tx_fifo_thr_value <=
+		"00000001100" when (ctrl_midstate_cnt = "00") else  -- 1 midstate  -> required 12 words in FIFO
+		"00000010100" when (ctrl_midstate_cnt = "01") else  -- 2 midstates -> required 20 words in FIFO
+		"00000100100";                                      -- 4 midstates -> required 36 words in FIFO
 
 	------------------------------------------------------------------------------------------------
 	i_uart: entity work.uart
