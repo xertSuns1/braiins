@@ -1,0 +1,63 @@
+@startuml
+
+class PoolManager <<singleton>> {
+}
+
+class Pool {
+
+}
+
+class MiningSubscription {
+  extra_nonce_1 : &[u8]
+  extra_nonce_2_size : size
+}
+
+class MiningJob {
+  id : Integer
+  prev_hash : u256
+  coin_base_part1 : &[u8]
+  coin_base_part2 : &[u8]
+  merkel_branch : &[u256]
+  version : u32
+  n_time : u32
+  n_bits : u32
+
+}
+class MiningJobProcessor {
+Transforms mining job received from upstream
+into mining mining work.
+The work can be transformed by generating
+multiple midstates by rolling: version field,
+ntime, or extranonce2 field
+}
+class MiningWork {
+  version : u32
+  extranonce_2 : u32
+  midstates : [u256]
+  merkel_root : u256
+  n_time : u32
+  nbits: u32
+}
+
+note "there is no work ID intentionally as it is backend driver dependent" as MWN1
+
+MiningWork .. MWN1
+
+class HChainCtl {
+  send_work()
+}
+
+class MiningJobProcessor {
+}
+
+MiningJob "0..N" o-- "1" MiningSubscription : gets info from
+
+'MiningSubscription "" o-- ""
+
+MiningJobProcessor "1" *-- "0..N" MiningJob : transforms
+MiningJobProcessor "1" *-- "0..N" MiningWork : produces
+MiningJobProcessor -- HChainCtl : uses
+
+
+
+@enduml
