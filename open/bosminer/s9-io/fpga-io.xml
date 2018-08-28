@@ -220,11 +220,15 @@
               <bitRange>[14:13]</bitRange>
               <enumeratedValues>
                 <enumeratedValue>
-                  <name>Midstate_count_1</name>
+                  <name>one</name>
                   <value>0</value>
-                  <name>Midstate_count_2</name>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>two</name>
                   <value>1</value>
-                  <name>Midstate_count_4</name>
+                </enumeratedValue>
+                <enumeratedValue>
+                  <name>four</name>
                   <value>2</value>
                 </enumeratedValue>
               </enumeratedValues>
