@@ -1,0 +1,41 @@
+@startuml
+skinparam componentStyle uml2
+[Pool Manager] as pm
+[Stratum Connector] as sc
+[Hyperloop Connector] as hc
+[Mining Job Processor] as job_proc
+
+pm .up.> sc : uses
+pm .up.> hc : use
+job_proc .left.> pm : receives new jobs & submits job\nresults
+
+note right of [HAL]
+provides hardware abstraction
+layer for mining devices while
+providing a unified interface
+end note
+
+package "HAL" {
+  folder "Bitmain" {
+     [S9IO<<codegen>>] as s9ioauto
+     [S9IO] as s9io
+  }
+  folder "Inno" {
+     [T1IO<<codegen>>] as t1ioauto
+     [T1IO] as t1io
+  }
+  folder "Hashing Chip Drivers" {
+    [BM1387] as bm1387
+    [T1] as t1
+  }
+}
+s9io .up.-> s9ioauto : uses
+s9io .up.-> bm1387 : uses
+t1io .up.-> t1ioauto : uses
+t1io .up.-> t1 : uses
+note right of s9io
+  Provides Input/Output Interface
+  for a hashing chain of chips
+end note
+
+@enduml
