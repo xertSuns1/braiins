@@ -48,7 +48,7 @@
       <version>1.0</version>
       <description>Hashing Chain I/O module</description>
       <groupName>HASHCHAIN</groupName>
-      <baseAddress>0x41200000</baseAddress>
+      <baseAddress>0x43C90000</baseAddress>
       <size>32</size>
       <access>read-write</access>
 
