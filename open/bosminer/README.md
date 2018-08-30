@@ -13,8 +13,13 @@
 ### Install prerequisites
 ```shell
 rustup target add arm-unknown-linux-musleabi
-rustup install svd2rust
 rustup install nightly
+cargo install svd2rust
+cargo install form
+```
+Override locally the toolchain to use nightly (svd2rust requirement)
+```shell
+cd to/rminer
 rustup override add nightly
 ```
 
