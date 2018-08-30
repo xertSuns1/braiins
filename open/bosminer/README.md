@@ -12,15 +12,16 @@
 
 ### Install prerequisites
 ```shell
-rustup target add arm-unknown-linux-musleabi
 rustup install nightly
 cargo install svd2rust
 cargo install form
 ```
-Override locally the toolchain to use nightly (svd2rust requirement)
+Override locally the toolchain to use nightly (svd2rust requirement) and
+install target for it.
 ```shell
 cd to/rminer
 rustup override add nightly
+rustup target add arm-unknown-linux-musleabi
 ```
 
 ## (Re)generating s9-io module
@@ -43,6 +44,7 @@ eval $(./bb.py toolchain 2>/dev/null)
 - build:
 
 ```shell
+cd to/rminer
 cargo build
 ```
 
