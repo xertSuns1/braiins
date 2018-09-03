@@ -41,7 +41,7 @@ impl<'a> HChainCtl<'a> {
             nix::sys::mman::mmap(
                 0 as *mut libc::c_void,
                 4096,
-                ProtFlags::PROT_READ | ProtFlags::PROT_READ,
+                ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
                 MapFlags::MAP_SHARED,
                 mem_file.as_raw_fd(),
                 s9_io::HCHAINIO0::ptr() as libc::off_t,
