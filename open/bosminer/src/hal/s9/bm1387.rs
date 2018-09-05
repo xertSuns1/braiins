@@ -42,7 +42,7 @@ impl CmdHeader {
     /// * `checksum_size` - Size of checksum needs to be known as it is accounted in the length
     /// field
     fn new(cmd: Cmd, payload_length: usize, chip_address: u8, checksum_size: usize) -> Self {
-        CmdHeader {
+        Self {
             cmd,
             length: (Self::packed_bytes() + payload_length + checksum_size) as u8,
             chip_address,
