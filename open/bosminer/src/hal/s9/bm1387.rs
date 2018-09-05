@@ -243,7 +243,7 @@ mod test {
     /// and verifies correct serialization
     fn build_set_config_cmd() {
         let cmd = SetConfigCmd::new(0x00, false, 0x0c, 0x21026800);
-        let expected_cmd_with_padding = [0x48u8, 0x09, 0x00, 0x0c, 0x00, 0x68, 0x02, 0x22];
+        let expected_cmd_with_padding = [0x48u8, 0x09, 0x00, 0x0c, 0x00, 0x68, 0x02, 0x21];
         //        let expected_cmd_with_padding = u8_as_fpga_slice(&expected_cmd_with_padding);
         let cmd_bytes = cmd.pack();
         assert_eq!(
