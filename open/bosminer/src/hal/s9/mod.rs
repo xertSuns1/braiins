@@ -137,7 +137,7 @@ impl<'a> super::HardwareCtl for HChainCtl<'a> {
     fn send_work(&self, work: &super::MiningWork) {
         //self.write_to_work_tx_fifo(self.next_work_id());
         self.write_to_work_tx_fifo(work.nbits);
-        self.write_to_work_tx_fifo(work.n_time);
+        self.write_to_work_tx_fifo(work.ntime);
         self.write_to_work_tx_fifo(work.merkel_root_lsw);
 
         for midstate in work.midstates {
