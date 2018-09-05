@@ -191,6 +191,16 @@ mod test {
             0x1b,
             "Unexpected baudrate register value"
         );
+        assert_eq!(
+            h_chain_ctl.hash_chain_ios[0].stat_reg.read().bits(),
+            0x855,
+            "Unexpected status register value"
+        );
+        assert_eq!(
+            h_chain_ctl.hash_chain_ios[0].ctrl_reg.read().midstate_cnt(),
+            hchainio0::ctrl_reg::MIDSTATE_CNTR::ONE,
+            "Unexpected midstate count"
+        );
     }
 
 }
