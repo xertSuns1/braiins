@@ -112,7 +112,7 @@ impl<'a> HChainCtl<'a> {
     }
 
     #[inline]
-    /// TODO: implement error handling
+    /// TODO: implement error handling/make interface ready for ASYNC execution
     /// Writes single word into a TX fifo
     fn write_to_work_tx_fifo(&self, item: u32) -> bool {
         let hash_chain_io = self.hash_chain_ios[0];

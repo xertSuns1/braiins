@@ -238,7 +238,9 @@ mod test {
 //        );
 //    }
     #[test]
-    /// Builds a sample 'Deactivate chain' command and verifies correct serialization
+    /// Builds a sample set_config command (here the PLL register @ 0x0c with a value of
+    /// 0x21026800 that corresponds to
+    /// and verifies correct serialization
     fn build_set_config_cmd() {
         let cmd = SetConfigCmd::new(0x00, false, 0x0c, 0x21026800);
         let expected_cmd_with_padding = [0x48u8, 0x09, 0x00, 0x0c, 0x00, 0x68, 0x02, 0x22];
