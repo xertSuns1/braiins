@@ -11,7 +11,7 @@ pub struct MiningWork<'a> {
     /// array
     midstates: &'a [uint::U256],
     merkel_root_lsw: u32,
-    n_time: u32,
+    ntime: u32,
     nbits: u32,
 }
 
@@ -19,8 +19,8 @@ pub struct MiningWork<'a> {
 pub struct MiningResult<'a> {
     /// actual nonce
     nonce: u32,
-    /// n_time of the result in case the HW also rolls the n time field
-    n_time: u32,
+    /// nTime of the result in case the HW also rolls the nTime field
+    ntime: u32,
     /// index of a midstate corresponds to the found nonce
     midstate_idx: usize,
     orig_work: &'a MiningWork<'a>,
