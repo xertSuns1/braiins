@@ -44,7 +44,7 @@ impl CmdHeader {
     fn new(cmd: Cmd, payload_length: usize, chip_address: u8, checksum_size: usize) -> Self {
         CmdHeader {
             cmd,
-            length: (size_of::<CmdHeader>() + payload_length + checksum_size) as u8,
+            length: (Self::packed_bytes() + payload_length + checksum_size) as u8,
             chip_address,
         }
     }
