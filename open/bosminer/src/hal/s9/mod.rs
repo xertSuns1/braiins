@@ -175,6 +175,7 @@ mod test {
             Err(e) => assert!(false, "Failed to instantiate hash chain, error: {}", e),
         }
     }
+
     #[test]
     fn test_hchain_ctl_init() {
         let h_chain_ctl = HChainCtl::new().unwrap();
