@@ -125,6 +125,7 @@ pub struct SetConfigCmd {
 impl SetConfigCmd {
     fn new(chip_address: u8, to_all: bool, register: u8, value: u32) -> SetConfigCmd {
         let cmd = Cmd::new(0x08, to_all);
+        // payload consists of 1 byte register address and 4 byte value
         let header =
             CmdHeader::new_ctl_cmd_header(cmd, size_of::<u8>() + size_of::<u32>(), chip_address);
         Self {
