@@ -141,7 +141,7 @@ architecture arch_imp of s9io_v0_1_S00_AXI is
 -- 	signal slv_reg10	:std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
 -- 	signal slv_reg11	:std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
 	signal slv_reg12	:std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
--- 	signal slv_reg13	:std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+	signal slv_reg13	:std_logic_vector(15 downto 0);
 -- 	signal slv_reg14	:std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
 	signal slv_reg15	:std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
 	signal slv_reg_rden	: std_logic;
@@ -433,7 +433,7 @@ begin
 	-- and the slave is ready to accept the read address.
 	slv_reg_rden <= axi_arready and S_AXI_ARVALID and (not axi_rvalid) ;
 
-	process (slv_reg4, slv_reg5, slv_reg6, slv_reg7, slv_reg8, slv_reg12, slv_reg15, axi_araddr, slv_reg_rden)
+	process (slv_reg4, slv_reg5, slv_reg6, slv_reg7, slv_reg8, slv_reg12, slv_reg13, slv_reg15, axi_araddr, slv_reg_rden)
 	variable loc_addr :std_logic_vector(OPT_MEM_ADDR_BITS downto 0);
 	begin
 	    cmd_rx_fifo_rd <= '0';
@@ -468,6 +468,9 @@ begin
 	      -- Counter of dropped frames (CRC mismatch, ...)
 	      when b"1100" =>
 	        reg_data_out <= slv_reg12;
+	      -- Last Job ID send to ASICs
+	      when b"1101" =>
+	        reg_data_out <= std_logic_vector(resize(unsigned(slv_reg13), 32));
 	      -- Build ID
 	      when b"1111" =>
 	        reg_data_out <= slv_reg15;
@@ -554,8 +557,12 @@ begin
 		-- Threshold for Work Transmit FIFO IRQ
 		reg_irq_fifo_thr  => slv_reg8(10 downto 0),
 
-		-- Error counter
-		reg_err_counter   => slv_reg12
+		-- Error counter (output)
+		reg_err_counter   => slv_reg12,
+
+		-- Last Job ID send to ASICs (output)
+		reg_last_job_id   => slv_reg13
+
 	);
 
 	------------------------------------------------------------------------------------------------

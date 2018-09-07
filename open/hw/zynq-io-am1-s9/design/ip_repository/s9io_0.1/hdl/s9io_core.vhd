@@ -61,7 +61,10 @@ entity s9io_core is
 		reg_irq_fifo_thr  : in  std_logic_vector(10 downto 0);
 
 		-- Error counter
-		reg_err_counter   : out std_logic_vector(31 downto 0)
+		reg_err_counter   : out std_logic_vector(31 downto 0);
+
+		-- Last Job ID send to ASICs
+		reg_last_job_id   : out std_logic_vector(15 downto 0)
 	);
 end entity s9io_core;
 
@@ -967,6 +970,9 @@ begin
 
 	-- error counter
 	reg_err_counter <= std_logic_vector(err_cnt_q);
+
+	-- last job ID
+	reg_last_job_id <= job_id_tx_q;
 
 end architecture;
 
