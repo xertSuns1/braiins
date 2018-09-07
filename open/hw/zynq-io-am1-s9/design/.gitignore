@@ -12,3 +12,6 @@
 /system.backup.tcl
 
 /ps_clock_registers.log
+
+# ignore build history file
+build_history.txt

@@ -357,10 +357,8 @@ begin
 
 					-- reset of FIFOs if request
 					rst_fifo_work_tx <= ctrl_rst_work_tx;
-					-- TODO move from this process
 					rst_fifo_work_rx <= ctrl_rst_work_rx;
 					rst_fifo_cmd_tx  <= ctrl_rst_cmd_tx;
-					-- TODO move from this process
 					rst_fifo_cmd_rx  <= ctrl_rst_cmd_rx;
 				end if;
 
