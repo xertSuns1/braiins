@@ -143,7 +143,7 @@ architecture arch_imp of s9io_v0_1_S00_AXI is
 	signal slv_reg12	:std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
 -- 	signal slv_reg13	:std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
 -- 	signal slv_reg14	:std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
--- 	signal slv_reg15	:std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+	signal slv_reg15	:std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
 	signal slv_reg_rden	: std_logic;
 	signal slv_reg_wren	: std_logic;
 	signal reg_data_out	:std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
@@ -433,7 +433,7 @@ begin
 	-- and the slave is ready to accept the read address.
 	slv_reg_rden <= axi_arready and S_AXI_ARVALID and (not axi_rvalid) ;
 
-	process (slv_reg4, slv_reg5, slv_reg6, slv_reg7, slv_reg8, slv_reg12, axi_araddr, slv_reg_rden)
+	process (slv_reg4, slv_reg5, slv_reg6, slv_reg7, slv_reg8, slv_reg12, slv_reg15, axi_araddr, slv_reg_rden)
 	variable loc_addr :std_logic_vector(OPT_MEM_ADDR_BITS downto 0);
 	begin
 	    cmd_rx_fifo_rd <= '0';
@@ -468,6 +468,9 @@ begin
 	      -- Counter of dropped frames (CRC mismatch, ...)
 	      when b"1100" =>
 	        reg_data_out <= slv_reg12;
+	      -- Build ID
+	      when b"1111" =>
+	        reg_data_out <= slv_reg15;
 	      when others =>
 	        reg_data_out  <= (others => '0');
 	    end case;
@@ -502,7 +505,7 @@ begin
 	-- Add user logic here
 	------------------------------------------------------------------------------------------------
 
-	-- instance of leon core
+	-- instance of s9io core
 	i_s9io: entity work.s9io_core
 	port map (
 		clk               => S_AXI_ACLK,
@@ -553,6 +556,13 @@ begin
 
 		-- Error counter
 		reg_err_counter   => slv_reg12
+	);
+
+	------------------------------------------------------------------------------------------------
+	-- instance of s9io core version
+	i_s9io_version: entity work.s9io_version
+	port map (
+		timestamp => slv_reg15
 	);
 
 	------------------------------------------------------------------------------------------------
