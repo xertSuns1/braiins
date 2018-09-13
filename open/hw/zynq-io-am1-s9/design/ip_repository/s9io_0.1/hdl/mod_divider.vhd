@@ -39,11 +39,11 @@ begin
     -- sequential part of counter
     process (clk) begin
         if rising_edge(clk) then
-			if (rst = '0') then
-				cnt_q <= (others => '0');
-			else
-				cnt_q <= cnt_d;
-			end if;
+            if (rst = '0') then
+                cnt_q <= (others => '0');
+            else
+                cnt_q <= cnt_d;
+            end if;
         end if;
     end process;
 
@@ -65,11 +65,11 @@ begin
     -- output buffer
     process (clk) begin
         if rising_edge(clk) then
-			if (rst = '0') then
-				output_en_q <= '0';
-        	else
-				output_en_q <= output_en_d;
-			end if;
+            if (rst = '0') then
+                output_en_q <= '0';
+            else
+                output_en_q <= output_en_d;
+            end if;
         end if;
     end process;
 

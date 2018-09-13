@@ -64,17 +64,17 @@ begin
     -- sequential part of FSM (state register)
     p_fsm_seq: process (clk) begin
         if rising_edge(clk) then
-			if (rst = '0') then
-				fsm_q <= st_idle;
-				bits_cnt_q <= (others => '0');
-				samples_cnt_q <= (others => '0');
-				data_q <= (others => '0');
-			else
-				fsm_q <= fsm_d;
-				bits_cnt_q <= bits_cnt_d;
-				samples_cnt_q <= samples_cnt_d;
-				data_q <= data_d;
-			end if;
+            if (rst = '0') then
+                fsm_q <= st_idle;
+                bits_cnt_q <= (others => '0');
+                samples_cnt_q <= (others => '0');
+                data_q <= (others => '0');
+            else
+                fsm_q <= fsm_d;
+                bits_cnt_q <= bits_cnt_d;
+                samples_cnt_q <= samples_cnt_d;
+                data_q <= data_d;
+            end if;
         end if;
     end process;
 
@@ -146,12 +146,12 @@ begin
     -- TxD signal value - register; idle state on signal is high
     p_txd_reg: process (clk) begin
         if rising_edge(clk) then
-			if (rst = '0') then
-				txd_q <= '1';
-        	else
-				txd_q <= txd_d;
-			end if;
-		end if;
+            if (rst = '0') then
+                txd_q <= '1';
+            else
+                txd_q <= txd_d;
+            end if;
+        end if;
     end process;
 
     ------------------------------------------------------------------------------------------------

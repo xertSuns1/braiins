@@ -17,12 +17,12 @@ entity uart is
         clk        : in  std_logic;
         rst        : in  std_logic;
 
-		-- UART interface
+        -- UART interface
         rxd        : in  std_logic;
         txd        : out std_logic;
 
-		-- synchronous clear FIFOs
-		clear      : in  std_logic;
+        -- synchronous clear FIFOs
+        clear      : in  std_logic;
 
         -- FIFO read port
         rx_read    : in  std_logic;
@@ -34,12 +34,12 @@ entity uart is
         tx_full    : out std_logic;
         tx_data_wr : in  std_logic_vector(7 downto 0);
 
-		-- UART configuration
-		division   : in  std_logic_vector(11 downto 0);
+        -- UART configuration
+        division   : in  std_logic_vector(11 downto 0);
 
-		-- UART status
-		frame_err  : out std_logic;
-		over_err   : out std_logic
+        -- UART status
+        frame_err  : out std_logic;
+        over_err   : out std_logic
     );
 end entity uart;
 
@@ -66,22 +66,22 @@ architecture RTL of uart is
     signal clk_en_uart              : std_logic;
 
     -- Receiver FIFO signals
-	signal rx_fifo_wr               : std_logic;
-	signal rx_fifo_full             : std_logic;
-	signal rx_fifo_data_w           : std_logic_vector(7 downto 0);
-	signal rx_fifo_rd               : std_logic;
-	signal rx_fifo_empty            : std_logic;
-	signal rx_fifo_data_r           : std_logic_vector(7 downto 0);
+    signal rx_fifo_wr               : std_logic;
+    signal rx_fifo_full             : std_logic;
+    signal rx_fifo_data_w           : std_logic_vector(7 downto 0);
+    signal rx_fifo_rd               : std_logic;
+    signal rx_fifo_empty            : std_logic;
+    signal rx_fifo_data_r           : std_logic_vector(7 downto 0);
 
     -- Transmitter FIFO signals
-	signal tx_fifo_wr               : std_logic;
-	signal tx_fifo_full             : std_logic;
-	signal tx_fifo_data_w           : std_logic_vector(7 downto 0);
-	signal tx_fifo_rd               : std_logic;
-	signal tx_fifo_empty            : std_logic;
-	signal tx_fifo_data_r           : std_logic_vector(7 downto 0);
+    signal tx_fifo_wr               : std_logic;
+    signal tx_fifo_full             : std_logic;
+    signal tx_fifo_data_w           : std_logic_vector(7 downto 0);
+    signal tx_fifo_rd               : std_logic;
+    signal tx_fifo_empty            : std_logic;
+    signal tx_fifo_data_r           : std_logic_vector(7 downto 0);
 
-	-- UART signals
+    -- UART signals
     signal rx_frame_error           : std_logic;
     signal tx_ready                 : std_logic;
 
@@ -91,11 +91,11 @@ begin
     -- synchronization RxD into clk clock domain
     process (clk) begin
         if rising_edge(clk) then
-			if (rst = '0') then
-				rxd_q0 <= (others => '1');
-			else
-				rxd_q0 <= rxd & rxd_q0(2 downto 1);
-			end if;
+            if (rst = '0') then
+                rxd_q0 <= (others => '1');
+            else
+                rxd_q0 <= rxd & rxd_q0(2 downto 1);
+            end if;
         end if;
     end process;
 
@@ -103,16 +103,16 @@ begin
     -- peripheral registers
     process (clk) begin
         if rising_edge(clk) then
-			if (rst = '0') then
-				frame_err_q <= '0';
-				over_err_q  <= '0';
-				division_q  <= (others => '0');
-			else
-				frame_err_q <= frame_err_d;
-				over_err_q  <= over_err_d;
-				division_q  <= division;
-			end if;
-		end if;
+            if (rst = '0') then
+                frame_err_q <= '0';
+                over_err_q  <= '0';
+                division_q  <= (others => '0');
+            else
+                frame_err_q <= frame_err_d;
+                over_err_q  <= over_err_d;
+                division_q  <= division;
+            end if;
+        end if;
     end process;
 
     ------------------------------------------------------------------------------------------------
@@ -234,21 +234,21 @@ begin
     );
 
     ------------------------------------------------------------------------------------------------
-	-- Output signals
+    -- Output signals
 
-	-- FIFO read port
-	rx_fifo_rd     <= rx_read;
-	rx_empty       <= rx_fifo_empty;
-	rx_data_rd     <= rx_fifo_data_r;
+    -- FIFO read port
+    rx_fifo_rd     <= rx_read;
+    rx_empty       <= rx_fifo_empty;
+    rx_data_rd     <= rx_fifo_data_r;
 
-	-- FIFO write port
-	tx_fifo_wr     <= tx_write;
-	tx_full        <= tx_fifo_full;
-	tx_fifo_data_w <= tx_data_wr;
+    -- FIFO write port
+    tx_fifo_wr     <= tx_write;
+    tx_full        <= tx_fifo_full;
+    tx_fifo_data_w <= tx_data_wr;
 
-	-- UART status
-	frame_err <= frame_err_q;
-	over_err  <= over_err_q;
+    -- UART status
+    frame_err <= frame_err_q;
+    over_err  <= over_err_q;
 
 
 end architecture;

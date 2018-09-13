@@ -98,18 +98,18 @@ begin
     ------------------------------------------------------------------------------------------------
     -- registers for read/write pointers and flags
     p_regs: process (clk) begin
-         if rising_edge(clk) then
-			if (rst = '0') then
-				r_ptr_q <= (others => '0');
-				w_ptr_q <= (others => '0');
-				empty_q <= '1';
-				full_q <= '0';
-			else
-				r_ptr_q <= r_ptr_d;
-				w_ptr_q <= w_ptr_d;
-				empty_q <= empty_d;
-				full_q <= full_d;
-			end if;
+            if rising_edge(clk) then
+            if (rst = '0') then
+                r_ptr_q <= (others => '0');
+                w_ptr_q <= (others => '0');
+                empty_q <= '1';
+                full_q <= '0';
+            else
+                r_ptr_q <= r_ptr_d;
+                w_ptr_q <= w_ptr_d;
+                empty_q <= empty_d;
+                full_q <= full_d;
+            end if;
         end if;
     end process;
 
