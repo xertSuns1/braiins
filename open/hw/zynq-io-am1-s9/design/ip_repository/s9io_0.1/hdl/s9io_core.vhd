@@ -141,11 +141,9 @@ architecture RTL of s9io_core is
     signal cmd_rx_fifo_full     : std_logic;
     signal cmd_rx_fifo_data_w   : std_logic_vector(31 downto 0);
     signal cmd_rx_fifo_empty    : std_logic;
-    signal cmd_rx_fifo_data_r   : std_logic_vector(31 downto 0);
 
     -- Control transmit FIFO
     signal cmd_tx_fifo_full     : std_logic;
-    signal cmd_tx_fifo_data_w   : std_logic_vector(31 downto 0);
     signal cmd_tx_fifo_rd       : std_logic;
     signal cmd_tx_fifo_empty    : std_logic;
     signal cmd_tx_fifo_data_r   : std_logic_vector(31 downto 0);
@@ -155,11 +153,9 @@ architecture RTL of s9io_core is
     signal work_rx_fifo_full    : std_logic;
     signal work_rx_fifo_data_w  : std_logic_vector(31 downto 0);
     signal work_rx_fifo_empty   : std_logic;
-    signal work_rx_fifo_data_r  : std_logic_vector(31 downto 0);
 
     -- Work transmit FIFO
     signal work_tx_fifo_full    : std_logic;
-    signal work_tx_fifo_data_w  : std_logic_vector(31 downto 0);
     signal work_tx_fifo_rd      : std_logic;
     signal work_tx_fifo_empty   : std_logic;
     signal work_tx_fifo_data_r  : std_logic_vector(31 downto 0);
@@ -205,8 +201,10 @@ architecture RTL of s9io_core is
     signal crc5_rx_clear        : std_logic;
     signal crc5_rx_wr           : std_logic;
     signal crc5_rx_data         : std_logic_vector(7 downto 0);
-    signal crc5_rx_ready        : std_logic;
-    signal crc5_rx              : std_logic_vector(4 downto 0);
+    signal crc5_rx_work_ready   : std_logic;
+    signal crc5_rx_work         : std_logic_vector(4 downto 0);
+    signal crc5_rx_cmd_ready    : std_logic;
+    signal crc5_rx_cmd          : std_logic_vector(4 downto 0);
 
     -- CRC16 signals
     signal crc16_clear          : std_logic;
@@ -275,7 +273,7 @@ begin
     ------------------------------------------------------------------------------------------------
     work_ready   <= '1' when ((uart_tx_full = '0') and (crc16_ready = '1')) else '0';
     cmd_tx_ready <= '1' when ((uart_tx_full = '0') and (crc5_tx_ready = '1')) else '0';
-    cmd_rx_ready <= '1' when ((uart_rx_empty = '0') and (crc5_rx_ready = '1')) else '0';
+    cmd_rx_ready <= '1' when ((uart_rx_empty = '0') and (crc5_rx_work_ready = '1') and (crc5_rx_cmd_ready = '1')) else '0';
 
     ------------------------------------------------------------------------------------------------
     -- sequential part of transmit FSM (state register)
@@ -772,7 +770,7 @@ begin
     p_fsm_rx_cmb: process (fsm_rx_q, ctrl_enable,
         work_rx_fifo_full, cmd_rx_fifo_full,
         uart_rx_empty, cmd_rx_ready, uart_rx_data_rd,
-        byte_cnt_rx_q, response_q, crc5_rx, job_id,
+        byte_cnt_rx_q, response_q, crc5_rx_work, crc5_rx_cmd, job_id,
         irq_pending_work_rx_q, irq_pending_cmd_rx_q,
         work_rx_fifo_rd, cmd_rx_fifo_rd
     ) begin
@@ -831,16 +829,14 @@ begin
                     byte_cnt_rx_d <= byte_cnt_rx_q + 1;
 
                     if (byte_cnt_rx_q = "110") then
-                        if (uart_rx_data_rd(7) = '1') then
+                        -- check CRC, drop data if mismatch
+                        if (uart_rx_data_rd(7) = '1') and (uart_rx_data_rd(4 downto 0) = crc5_rx_work) then
                             fsm_rx_d <= st_write_work1;
-                        else
+                        elsif (uart_rx_data_rd(7) = '0') and (uart_rx_data_rd(4 downto 0) = crc5_rx_cmd) then
                             fsm_rx_d <= st_write_cmd1;
+                        else
+                            fsm_rx_d <= st_crc_err;
                         end if;
-
-                        -- check CRC, drop data if mismatch - TODO check with correct CRC
---                         if (uart_rx_data_rd(4 downto 0) /= crc5_rx) then
---                             fsm_rx_d <= st_crc_err;
---                         end if;
                     end if;
                 end if;
 
@@ -857,9 +853,6 @@ begin
                     irq_pending_work_rx_d <= '1';
                     work_rx_fifo_wr <= '1';
                     work_rx_fifo_data_w <= response_q(6) & job_id & response_q(4);
-
-                    -- TODO reg_err_counter is for now counter of work responses
-                    fsm_rx_d <= st_crc_err;
                 end if;
 
             when st_write_cmd1 =>
@@ -902,17 +895,36 @@ begin
 
     crc5_tx_data <= uart_tx_data_wr;
 
+
     ------------------------------------------------------------------------------------------------
-    -- CRC5 engine for receive check
-    i_crc5_rx: entity work.crc5_serial
+    -- CRC5 engine for receive check - work
+    i_crc5_rx_work: entity work.crc5_resp_serial
+    generic map (
+        INIT    => "11011"
+    )
     port map (
         clk     => clk,
         rst     => rst,
         clear   => crc5_rx_clear,
         data_wr => crc5_rx_wr,
         data_in => crc5_rx_data,
-        ready   => crc5_rx_ready,
-        crc     => crc5_rx
+        ready   => crc5_rx_work_ready,
+        crc     => crc5_rx_work
+    );
+
+    -- CRC5 engine for receive check - command
+    i_crc5_rx_cmd: entity work.crc5_resp_serial
+    generic map (
+        INIT    => "00011"
+    )
+    port map (
+        clk     => clk,
+        rst     => rst,
+        clear   => crc5_rx_clear,
+        data_wr => crc5_rx_wr,
+        data_in => crc5_rx_data,
+        ready   => crc5_rx_cmd_ready,
+        crc     => crc5_rx_cmd
     );
 
     crc5_rx_data <= uart_rx_data_rd;
