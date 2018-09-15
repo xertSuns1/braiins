@@ -178,7 +178,7 @@ architecture behavioral of s9io_core_tb is
 -- 		X"083c0648", X"99001200"
 		X"083c0648", X"99FF9200",
 		-- command response
-		X"f4908713", X"001c0000"
+		X"f4908713", X"1c000000"
 	);
 	constant resp_uart_7 : uart_t(0 to 13) := (
 		-- work response

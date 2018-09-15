@@ -867,7 +867,7 @@ begin
                     fsm_rx_d <= st_wait;
                     irq_pending_cmd_rx_d <= '1';
                     cmd_rx_fifo_wr <= '1';
-                    cmd_rx_fifo_data_w <= X"00" & response_q(6) & response_q(5) & response_q(4);
+                    cmd_rx_fifo_data_w <= response_q(6) & X"00" & response_q(5) & response_q(4);
                 end if;
 
             when st_crc_err =>
