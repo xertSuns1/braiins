@@ -37,13 +37,15 @@ set design "system"
 # Device name
 set partname "xc7z010clg400-1"
 
-# define number of parallel jobs
-set jobs 2
+# Define number of parallel jobs
+set jobs 8
+
+# Project directory
+set projdir "./build_$board"
 
 # Paths to all IP blocks to use in Vivado "system.bd"
 set ip_repos [ list \
-	"ip_repository" \
-	"build_$board" \
+	"$projdir" \
 ]
 
 # Set source files
@@ -54,9 +56,6 @@ set hdl_files [ \
 set constraints_files [list \
 	"src/constrs/pin_assignment.tcl" \
 ]
-
-# Project directory
-set projdir "./build_$board"
 
 ####################################################################################################
 # Run synthesis, P&R and bitstream generation

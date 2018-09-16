@@ -14,4 +14,7 @@
 /ps_clock_registers.log
 
 # ignore build history file
-build_history.txt
+/build_history.txt
+
+# ignore backup directory
+/backup/

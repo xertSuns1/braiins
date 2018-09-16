@@ -41,8 +41,18 @@ if {[info exists oh_verilog_define]} {
 ###########################################################
 # SYNTHESIS
 ###########################################################
+timestamp "Starting synthesis ..."
 launch_runs synth_1 -jobs $jobs
 wait_on_run synth_1
+
+set synth_status [get_property status [get_runs synth_1]]
+set synth_progress [get_property progress [get_runs synth_1]]
+
+if {$synth_status != "synth_design Complete!" || $synth_progress != "100%"} {
+    puts "ERROR: \[SDSoC 0-0\]: Synthesis failed: status $synth_status, progress $synth_progress"
+    exit 1
+}
+
 open_run synth_1
 report_timing_summary -file $projdir/reports/timing_synth.rpt
 
@@ -57,11 +67,23 @@ write_hwdef -force -file $projdir/results/${design}.hwdef
 set_property STEPS.PHYS_OPT_DESIGN.IS_ENABLED true [get_runs impl_1]
 set_property STEPS.PHYS_OPT_DESIGN.ARGS.DIRECTIVE Explore [get_runs impl_1]
 set_property STRATEGY "Performance_Explore" [get_runs impl_1]
+
+timestamp "Starting implementation ..."
 launch_runs impl_1 -jobs $jobs
 wait_on_run impl_1
+
+set impl_status [get_property status [get_runs impl_1]]
+set impl_progress [get_property progress [get_runs impl_1]]
+
+if {$impl_status != "route_design Complete!" || $impl_progress != "100%"} {
+    puts "ERROR: \[SDSoC 0-0\]: Implementation failed: status $impl_status, progress $impl_progress"
+    exit 1
+}
+
 open_run impl_1
 report_timing_summary -file $projdir/reports/timing_impl.rpt
 report_utilization -file $projdir/reports/utilization_placed.rpt
+report_utilization -hierarchical -file $projdir/reports/utilization_hierarchical.rpt
 report_io -file $projdir/reports/io_placed.rpt
 report_drc -file $projdir/reports/drc_routed.rpt
 
@@ -73,6 +95,7 @@ report_drc -file $projdir/reports/drc_routed.rpt
 ###########################################################
 # WRITE BITSTREAM
 ###########################################################
+timestamp "Starting bitstream generation ..."
 write_bitstream -force -bin_file -file $projdir/results/${design}.bit
 
 ###########################################################
@@ -84,4 +107,10 @@ write_sysdef -force \
 	-file $projdir/results/${design}.hdf
 
 # extract content of archive
+puts "Extracting content of hardware definition file ..."
 exec unzip $projdir/results/${design}.hdf -d $projdir/results/system
+
+# create backup of build
+puts "Creating backup of build directory ..."
+if ![file exists "backup"] {file mkdir "backup"}
+file copy $projdir "backup/${projdir}_${build_id}"
