@@ -2,7 +2,7 @@
 timestamp "Executing system_init.tcl ..."
 
 ###########################################################
-# CREATE PROJECT
+# Create project
 ###########################################################
 create_project -force $design $projdir -part $partname
 set_property target_language Verilog [current_project]
@@ -20,18 +20,25 @@ if ![file exists $report_dir]  {file mkdir $report_dir}
 if ![file exists $results_dir] {file mkdir $results_dir}
 
 ###########################################################
+# Generate IP Cores
+###########################################################
+source generate_ip_s9io.tcl
+
+###########################################################
 # Add IP Repositories to search path
 ###########################################################
 
 set other_repos [get_property ip_repo_paths [current_project]]
 set_property  ip_repo_paths  "$ip_repos $other_repos" [current_project]
 
-update_ip_catalog
+update_ip_catalog -rebuild
 
 ###########################################################
 # CREATE BLOCK DESIGN (GUI/TCL COMBO)
 ###########################################################
+timestamp "Generating system block design ..."
 
+set_property target_language Verilog [current_project]
 create_bd_design "system"
 
 puts "Source system.tcl ..."
