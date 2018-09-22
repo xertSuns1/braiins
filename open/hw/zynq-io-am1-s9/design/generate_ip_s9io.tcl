@@ -30,10 +30,8 @@ set ip_vendor "braiins.cz"
 set src_path "src/${ip_name}_${ip_version}/hdl"
 set ip_repo "${projdir}/ip_repo"
 
+# Set list of VHDL files in compilation order
 set s9io_files [ list \
-    "${src_path}/s9io_v0_1_S00_AXI.vhd" \
-    "${src_path}/s9io_v0_1.vhd" \
-    "${src_path}/s9io_core.vhd" \
     "${src_path}/crc5_serial.vhd" \
     "${src_path}/crc5_resp_serial.vhd" \
     "${src_path}/crc16_serial.vhd" \
@@ -44,6 +42,9 @@ set s9io_files [ list \
     "${src_path}/uart_rx.vhd" \
     "${src_path}/uart_tx.vhd" \
     "${src_path}/uart.vhd" \
+    "${src_path}/s9io_core.vhd" \
+    "${src_path}/s9io_v0_1_S00_AXI.vhd" \
+    "${src_path}/s9io_v0_1.vhd" \
 ]
 
 timestamp "Generating IP core ${ip_name} ..."
@@ -56,7 +57,6 @@ set ip_id "${ip_vendor}:${ip_library}:${ip_name}:${ip_version}"
 set ip_repo_path "${ip_repo}/${ip_name}_${ip_version}"
 
 # remove directory if exists
-# TODO make backup
 if [file exists $ip_repo_path] {
     file delete -force $ip_repo_path
 }
@@ -89,7 +89,11 @@ ipx::edit_ip_in_project -upgrade true -name $ipx_project -directory ${projdir}/s
 set_property description "S9 Board Interface IP core" [ipx::current_core]
 set_property company_url "http://www.braiins.cz" [ipx::current_core]
 
-set vhdl_group [ipx::get_file_groups xilinx_vhdlsynthesis -of_objects [ipx::current_core]]
+set vhdl_synth_group [ipx::get_file_groups xilinx_vhdlsynthesis -of_objects [ipx::current_core]]
+set vhdl_sim_group [ipx::get_file_groups xilinx_vhdlbehavioralsimulation -of_objects [ipx::current_core]]
+
+# add generated file into file list
+lappend s9io_hdl_files "hdl/s9io_version.vhd"
 
 # copy source files into IP core directory
 foreach FILE $s9io_files {
@@ -108,12 +112,30 @@ set filename "${ip_repo_path}/hdl/s9io_version.vhd"
 set fd [open $filename "w"]
 
 puts $fd [string repeat "-" 100]
-puts $fd "-- Company:        Braiins Systems s.r.o."
-puts $fd "-- Engineer:       Marian Pristach"
+puts $fd "-- Copyright (c) 2018 Braiins Systems s.r.o."
 puts $fd "--"
+puts $fd "-- Permission is hereby granted, free of charge, to any person obtaining a copy"
+puts $fd "-- of this software and associated documentation files (the \"Software\"), to deal"
+puts $fd "-- in the Software without restriction, including without limitation the rights"
+puts $fd "-- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell"
+puts $fd "-- copies of the Software, and to permit persons to whom the Software is"
+puts $fd "-- furnished to do so, subject to the following conditions:"
+puts $fd "--"
+puts $fd "-- The above copyright notice and this permission notice shall be included in all"
+puts $fd "-- copies or substantial portions of the Software."
+puts $fd "--"
+puts $fd "-- THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR"
+puts $fd "-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,"
+puts $fd "-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE"
+puts $fd "-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER"
+puts $fd "-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,"
+puts $fd "-- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE"
+puts $fd "-- SOFTWARE."
+puts $fd [string repeat "-" 100]
 puts $fd "-- Project Name:   S9 Board Interface IP"
 puts $fd "-- Description:    Version of IP core as unix timestamp"
 puts $fd "--"
+puts $fd "-- Engineer:       Marian Pristach"
 puts $fd "-- Revision:       1.0.0 (${date_time})"
 puts $fd "-- Comments:       This file is generated during synthesis process - do not modify manually!"
 puts $fd [string repeat "-" 100]
@@ -138,23 +160,25 @@ puts $fd "end rtl;"
 # close the file
 close $fd
 
-# add file into file list
-lappend s9io_hdl_files "hdl/s9io_version.vhd"
-
 
 ####################################################################################################
 # Add source files into IP core, update and save IP core
 ####################################################################################################
 foreach FILE $s9io_hdl_files {
-    ipx::remove_file $FILE $vhdl_group
-    ipx::add_file $FILE $vhdl_group
-    set_property type vhdlSource [ipx::get_files $FILE -of_objects $vhdl_group]
-    set_property library_name xil_defaultlib [ipx::get_files $FILE -of_objects $vhdl_group]
+    ipx::remove_file $FILE $vhdl_synth_group
+    ipx::add_file $FILE $vhdl_synth_group
+    set_property type vhdlSource [ipx::get_files $FILE -of_objects $vhdl_synth_group]
+    set_property library_name xil_defaultlib [ipx::get_files $FILE -of_objects $vhdl_synth_group]
 }
 
-# update ports according to RTL
+# Copy list of synthesis group into simulation group
+ipx::copy_contents_from $vhdl_synth_group $vhdl_sim_group
+
+# Update parameters and ports according to RTL sources
+ipx::merge_project_changes hdl_parameters [ipx::current_core]
 ipx::merge_project_changes ports [ipx::current_core]
 
+ipx::create_xgui_files [ipx::current_core]
 ipx::update_checksums [ipx::current_core]
 ipx::save_core [ipx::current_core]
 close_project
