@@ -89,4 +89,7 @@ source "./system_build.tcl"
 ####################################################################################################
 # Exit Vivado
 ####################################################################################################
+set elapsed_time [clock format [expr [clock seconds] - $build_id] -gmt 1 -format "%H:%M:%S"]
+puts "Elapsed time: $elapsed_time"
+
 exit
