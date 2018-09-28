@@ -312,7 +312,7 @@ begin
         if S_AXI_ARESETN = '0' then
           slv_reg4 <= (others => '0');
           slv_reg6 <= (others => '0');
-          slv_reg7 <= (others => '0');
+          slv_reg7 <= X"00000001";
           slv_reg8 <= (others => '0');
         else
 
