@@ -23,10 +23,10 @@
 ####################################################################################################
 # Procedure for printing state of script run with timestamp
 proc timestamp {arg} {
-	puts ""
-	puts "********************************************************************************"
-	puts "[clock format [clock seconds] -format %H:%M:%S:] $arg"
-	puts "********************************************************************************"
+    puts ""
+    puts [string repeat "-" 80]
+    puts "[clock format [clock seconds] -format %H:%M:%S:] $arg"
+    puts [string repeat "-" 80]
 }
 
 ####################################################################################################
@@ -48,6 +48,7 @@ if {$board != "S9"} {
 	exit 1
 }
 
+puts [string repeat "-" 80]
 puts "Board name: $board"
 
 ####################################################################################################
@@ -80,16 +81,25 @@ set constraints_files [list \
 ]
 
 ####################################################################################################
+# Generate files with Build ID information
+####################################################################################################
+# get timestamp
+set build_id [clock seconds]
+set date_time [clock format $build_id -format "%d.%m.%Y %H:%M:%S"]
+
+puts "Build ID: ${build_id} (${date_time})"
+
+####################################################################################################
 # Run synthesis, P&R and bitstream generation
 ####################################################################################################
-source "./generate_build_id.tcl"
-source "./system_init.tcl"
-source "./system_build.tcl"
+# Create new project and generate block design of system
+source "system_init.tcl"
+
+# Run synthesis, implementation and bitstream generation
+source "system_build.tcl"
 
 ####################################################################################################
 # Exit Vivado
 ####################################################################################################
-set elapsed_time [clock format [expr [clock seconds] - $build_id] -gmt 1 -format "%H:%M:%S"]
-puts "Elapsed time: $elapsed_time"
-
-exit
+# Generate build history file, backup of build directory, print statistics
+source "system_final.tcl"
