@@ -98,6 +98,9 @@ source "system_init.tcl"
 # Run synthesis, implementation and bitstream generation
 source "system_build.tcl"
 
+# Generate verification environment for IP core s9io and run simulation
+source "src/s9io_0.1/fve/design.tcl"
+
 ####################################################################################################
 # Exit Vivado
 ####################################################################################################
