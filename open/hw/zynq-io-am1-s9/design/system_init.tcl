@@ -21,12 +21,12 @@
 # SOFTWARE.
 ####################################################################################################
 
-###########################################################
+####################################################################################################
 timestamp "Executing system_init.tcl ..."
 
-###########################################################
+####################################################################################################
 # Create project
-###########################################################
+####################################################################################################
 create_project -force $design $projdir -part $partname
 set_property target_language Verilog [current_project]
 
@@ -34,31 +34,31 @@ if {[info exists board_part]} {
     set_property board_part $board_part [current_project]
 }
 
-###########################################################
+####################################################################################################
 # Create Report/Results Directory
-###########################################################
+####################################################################################################
 set report_dir  $projdir/reports
 set results_dir $projdir/results
 if ![file exists $report_dir]  {file mkdir $report_dir}
 if ![file exists $results_dir] {file mkdir $results_dir}
 
-###########################################################
+####################################################################################################
 # Generate IP Cores
-###########################################################
+####################################################################################################
 source generate_ip_s9io.tcl
 
-###########################################################
+####################################################################################################
 # Add IP Repositories to search path
-###########################################################
+####################################################################################################
 
 set other_repos [get_property ip_repo_paths [current_project]]
 set_property  ip_repo_paths  "$ip_repos $other_repos" [current_project]
 
 update_ip_catalog -rebuild
 
-###########################################################
+####################################################################################################
 # CREATE BLOCK DESIGN (GUI/TCL COMBO)
-###########################################################
+####################################################################################################
 timestamp "Generating system block design ..."
 
 set_property target_language Verilog [current_project]
@@ -68,9 +68,9 @@ puts "Source system.tcl ..."
 source "./system.tcl"
 
 
-###########################################################
-# BLOCK DESIGN PATCH FOR S9
-###########################################################
+####################################################################################################
+# Block design patch for s9
+####################################################################################################
 # enable change of peripheral divisors
 set_property -dict [list CONFIG.PCW_OVERRIDE_BASIC_CLOCK {1}] [get_bd_cells processing_system7_0]
 
@@ -152,18 +152,18 @@ set_property -dict [list CONFIG.PCW_MIO_51_PULLUP {disabled} CONFIG.PCW_MIO_51_S
 set_property -dict [list CONFIG.PCW_MIO_52_PULLUP {disabled} CONFIG.PCW_MIO_52_SLEW {slow}] [get_bd_cells processing_system7_0]
 set_property -dict [list CONFIG.PCW_MIO_53_PULLUP {disabled} CONFIG.PCW_MIO_53_SLEW {slow}] [get_bd_cells processing_system7_0]
 
-###########################################################
-# END OF BLOCK DESIGN PATCH FOR S9
-###########################################################
+####################################################################################################
+# End of block design patch for s9
+####################################################################################################
 
 
 make_wrapper -files [get_files $projdir/${design}.srcs/sources_1/bd/system/system.bd] -top
 
-###########################################################
-# ADD FILES
-###########################################################
+####################################################################################################
+# Add files
+####################################################################################################
 
-#HDL
+# HDL
 if {[string equal [get_filesets -quiet sources_1] ""]} {
     create_fileset -srcset sources_1
 }
@@ -174,7 +174,7 @@ if {[llength $hdl_files] != 0} {
     add_files -norecurse -fileset [get_filesets sources_1] $hdl_files
 }
 
-#CONSTRAINTS
+# Constraints
 if {[string equal [get_filesets -quiet constrs_1] ""]} {
   create_fileset -constrset constrs_1
 }

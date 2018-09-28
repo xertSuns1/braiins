@@ -21,19 +21,11 @@
 ####################################################################################################
 
 ####################################################################################################
-# Generate files with Build ID information
-####################################################################################################
-
-# get timestamp
-set build_id [clock seconds]
-set date_time [clock format $build_id -format "%d.%m.%Y %H:%M:%S"]
-
-puts "Build ID: ${build_id} (${date_time})"
+timestamp "Finishing build ..."
 
 ####################################################################################################
 # Generate build history file
 ####################################################################################################
-
 # name of the build history file
 set filename "build_history.txt"
 
@@ -52,9 +44,38 @@ puts $fd [string repeat "-" 80]
 puts $fd [exec git log -1]
 puts $fd ""
 
+# check if git worktree is clean
+set diff [exec git diff HEAD]
+if { [string length $diff] > 0 } {
+    puts $fd "Warning: git worktree is dirty! Check git diff log in build directory."
+    puts $fd ""
+}
+
 # put original file content
 puts -nonewline $fd $file_data
 
 # close the file
 close $fd
 
+####################################################################################################
+# Save git diff into file in build directory
+####################################################################################################
+if { [string length $diff] > 0 } {
+    set filename "${projdir}/git.diff"
+    set fd [open $filename "w"]
+    puts $fd $diff
+    close $fd
+}
+
+####################################################################################################
+# Create backup of build directory
+####################################################################################################
+puts "Creating backup of build directory ..."
+if ![file exists "backup"] {file mkdir "backup"}
+file copy $projdir "backup/${projdir}_${build_id}"
+
+####################################################################################################
+# Final report
+####################################################################################################
+set elapsed_time [clock format [expr [clock seconds] - $build_id] -gmt 1 -format "%H:%M:%S"]
+puts "Elapsed time: $elapsed_time"
