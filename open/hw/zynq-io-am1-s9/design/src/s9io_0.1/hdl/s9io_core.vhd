@@ -790,7 +790,7 @@ begin
         uart_rx_empty, cmd_rx_ready, uart_rx_data_rd,
         byte_cnt_rx_q, response_q, crc5_rx_work, crc5_rx_cmd, job_id,
         irq_pending_work_rx_q, irq_pending_cmd_rx_q,
-        work_rx_fifo_rd, cmd_rx_fifo_rd
+        work_rx_fifo_rd, cmd_rx_fifo_rd, rst_fifo_work_rx, rst_fifo_cmd_rx
     ) begin
 
         -- default assignment to registers and signals
@@ -812,11 +812,11 @@ begin
 
         uart_rx_read <= '0';
 
-        if (work_rx_fifo_rd = '1') then
+        if ((work_rx_fifo_rd = '1') or (rst_fifo_work_rx = '1') or (ctrl_enable = '0')) then
             irq_pending_work_rx_d <= '0';
         end if;
 
-        if (cmd_rx_fifo_rd = '1') then
+        if ((cmd_rx_fifo_rd = '1') or (rst_fifo_cmd_rx = '1') or (ctrl_enable = '0')) then
             irq_pending_cmd_rx_d <= '0';
         end if;
 
