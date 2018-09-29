@@ -36,8 +36,6 @@ if {![info exists design]} {
 # Save any gui changes
 ####################################################################################################
 validate_bd_design
-# file copy -force ${design}_bd.tcl ${design}_bd.tcl.backup
-write_bd_tcl -force ./${design}.backup.tcl
 make_wrapper -files [get_files $projdir/${design}.srcs/sources_1/bd/${design}/${design}.bd] -top
 
 ####################################################################################################
@@ -60,6 +58,13 @@ if {[info exists oh_verilog_define]} {
     puts "INFO: Adding following verilog defines to fileset: ${oh_verilog_define}"
     set_property verilog_define ${oh_verilog_define} [current_fileset]
 }
+
+# # Write system definition
+# generate_target all [get_files $bd_design]
+# write_hwdef -force -file "$projdir/results/${design}.hwdef"
+# puts "Extracting content of hardware definition file ..."
+# exec unzip "$projdir/results/${design}.hwdef" -d "$projdir/results/system"
+# exit
 
 ####################################################################################################
 # Synthesis
