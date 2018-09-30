@@ -11,9 +11,9 @@ pub const HASH_COUNTING_REG: u8 = 0x14;
 pub const TICKET_MASK_REG: u8 = 0x14;
 pub const MISC_CONTROL_REG: u8 = 0x1c;
 
+/// Control or work command layout
 #[derive(PackedStruct, Debug)]
 #[packed_struct(size_bytes = "1", bit_numbering = "lsb0")]
-/// Command
 pub struct Cmd {
     #[packed_field(bits = "0:3")]
     code: Integer<u8, packed_bits::Bits4>,
@@ -32,8 +32,8 @@ impl Cmd {
     }
 }
 
-#[derive(PrimitiveEnum_u8, Clone, Copy, Debug, PartialEq)]
 /// Command types
+#[derive(PrimitiveEnum_u8, Clone, Copy, Debug, PartialEq)]
 enum CmdType {
     /// Control command for the chip
     VilCtlCmd = 0x02,
@@ -143,6 +143,7 @@ pub struct SetConfigCmd {
     register: u8,
     value: u32,
 }
+
 impl SetConfigCmd {
     pub fn new(chip_address: u8, to_all: bool, register: u8, value: u32) -> Self {
         let cmd = Cmd::new(0x08, to_all);
@@ -325,7 +326,7 @@ impl MiscCtrlReg {
 #[cfg(test)]
 mod test {
     use super::*;
-
+    /// TODO: factor out command serialization tests into a macro
     /// Helper function for converting test data into fpga word slice
     fn u8_as_fpga_slice(cmd: &[u8]) -> &[u32] {
         unsafe {
