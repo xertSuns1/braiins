@@ -5,14 +5,14 @@ pub mod s9;
 /// Describes actual mining work for submission to a hashing hardware
 pub struct MiningWork<'a> {
     /// Version field used for calculating the midstate
-    version: u32,
+    pub version: u32,
     /// Extranonce 2 used for calculating merkelroot
-    extranonce_2: u32,
-    /// array
-    midstates: &'a [uint::U256],
-    merkel_root_lsw: u32,
-    ntime: u32,
-    nbits: u32,
+    pub extranonce_2: u32,
+    /// multiple midstates can be generated for each work
+    pub midstates: &'a [uint::U256],
+    pub merkel_root_lsw: u32,
+    pub ntime: u32,
+    pub nbits: u32,
 }
 
 /// Represents raw result from the mining hardware
