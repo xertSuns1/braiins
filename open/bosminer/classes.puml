@@ -35,16 +35,22 @@ class MiningWork {
   extranonce_2 : u32
   midstates : [u256]
   merkel_root : u256
-  n_time : u32
-  nbits: u32
+  ntime : u32
+  nbits : u32
 }
 
+class MiningWorkResult {
+  nonce : u32
+  ntime : u32
+  midstate_idx : int
+}
 note "there is no work ID intentionally as it is backend driver dependent" as MWN1
 
 MiningWork .. MWN1
 
 class HChainCtl {
   send_work()
+  recv_work_result()
 }
 
 class MiningJobProcessor {
@@ -56,7 +62,7 @@ MiningJob "0..N" o-- "1" MiningSubscription : gets info from
 
 MiningJobProcessor "1" *-- "0..N" MiningJob : transforms
 MiningJobProcessor "1" *-- "0..N" MiningWork : produces
-MiningJobProcessor -- HChainCtl : uses
+MiningJobProcessor --> HChainCtl : uses
 
 
 
