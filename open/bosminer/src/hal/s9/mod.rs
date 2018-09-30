@@ -32,17 +32,20 @@ const INACTIVATE_FROM_CHAIN_DELAY_MS: u64 = 100;
 const MAX_CHIPS_ON_CHAIN: usize = 64;
 
 /// Hash Chain Controller provides abstraction of the FPGA interface for operating hashing boards.
-/// It is the user-space driver for the
+/// It is the user-space driver for the IP Core
 ///
 /// Main responsibilities:
 /// - memory mapping of the FPGA control interface
-/// - hashing work submission and fetching
+/// - mining work submission and result processing
 ///
 /// TODO: implement drop trait (results in unmap)
 pub struct HChainCtl<'a> {
     hash_chain_ios: [&'a hchainio0::RegisterBlock; 2],
+    /// Current work ID once it rolls over, we can start retiring old jobs
     work_id: u16,
+    /// Number of chips that have been detected
     chip_count: usize,
+    /// Eliminates the need to query the IP core about the current number of configured midstates
 }
 
 impl<'a> HChainCtl<'a> {
@@ -290,7 +293,8 @@ impl<'a> HChainCtl<'a> {
         }
     }
 
-    /// # TODO
+    /// # TODO this method fails if the RX FIFO contains only the first word of the command
+    /// response. The response would be lost completely.
     ///
     /// # Errors
     ///
