@@ -4,8 +4,8 @@ extern crate nix;
 extern crate s9_io;
 
 use self::nix::sys::mman::{MapFlags, ProtFlags};
-
 use core;
+
 use std::fs::OpenOptions;
 use std::io;
 use std::mem::size_of;
@@ -19,6 +19,7 @@ use uint;
 
 use self::byteorder::{ByteOrder, LittleEndian};
 use packed_struct::{PackedStruct, PackedStructSlice};
+
 use self::s9_io::hchainio0;
 
 mod bm1387;
@@ -45,6 +46,9 @@ pub struct HChainCtl<'a> {
 }
 
 impl<'a> HChainCtl<'a> {
+    /// Performs memory mapping of IP core's register block
+    /// # TODO
+    /// Research why custom flags - specifically O_SYNC and O_LARGEFILE fail
     fn mmap() -> Result<*const hchainio0::RegisterBlock, io::Error> {
         let mem_file = //File::open(path)?;
             OpenOptions::new().read(true).write(true)
@@ -64,6 +68,7 @@ impl<'a> HChainCtl<'a> {
         mmap.map(|addr| addr as *const hchainio0::RegisterBlock)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("mmap error! {:?}", e)))
     }
+
     pub fn new() -> Result<Self, io::Error> {
         let hash_chain_io = Self::mmap()?;
         let hash_chain_io = unsafe { &*hash_chain_io };
