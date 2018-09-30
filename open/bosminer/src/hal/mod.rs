@@ -3,15 +3,20 @@ use uint;
 pub mod s9;
 
 /// Describes actual mining work for submission to a hashing hardware
+/// # TODO
+/// Add ntime limit for supporting hardware that can do nTime rolling on its own
 pub struct MiningWork<'a> {
     /// Version field used for calculating the midstate
     pub version: u32,
     /// Extranonce 2 used for calculating merkelroot
     pub extranonce_2: u32,
-    /// multiple midstates can be generated for each work
+    /// Multiple midstates can be generated for each work
     pub midstates: &'a [uint::U256],
     pub merkel_root_lsw: u32,
+    /// Start value for nTime, hardware may roll nTime further.
     pub ntime: u32,
+    /// Network difficulty encoded as nbits (exponent + mantissa - see
+    /// https://en.bitcoin.it/wiki/Difficulty)
     pub nbits: u32,
 }
 
