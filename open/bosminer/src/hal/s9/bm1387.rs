@@ -278,7 +278,7 @@ pub struct MiscCtrlReg {
 
 impl MiscCtrlReg {
     pub fn to_u32(&self) -> u32 {
-        let mut reg_bytes = self.pack();
+        let reg_bytes = self.pack();
 
         let value = unsafe { mem::transmute(reg_bytes) };
         value
