@@ -67,3 +67,4 @@ This fails as cargo attempts to run the test case on the build host. However, it
 - get rid of thread specific components - e.g. sleeps, time delay calculations
 - implement custom error type(s) and get rid of misusing std::io::Error
 - cpu simulation (for diff 1 testing)
+- extend ip core to indicate the number of items in both RX FIFO's
