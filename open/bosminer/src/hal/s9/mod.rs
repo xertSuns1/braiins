@@ -307,7 +307,6 @@ impl<'a> HChainCtl<'a> {
     }
 
     /// Serializes command into 32-bit words and submits it to the command TX FIFO
-    ///
     fn send_ctl_cmd(&self, cmd: &[u8]) {
         // invariant required by the IP core
         assert_eq!(
