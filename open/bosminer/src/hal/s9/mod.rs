@@ -31,6 +31,10 @@ const INACTIVATE_FROM_CHAIN_DELAY_MS: u64 = 100;
 /// addresses to the chips need to be assigned with step of 4 (e.g. 0, 4, 8, etc.)
 const MAX_CHIPS_ON_CHAIN: usize = 64;
 
+/// Bit position where work ID starts in the second word provided by the IP core with mining work
+/// result
+const WORK_ID_OFFSET: usize = 8;
+
 /// Hash Chain Controller provides abstraction of the FPGA interface for operating hashing boards.
 /// It is the user-space driver for the IP Core
 ///
@@ -256,11 +260,12 @@ impl<'a> HChainCtl<'a> {
     }
 
     #[inline]
-    /// TODO get rid of busy waiting, prepare for non-blocking API
-    fn read_from_work_rx_fifo(&self) -> u32 {
+    fn read_from_work_rx_fifo(&self) -> Result<u32, io::Error> {
         let hash_chain_io = self.hash_chain_ios[0];
-        while hash_chain_io.stat_reg.read().work_rx_empty().bit() {}
-        hash_chain_io.work_rx_fifo.read().bits()
+        if hash_chain_io.stat_reg.read().work_rx_empty().bit() {
+            return Err(io::Error::new(io::ErrorKind::Other, "Work RX fifo empty"));
+        }
+        Ok(hash_chain_io.work_rx_fifo.read().bits())
     }
 
     #[inline]
@@ -281,6 +286,24 @@ impl<'a> HChainCtl<'a> {
             ));
         }
         Ok(hash_chain_io.cmd_rx_fifo.read().bits())
+    }
+
+    #[inline]
+    /// Helper function that extracts work ID from the second word of the result
+    fn get_work_id_from_result_id(&self, result_id: u32) -> usize {
+        ((result_id >> WORK_ID_OFFSET) >> self.midstate_count_bits) as usize
+    }
+
+    #[inline]
+    /// Extracts midstate index from the second word of the result
+    fn get_midstate_idx_from_result_id(&self, result_id: u32) -> usize {
+        ((result_id >> WORK_ID_OFFSET) & ((1u32 << self.midstate_count_bits) - 1)) as usize
+    }
+
+    #[inline]
+    /// Extracts midstate index from the second word of the result
+    fn get_solution_idx_from_result_id(&self, result_id: u32) -> usize {
+        (result_id & ((1u32 << WORK_ID_OFFSET) - 1)) as usize
     }
 
     /// Serializes command into 32-bit words and submits it to the command TX FIFO
@@ -338,6 +361,25 @@ impl<'a> super::HardwareCtl for HChainCtl<'a> {
             }
         }
         work_id
+    }
+
+    fn recv_work_result(&self) -> Result<super::MiningWorkResult, io::Error> {
+        let nonce = self.read_from_work_rx_fifo()?;
+        // TODO: replace this busy wait with something that checks there are at least 2
+        // items in the FIFO
+        while self.hash_chain_ios[0].stat_reg.read().work_rx_empty().bit() {}
+
+        let word2 = self.read_from_work_rx_fifo()?;
+        let result = super::MiningWorkResult {
+            nonce,
+            // this hardware doesn't do any nTime rolling, keep it @ None
+            ntime: None,
+            midstate_idx: self.get_midstate_idx_from_result_id(word2),
+            // leave the result ID as-is so that we can extract solution index etc later.
+            result_id: word2 & 0xffffffu32,
+        };
+
+        Ok(result)
     }
 }
 
@@ -397,6 +439,68 @@ mod test {
             hchainio0::ctrl_reg::MIDSTATE_CNTR::ONE,
             "Unexpected midstate count"
         );
+    }
+
+    #[test]
+    /// This test verifies correct parsing of work result for all multi-midstate configurations.
+    /// The result_word represents the second word of the work result (after nonce) provided by the
+    /// FPGA IP core
+    fn test_get_result_word_attributes() {
+        let result_word = 0x00123502;
+        let expected_result_data = [
+            (
+                0x1235usize,
+                0usize,
+                2usize,
+                hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
+            ),
+            (
+                0x1235 >> 1,
+                1usize,
+                2usize,
+                hchainio0::ctrl_reg::MIDSTATE_CNTW::TWO,
+            ),
+            (
+                0x1235 >> 2,
+                1usize,
+                2usize,
+                hchainio0::ctrl_reg::MIDSTATE_CNTW::FOUR,
+            ),
+        ];
+        for (i, (expected_work_id, expected_midstate_idx, expected_solution_idx, midstate_count)) in
+            expected_result_data.iter().enumerate()
+        {
+            // The midstate configuration (ctrl_reg::MIDSTATE_CNTW) doesn't implement a debug
+            // trait. Therefore, we extract only those parts that can be easily displayed when a
+            // test failed.
+            let expected_data = (
+                expected_result_data[i].0,
+                expected_result_data[i].1,
+                expected_result_data[i].2,
+            );
+            let h_chain_ctl = HChainCtl::new(midstate_count).unwrap();
+            assert_eq!(
+                h_chain_ctl.get_midstate_idx_from_result_id(result_word),
+                *expected_midstate_idx,
+                "Invalid midstate index, iteration: {}, test data: {:#06x?}",
+                i,
+                expected_data
+            );
+            assert_eq!(
+                h_chain_ctl.get_work_id_from_result_id(result_word),
+                *expected_work_id,
+                "Invalid work ID, iteration: {}, test data: {:#06x?}",
+                i,
+                expected_data
+            );
+            assert_eq!(
+                h_chain_ctl.get_solution_idx_from_result_id(result_word),
+                *expected_solution_idx,
+                "Invalid solution index, iteration: {}, test data: {:#06x?}",
+                i,
+                expected_data
+            );
+        }
     }
 
 }

@@ -36,4 +36,6 @@ pub trait HardwareCtl {
     /// registry
     fn send_work(&mut self, work: &MiningWork) -> u32;
 
+    /// Receives 1 MiningWorkResult
+    fn recv_work_result(&self) -> Result<MiningWorkResult, io::Error>;
 }
