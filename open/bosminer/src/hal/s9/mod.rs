@@ -253,7 +253,7 @@ impl<'a> HChainCtl<'a> {
     /// Writes single word into a TX fifo
     fn write_to_work_tx_fifo(&self, item: u32) {
         let hash_chain_io = self.hash_chain_ios[0];
-        while !hash_chain_io.stat_reg.read().work_tx_full().bit() {}
+        while hash_chain_io.stat_reg.read().work_tx_full().bit() {}
         hash_chain_io
             .work_tx_fifo
             .write(|w| unsafe { w.bits(item) });
