@@ -46,6 +46,7 @@ pub struct HChainCtl<'a> {
     /// Number of chips that have been detected
     chip_count: usize,
     /// Eliminates the need to query the IP core about the current number of configured midstates
+    midstate_count_bits: u8,
 }
 
 impl<'a> HChainCtl<'a> {
@@ -72,13 +73,16 @@ impl<'a> HChainCtl<'a> {
             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("mmap error! {:?}", e)))
     }
 
-    pub fn new() -> Result<Self, io::Error> {
+    pub fn new(
+        midstate_count: &s9_io::hchainio0::ctrl_reg::MIDSTATE_CNTW,
+    ) -> Result<Self, io::Error> {
         let hash_chain_io = Self::mmap()?;
         let hash_chain_io = unsafe { &*hash_chain_io };
         Result::Ok(Self {
             hash_chain_ios: [hash_chain_io, hash_chain_io],
             work_id: 0,
             chip_count: 0,
+            midstate_count_bits: midstate_count._bits(),
         })
     }
 
@@ -91,7 +95,7 @@ impl<'a> HChainCtl<'a> {
         self.set_baud(115200);
         // TODO consolidate hardcoded constant - calculate time constant based on PLL settings etc.
         self.set_work_time(50000);
-        self.set_midstate_count(hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE);
+        self.set_midstate_count();
 
         Ok(())
     }
@@ -218,10 +222,10 @@ impl<'a> HChainCtl<'a> {
             .write(|w| unsafe { w.bits(0x1b) });
     }
 
-    fn set_midstate_count(&self, count: s9_io::hchainio0::ctrl_reg::MIDSTATE_CNTW) {
+    fn set_midstate_count(&self) {
         self.hash_chain_ios[0]
             .ctrl_reg
-            .write(|w| w.midstate_cnt().variant(count));
+            .modify(|_, w| unsafe { w.midstate_cnt().bits(self.midstate_count_bits) });
     }
 
     fn u256_as_u32_slice(src: &uint::U256) -> &[u32] {
@@ -356,7 +360,7 @@ mod test {
 
     #[test]
     fn test_hchain_ctl_instance() {
-        let h_chain_ctl = HChainCtl::new();
+        let h_chain_ctl = HChainCtl::new(&hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE);
         match h_chain_ctl {
             Ok(_) => assert!(true),
             Err(e) => assert!(false, "Failed to instantiate hash chain, error: {}", e),
@@ -365,7 +369,7 @@ mod test {
 
     #[test]
     fn test_hchain_ctl_init() {
-        let h_chain_ctl = HChainCtl::new().unwrap();
+        let h_chain_ctl = HChainCtl::new(&hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE).unwrap();
 
         assert!(
             h_chain_ctl.ip_core_init().is_ok(),
