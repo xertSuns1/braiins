@@ -319,9 +319,9 @@ impl<'a> HChainCtl<'a> {
 }
 
 impl<'a> super::HardwareCtl for HChainCtl<'a> {
-    fn send_work(&mut self, work: &super::MiningWork) {
-        let next_work_id = self.next_work_id();
-        self.write_to_work_tx_fifo(next_work_id);
+    fn send_work(&mut self, work: &super::MiningWork) -> u32 {
+        let work_id = self.next_work_id();
+        self.write_to_work_tx_fifo(work_id);
         self.write_to_work_tx_fifo(work.nbits);
         self.write_to_work_tx_fifo(work.ntime);
         self.write_to_work_tx_fifo(work.merkel_root_lsw);
@@ -333,6 +333,7 @@ impl<'a> super::HardwareCtl for HChainCtl<'a> {
                 self.write_to_work_tx_fifo(*midstate_word);
             }
         }
+        work_id
     }
 }
 

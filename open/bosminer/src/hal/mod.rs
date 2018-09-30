@@ -30,6 +30,10 @@ pub struct MiningWorkResult {
 
 /// Any hardware mining controller should implement at least these methods
 pub trait HardwareCtl {
-    fn send_work(&mut self, work: &MiningWork);
+    /// Sends work to the hash chain
+    ///
+    /// Returns a unique ID that can be used for registering the work within a hardware specific
+    /// registry
+    fn send_work(&mut self, work: &MiningWork) -> u32;
 
 }
