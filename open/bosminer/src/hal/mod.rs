@@ -28,5 +28,6 @@ pub struct MiningResult<'a> {
 
 /// Any hardware mining controller should implement at least these methods
 pub trait HardwareCtl {
-    fn send_work(&self, work: &MiningWork);
+    fn send_work(&mut self, work: &MiningWork);
+
 }
