@@ -61,3 +61,9 @@ This fails as cargo attempts to run the test case on the build host. However, it
 # Dinghy Integration (tool for deploying)
 
 - this is currently incomplete as dinghy requires toolchain path and sysroot. The latter is a problem as we currently have no sysroot. The issue is being discussed here: https://github.com/snipsco/dinghy/issues/71
+
+# TODO
+- logging infrastructure
+- get rid of thread specific components - e.g. sleeps, time delay calculations
+- implement custom error type(s) and get rid of misusing std::io::Error
+- cpu simulation (for diff 1 testing)
