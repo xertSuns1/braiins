@@ -196,13 +196,13 @@ impl<'a> HChainCtl<'a> {
     fn enable(&self) {
         self.hash_chain_ios[0]
             .ctrl_reg
-            .write(|w| w.enable().bit(true));
+            .modify(|_, w| w.enable().bit(true));
     }
 
     fn disable(&self) {
         self.hash_chain_ios[0]
             .ctrl_reg
-            .write(|w| w.enable().bit(false));
+            .modify(|_, w| w.enable().bit(false));
     }
 
     fn set_work_time(&self, work_time: u32) {
