@@ -1,3 +1,4 @@
+use std::io;
 use uint;
 
 pub mod s9;
