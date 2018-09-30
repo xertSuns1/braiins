@@ -112,6 +112,13 @@ impl<'a> HChainCtl<'a> {
     }
 
     #[inline]
+    fn next_work_id(&mut self) -> u32 {
+        let retval = self.work_id as u32;
+        self.work_id += 1;
+        retval
+    }
+
+    #[inline]
     /// TODO: implement error handling/make interface ready for ASYNC execution
     /// Writes single word into a TX fifo
     fn write_to_work_tx_fifo(&self, item: u32) -> bool {
@@ -134,8 +141,9 @@ impl<'a> HChainCtl<'a> {
 }
 
 impl<'a> super::HardwareCtl for HChainCtl<'a> {
-    fn send_work(&self, work: &super::MiningWork) {
-        //self.write_to_work_tx_fifo(self.next_work_id());
+    fn send_work(&mut self, work: &super::MiningWork) {
+        let next_work_id = self.next_work_id();
+        self.write_to_work_tx_fifo(next_work_id);
         self.write_to_work_tx_fifo(work.nbits);
         self.write_to_work_tx_fifo(work.ntime);
         self.write_to_work_tx_fifo(work.merkel_root_lsw);
