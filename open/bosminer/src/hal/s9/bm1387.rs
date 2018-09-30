@@ -74,66 +74,6 @@ impl CmdHeader {
     }
 }
 
-//#[derive(PackedStruct)]
-///// Represents an command sent to the chip via FPGA
-//struct FpgaCmd<T, U> {
-//    /// actual payload to be sent
-//    payload: T,
-//    /// Padding required by the FPGA, the exact type depends on the required format
-//    fpga_padding: U,
-//}
-//
-//impl<T, U> FpgaCmd<T, U>
-//where
-//    U: std::convert::From<u8>,
-//{
-//    fn new(payload: T) -> Self {
-//        Self {
-//            payload,
-//            fpga_padding: U::from(0),
-//        }
-//    }
-//
-//    /// Provides slice view of the command that can be sent down the stream
-//    ///
-//    /// The slice consists of elements of U type. Typically the FPGA accepts data in multiples of
-//    /// U size. The slice contains necessary padding.
-//    ///
-//    /// TODO research whether there some standard trait that should be implemented instead of this
-//    /// method
-//    ///
-//    /// Example:
-//    /// ```rust
-//    /// let byte_view = self.as_slice()
-//    /// ```
-//    fn as_fpga_truncated_slice(&self, packed_bytes: &[u8]) -> &[u32] {
-//        unsafe {
-//            core::slice::from_raw_parts(packed_bytes.as_ptr() as *const u32,
-//                                        self.packed_bytes() / size_of::<u32>())
-//        }
-//    }
-//}
-/// Custom debug due to the fact that we are printing out a packed structure. Specifically, it is
-/// forbidden to borrow potentially unaligned fields (see https://github
-/// .com/rust-lang/rust/issues/46043)
-//impl<T, U> std::fmt::Debug for FpgaCmd<T, U>
-//where
-//    T: std::fmt::Debug + std::marker::Copy,
-//{
-//    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-//        // we have to copy the payload as it may be unaligned
-//        let payload = self.payload;
-//
-//        f.debug_struct("FpgaCmd")
-//            .field("payload", &payload)
-//            .finish()
-//    }
-//}
-
-//struct CtlCmd<T> {
-//    header: CmdHeader,
-//    payload: T,
-//}
 /// Sets configuration register
 #[derive(PackedStruct, Debug)]
 #[packed_struct(endian = "lsb")]
@@ -226,13 +166,6 @@ pub enum ChipRev {
     /// Control command for the chip
     Bm1387 = 0x1387,
 }
-//0x40, 0x20, 0x9a, 0x80
-//#[packed_struct(size_bytes = "1", bit_numbering = "lsb0")]
-///// Control or work command layout
-//pub struct Cmd {
-//    #[packed_field(bits = "0:3")]
-//    code: Integer<u8, packed_bits::Bits4>,
-//    #[packed_field(bits = "4")]
 
 /// Core register that configures the most important aspects of the mining chip like:
 ///
@@ -285,44 +218,6 @@ impl MiscCtrlReg {
     }
 }
 
-/////
-//impl<T> CtlCmd<T> {
-//    fn new_for_fpga(cmd: Cmd, chip_address: u8, payload: T) -> FpgaCmd<Self, u32> {
-//        let cmd_with_payload = Self {
-//            header: CmdHeader::new(cmd, size_of::<T>(), chip_address, size_of::<u8>()),
-//            payload,
-//        };
-//        FpgaCmd::new(cmd_with_payload)
-//    }
-//}
-//impl<T> std::fmt::Debug for CtlCmd<T>
-//where
-//    T: std::fmt::Debug + std::marker::Copy,
-//{
-//    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-//        // we have to copy the payload as it may be unaligned
-//        let header = self.header;
-//        let payload = self.payload;
-//
-//        f.debug_struct("CtlCmd")
-//            .field("header", &header)
-//            .field("payload", &payload)
-//            .finish()
-//    }
-//}
-//impl<T> Copy for CtlCmd<T> where T: Copy { }
-
-//impl<T> Clone for CtlCmd<T> {
-//    fn clone(&self) -> Self {
-//        Self {
-//            header:
-//
-////            header: self.header,
-////            payload: self.payload,
-//        }
-//    }
-//}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -334,48 +229,6 @@ mod test {
         }
     }
 
-    #[test]
-    //    /// Builds a sample 'Deactivate chain' command and verifies correct serialization
-//    fn build_fpga_cmd() {
-//        let assigned_cmd = [0x01u8, 0x02, 0x03, 0x04, 0x05];
-//        let expected_cmd_with_padding = [0x55u8, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01];
-//        let cmd = FpgaCmd::<_, u32>::new(assigned_cmd);
-//        let expected_cmd_with_padding = u8_as_fpga_slice(&expected_cmd_with_padding);
-//
-//        assert_eq!(
-//            cmd.as_slice(),
-//            expected_cmd_with_padding,
-//            "Incorrectly padded command:{:#04x?} sliced view: {:#010x?} expected view: \
-//             {:#010x?}",
-//            cmd,
-//            cmd.as_slice(),
-//            expected_cmd_with_padding
-//        );
-//    }
-
-//    #[test]
-//    /// Builds a sample 'Deactivate chain' command and verifies correct serialization
-//    fn build_ctl_cmd() {
-//        let cmd = Cmd {
-//            code: 0x05,
-//            to_all: true,
-//            cmd_type: CmdType::VilCtlCmd,
-//        };
-//
-//        let cmd = CtlCmd::new(cmd, 0, 0u16);
-//        let expected_cmd_with_padding = [0x55u8, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01];
-//        let expected_cmd_with_padding = u8_as_fpga_slice(&expected_cmd_with_padding);
-//
-//        assert_eq!(
-//            cmd.as_slice(),
-//            expected_cmd_with_padding,
-//            "Incorrectly composed command:{:#04x?} sliced view: {:#010x?} expected view: \
-//                 {:#010x?}",
-//            cmd,
-//            cmd.as_slice(),
-//            expected_cmd_with_padding
-//        );
-//    }
     #[test]
     /// Builds a sample set_config command (here the PLL register @ 0x0c with a value of
     /// 0x21026800 that corresponds to
@@ -508,11 +361,3 @@ mod test {
     }
 
 }
-
-//impl DeactivateChainCmd {
-//    pub fn new() -> Self {
-//        DeactivateChainCmd {
-//            header: CmdHeader::new(Cmd(0), size_of::<u8>),
-//        }
-//    }
-//}
