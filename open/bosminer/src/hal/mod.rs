@@ -16,14 +16,16 @@ pub struct MiningWork<'a> {
 }
 
 /// Represents raw result from the mining hardware
-pub struct MiningResult<'a> {
+#[derive(Debug)]
+pub struct MiningWorkResult {
     /// actual nonce
-    nonce: u32,
+    pub nonce: u32,
     /// nTime of the result in case the HW also rolls the nTime field
-    ntime: u32,
+    pub ntime: Option<u32>,
     /// index of a midstate corresponds to the found nonce
-    midstate_idx: usize,
-    orig_work: &'a MiningWork<'a>,
+    pub midstate_idx: usize,
+    /// Unique identifier for the result
+    pub result_id: u32,
 }
 
 /// Any hardware mining controller should implement at least these methods
