@@ -290,19 +290,19 @@ impl<'a> HChainCtl<'a> {
     }
 
     #[inline]
-    /// Helper function that extracts work ID from the second word of the result
+    /// Helper function that extracts work ID from the result ID
     fn get_work_id_from_result_id(&self, result_id: u32) -> usize {
         ((result_id >> WORK_ID_OFFSET) >> self.midstate_count_bits) as usize
     }
 
     #[inline]
-    /// Extracts midstate index from the second word of the result
+    /// Extracts midstate index from the result ID
     fn get_midstate_idx_from_result_id(&self, result_id: u32) -> usize {
         ((result_id >> WORK_ID_OFFSET) & ((1u32 << self.midstate_count_bits) - 1)) as usize
     }
 
     #[inline]
-    /// Extracts midstate index from the second word of the result
+    /// Extracts solution index from the result ID
     fn get_solution_idx_from_result_id(&self, result_id: u32) -> usize {
         (result_id & ((1u32 << WORK_ID_OFFSET) - 1)) as usize
     }
