@@ -40,8 +40,8 @@ pub trait HardwareCtl {
     ///
     /// Returns a unique ID that can be used for registering the work within a hardware specific
     /// registry
-    fn send_work(&mut self, work: &MiningWork) -> u32;
+    fn send_work(&mut self, work: &MiningWork) -> Result<u32, io::Error>;
 
     /// Receives 1 MiningWorkResult
-    fn recv_work_result(&self) -> Result<MiningWorkResult, io::Error>;
+    fn recv_work_result(&mut self) -> Result<Option<MiningWorkResult>, io::Error>;
 }

@@ -1,5 +1,6 @@
 use core;
 use packed_struct::prelude::*;
+use packed_struct::types::IntegerAsBytes;
 
 use std::io;
 use std::mem;
@@ -151,13 +152,14 @@ impl InactivateFromChainCmd {
     }
 }
 
-#[derive(PackedStruct, Debug)]
-#[packed_struct(endian = "lsb")]
+#[derive(PackedStruct, Default, Debug)]
+#[packed_struct(endian = "lsb", size_bytes = "6")]
 pub struct GetAddressReg {
     #[packed_field(endian = "msb", ty = "enum", element_size_bytes = "2")]
     pub chip_rev: ChipRev,
     _reserved1: u8,
     pub addr: u8,
+    _reserved2: [u8; 2],
 }
 
 #[derive(PrimitiveEnum_u16, Clone, Copy, Debug, PartialEq)]
@@ -165,6 +167,12 @@ pub struct GetAddressReg {
 pub enum ChipRev {
     /// Control command for the chip
     Bm1387 = 0x1387,
+}
+
+impl Default for ChipRev {
+    fn default() -> ChipRev {
+        ChipRev::Bm1387
+    }
 }
 
 /// Core register that configures the most important aspects of the mining chip like:
@@ -209,12 +217,17 @@ pub struct MiscCtrlReg {
     pub mmen: bool,
 }
 
-impl MiscCtrlReg {
-    pub fn to_u32(&self) -> u32 {
-        let reg_bytes = self.pack();
+//impl MiscCtrlReg {
+//    pub fn to_u32(&self) -> u32 {
+//        let reg_bytes = self.pack();
+//        IntegerAsBytes::from_lsb_bytes(&reg_bytes)
+//    }
+//}
 
-        let value = unsafe { mem::transmute(reg_bytes) };
-        value
+impl Into<u32> for MiscCtrlReg {
+    fn into(self) -> u32 {
+        let reg_bytes = self.pack();
+        IntegerAsBytes::from_lsb_bytes(&reg_bytes)
     }
 }
 
@@ -295,8 +308,9 @@ mod test {
             chip_rev: ChipRev::Bm1387,
             _reserved1: 0x90,
             addr: 0x00,
+            ..Default::default()
         };
-        let expected_reg = [0x13u8, 0x87, 0x90, 0x00];
+        let expected_reg = [0x13u8, 0x87, 0x90, 0x00, 0x00, 0x00];
 
         let reg_bytes = reg.pack();
         assert_eq!(
@@ -310,7 +324,7 @@ mod test {
     #[test]
     fn test_broken_chip_addr_value() {
         // intentionally specify incorrect/unsupported chip version
-        let broken_reg_bytes = [0x13u8, 0x86, 0x90, 0x04];
+        let broken_reg_bytes = [0x13u8, 0x86, 0x90, 0x04, 0x00, 0x00];
         let reg = GetAddressReg::unpack_from_slice(&broken_reg_bytes);
         assert!(
             reg.is_err(),
@@ -352,11 +366,11 @@ mod test {
             mmen: true,
         };
         let expected_reg_value = 0x809a2040u32;
-        let reg_value = reg.to_u32();
+        let reg_value: u32 = reg.into();
         assert_eq!(
             reg_value, expected_reg_value,
-            "Misc Control Register 32-bit value  doesn't match: {} V:{:#010x} E:{:#010x}",
-            reg, reg_value, expected_reg_value
+            "Misc Control Register 32-bit value  doesn't match: V:{:#010x} E:{:#010x}",
+            reg_value, expected_reg_value
         );
     }
 
