@@ -193,6 +193,7 @@ impl<'a, 'b> HChainCtl<'a, 'b> {
                 io::Error::new(io::ErrorKind::Other, format!("System time error: {}", e))
             })?;
             if elapsed >= Duration::from_secs(1) {
+                self.last_heartbeat_sent = Some(SystemTime::now());
                 return self.voltage_ctrl.send_heart_beat();
             }
         }
