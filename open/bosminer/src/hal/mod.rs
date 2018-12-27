@@ -50,4 +50,7 @@ pub trait HardwareCtl {
 
     /// Receives 1 MiningWorkResult
     fn recv_work_result(&mut self) -> Result<Option<MiningWorkResult>, io::Error>;
+
+    /// Extracts original work ID for a mining result
+    fn get_work_id_from_result(&self, result: &MiningWorkResult) -> u32;
 }
