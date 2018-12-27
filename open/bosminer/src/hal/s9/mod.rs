@@ -586,6 +586,10 @@ impl<'a, 'b> super::HardwareCtl for HChainCtl<'a, 'b> {
     fn get_work_id_from_result(&self, result: &super::MiningWorkResult) -> u32 {
         self.get_work_id_from_result_id(result.result_id)
     }
+
+    fn get_chip_count(&self) -> usize {
+        self.chip_count
+    }
 }
 
 #[cfg(test)]
