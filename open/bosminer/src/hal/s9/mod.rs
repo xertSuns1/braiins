@@ -457,8 +457,8 @@ impl<'a, 'b> HChainCtl<'a, 'b> {
 
     #[inline]
     /// Helper function that extracts work ID from the result ID
-    fn get_work_id_from_result_id(&self, result_id: u32) -> usize {
-        ((result_id >> WORK_ID_OFFSET) >> self.midstate_count_bits) as usize
+    fn get_work_id_from_result_id(&self, result_id: u32) -> u32 {
+        ((result_id >> WORK_ID_OFFSET) >> self.midstate_count_bits)
     }
 
     #[inline]
@@ -582,6 +582,10 @@ impl<'a, 'b> super::HardwareCtl for HChainCtl<'a, 'b> {
 
         Ok(Some(result))
     }
+
+    fn get_work_id_from_result(&self, result: &super::MiningWorkResult) -> u32 {
+        self.get_work_id_from_result_id(result.result_id)
+    }
 }
 
 #[cfg(test)]
@@ -663,7 +667,7 @@ mod test {
     fn test_get_result_word_attributes() {
         let result_word = 0x00123502;
         struct ExpectedResultData {
-            work_id: usize,
+            work_id: u32,
             midstate_idx: usize,
             solution_idx: usize,
             midstate_count: hchainio0::ctrl_reg::MIDSTATE_CNTW,
