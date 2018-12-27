@@ -28,13 +28,13 @@ fn test_work_generation() {
         let test_work = hal::MiningWork {
             version: 0,
             extranonce_2: 0,
-            midstates: &[uint::U256([0, 0, 0, 0])],
+            midstates: vec![uint::U256([0, 0, 0, 0])],
             merkel_root_lsw: 0xffff_ffff,
             nbits: 0xffff_ffff,
             ntime: 0xffff_ffff,
             //            version: 0,
             //            extranonce_2: 0,
-            //            midstates: &[uint::U256([v, 2, 3, 4])],
+            //            midstates: vec![uint::U256([v, 2, 3, 4])]
             //            merkel_root_lsw: 0xdeadbeef,
             //            nbits: 0x1a44b9f2,
             //            ntime: 0x4dd7f5c7,

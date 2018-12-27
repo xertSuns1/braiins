@@ -542,7 +542,7 @@ impl<'a, 'b> super::HardwareCtl for HChainCtl<'a, 'b> {
         self.write_to_work_tx_fifo(work.ntime);
         self.write_to_work_tx_fifo(work.merkel_root_lsw);
 
-        for midstate in work.midstates {
+        for midstate in work.midstates.iter() {
             let midstate = HChainCtl::u256_as_u32_slice(&midstate);
             // Chip expects the midstate in reverse word order
             for midstate_word in midstate.iter().rev() {
