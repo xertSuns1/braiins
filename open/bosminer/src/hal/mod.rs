@@ -53,4 +53,7 @@ pub trait HardwareCtl {
 
     /// Extracts original work ID for a mining result
     fn get_work_id_from_result(&self, result: &MiningWorkResult) -> u32;
+
+    /// Returns the number of detected chips
+    fn get_chip_count(&self) -> usize;
 }
