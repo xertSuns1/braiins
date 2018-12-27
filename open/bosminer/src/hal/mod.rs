@@ -3,7 +3,12 @@ use uint;
 
 pub mod s9;
 
-/// Describes actual mining work for submission to a hashing hardware
+/// Describes actual mining work for submission to a hashing hardware.
+/// Starting with merkel_root_lsw the data goes to chunk2 of SHA256.
+///
+/// NOTE: eventhough, version and extranonce_2 are already included in the midstates, we
+/// need them as part of the MiningWork structure. The reason is stratum submission requirements.
+/// This may need further refactoring.
 /// # TODO
 /// Add ntime limit for supporting hardware that can do nTime rolling on its own
 pub struct MiningWork {
@@ -29,7 +34,7 @@ pub struct MiningWorkResult {
     pub nonce: u32,
     /// nTime of the result in case the HW also rolls the nTime field
     pub ntime: Option<u32>,
-    /// index of a midstate corresponds to the found nonce
+    /// index of a midstate that corresponds to the found nonce
     pub midstate_idx: usize,
     /// Unique identifier for the result
     pub result_id: u32,
