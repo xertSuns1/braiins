@@ -49,7 +49,8 @@ fn send_and_receive_test_workloads<T>(
     for i in work_start..work_end {
         let test_work = prepare_test_work(i);
         let work_id = h_chain_ctl.send_work(&test_work).unwrap();
-        // wait until the work is physically sent out
+        // wait until the work is physically sent out it takes around 5 ms for the FPGA IP core
+        // to send out the work @ 115.2 kBaud
         thread::sleep(Duration::from_millis(10));
         while let Some(work_result) = h_chain_ctl.recv_work_result().unwrap() {
             println!("Iteration:{}\n{:#010x?}", i, work_result);
