@@ -29,7 +29,7 @@ fn test_voltage_ctrl_on_1_hashboard(idx: usize, ctrl_pin_manager: &gpio::Control
     voltage_ctrl.jump_from_loader_to_app().unwrap();
 
     let version = voltage_ctrl.get_version().unwrap();
-    let expected_version = 3;
+    let expected_version: u8 = 3;
     assert_eq!(
         version, expected_version,
         "Expected version {:x}",
