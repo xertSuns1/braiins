@@ -23,7 +23,7 @@
 -- Description:    IP core for S9 Board Interface
 --
 -- Engineer:       Marian Pristach
--- Revision:       1.0.0 (18.08.2018)
+-- Revision:       1.0.1 (04.01.2019)
 -- Comments:
 ----------------------------------------------------------------------------------------------------
 library ieee;
@@ -126,7 +126,7 @@ architecture RTL of s9io_core is
     signal job_id_rx            : std_logic_vector(6 downto 0);
 
     -- Rx FSM type and signals declaration
-    type fsm_rx_type_t is (st_idle, st_wait, st_read,
+    type fsm_rx_type_t is (st_idle, st_wait, st_read, st_calc_crc, st_check_crc,
         st_write_work1, st_write_work2, st_write_cmd1, st_write_cmd2, st_crc_err
     );
     signal fsm_rx_d             : fsm_rx_type_t;
@@ -217,12 +217,11 @@ architecture RTL of s9io_core is
 
     -- CRC5 signals for receive
     signal crc5_rx_clear        : std_logic;
+    signal crc5_rx_init         : std_logic_vector(4 downto 0);
     signal crc5_rx_wr           : std_logic;
     signal crc5_rx_data         : std_logic_vector(7 downto 0);
-    signal crc5_rx_work_ready   : std_logic;
-    signal crc5_rx_work         : std_logic_vector(4 downto 0);
-    signal crc5_rx_cmd_ready    : std_logic;
-    signal crc5_rx_cmd          : std_logic_vector(4 downto 0);
+    signal crc5_rx_ready        : std_logic;
+    signal crc5_rx_crc          : std_logic_vector(4 downto 0);
 
     -- CRC16 signals
     signal crc16_clear          : std_logic;
@@ -234,7 +233,6 @@ architecture RTL of s9io_core is
     -- check signals for FSM (uart_full/empty, crc_ready)
     signal work_ready           : std_logic;
     signal cmd_tx_ready         : std_logic;
-    signal cmd_rx_ready         : std_logic;
 
     -- error counter
     signal err_cnt_q            : unsigned(31 downto 0);
@@ -291,7 +289,6 @@ begin
     ------------------------------------------------------------------------------------------------
     work_ready   <= '1' when ((uart_tx_full = '0') and (crc16_ready = '1')) else '0';
     cmd_tx_ready <= '1' when ((uart_tx_full = '0') and (crc5_tx_ready = '1')) else '0';
-    cmd_rx_ready <= '1' when ((uart_rx_empty = '0') and (crc5_rx_work_ready = '1') and (crc5_rx_cmd_ready = '1')) else '0';
 
     ------------------------------------------------------------------------------------------------
     -- sequential part of transmit FSM (state register)
@@ -787,8 +784,8 @@ begin
     -- combinational part of receive FSM (next-state logic)
     p_fsm_rx_cmb: process (fsm_rx_q, ctrl_enable,
         work_rx_fifo_full, cmd_rx_fifo_full,
-        uart_rx_empty, cmd_rx_ready, uart_rx_data_rd,
-        byte_cnt_rx_q, response_q, crc5_rx_work, crc5_rx_cmd, job_id,
+        uart_rx_empty, uart_rx_data_rd,
+        byte_cnt_rx_q, response_q, crc5_rx_ready, crc5_rx_crc, job_id,
         irq_pending_work_rx_q, irq_pending_cmd_rx_q,
         work_rx_fifo_rd, cmd_rx_fifo_rd, rst_fifo_work_rx, rst_fifo_cmd_rx
     ) begin
@@ -803,7 +800,9 @@ begin
         irq_pending_cmd_rx_d <= irq_pending_cmd_rx_q;
 
         crc5_rx_clear <= '0';
+        crc5_rx_init <= (others => '0');
         crc5_rx_wr <= '0';
+        crc5_rx_data <= (others => '0');
 
         work_rx_fifo_wr <= '0';
         work_rx_fifo_data_w <= (others => '0');
@@ -830,31 +829,54 @@ begin
             when st_wait =>
                 if (uart_rx_empty = '0') then
                     fsm_rx_d <= st_read;
-                    crc5_rx_clear <= '1';
                     byte_cnt_rx_d <= "000";
                 end if;
 
             when st_read =>
-                if (cmd_rx_ready = '1') then
+                if (uart_rx_empty = '0') then
                     uart_rx_read <= '1';
 
-                    if (byte_cnt_rx_q /= "110") then
-                        crc5_rx_wr <= '1';
-                    end if;
-
-                    response_d(to_integer(byte_cnt_rx_q)) <= uart_rx_data_rd;
+                    -- shift-in new data
+                    response_d(0 to 5) <= response_q(1 to 6);
+                    response_d(6) <= uart_rx_data_rd;
 
                     byte_cnt_rx_d <= byte_cnt_rx_q + 1;
 
                     if (byte_cnt_rx_q = "110") then
-                        -- check CRC, drop data if mismatch
-                        if (uart_rx_data_rd(7) = '1') and (uart_rx_data_rd(4 downto 0) = crc5_rx_work) then
-                            fsm_rx_d <= st_write_work1;
-                        elsif (uart_rx_data_rd(7) = '0') and (uart_rx_data_rd(4 downto 0) = crc5_rx_cmd) then
-                            fsm_rx_d <= st_write_cmd1;
+                        fsm_rx_d <= st_calc_crc;
+                        crc5_rx_clear <= '1';
+                        byte_cnt_rx_d <= "000";
+
+                        if (uart_rx_data_rd(7) = '1') then
+                            crc5_rx_init <= "11011";    -- CRC init value for work response
                         else
-                            fsm_rx_d <= st_crc_err;
+                            crc5_rx_init <= "00011";    -- CRC init value for command response
                         end if;
+                    end if;
+                end if;
+
+            when st_calc_crc =>
+                if (crc5_rx_ready = '1') then
+                    crc5_rx_wr <= '1';
+                    crc5_rx_data <= response_q(to_integer(byte_cnt_rx_q));
+                    byte_cnt_rx_d <= byte_cnt_rx_q + 1;
+
+                    if (byte_cnt_rx_q = "101") then
+                        fsm_rx_d <= st_check_crc;
+                    end if;
+                end if;
+
+            when st_check_crc =>
+                if (crc5_rx_ready = '1') then
+                    -- check CRC, drop data if mismatch
+                    if (response_q(6)(4 downto 0) = crc5_rx_crc) then
+                        if (response_q(6)(7) = '1') then
+                            fsm_rx_d <= st_write_work1;    -- work response
+                        else
+                            fsm_rx_d <= st_write_cmd1;     -- command response
+                        end if;
+                    else
+                        fsm_rx_d <= st_crc_err;
                     end if;
                 end if;
 
@@ -889,7 +911,9 @@ begin
                 end if;
 
             when st_crc_err =>
-                fsm_rx_d <= st_wait;
+                -- update counter of received bytes to 6 and return back to read state
+                fsm_rx_d <= st_read;
+                byte_cnt_rx_d <= "110";
         end case;
 
         if (ctrl_enable = '0') then
@@ -915,37 +939,18 @@ begin
 
 
     ------------------------------------------------------------------------------------------------
-    -- CRC5 engine for receive check - work
-    i_crc5_rx_work: entity work.crc5_resp_serial
-    generic map (
-        INIT    => "11011"
-    )
+    -- CRC5 engine for receive work and command frames
+    i_crc5_rx: entity work.crc5_resp_serial
     port map (
         clk     => clk,
         rst     => rst,
         clear   => crc5_rx_clear,
+        init    => crc5_rx_init,
         data_wr => crc5_rx_wr,
         data_in => crc5_rx_data,
-        ready   => crc5_rx_work_ready,
-        crc     => crc5_rx_work
+        ready   => crc5_rx_ready,
+        crc     => crc5_rx_crc
     );
-
-    -- CRC5 engine for receive check - command
-    i_crc5_rx_cmd: entity work.crc5_resp_serial
-    generic map (
-        INIT    => "00011"
-    )
-    port map (
-        clk     => clk,
-        rst     => rst,
-        clear   => crc5_rx_clear,
-        data_wr => crc5_rx_wr,
-        data_in => crc5_rx_data,
-        ready   => crc5_rx_cmd_ready,
-        crc     => crc5_rx_cmd
-    );
-
-    crc5_rx_data <= uart_rx_data_rd;
 
     ------------------------------------------------------------------------------------------------
     -- CRC16 engine

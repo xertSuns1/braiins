@@ -23,7 +23,7 @@
  * Description:    Testbench for s9io IP core
  *
  * Engineer:       Marian Pristach
- * Revision:       1.0.0 (22.09.2018)
+ * Revision:       1.0.1 (04.01.2019)
  *
  * Comments:
  **************************************************************************************************/
@@ -160,8 +160,9 @@ module s9io_v0_1_tb();
         tc_ip_core_reset_3();
         tc_ip_core_reset_4();
 
-        // testcase 8 - test of error counter register
-        tc_error_counter();
+        // testcase 8 - test of error counter register and unexpected data
+        tc_error_counter_1();
+        tc_error_counter_2();
 
         // -----------------------------------------------------------------------------------------
         // final report
@@ -1134,7 +1135,8 @@ module s9io_v0_1_tb();
     // ---------------------------------------------------------------------------------------------
     // Testcase 8: Test error counter register
     // ---------------------------------------------------------------------------------------------
-    task tc_error_counter();
+    // test of frames woth wrong CRC
+    task tc_error_counter_1();
         // data send through UART - command response, wrong CRC (should be 8'h1c)
         static logic[7:0] uart_data1[$] = {8'h13, 8'h87, 8'h90, 8'hf4, 8'h00, 8'h00, 8'h1d};
 
@@ -1143,7 +1145,7 @@ module s9io_v0_1_tb();
 
         automatic int rdata = 0;
 
-        $display("Testcase 8a: error counter register");
+        $display("Testcase 8a: error counter register, wrong CRC");
 
         // check if register is zero
         axi_read(ERR_COUNTER, rdata);
@@ -1157,6 +1159,7 @@ module s9io_v0_1_tb();
 
         // check if counter is incremented and FIFO is empty
         axi_read(ERR_COUNTER, rdata);
+        // one wrong byte received - CRC byte
         compare_data(32'h1, rdata, "ERR_COUNTER");
         check_status(STAT_CMD_RX_EMPTY, 1'b1, "RX command FIFO is not empty");
 
@@ -1165,7 +1168,8 @@ module s9io_v0_1_tb();
 
         // check if counter is incremented and FIFO is empty
         axi_read(ERR_COUNTER, rdata);
-        compare_data(32'h2, rdata, "ERR_COUNTER");
+        // seven wrong bytes received - whole message
+        compare_data(32'h8, rdata, "ERR_COUNTER");
         check_status(STAT_WORK_RX_EMPTY, 1'b1, "RX work FIFO is not empty");
 
         // clear error counter register
@@ -1174,6 +1178,53 @@ module s9io_v0_1_tb();
         // check if register is zero
         axi_read(ERR_COUNTER, rdata);
         compare_data(32'h0, rdata, "ERR_COUNTER");
+
+        // reset IP core
+        axi_write(CTRL_REG, 32'h0);
+        axi_write(CTRL_REG, CTRL_ENABLE);
+    endtask
+
+    // ---------------------------------------------------------------------------------------------
+    // test of receiving unexpected bytes between frames
+    task tc_error_counter_2();
+        // data send through UART - unexpected data
+        static logic[7:0] uart_data1[$] = {8'he1, 8'h40, 8'h00, 8'h00};
+
+        // data send through UART - work response
+        static logic[7:0] uart_data2[$] = {8'h72, 8'h03, 8'hea, 8'h83, 8'h00, 8'h39, 8'h97};
+
+        automatic int rdata = 0;
+
+        $display("Testcase 8b: error counter register, unexpected bytes");
+
+        // check if register is zero
+        axi_read(ERR_COUNTER, rdata);
+        compare_data(32'h0, rdata, "ERR_COUNTER");
+
+        // clear error counter register
+        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_ERR_CNT_CLEAR);
+
+        // send unexpected data
+        uart_send_data(uart_data1);
+
+        // send correct work response
+        uart_send_data(uart_data2);
+
+        // check if counter is incremented and FIFO is not empty
+        axi_read(ERR_COUNTER, rdata);
+        compare_data(32'h4, rdata, "ERR_COUNTER");
+        check_status(STAT_WORK_RX_EMPTY, 1'b0, "RX work FIFO is empty");
+
+        // clear error counter register
+        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_ERR_CNT_CLEAR);
+
+        // check if register is zero
+        axi_read(ERR_COUNTER, rdata);
+        compare_data(32'h0, rdata, "ERR_COUNTER");
+
+        // reset IP core
+        axi_write(CTRL_REG, 32'h0);
+        axi_write(CTRL_REG, CTRL_ENABLE);
     endtask
 
 
@@ -1229,6 +1280,8 @@ module s9io_v0_1_tb();
         for (int i = 0; i < array.size; i++) begin
             i_uart.send_frame_tx(array[i]);
         end
+        // wait until CRC is calculated
+        #(8 * array.size * CLK_PERIOD);
     endtask
 
     // ---------------------------------------------------------------------------------------------

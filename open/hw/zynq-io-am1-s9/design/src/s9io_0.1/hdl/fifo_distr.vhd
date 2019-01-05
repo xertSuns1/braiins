@@ -116,7 +116,7 @@ begin
     ------------------------------------------------------------------------------------------------
     -- registers for read/write pointers and flags
     p_regs: process (clk) begin
-            if rising_edge(clk) then
+        if rising_edge(clk) then
             if (rst = '0') then
                 r_ptr_q <= (others => '0');
                 w_ptr_q <= (others => '0');
