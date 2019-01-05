@@ -23,8 +23,8 @@
 -- Description:    CRC-5 with Polynomial 0xD (modified), Serial Calculation per Bits
 --
 -- Engineer:       Marian Pristach
--- Revision:       1.0.0 (13.09.2018)
--- Comments:       Initial value defined by generic, no final xor
+-- Revision:       1.0.1 (04.01.2019)
+-- Comments:       Initial value defined by input, no final xor
 --                 MSB first of data_in, CRC results in direct order
 ----------------------------------------------------------------------------------------------------
 library ieee;
@@ -32,13 +32,11 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity crc5_resp_serial is
-    generic (
-        INIT    : std_logic_vector(4 downto 0)          -- initial value of calculation
-    );
     port (
         clk     : in  std_logic;
         rst     : in  std_logic;                        -- synchronous, active low
         clear   : in  std_logic;                        -- synchronous clear
+        init    : in  std_logic_vector(4 downto 0);     -- initial value of calculation
         data_wr : in  std_logic;                        -- write enable
         data_in : in  std_logic_vector(7 downto 0);     -- input data
         ready   : out std_logic;                        -- crc engine is ready
@@ -130,9 +128,9 @@ begin
     process (clk) begin
         if rising_edge(clk) then
             if (rst = '0') then
-                crc_reg <= INIT;
+                crc_reg <= (others => '1');
             elsif (clear = '1') then
-                crc_reg <= INIT;
+                crc_reg <= init;
             elsif (clk_en = '1') then
                 crc_reg <= crc_reg(3 downto 0) & crc_in;        -- universal shift
                 crc_reg(2) <= crc_reg(1) xor crc_in;            -- update bit based on crc polynom
