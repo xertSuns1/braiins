@@ -236,6 +236,7 @@ architecture RTL of s9io_core is
 
     -- error counter
     signal err_cnt_q            : unsigned(31 downto 0);
+    signal err_cnt_clear        : std_logic;
 
     -- work TX FIFO threshold for work send
     signal work_tx_fifo_thr_value : std_logic_vector(10 downto 0);
@@ -331,6 +332,7 @@ begin
         job_id_tx_d <= job_id_tx_q;
 
         work_time_ack <= '0';
+        err_cnt_clear <= '0';
         uart_clear <= '0';
         rst_fifo_work_tx <= '0';
         rst_fifo_work_rx <= '0';
@@ -353,6 +355,9 @@ begin
             when st_idle =>
                 if (ctrl_enable = '1') then         -- wait for enable of IP core
                     fsm_d <= st_wait_sync;
+
+                    -- reset error counter
+                    err_cnt_clear <= '1';
 
                     -- reset UART FIFOs
                     uart_clear <= '1';
@@ -973,7 +978,7 @@ begin
         if rising_edge(clk) then
             if (rst = '0') then
                 err_cnt_q <= (others => '0');
-            elsif (ctrl_err_cnt_clear = '1') then
+            elsif ((ctrl_err_cnt_clear = '1') or (err_cnt_clear = '1')) then
                 err_cnt_q <= (others => '0');
             elsif (fsm_rx_q = st_crc_err) then
                 err_cnt_q <= err_cnt_q + 1;
