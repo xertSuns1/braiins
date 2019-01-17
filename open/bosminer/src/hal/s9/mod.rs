@@ -241,6 +241,12 @@ where
         Ok(())
     }
 
+    #[inline]
+    pub fn is_work_tx_fifo_full(&self) -> bool {
+        let hash_chain_io = self.hash_chain_ios[0];
+        hash_chain_io.stat_reg.read().work_tx_full().bit()
+    }
+
     /// Detects the number of chips on the hashing chain and assigns an address to each chip
     fn enumerate_chips(&mut self) -> Result<(), io::Error> {
         // Enumerate all chips (broadcast read address register request)
@@ -388,7 +394,7 @@ where
     /// Writes single word into a TX fifo
     fn write_to_work_tx_fifo(&self, item: u32) {
         let hash_chain_io = self.hash_chain_ios[0];
-        while hash_chain_io.stat_reg.read().work_tx_full().bit() {}
+        while self.is_work_tx_fifo_full() {}
         hash_chain_io
             .work_tx_fifo
             .write(|w| unsafe { w.bits(item) });
