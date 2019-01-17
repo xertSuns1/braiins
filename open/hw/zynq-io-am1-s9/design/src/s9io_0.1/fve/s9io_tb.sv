@@ -1215,16 +1215,13 @@ module s9io_v0_1_tb();
         compare_data(32'h4, rdata, "ERR_COUNTER");
         check_status(STAT_WORK_RX_EMPTY, 1'b0, "RX work FIFO is empty");
 
-        // clear error counter register
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_ERR_CNT_CLEAR);
+        // clear error counter register by reset of IP core
+        axi_write(CTRL_REG, 32'h0);
+        axi_write(CTRL_REG, CTRL_ENABLE);
 
         // check if register is zero
         axi_read(ERR_COUNTER, rdata);
         compare_data(32'h0, rdata, "ERR_COUNTER");
-
-        // reset IP core
-        axi_write(CTRL_REG, 32'h0);
-        axi_write(CTRL_REG, CTRL_ENABLE);
     endtask
 
 
