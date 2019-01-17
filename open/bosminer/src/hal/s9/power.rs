@@ -260,28 +260,38 @@ where
 
     /// Helper method that sends heartbeat to the voltage controller at regular intervals
     ///
-    /// The reason is to notify the voltage controller that we are alive so that wouldn't
+    /// The reason is to notify the voltage controller that we are alive so that it wouldn't
     /// cut-off power supply to the hashing chips on the board.
     /// TODO threading should be only part of some test profile
     pub fn start_heart_beat_task(&self) -> JoinHandle<()> {
         let hb_backend = self.backend.clone();
         let idx = self.hashboard_idx;
-        let handle = thread::spawn(move || {
-            let mut voltage_ctrl = Self::new(hb_backend, idx);
-            loop {
-                let now = SystemTime::now();
-                voltage_ctrl.send_heart_beat();
-
-                // evaluate how much time it took to send the heart beat and sleep for the rest
-                // of the heart beat period
-                let elapsed = now
-                    .elapsed()
-                    .map_err(|e| {
-                        io::Error::new(io::ErrorKind::Other, format!("System time error: {}", e))
-                    }).unwrap();
-                thread::sleep(VOLTAGE_CTRL_HEART_BEAT_PERIOD - elapsed);
-            }
-        });
+        let handle = thread::Builder::new()
+            .name(format!("board[{}]: Voltage Ctrl heart beat", self.hashboard_idx).into())
+            .spawn(move || {
+                let mut voltage_ctrl = Self::new(hb_backend, idx);
+                loop {
+                    let now = SystemTime::now();
+                    voltage_ctrl.send_heart_beat();
+                    println!("{:?}: Heartbeat for board {}", now, idx);
+                    // evaluate how much time it took to send the heart beat and sleep for the rest
+                    // of the heart beat period
+                    let elapsed = now
+                        .elapsed()
+                        .map_err(|e| {
+                            io::Error::new(
+                                io::ErrorKind::Other,
+                                format!("System time error: {}", e),
+                            )
+                        }).unwrap();
+                    // sleep only if we have not exceeded the heart beat period. This makes the
+                    // code more robust when running it in debugger to prevent underflow time
+                    // subtraction
+                    if elapsed < VOLTAGE_CTRL_HEART_BEAT_PERIOD {
+                        thread::sleep(VOLTAGE_CTRL_HEART_BEAT_PERIOD - elapsed);
+                    }
+                }
+            }).unwrap();
         handle
     }
 }
