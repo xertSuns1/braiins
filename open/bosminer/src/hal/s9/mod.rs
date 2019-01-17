@@ -444,7 +444,7 @@ where
 
     #[inline]
     /// Helper function that extracts work ID from the result ID
-    fn get_work_id_from_result_id(&self, result_id: u32) -> u32 {
+    pub fn get_work_id_from_result_id(&self, result_id: u32) -> u32 {
         ((result_id >> WORK_ID_OFFSET) >> self.midstate_count_bits)
     }
 
@@ -456,7 +456,7 @@ where
 
     #[inline]
     /// Extracts solution index from the result ID
-    fn get_solution_idx_from_result_id(&self, result_id: u32) -> usize {
+    pub fn get_solution_idx_from_result_id(&self, result_id: u32) -> usize {
         (result_id & ((1u32 << WORK_ID_OFFSET) - 1)) as usize
     }
 
