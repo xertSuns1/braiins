@@ -198,8 +198,8 @@ begin
     -- threshold for IRQ, when we comparing volume, we must consider also empty flag
     thr_irq <= '1' when ((volume < unsigned(thr_value)) or (empty_q = '1')) else '0';
 
-    -- threshold for work send - check of min. value
-    thr_work_ready <= '1' when (volume >= unsigned(thr_work_value)) else '0';
+    -- threshold for work send - check of min. value, we must consider also full flag
+    thr_work_ready <= '1' when ((volume >= unsigned(thr_work_value)) or (full_q = '1')) else '0';
 
     ------------------------------------------------------------------------------------------------
     -- output signals
