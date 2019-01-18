@@ -6,7 +6,8 @@ authors = ["Jan Čapek <jan.capek@braiins.cz>"]
 [workspace]
 
 members = [
-    "s9-io"
+    "s9-io",
+    "antminer-dev",
 ]
 
 [dependencies]
