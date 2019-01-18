@@ -1,6 +1,0 @@
-[package]
-name = "hal"
-version = "0.1.0"
-authors = ["Jan Čapek <jan.capek@braiins.cz>"]
-
-[dependencies]

@@ -1,0 +1,10 @@
+[package]
+name = "antminer-dev"
+version = "0.1.0"
+authors = ["Jan Čapek <jan@braiins.com>"]
+
+[dependencies]
+rminer = { path = "../" }
+linux-embedded-hal = "0.2.0"
+s9-io = { path = "../s9-io" }
+uint = "0.5.0"
