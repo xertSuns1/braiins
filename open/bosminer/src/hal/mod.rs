@@ -11,6 +11,7 @@ pub mod s9;
 /// This may need further refactoring.
 /// # TODO
 /// Add ntime limit for supporting hardware that can do nTime rolling on its own
+#[derive(Clone, Debug)]
 pub struct MiningWork {
     /// Version field used for calculating the midstate
     pub version: u32,
@@ -28,7 +29,7 @@ pub struct MiningWork {
 }
 
 /// Represents raw result from the mining hardware
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MiningWorkResult {
     /// actual nonce
     pub nonce: u32,
