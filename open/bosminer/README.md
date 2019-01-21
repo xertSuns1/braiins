@@ -5,22 +5,18 @@
 ## Prerequisities
 - rust toolchain installed via [rustup](https://rustup.rs/)
 - arm target
-- nightly toolchain (required by svd2rust)
 - svd2rust
-- rustfmt (from nightly as of 2018-08)
-- locally switch to nightly buildtoolchain (required by svd2rust)
+- rustfmt-preview
 
 ### Install prerequisites
 ```shell
-rustup install nightly
 cargo install svd2rust
 cargo install form
+rustup component add rustfmt-preview
 ```
-Override locally the toolchain to use nightly (svd2rust requirement) and
-install target for it.
+Install target toolchain for the project.
 ```shell
 cd to/rminer
-rustup override add nightly
 rustup target add arm-unknown-linux-musleabi
 ```
 
