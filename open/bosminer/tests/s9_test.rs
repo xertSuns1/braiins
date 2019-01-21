@@ -81,7 +81,8 @@ fn test_work_generation() {
         voltage_ctrl_backend.clone(),
         8,
         &s9_io::hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
-    ).unwrap();
+    )
+    .unwrap();
 
     h_chain_ctl.init().unwrap();
 
