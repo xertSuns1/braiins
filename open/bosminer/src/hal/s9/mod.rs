@@ -491,11 +491,13 @@ where
         // TODO: to be refactored once we have asynchronous handling in place
         // fetch command response from IP core's fifo
         match self.read_from_cmd_rx_fifo() {
-            Err(e) => if e.kind() == io::ErrorKind::TimedOut {
-                return Ok(None);
-            } else {
-                return Err(e);
-            },
+            Err(e) => {
+                if e.kind() == io::ErrorKind::TimedOut {
+                    return Ok(None);
+                } else {
+                    return Err(e);
+                }
+            }
             Ok(resp_word) => LittleEndian::write_u32(&mut cmd_resp[..4], resp_word),
         }
         // All errors from reading the second word are propagated
@@ -514,7 +516,8 @@ where
                         e, cmd_resp
                     ),
                 )
-            }).map(|resp| Some(resp))
+            })
+            .map(|resp| Some(resp))
     }
 }
 
@@ -545,11 +548,13 @@ where
                    // TODO: to be refactored once we have asynchronous handling in place
                    // fetch command response from IP core's fifo
         match self.read_from_work_rx_fifo() {
-            Err(e) => if e.kind() == io::ErrorKind::TimedOut {
-                return Ok(None);
-            } else {
-                return Err(e);
-            },
+            Err(e) => {
+                if e.kind() == io::ErrorKind::TimedOut {
+                    return Ok(None);
+                } else {
+                    return Err(e);
+                }
+            }
             Ok(resp_word) => nonce = resp_word,
         }
 
@@ -618,7 +623,8 @@ mod test {
             voltage_ctrl_backend,
             8,
             &hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
-        ).expect("Failed to create hash board instance");
+        )
+        .expect("Failed to create hash board instance");
 
         assert!(
             h_chain_ctl.ip_core_init().is_ok(),
@@ -696,7 +702,8 @@ mod test {
                 voltage_ctrl_backend,
                 8,
                 &expected_result_data.midstate_count,
-            ).unwrap();
+            )
+            .unwrap();
 
             assert_eq!(
                 h_chain_ctl.get_work_id_from_result_id(result_word),

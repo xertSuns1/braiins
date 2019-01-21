@@ -283,7 +283,8 @@ where
                                 io::ErrorKind::Other,
                                 format!("System time error: {}", e),
                             )
-                        }).unwrap();
+                        })
+                        .unwrap();
                     // sleep only if we have not exceeded the heart beat period. This makes the
                     // code more robust when running it in debugger to prevent underflow time
                     // subtraction
@@ -291,7 +292,8 @@ where
                         thread::sleep(VOLTAGE_CTRL_HEART_BEAT_PERIOD - elapsed);
                     }
                 }
-            }).unwrap();
+            })
+            .unwrap();
         handle
     }
 }
