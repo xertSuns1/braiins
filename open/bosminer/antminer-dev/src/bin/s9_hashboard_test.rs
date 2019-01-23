@@ -20,7 +20,10 @@ const MAX_WORK_LIST_COUNT: usize = 65536;
 #[derive(Clone, Debug)]
 struct MiningWorkRegistryItem {
     work: hal::MiningWork,
-    results: std::vec::Vec<hal::MiningWorkResult>,
+    /// Each slot in the vector is associated with particular solution index as reported by
+    /// the chips. Generally, hash board may fail to send a preceeding solution due to
+    /// corrupted communication frames. Therefore, each solution slot is optional
+    results: std::vec::Vec<Option<hal::MiningWorkResult>>,
     duplicate_count: u64,
 }
 
@@ -107,15 +110,14 @@ struct SolutionRegistry {
     solutions: std::vec::Vec<UniqueMiningWorkSolution>,
     /// Number of stale solutions received from the hardware
     stale_result_count: u64,
-    /// Keep track of results received out of order
-    out_of_order_result_count: u64,
+    /// Keep track of nonces that didn't match with previously received solutions (after
 }
 impl SolutionRegistry {
     fn new() -> Self {
         Self {
             solutions: std::vec::Vec::new(),
             stale_result_count: 0,
-            out_of_order_result_count: 0,
+            mismatched_result_nonce_count: 0,
         }
     }
 }
@@ -239,20 +241,22 @@ fn send_and_receive_test_workloads<T>(
                 if solution_idx < work_item.results.len() {
                     work_item.duplicate_count += 1;
                 }
-                // we should receive a solution with the next index - store it, so that we can
-                // check for duplicates on further solutions and append to unique solutions
-                else if solution_idx == work_item.results.len() {
+                // process any new solution
+                else if solution_idx >= work_item.results.len() {
+                    // insert empty solution slots as this solution is out of order
+                    // most probably due to previously corrupted communication frames
+                    for _i in 0..solution_idx - work_item.results.len() {
+                        work_item.results.push(None);
+                    }
+
+                    work_item.results.push(Some(work_result.clone()));
+
                     let cloned_work = work_item.work.clone();
-                    work_item.results.push(work_result.clone());
                     solution_registry.solutions.push(UniqueMiningWorkSolution {
                         timestamp: SystemTime::now(),
                         work: cloned_work,
                         result: work_result,
                     });
-                }
-                // any other solution index is unexpected and is accounted as an error, too
-                else {
-                    solution_registry.out_of_order_result_count += 1;
                 }
             }
             None => {
@@ -313,8 +317,8 @@ fn test_work_generation() {
                 total_hashing_time.as_secs()
             );
             println!(
-                "Out of order solutions: {}, stale solutions: {}",
-                solution_registry.out_of_order_result_count, solution_registry.stale_result_count
+                "Stale solutions: {}",
+                solution_registry.stale_result_count
             );
             last_hashrate_report = SystemTime::now()
         }
