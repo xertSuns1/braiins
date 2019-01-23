@@ -272,7 +272,8 @@ where
                 let mut voltage_ctrl = Self::new(hb_backend, idx);
                 loop {
                     let now = SystemTime::now();
-                    voltage_ctrl.send_heart_beat();
+                    voltage_ctrl.send_heart_beat().unwrap();
+
                     println!("{:?}: Heartbeat for board {}", now, idx);
                     // evaluate how much time it took to send the heart beat and sleep for the rest
                     // of the heart beat period
