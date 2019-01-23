@@ -3,9 +3,7 @@ extern crate nix;
 extern crate s9_io;
 
 use self::nix::sys::mman::{MapFlags, ProtFlags};
-use core;
 
-use std;
 use std::fs::OpenOptions;
 use std::io;
 use std::mem::size_of;
@@ -13,7 +11,6 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 // TODO: remove thread specific components
 use std::thread;
-use std::thread::JoinHandle;
 
 use std::time::Duration;
 use std::time::SystemTime;

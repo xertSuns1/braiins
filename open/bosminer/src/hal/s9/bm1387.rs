@@ -1,9 +1,6 @@
-use core;
 use packed_struct::prelude::*;
 use packed_struct::types::IntegerAsBytes;
 
-use std::io;
-use std::mem;
 use std::mem::size_of;
 
 pub const GET_ADDRESS_REG: u8 = 0x00;
