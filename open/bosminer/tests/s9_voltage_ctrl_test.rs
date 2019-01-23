@@ -21,8 +21,9 @@ fn test_voltage_ctrl_on_1_hashboard(idx: usize, ctrl_pin_manager: &gpio::Control
     reset.set_low();
     reset.set_high();
 
-    let mut backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
-    let mut voltage_ctrl = power::VoltageCtrl::new(&mut backend, idx);
+    let backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
+    let backend = power::VoltageCtrlI2cSharedBlockingBackend::new(backend);
+    let mut voltage_ctrl = power::VoltageCtrl::new(backend, idx);
 
     voltage_ctrl.reset().unwrap();
     voltage_ctrl.jump_from_loader_to_app().unwrap();

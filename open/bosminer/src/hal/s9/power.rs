@@ -1,13 +1,18 @@
 // TODO remove thread specific code
 use std;
 use std::io;
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::thread::JoinHandle;
+use std::time::{Duration, SystemTime};
 
 use byteorder::{BigEndian, ByteOrder};
 
 use embedded_hal::blocking::i2c::{Read, Write};
 use linux_embedded_hal::I2cdev;
+
+/// Voltage controller requires periodic heart beat messages to be sent
+const VOLTAGE_CTRL_HEART_BEAT_PERIOD: Duration = Duration::from_millis(1000);
 
 /// Default timeout required for I2C transactions to succeed
 const I2C_TIMEOUT_MS: u64 = 500;
@@ -45,30 +50,7 @@ const RD_TEMP_OFFSET_VALUE: u8 = 0x23;
 /// The PIC firmware in the voltage controller is expected to provide/return this version
 pub const EXPECTED_VOLTAGE_CTRL_VERSION: u8 = 0x03;
 
-/// Newtype that represents an I2C voltage controller communication backend
-/// S9 devices have a single I2C master that manages the voltage controllers on all hashboards.
-/// Therefore, this will be a single communication instance
-/// TODO: consider removing the type parameter as it will always be an I2cDev
-pub struct VoltageCtrlI2cBlockingBackend<T> {
-    inner: T,
-}
-impl<T> VoltageCtrlI2cBlockingBackend<T> {
-    /// Calculates I2C address of the controller based on hashboard index.
-    fn get_i2c_address(hashboard_idx: usize) -> u8 {
-        PIC_BASE_ADDRESS + hashboard_idx as u8 - 1
-    }
-}
-impl VoltageCtrlI2cBlockingBackend<I2cdev> {
-    /// Instantiates a new I2C backend
-    /// * `i2c_interface_num` - index of the I2C interface in Linux dev filesystem
-    pub fn new(i2c_interface_num: usize) -> Self {
-        Self {
-            inner: I2cdev::new(format!("/dev/i2c-{}", i2c_interface_num)).unwrap(),
-        }
-    }
-}
-
-/// Describes a voltage controller interface
+/// Describes a voltage controller backend interface
 pub trait VoltageCtrlBackend {
     /// Sends a Write transaction for a voltage controller on a particular hashboard
     /// * `data` - payload of the command
@@ -77,6 +59,35 @@ pub trait VoltageCtrlBackend {
     /// * `length` - size of the expected response in bytes
     fn read(&mut self, hashboard_idx: usize, command: u8, length: u8)
         -> Result<Vec<u8>, io::Error>;
+
+    /// Custom clone implementation
+    /// TODO: review how this could be eliminated
+    fn clone(&self) -> Self;
+}
+
+/// Newtype that represents an I2C voltage controller communication backend
+/// S9 devices have a single I2C master that manages the voltage controllers on all hashboards.
+/// Therefore, this will be a single communication instance
+/// TODO: consider removing the type parameter as it will always be an I2cDev
+pub struct VoltageCtrlI2cBlockingBackend<T> {
+    inner: T,
+}
+
+impl<T> VoltageCtrlI2cBlockingBackend<T> {
+    /// Calculates I2C address of the controller based on hashboard index.
+    fn get_i2c_address(hashboard_idx: usize) -> u8 {
+        PIC_BASE_ADDRESS + hashboard_idx as u8 - 1
+    }
+}
+
+impl VoltageCtrlI2cBlockingBackend<I2cdev> {
+    /// Instantiates a new I2C backend
+    /// * `i2c_interface_num` - index of the I2C interface in Linux dev filesystem
+    pub fn new(i2c_interface_num: usize) -> Self {
+        Self {
+            inner: I2cdev::new(format!("/dev/i2c-{}", i2c_interface_num)).unwrap(),
+        }
+    }
 }
 
 impl<T, E> VoltageCtrlBackend for VoltageCtrlI2cBlockingBackend<T>
@@ -89,6 +100,8 @@ where
         self.inner
             .write(Self::get_i2c_address(hashboard_idx), &command_bytes)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("I2C write error: {}", e)))?;
+        // I2C transactions require a delay, so that the Linux driver processes them properly
+        // TODO: investigate this topic
         thread::sleep(Duration::from_millis(I2C_TIMEOUT_MS));
         Ok(())
     }
@@ -116,12 +129,53 @@ where
             })?;
         Ok(result)
     }
+
+    fn clone(&self) -> Self {
+        unimplemented!();
+    }
+}
+
+pub struct VoltageCtrlI2cSharedBlockingBackend<T>(Arc<Mutex<T>>);
+
+impl<T> VoltageCtrlI2cSharedBlockingBackend<T>
+where
+    T: VoltageCtrlBackend,
+{
+    pub fn new(backend: T) -> Self {
+        VoltageCtrlI2cSharedBlockingBackend(Arc::new(Mutex::new(backend)))
+    }
+}
+
+impl VoltageCtrlBackend
+    for VoltageCtrlI2cSharedBlockingBackend<VoltageCtrlI2cBlockingBackend<I2cdev>>
+{
+    fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> Result<(), io::Error> {
+        self.0.lock().unwrap().write(hashboard_idx, command, data)
+    }
+
+    fn read(
+        &mut self,
+        hashboard_idx: usize,
+        command: u8,
+        length: u8,
+    ) -> Result<Vec<u8>, io::Error> {
+        self.0.lock().unwrap().read(hashboard_idx, command, length)
+    }
+
+    /// Custom clone implementation that clones the atomic reference counting instance (Arc) only is
+    /// needed so that we can share the backend instance. Unfortunately, we cannot implement the
+    /// std::clone::Clone trait for now as it transitively puts additional requirements on the
+    /// backend type parameter 'T'.
+    /// TODO: review how this could be eliminated
+    fn clone(&self) -> Self {
+        VoltageCtrlI2cSharedBlockingBackend(self.0.clone())
+    }
 }
 
 /// Represents a voltage controller for a particular hashboard
-pub struct VoltageCtrl<'a> {
+pub struct VoltageCtrl<T> {
     // Backend that carries out the operation
-    backend: &'a mut VoltageCtrlBackend,
+    backend: T,
     /// Identifies the hashboard
     hashboard_idx: usize,
 }
@@ -129,7 +183,10 @@ pub struct VoltageCtrl<'a> {
 /// Aliasing
 type VoltageCtrlResult<T> = Result<T, io::Error>;
 
-impl<'a> VoltageCtrl<'a> {
+impl<T> VoltageCtrl<T>
+where
+    T: 'static + VoltageCtrlBackend + Send,
+{
     pub fn reset(&mut self) -> VoltageCtrlResult<()> {
         self.backend.write(self.hashboard_idx, RESET_PIC, &[])
     }
@@ -200,15 +257,40 @@ impl<'a> VoltageCtrl<'a> {
             .read(self.hashboard_idx, RD_TEMP_OFFSET_VALUE, 8)?;
         Ok(BigEndian::read_u64(&offset))
     }
-}
 
-impl<'a> VoltageCtrl<'a> {
     /// Creates a new voltage controller
-    pub fn new(backend: &'a mut VoltageCtrlBackend, hashboard_idx: usize) -> Self {
+    pub fn new(backend: T, hashboard_idx: usize) -> Self {
         Self {
             backend,
             hashboard_idx,
         }
+    }
+
+    /// Helper method that sends heartbeat to the voltage controller at regular intervals
+    ///
+    /// The reason is to notify the voltage controller that we are alive so that wouldn't
+    /// cut-off power supply to the hashing chips on the board.
+    /// TODO threading should be only part of some test profile
+    pub fn start_heart_beat_task(&self) -> JoinHandle<()> {
+        let hb_backend = self.backend.clone();
+        let idx = self.hashboard_idx;
+        let handle = thread::spawn(move || {
+            let mut voltage_ctrl = Self::new(hb_backend, idx);
+            loop {
+                let now = SystemTime::now();
+                voltage_ctrl.send_heart_beat();
+
+                // evaluate how much time it took to send the heart beat and sleep for the rest
+                // of the heart beat period
+                let elapsed = now
+                    .elapsed()
+                    .map_err(|e| {
+                        io::Error::new(io::ErrorKind::Other, format!("System time error: {}", e))
+                    }).unwrap();
+                thread::sleep(VOLTAGE_CTRL_HEART_BEAT_PERIOD - elapsed);
+            }
+        });
+        handle
     }
 }
 
