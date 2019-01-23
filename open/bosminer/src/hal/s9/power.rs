@@ -187,74 +187,66 @@ impl<T> VoltageCtrl<T>
 where
     T: 'static + VoltageCtrlBackend + Send,
 {
+    fn read(&mut self, command: u8, length: u8) -> Result<Vec<u8>, io::Error> {
+        self.backend.read(self.hashboard_idx, command, length)
+    }
+
+    fn write(&mut self, command: u8, data: &[u8]) -> Result<(), io::Error> {
+        self.backend.write(self.hashboard_idx, command, data)
+    }
+
     pub fn reset(&mut self) -> VoltageCtrlResult<()> {
-        self.backend.write(self.hashboard_idx, RESET_PIC, &[])
+        self.write(RESET_PIC, &[])
     }
 
     pub fn jump_from_loader_to_app(&mut self) -> VoltageCtrlResult<()> {
-        self.backend
-            .write(self.hashboard_idx, JUMP_FROM_LOADER_TO_APP, &[])
+        self.write(JUMP_FROM_LOADER_TO_APP, &[])
     }
 
     pub fn get_version(&mut self) -> VoltageCtrlResult<u8> {
-        Ok(self
-            .backend
-            .read(self.hashboard_idx, GET_PIC_SOFTWARE_VERSION, 1)?[0])
+        Ok(self.read(GET_PIC_SOFTWARE_VERSION, 1)?[0])
     }
 
     pub fn set_flash_pointer(&mut self, address: u16) -> VoltageCtrlResult<()> {
         let mut address_bytes = [0; 2];
         BigEndian::write_u16(&mut address_bytes, address);
-        self.backend.write(
-            self.hashboard_idx,
-            SET_PIC_FLASH_POINTER,
-            &[address_bytes[0], address_bytes[1]],
-        )
+        self.write(SET_PIC_FLASH_POINTER, &[address_bytes[0], address_bytes[1]])
     }
 
     pub fn get_flash_pointer(&mut self) -> VoltageCtrlResult<u16> {
-        let address_bytes = self
-            .backend
-            .read(self.hashboard_idx, GET_PIC_FLASH_POINTER, 1)?;
+        let address_bytes = self.read(GET_PIC_FLASH_POINTER, 1)?;
         Ok(BigEndian::read_u16(&address_bytes))
     }
 
     pub fn read_data_from_iic(&mut self) -> VoltageCtrlResult<[u8; 16]> {
-        let data = self
-            .backend
-            .read(self.hashboard_idx, READ_DATA_FROM_IIC, 16)?;
+        let data = self.read(READ_DATA_FROM_IIC, 16)?;
         let mut data_array = [0; 16];
         data_array.copy_from_slice(&data);
         Ok(data_array)
     }
 
     pub fn enable_voltage(&mut self) -> VoltageCtrlResult<()> {
-        self.backend
-            .write(self.hashboard_idx, ENABLE_VOLTAGE, &[true as u8])
+        self.write(ENABLE_VOLTAGE, &[true as u8])
     }
 
     pub fn disable_voltage(&mut self) -> VoltageCtrlResult<()> {
-        self.backend
-            .write(self.hashboard_idx, ENABLE_VOLTAGE, &[false as u8])
+        self.write(ENABLE_VOLTAGE, &[false as u8])
     }
 
     pub fn set_voltage(&mut self, value: u8) -> VoltageCtrlResult<()> {
-        self.backend
-            .write(self.hashboard_idx, SET_VOLTAGE, &[value])
+        self.write(SET_VOLTAGE, &[value])
     }
 
     pub fn get_voltage(&mut self) -> VoltageCtrlResult<u8> {
-        Ok(self.backend.read(self.hashboard_idx, GET_VOLTAGE, 1)?[0])
+        Ok(self.read(GET_VOLTAGE, 1)?[0])
     }
 
     pub fn send_heart_beat(&mut self) -> VoltageCtrlResult<()> {
-        self.backend.write(self.hashboard_idx, SEND_HEART_BEAT, &[])
+        self.write(SEND_HEART_BEAT, &[])
     }
 
     pub fn get_temperature_offset(&mut self) -> VoltageCtrlResult<u64> {
-        let offset = self
-            .backend
-            .read(self.hashboard_idx, RD_TEMP_OFFSET_VALUE, 8)?;
+        let offset = self.read(RD_TEMP_OFFSET_VALUE, 8)?;
         Ok(BigEndian::read_u64(&offset))
     }
 
