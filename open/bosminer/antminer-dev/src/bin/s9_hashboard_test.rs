@@ -111,6 +111,8 @@ struct SolutionRegistry {
     /// Number of stale solutions received from the hardware
     stale_result_count: u64,
     /// Keep track of nonces that didn't match with previously received solutions (after
+    /// filtering hardware errors, this should really stay at 0)
+    mismatched_result_nonce_count: u64,
 }
 impl SolutionRegistry {
     fn new() -> Self {
@@ -237,9 +239,14 @@ fn send_and_receive_test_workloads<T>(
                 let solution_idx =
                     h_chain_ctl.get_solution_idx_from_result_id(work_result.result_id);
                 // solution index determines the position of the slot in results vector
-                // if it's already present, we check that the nonce match
+                // if it's already present, we increment duplicate count
                 if solution_idx < work_item.results.len() {
                     work_item.duplicate_count += 1;
+                    if let Some(ref current_work_result) = &work_item.results[solution_idx] {
+                        if current_work_result.nonce != work_result.nonce {
+                            solution_registry.mismatched_result_nonce_count += 1;
+                        }
+                    }
                 }
                 // process any new solution
                 else if solution_idx >= work_item.results.len() {
@@ -317,8 +324,8 @@ fn test_work_generation() {
                 total_hashing_time.as_secs()
             );
             println!(
-                "Stale solutions: {}",
-                solution_registry.stale_result_count
+                "Mismatched nonce count: {}, stale solutions: {}",
+                solution_registry.mismatched_result_nonce_count, solution_registry.stale_result_count
             );
             last_hashrate_report = SystemTime::now()
         }
