@@ -10,6 +10,7 @@ use rminer::hal::HardwareCtl;
 
 use linux_embedded_hal::I2cdev;
 
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -33,12 +34,16 @@ fn prepare_test_work(_i: usize) -> hal::MiningWork {
 
 /// * `work_start` - beginning of the unique test work range
 /// * `end_start` - end of the unique test work range (excluded)
-fn send_and_receive_test_workloads(
-    h_chain_ctl: &mut hal::s9::HChainCtl,
+fn send_and_receive_test_workloads<T>(
+    h_chain_ctl: &mut hal::s9::HChainCtl<T>,
     work_start: usize,
     work_end: usize,
     expected_result_count: usize,
-) {
+) where
+    T: 'static + Send + Sync + power::VoltageCtrlBackend,
+{
+    use hal::HardwareCtl;
+
     let mut work_result_count = 0usize;
 
     for i in work_start..work_end {
@@ -64,11 +69,15 @@ fn send_and_receive_test_workloads(
 
 #[test]
 fn test_work_generation() {
+    use hal::s9::power::VoltageCtrlBackend;
+
     let gpio_mgr = gpio::ControlPinManager::new();
-    let mut voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
+    let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
+    let voltage_ctrl_backend =
+        power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
     let mut h_chain_ctl = hal::s9::HChainCtl::new(
         &gpio_mgr,
-        &mut voltage_ctrl_backend,
+        voltage_ctrl_backend.clone(),
         8,
         &s9_io::hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
     ).unwrap();

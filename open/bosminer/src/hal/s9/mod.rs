@@ -5,6 +5,7 @@ extern crate s9_io;
 use self::nix::sys::mman::{MapFlags, ProtFlags};
 use core;
 
+use std;
 use std::fs::OpenOptions;
 use std::io;
 use std::mem::size_of;
@@ -12,8 +13,10 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 // TODO: remove thread specific components
 use std::thread;
-use std::time::{Duration, Instant};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread::JoinHandle;
+
+use std::time::Duration;
+use std::time::SystemTime;
 
 use uint;
 
@@ -52,7 +55,7 @@ const WORK_ID_OFFSET: usize = 8;
 ///
 /// TODO: implement drop trait (results in unmap)
 /// TODO: rename to HashBoardCtrl and get rid of the hash_chain identifiers + array
-pub struct HChainCtl<'a, 'b> {
+pub struct HChainCtl<'a, VBackend> {
     hash_chain_ios: [&'a hchainio0::RegisterBlock; 2],
     /// Current work ID once it rolls over, we can start retiring old jobs
     work_id: u16,
@@ -61,7 +64,9 @@ pub struct HChainCtl<'a, 'b> {
     /// Eliminates the need to query the IP core about the current number of configured midstates
     midstate_count_bits: u8,
     /// Voltage controller on this hashboard
-    voltage_ctrl: power::VoltageCtrl<'b>,
+    /// TODO: consider making voltage ctrl a shared instance so that heartbeat and regular
+    /// processing can use it. More: the backend should also become shared instance?
+    voltage_ctrl: power::VoltageCtrl<VBackend>,
     /// Plug pin that indicates the hashboard is present
     plug_pin: gpio::PinIn,
     /// Pin for resetting the hashboard
@@ -70,7 +75,10 @@ pub struct HChainCtl<'a, 'b> {
     last_heartbeat_sent: Option<SystemTime>,
 }
 
-impl<'a, 'b> HChainCtl<'a, 'b> {
+impl<'a, VBackend> HChainCtl<'a, VBackend>
+where
+    VBackend: 'static + Send + Sync + power::VoltageCtrlBackend,
+{
     /// Performs memory mapping of IP core's register block
     /// # TODO
     /// Research why custom flags - specifically O_SYNC and O_LARGEFILE fail
@@ -102,7 +110,7 @@ impl<'a, 'b> HChainCtl<'a, 'b> {
     /// * `midstate_count` - see Self
     pub fn new(
         gpio_mgr: &gpio::ControlPinManager,
-        voltage_ctrl_backend: &'b mut power::VoltageCtrlBackend,
+        voltage_ctrl_backend: VBackend,
         hashboard_idx: usize,
         midstate_count: &s9_io::hchainio0::ctrl_reg::MIDSTATE_CNTW,
     ) -> Result<Self, io::Error> {
@@ -181,25 +189,6 @@ impl<'a, 'b> HChainCtl<'a, 'b> {
         self.enable_ip_core();
     }
 
-    /// Helper method that sends heartbeat to the voltage controller so that it knows we are
-    /// alive and won't shutdown powersupply to the hashboard.
-    /// At the same time, this method takes care of sending the heart beat only every N milliseconds
-    fn send_voltage_ctrl_heart_beat(&mut self) -> Result<(), io::Error> {
-        if self.last_heartbeat_sent == None {
-            self.last_heartbeat_sent = Some(SystemTime::now());
-        }
-        if let Some(t) = self.last_heartbeat_sent {
-            let elapsed = t.elapsed().map_err(|e| {
-                io::Error::new(io::ErrorKind::Other, format!("System time error: {}", e))
-            })?;
-            if elapsed >= Duration::from_secs(1) {
-                self.last_heartbeat_sent = Some(SystemTime::now());
-                return self.voltage_ctrl.send_heart_beat();
-            }
-        }
-        Ok(())
-    }
-
     /// Initializes the complete hashboard including enumerating all chips
     pub fn init(&mut self) -> Result<(), io::Error> {
         self.ip_core_init()?;
@@ -229,8 +218,8 @@ impl<'a, 'b> HChainCtl<'a, 'b> {
         thread::sleep(Duration::from_millis(INIT_DELAY_MS));
         self.voltage_ctrl.enable_voltage()?;
         thread::sleep(Duration::from_millis(2 * INIT_DELAY_MS));
-        // TODO remove once we have a dedicated heartbeat task
-        self.send_voltage_ctrl_heart_beat()?;
+
+        let _ = self.voltage_ctrl.start_heart_beat_task();
 
         // TODO consider including a delay
         self.exit_reset();
@@ -272,8 +261,6 @@ impl<'a, 'b> HChainCtl<'a, 'b> {
             }
             self.chip_count += 1;
         }
-        // TODO remove once we have a dedicated heartbeat task
-        self.send_voltage_ctrl_heart_beat()?;
 
         if self.chip_count >= MAX_CHIPS_ON_CHAIN {
             return Err(io::Error::new(
@@ -298,18 +285,12 @@ impl<'a, 'b> HChainCtl<'a, 'b> {
             thread::sleep(Duration::from_millis(INACTIVATE_FROM_CHAIN_DELAY_MS));
         }
 
-        // TODO remove once we have a dedicated heartbeat task
-        self.send_voltage_ctrl_heart_beat()?;
-
         // Assign address to each chip
         self.for_all_chips(|addr| {
             let cmd = bm1387::SetChipAddressCmd::new(addr);
             self.send_ctl_cmd(&cmd.pack(), false);
             Ok(())
         })?;
-
-        // TODO remove once we have a dedicated heartbeat task
-        self.send_voltage_ctrl_heart_beat()?;
 
         Ok(())
     }
@@ -531,12 +512,12 @@ impl<'a, 'b> HChainCtl<'a, 'b> {
     }
 }
 
-impl<'a, 'b> super::HardwareCtl for HChainCtl<'a, 'b> {
+impl<'a, VBackend> super::HardwareCtl for HChainCtl<'a, VBackend>
+where
+    VBackend: 'static + Send + Sync + power::VoltageCtrlBackend,
+{
     fn send_work(&mut self, work: &super::MiningWork) -> Result<u32, io::Error> {
         let work_id = self.next_work_id();
-
-        // TODO remove once we have a dedicated heartbeat task
-        self.send_voltage_ctrl_heart_beat()?;
 
         self.write_to_work_tx_fifo(work_id);
         self.write_to_work_tx_fifo(work.nbits);
@@ -544,7 +525,7 @@ impl<'a, 'b> super::HardwareCtl for HChainCtl<'a, 'b> {
         self.write_to_work_tx_fifo(work.merkel_root_lsw);
 
         for midstate in work.midstates.iter() {
-            let midstate = HChainCtl::u256_as_u32_slice(&midstate);
+            let midstate = HChainCtl::<VBackend>::u256_as_u32_slice(&midstate);
             // Chip expects the midstate in reverse word order
             for midstate_word in midstate.iter().rev() {
                 self.write_to_work_tx_fifo(*midstate_word);
@@ -554,9 +535,6 @@ impl<'a, 'b> super::HardwareCtl for HChainCtl<'a, 'b> {
     }
 
     fn recv_work_result(&mut self) -> Result<Option<super::MiningWorkResult>, io::Error> {
-        // TODO remove once we have a dedicated heartbeat task
-        self.send_voltage_ctrl_heart_beat()?;
-
         let nonce; // = self.read_from_work_rx_fifo()?;
                    // TODO: to be refactored once we have asynchronous handling in place
                    // fetch command response from IP core's fifo
@@ -612,10 +590,10 @@ mod test {
     #[test]
     fn test_hchain_ctl_instance() {
         let gpio_mgr = gpio::ControlPinManager::new();
-        let mut voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
+        let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
         let h_chain_ctl = HChainCtl::new(
             &gpio_mgr,
-            &mut voltage_ctrl_backend,
+            voltage_ctrl_backend,
             8,
             &hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
         );
@@ -628,10 +606,10 @@ mod test {
     #[test]
     fn test_hchain_ctl_init() {
         let gpio_mgr = gpio::ControlPinManager::new();
-        let mut voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
+        let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
         let h_chain_ctl = HChainCtl::new(
             &gpio_mgr,
-            &mut voltage_ctrl_backend,
+            voltage_ctrl_backend,
             8,
             &hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
         ).expect("Failed to create hash board instance");
@@ -706,10 +684,10 @@ mod test {
                 expected_result_data.solution_idx,
             );
             let gpio_mgr = gpio::ControlPinManager::new();
-            let mut voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
+            let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
             let h_chain_ctl = HChainCtl::new(
                 &gpio_mgr,
-                &mut voltage_ctrl_backend,
+                voltage_ctrl_backend,
                 8,
                 &expected_result_data.midstate_count,
             ).unwrap();
