@@ -10,7 +10,6 @@ use rminer::hal::HardwareCtl;
 
 use linux_embedded_hal::I2cdev;
 
-use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
