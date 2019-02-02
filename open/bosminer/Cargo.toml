@@ -23,6 +23,11 @@ uint = "0.5.0"
 byteorder = "1.2.7"
 linux-embedded-hal = "0.2.0"
 sysfs_gpio = "0.5.3"
+lazy_static = "1.2"
+slog = { version = "~2.4", features = ["max_level_trace", "release_max_level_trace"] }
+slog-term = "2.4"
+slog-async = "2.3"
+
 
 [dependencies.embedded-hal]
 version = "0.2.0"
