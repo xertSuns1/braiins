@@ -24,7 +24,64 @@ struct MiningWorkRegistryItem {
     /// the chips. Generally, hash board may fail to send a preceeding solution due to
     /// corrupted communication frames. Therefore, each solution slot is optional
     results: std::vec::Vec<Option<hal::MiningWorkResult>>,
-    duplicate_count: u64,
+}
+
+impl MiningWorkRegistryItem {
+    /// Associates a specified solution with mining work, accounts for duplicates and nonce
+    /// mismatches
+    /// * `solution` - solution to be inserted
+    /// * `solution_idx` - each work may have multiple valid solutions, this index denotes its
+    /// order. The index is reported by the hashing chip
+    fn insert_solution(
+        &mut self,
+        solution: hal::MiningWorkResult,
+        solution_idx: usize,
+    ) -> InsertSolutionStatus {
+        let mut status = InsertSolutionStatus {
+            duplicate: false,
+            mismatched_nonce: false,
+            unique_solution: None,
+        };
+        // solution index determines the slot in solutions vector
+        // if it's already present, we increment duplicate count
+        if solution_idx < self.results.len() {
+            if let Some(ref current_work_solution) = &self.results[solution_idx] {
+                if current_work_solution.nonce != solution.nonce {
+                    status.mismatched_nonce = true;
+                } else {
+                    status.duplicate = true;
+                }
+            }
+        } else {
+            // append empty slots so that we can process solutions that came out of order. This
+            // is typically due to previously corrupted communication frames
+            for _i in 0..solution_idx - self.results.len() {
+                self.results.push(None);
+            }
+
+            self.results.push(Some(solution.clone()));
+
+            let cloned_work = self.work.clone();
+
+            // report the unique solution via status
+            status.unique_solution = Some(UniqueMiningWorkSolution {
+                timestamp: SystemTime::now(),
+                work: cloned_work,
+                solution: solution,
+            });
+        }
+        status
+    }
+}
+
+/// Helper container for the status after inserting the solution
+struct InsertSolutionStatus {
+    /// Nonce of the solution at a given index doesn't match the existing nonce
+    mismatched_nonce: bool,
+    /// Solution is duplicate (given MiningWorkRegistryItem) already has it
+    duplicate: bool,
+    /// actual solution (defined if the above 2 are false)
+    unique_solution: Option<UniqueMiningWorkSolution>,
 }
 
 /// Container with mining work and a corresponding solution received at a particular time
@@ -34,7 +91,7 @@ struct UniqueMiningWorkSolution {
     /// Original mining work associated with this result
     work: hal::MiningWork,
     /// solution of the PoW puzzle
-    result: hal::MiningWorkResult,
+    solution: hal::MiningWorkResult,
 }
 
 /// Simple mining work registry that stores each work in a slot denoted by its work ID.
@@ -89,7 +146,6 @@ impl MiningWorkRegistry {
         self.pending_work_list[id] = Some(MiningWorkRegistryItem {
             work,
             results: std::vec::Vec::new(),
-            duplicate_count: 0,
         });
 
         // retire old work that is not expected to have any result => work with ID older than
@@ -109,17 +165,22 @@ struct SolutionRegistry {
     /// Unique solutions
     solutions: std::vec::Vec<UniqueMiningWorkSolution>,
     /// Number of stale solutions received from the hardware
-    stale_result_count: u64,
+    stale_solutions: u64,
+    /// Unable to feed the hardware fast enough results in duplicate solutions as
+    /// multiple chips may process the same mining work
+    duplicate_solutions: u64,
     /// Keep track of nonces that didn't match with previously received solutions (after
-    /// filtering hardware errors, this should really stay at 0)
-    mismatched_result_nonce_count: u64,
+    /// filtering hardware errors, this should really stay at 0, otherwise we have some weird
+    /// hardware problem)
+    mismatched_solution_nonces: u64,
 }
 impl SolutionRegistry {
     fn new() -> Self {
         Self {
             solutions: std::vec::Vec::new(),
-            stale_result_count: 0,
-            mismatched_result_nonce_count: 0,
+            stale_solutions: 0,
+            duplicate_solutions: 0,
+            mismatched_solution_nonces: 0,
         }
     }
 }
@@ -211,7 +272,8 @@ fn send_and_receive_test_workloads<T>(
     work_registry: &mut MiningWorkRegistry,
     solution_registry: &mut SolutionRegistry,
     midstate_start: &mut u64,
-) where
+) -> usize
+where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
     let mut work_generated = 0usize;
@@ -224,57 +286,35 @@ fn send_and_receive_test_workloads<T>(
         *midstate_start = midstate_start.wrapping_add(1);
         work_generated += 1;
     }
-    println!(
-        "Generated: {}, midstate_start identifier: {}",
-        work_generated, midstate_start
-    );
+
     thread::sleep(Duration::from_millis(10));
     // result receiving/filtering part
-    while let Some(work_result) = h_chain_ctl.recv_work_result().unwrap() {
-        let work_id = h_chain_ctl.get_work_id_from_result_id(work_result.result_id) as usize;
+    while let Some(solution) = h_chain_ctl.recv_work_result().unwrap() {
+        let work_id = h_chain_ctl.get_work_id_from_result_id(solution.result_id) as usize;
 
         let mut work = work_registry.find_work(work_id);
         match work {
             Some(work_item) => {
-                let solution_idx =
-                    h_chain_ctl.get_solution_idx_from_result_id(work_result.result_id);
-                // solution index determines the position of the slot in results vector
-                // if it's already present, we increment duplicate count
-                if solution_idx < work_item.results.len() {
-                    work_item.duplicate_count += 1;
-                    if let Some(ref current_work_result) = &work_item.results[solution_idx] {
-                        if current_work_result.nonce != work_result.nonce {
-                            solution_registry.mismatched_result_nonce_count += 1;
-                        }
-                    }
-                }
-                // process any new solution
-                else if solution_idx >= work_item.results.len() {
-                    // insert empty solution slots as this solution is out of order
-                    // most probably due to previously corrupted communication frames
-                    for _i in 0..solution_idx - work_item.results.len() {
-                        work_item.results.push(None);
-                    }
+                let solution_idx = h_chain_ctl.get_solution_idx_from_result_id(solution.result_id);
+                let status = work_item.insert_solution(solution, solution_idx);
 
-                    work_item.results.push(Some(work_result.clone()));
-
-                    let cloned_work = work_item.work.clone();
-                    solution_registry.solutions.push(UniqueMiningWorkSolution {
-                        timestamp: SystemTime::now(),
-                        work: cloned_work,
-                        result: work_result,
-                    });
+                // work item detected a new unique solution, we will push it for further processing
+                if let Some(unique_solution) = status.unique_solution {
+                    solution_registry.solutions.push(unique_solution);
                 }
+                solution_registry.duplicate_solutions += status.duplicate as u64;
+                solution_registry.mismatched_solution_nonces += status.mismatched_nonce as u64;
             }
             None => {
                 println!(
                     "No work present for result, ID:{:#x} {:#010x?}",
-                    work_id, work_result
+                    work_id, solution
                 );
-                solution_registry.stale_result_count += 1;
+                solution_registry.stale_solutions += 1;
             }
         }
     }
+    work_generated
 }
 
 fn test_work_generation() {
@@ -291,18 +331,19 @@ fn test_work_generation() {
         &s9_io::hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
     )
     .unwrap();
-    let mut last_hashrate_report = SystemTime::now();
     let mut work_registry = MiningWorkRegistry::new();
     let mut solution_registry = SolutionRegistry::new();
     // sequence number when generating midstates
     let mut midstate_start = 0;
     let mut total_hashing_time: Duration = Duration::from_secs(0);
     let mut total_shares: u128 = 0;
+    let mut total_work_generated: usize = 0;
 
     h_chain_ctl.init().unwrap();
 
+    let mut last_hashrate_report = SystemTime::now();
     loop {
-        send_and_receive_test_workloads(
+        total_work_generated += send_and_receive_test_workloads(
             &mut h_chain_ctl,
             &mut work_registry,
             &mut solution_registry,
@@ -315,17 +356,19 @@ fn test_work_generation() {
 
             total_hashing_time += last_hashrate_report_elapsed;
             println!(
-                "Hash rate: {} Mh/s",
-                total_shares * (1u128 << 32) / total_hashing_time.as_secs() as u128
+                "Hash rate: {} Gh/s",
+                ((total_shares * (1u128 << 32)) as f32 / (total_hashing_time.as_secs() as f32))
+                    * 1e-9_f32,
             );
             println!(
-                "Total_shares: {}, total_time: {} s",
+                "Total_shares: {}, total_time: {} s, total work generated: {}",
                 total_shares,
-                total_hashing_time.as_secs()
+                total_hashing_time.as_secs(),
+                total_work_generated,
             );
             println!(
                 "Mismatched nonce count: {}, stale solutions: {}",
-                solution_registry.mismatched_result_nonce_count, solution_registry.stale_result_count
+                solution_registry.mismatched_solution_nonces, solution_registry.stale_solutions
             );
             last_hashrate_report = SystemTime::now()
         }
