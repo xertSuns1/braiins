@@ -16,13 +16,13 @@ use std::time::{Duration, SystemTime};
 /// Maximum length of pending work list corresponds with the work ID range supported by the FPGA
 const MAX_WORK_LIST_COUNT: usize = 65536;
 
-/// Mining registry item contains work and results
+/// Mining registry item contains work and solutions
 #[derive(Clone, Debug)]
 struct MiningWorkRegistryItem {
     work: hal::MiningWork,
     /// Each slot in the vector is associated with particular solution index as reported by
-    /// the chips. Generally, hash board may fail to send a preceeding solution due to
-    /// corrupted communication frames. Therefore, each solution slot is optional
+    /// the chips. Generally, hash board may fail to send a preceding solution due to
+    /// corrupted communication frames. Therefore, each solution slot is optional.
     results: std::vec::Vec<Option<hal::MiningWorkResult>>,
 }
 
@@ -85,6 +85,7 @@ struct InsertSolutionStatus {
 }
 
 /// Container with mining work and a corresponding solution received at a particular time
+/// This data structure is used when posting work+solution pairs for further submission upstream.
 struct UniqueMiningWorkSolution {
     /// time stamp when it has been fetched from the result FIFO
     timestamp: std::time::SystemTime,
@@ -174,6 +175,7 @@ struct SolutionRegistry {
     /// hardware problem)
     mismatched_solution_nonces: u64,
 }
+
 impl SolutionRegistry {
     fn new() -> Self {
         Self {
@@ -224,7 +226,7 @@ mod test {
                 id
             );
         }
-        // verify the first half being empty
+        // verify the second half being non-empty
         for id in MAX_WORK_LIST_COUNT / 2..MAX_WORK_LIST_COUNT {
             assert!(
                 registry.pending_work_list[id].is_some(),
@@ -267,6 +269,7 @@ fn prepare_test_work(_i: u64) -> hal::MiningWork {
 /// As the next step the method starts collecting results, eliminating duplicates and extracting
 /// valid results for further processing
 ///
+/// Returns the amount of work generated during this run
 fn send_and_receive_test_workloads<T>(
     h_chain_ctl: &mut hal::s9::HChainCtl<T>,
     work_registry: &mut MiningWorkRegistry,
@@ -376,9 +379,5 @@ fn test_work_generation() {
 }
 
 fn main() {
-    println!("BraiinsOS. And what's in your miner?");
-    println!("rminer is coming soon, run tests for now by executing:");
-    println!("cargo test");
-
     test_work_generation();
 }
