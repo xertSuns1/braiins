@@ -205,6 +205,9 @@ where
                 ),
             ));
         }
+        // Voltage controller successfully initialized at this point, we should start sending
+        // heart beats to it. Otherwise, it would shut down in about 10 seconds.
+        let _ = self.voltage_ctrl.start_heart_beat_task();
 
         self.voltage_ctrl.set_voltage(6)?;
         self.voltage_ctrl.enable_voltage()?;
@@ -215,8 +218,6 @@ where
         thread::sleep(Duration::from_millis(INIT_DELAY_MS));
         self.voltage_ctrl.enable_voltage()?;
         thread::sleep(Duration::from_millis(2 * INIT_DELAY_MS));
-
-        let _ = self.voltage_ctrl.start_heart_beat_task();
 
         // TODO consider including a delay
         self.exit_reset();
