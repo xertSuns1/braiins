@@ -6,6 +6,10 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, SystemTime};
 
+use slog::trace;
+
+use misc::LOGGER;
+
 use byteorder::{BigEndian, ByteOrder};
 
 use embedded_hal::blocking::i2c::{Read, Write};
@@ -274,7 +278,7 @@ where
                     let now = SystemTime::now();
                     voltage_ctrl.send_heart_beat().unwrap();
 
-                    println!("{:?}: Heartbeat for board {}", now, idx);
+                    trace!(LOGGER, "Heartbeat for board {}", idx);
                     // evaluate how much time it took to send the heart beat and sleep for the rest
                     // of the heart beat period
                     let elapsed = now

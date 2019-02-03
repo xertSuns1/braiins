@@ -1,12 +1,16 @@
 extern crate linux_embedded_hal;
 extern crate rminer;
 extern crate s9_io;
+extern crate slog;
 extern crate uint;
 
 use rminer::hal;
 use rminer::hal::s9::gpio;
 use rminer::hal::s9::power;
 use rminer::hal::HardwareCtl;
+use rminer::misc::LOGGER;
+
+use slog::{info, trace};
 
 use linux_embedded_hal::I2cdev;
 
@@ -309,9 +313,11 @@ where
                 solution_registry.mismatched_solution_nonces += status.mismatched_nonce as u64;
             }
             None => {
-                println!(
+                trace!(
+                    LOGGER,
                     "No work present for result, ID:{:#x} {:#010x?}",
-                    work_id, solution
+                    work_id,
+                    solution
                 );
                 solution_registry.stale_solutions += 1;
             }
@@ -342,7 +348,9 @@ fn test_work_generation() {
     let mut total_shares: u128 = 0;
     let mut total_work_generated: usize = 0;
 
+    info!(LOGGER, "Initializing hash chain controller");
     h_chain_ctl.init().unwrap();
+    info!(LOGGER, "Hash chain controller initialized");
 
     let mut last_hashrate_report = SystemTime::now();
     loop {
