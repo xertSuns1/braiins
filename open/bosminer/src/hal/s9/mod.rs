@@ -15,6 +15,10 @@ use std::thread;
 use std::time::Duration;
 use std::time::SystemTime;
 
+use slog::info;
+
+use misc::LOGGER;
+
 use uint;
 
 use byteorder::{ByteOrder, LittleEndian};
@@ -228,7 +232,7 @@ where
         //                io::ErrorKind::Other, format!("Detected voltage {}", voltage)));
         //        }
         self.enumerate_chips()?;
-        println!("Discovered {} chips", self.chip_count);
+        info!(LOGGER, "Discovered {} chips", self.chip_count);
 
         // set PLL
         self.set_pll()?;
