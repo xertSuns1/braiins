@@ -363,6 +363,7 @@ fn test_work_generation() {
         let last_hashrate_report_elapsed = last_hashrate_report.elapsed().unwrap();
         if last_hashrate_report_elapsed >= Duration::from_secs(1) {
             total_shares = total_shares + solution_registry.solutions.len() as u128;
+            // processing solution in the test simply means removing them
             solution_registry.solutions.clear();
 
             total_hashing_time += last_hashrate_report_elapsed;
@@ -378,8 +379,10 @@ fn test_work_generation() {
                 total_work_generated,
             );
             println!(
-                "Mismatched nonce count: {}, stale solutions: {}",
-                solution_registry.mismatched_solution_nonces, solution_registry.stale_solutions
+                "Mismatched nonce count: {}, stale solutions: {}, duplicate solutions: {}",
+                solution_registry.mismatched_solution_nonces,
+                solution_registry.stale_solutions,
+                solution_registry.duplicate_solutions,
             );
             last_hashrate_report = SystemTime::now()
         }
