@@ -15,7 +15,7 @@ use std::thread;
 use std::time::Duration;
 use std::time::SystemTime;
 
-use slog::info;
+use slog::{error, info, trace};
 
 use misc::LOGGER;
 
@@ -193,29 +193,34 @@ where
     /// Initializes the complete hashboard including enumerating all chips
     pub fn init(&mut self) -> Result<(), io::Error> {
         self.ip_core_init()?;
-
+        info!(LOGGER, "Hashboard IP core initialized");
         self.voltage_ctrl.reset()?;
+        info!(LOGGER, "Voltage controller reset");
         self.voltage_ctrl.jump_from_loader_to_app()?;
-
+        info!(LOGGER, "Voltage controller application started");
         let version = self.voltage_ctrl.get_version()?;
+        info!(
+            LOGGER,
+            "Voltage controller firmware version {:#04x}", version
+        );
         // TODO accept multiple
         if version != power::EXPECTED_VOLTAGE_CTRL_VERSION {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "Unexpected voltage controller firmware version: {}, expected: {}",
-                    version,
-                    power::EXPECTED_VOLTAGE_CTRL_VERSION
-                ),
-            ));
+            let err_msg = format!(
+                "Unexpected voltage controller firmware version: {}, expected: {}",
+                version,
+                power::EXPECTED_VOLTAGE_CTRL_VERSION
+            );
+            error!(LOGGER, "{}", err_msg);
+            return Err(io::Error::new(io::ErrorKind::Other, err_msg));
         }
         // Voltage controller successfully initialized at this point, we should start sending
         // heart beats to it. Otherwise, it would shut down in about 10 seconds.
+        info!(LOGGER, "Starting voltage controller heart beat task");
         let _ = self.voltage_ctrl.start_heart_beat_task();
 
         self.voltage_ctrl.set_voltage(6)?;
         self.voltage_ctrl.enable_voltage()?;
-
+        info!(LOGGER, "Resetting hash board");
         self.enter_reset();
         // disable voltage
         self.voltage_ctrl.disable_voltage()?;
@@ -231,6 +236,7 @@ where
         //            return Err(io::Error::new(
         //                io::ErrorKind::Other, format!("Detected voltage {}", voltage)));
         //        }
+        info!(LOGGER, "Starting chip enumeration");
         self.enumerate_chips()?;
         info!(LOGGER, "Discovered {} chips", self.chip_count);
 
@@ -432,10 +438,12 @@ where
         let hash_chain_io = self.hash_chain_ios[0];
         // TODO temporary workaround until we have asynchronous handling - wait 5 ms if the FIFO
         // is empty
+        trace!(LOGGER, "Checking CMD RX FIFO empty bit");
         if hash_chain_io.stat_reg.read().cmd_rx_empty().bit() {
             thread::sleep(Duration::from_millis(5));
         }
         if hash_chain_io.stat_reg.read().cmd_rx_empty().bit() {
+            trace!(LOGGER, "Reading CMD RX FIFO timed out!");
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 "Command RX fifo empty, read has timedout",
@@ -472,6 +480,7 @@ where
             0,
             "Control command length not aligned to 4 byte boundary!"
         );
+        trace!(LOGGER, "Sending Control Command {:x?}", cmd);
         for chunk in cmd.chunks(4) {
             self.write_to_cmd_tx_fifo(LittleEndian::read_u32(chunk));
         }

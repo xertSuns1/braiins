@@ -238,6 +238,7 @@ where
     }
 
     pub fn set_voltage(&mut self, value: u8) -> VoltageCtrlResult<()> {
+        trace!(LOGGER, "Setting voltage to {}", value);
         self.write(SET_VOLTAGE, &[value])
     }
 
