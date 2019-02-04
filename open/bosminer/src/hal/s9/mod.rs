@@ -259,7 +259,7 @@ where
     fn enumerate_chips(&mut self) -> Result<(), io::Error> {
         // Enumerate all chips (broadcast read address register request)
         let get_addr_cmd = bm1387::GetStatusCmd::new(0, true, bm1387::GET_ADDRESS_REG).pack();
-        self.send_ctl_cmd(&get_addr_cmd, false);
+        self.send_ctl_cmd(&get_addr_cmd, true);
         self.chip_count = 0;
         while let Some(addr_reg) = self.recv_ctl_cmd_resp::<bm1387::GetAddressReg>()? {
             if addr_reg.chip_rev != bm1387::ChipRev::Bm1387 {
