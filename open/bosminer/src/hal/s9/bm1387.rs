@@ -203,7 +203,9 @@ pub struct MiscCtrlReg {
     #[packed_field(bits = "12:8")]
     pub baud_div: Integer<u8, packed_bits::Bits5>,
 
-    /// This field most probably causes the core to
+    /// This field causes all blocks of the hashing chip to ignore any incoming
+    /// work and allows enabling the blocks one-by-one when a mining work with bit[0] set to 1
+    /// arrives
     /// bit 23
     #[packed_field(bits = "15")]
     pub gate_block: bool,
