@@ -393,7 +393,8 @@ where
     /// Work ID's are generated with a step that corresponds to the number of configured midstates
     fn next_work_id(&mut self) -> u32 {
         let retval = self.work_id as u32;
-        self.work_id += 1 << self.midstate_count_bits;
+        // compiler has to know that work ID rolls over regularly
+        self.work_id = self.work_id.wrapping_add(1 << self.midstate_count_bits);
         retval
     }
 
