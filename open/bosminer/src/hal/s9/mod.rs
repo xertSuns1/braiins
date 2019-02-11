@@ -184,8 +184,8 @@ where
 
         self.set_ip_core_baud_rate(INIT_CHIP_BAUD_RATE)?;
         // TODO consolidate hardcoded constant - calculate time constant based on PLL settings etc.
-        self.set_work_time(50000);
-        self.set_midstate_count();
+        self.set_ip_core_work_time(50000);
+        self.set_ip_core_midstate_count();
 
         Ok(())
     }
@@ -392,7 +392,7 @@ where
             .modify(|_, w| w.enable().bit(false));
     }
 
-    fn set_work_time(&self, work_time: u32) {
+    fn set_ip_core_work_time(&self, work_time: u32) {
         self.hash_chain_ios[0]
             .work_time
             .write(|w| unsafe { w.bits(work_time) });
@@ -422,7 +422,7 @@ where
         Ok(())
     }
 
-    fn set_midstate_count(&self) {
+    fn set_ip_core_midstate_count(&self) {
         self.hash_chain_ios[0]
             .ctrl_reg
             .modify(|_, w| unsafe { w.midstate_cnt().bits(self.midstate_count_bits) });
