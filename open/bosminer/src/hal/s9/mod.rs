@@ -47,6 +47,19 @@ const MAX_CHIPS_ON_CHAIN: usize = 64;
 /// result
 const WORK_ID_OFFSET: usize = 8;
 
+/// Oscillator speed for all chips on S9 hash boards
+const CHIP_OSC_CLK_HZ: usize = 25_000_000;
+
+/// Exact value of the initial baud rate after reset of the hashing chips.
+const INIT_CHIP_BAUD_RATE: usize = 115740;
+/// Exact desired target baud rate when hashing at full speed (matches the divisor, too)
+const TARGET_CHIP_BAUD_RATE: usize = 1562500;
+
+/// Base clock speed of the IP core running in the FPGA
+const FPGA_IPCORE_F_CLK_SPEED_HZ: usize = 50_000_000;
+/// Divisor of the base clock. The resulting clock is connected to UART
+const FPGA_IPCORE_F_CLK_BASE_BAUD_DIV: usize = 16;
+
 /// Hash Chain Controller provides abstraction of the FPGA interface for operating hashing boards.
 /// It is the user-space driver for the IP Core
 ///
@@ -169,7 +182,7 @@ where
         self.disable_ip_core();
         self.enable_ip_core();
 
-        self.set_baud(115200);
+        self.set_ip_core_baud_rate(INIT_CHIP_BAUD_RATE)?;
         // TODO consolidate hardcoded constant - calculate time constant based on PLL settings etc.
         self.set_work_time(50000);
         self.set_midstate_count();
@@ -244,7 +257,7 @@ where
         self.set_pll()?;
 
         // enable hashing chain
-        self.configure_hash_chain()?;
+        self.configure_hash_chain(INIT_CHIP_BAUD_RATE, false, true)?;
 
         Ok(())
     }
@@ -334,19 +347,37 @@ where
         })
     }
 
-    /// TODO: consolidate hardcoded baudrate to 115200
-    fn configure_hash_chain(&self) -> Result<(), io::Error> {
-        let ctl_reg = bm1387::MiscCtrlReg {
-            not_set_baud: true,
-            inv_clock: true,
-            baud_div: 26.into(),
-            gate_block: true,
-            mmen: true,
-        };
+    /// Configure all chips in the hash chain
+    ///
+    /// This method programs the MiscCtrl register of each chip in the hash chain.
+    ///
+    /// * `baud_rate` - desired communication speed
+    /// * `not_set_baud` - the baud clock divisor is calculated, however, each chip will ignore
+    /// its value. This is used typically when gate_block is enabled.
+    /// * `gate_block` - allows gradual startup of the chips in the chain as they keep receiving
+    /// special 'null' job. See bm1387::MiscCtrlReg::gate_block for details
+    ///
+    /// Returns actual baud rate that has been set on the chips or an error
+    /// @todo Research the exact use case of 'not_set_baud' in conjunction with gate_block
+    fn configure_hash_chain(
+        &self,
+        baud_rate: usize,
+        not_set_baud: bool,
+        gate_block: bool,
+    ) -> Result<usize, io::Error> {
+        let (baud_clock_div, actual_baud_rate) = calc_baud_clock_div(
+            baud_rate,
+            CHIP_OSC_CLK_HZ,
+            bm1387::CHIP_OSC_CLK_BASE_BAUD_DIV,
+        )?;
+
+        // Each chip is always configured with inverted clock
+        let ctl_reg =
+            bm1387::MiscCtrlReg::new(not_set_baud, true, baud_clock_div, gate_block, true)?;
         let cmd = bm1387::SetConfigCmd::new(0, true, bm1387::MISC_CONTROL_REG, ctl_reg.into());
         // wait until all commands have been sent
         self.send_ctl_cmd(&cmd.pack(), true);
-        Ok(())
+        Ok(actual_baud_rate)
     }
 
     fn enable_ip_core(&self) {
@@ -367,11 +398,28 @@ where
             .write(|w| unsafe { w.bits(work_time) });
     }
 
-    /// TODO make parametric and remove hardcoded baudrate constant
-    fn set_baud(&self, _baud: u32) {
+    /// This method only changes the communication speed of the FPGA IP core with the chips.
+    ///
+    /// Note: change baud rate of the FPGA is only desirable as a step after all chips in the
+    /// chain have been reconfigured for a different speed, too.
+    fn set_ip_core_baud_rate(&self, baud: usize) -> Result<(), io::Error> {
+        let (baud_clock_div, actual_baud_rate) = calc_baud_clock_div(
+            baud,
+            FPGA_IPCORE_F_CLK_SPEED_HZ,
+            FPGA_IPCORE_F_CLK_BASE_BAUD_DIV,
+        )?;
+        info!(
+            LOGGER,
+            "Setting IP core baud rate @ requested: {}, actual: {}, divisor {:#04x}",
+            baud,
+            actual_baud_rate,
+            baud_clock_div
+        );
+
         self.hash_chain_ios[0]
             .baud_reg
-            .write(|w| unsafe { w.bits(0x1b) });
+            .write(|w| unsafe { w.bits(baud_clock_div as u32) });
+        Ok(())
     }
 
     fn set_midstate_count(&self) {
@@ -593,6 +641,45 @@ where
     }
 }
 
+/// Helper method that calculates baud rate clock divisor value for the specified baud rate.
+///
+/// The calculation follows the same scheme for the hashing chips as well as for the FPGA IP core
+///
+/// * `baud_rate` - requested baud rate
+/// * `base_clock_hz` - base clock for the UART peripheral
+/// * `base_clock_div` - divisor for the base clock
+/// Return a baudrate divisor and actual baud rate or an error
+fn calc_baud_clock_div(
+    baud_rate: usize,
+    base_clock_hz: usize,
+    base_clock_div: usize,
+) -> Result<(usize, usize), io::Error> {
+    const MAX_BAUD_RATE_ERR_PERC: usize = 5;
+    // The actual calculation is:
+    // base_clock_hz / (base_clock_div * baud_rate) - 1
+    // We have to mathematically round the calculated divisor in fixed point arithmethic
+    let baud_div = (10 * base_clock_hz / (base_clock_div * baud_rate) + 5) / 10 - 1;
+    let actual_baud_rate = base_clock_hz / (base_clock_div * (baud_div + 1));
+
+    //
+    let baud_rate_diff = if actual_baud_rate > baud_rate {
+        actual_baud_rate - baud_rate
+    } else {
+        baud_rate - actual_baud_rate
+    };
+    // the baud rate has to be within a few percents
+    if baud_rate_diff > (MAX_BAUD_RATE_ERR_PERC * baud_rate / 100) {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!(
+                "Invalid baudrate - requested: {} baud, resulting {} baud",
+                baud_rate, actual_baud_rate
+            ),
+        ));
+    }
+    Ok((baud_div, actual_baud_rate))
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -651,8 +738,9 @@ mod test {
         );
         assert_eq!(
             h_chain_ctl.hash_chain_ios[0].baud_reg.read().bits(),
-            0x1b,
-            "Unexpected baudrate register value"
+            0x1a,
+            "Unexpected baud rate register value for {} baud",
+            INIT_CHIP_BAUD_RATE
         );
         assert_eq!(
             h_chain_ctl.hash_chain_ios[0].stat_reg.read().bits(),
@@ -739,6 +827,43 @@ mod test {
                 expected_data
             );
         }
+    }
+    #[test]
+    fn test_calc_baud_div_correct_baud_rate_bm1387() {
+        // these are sample baud rates for communicating with BM1387 chips
+        let correct_bauds_and_divs = [
+            (115_200usize, 26usize),
+            (460_800, 6),
+            (1_500_000, 1),
+            (3_000_000, 0),
+        ];
+        for (baud_rate, baud_div) in correct_bauds_and_divs.iter() {
+            let (baud_clock_div, actual_baud_rate) = calc_baud_clock_div(
+                *baud_rate,
+                CHIP_OSC_CLK_HZ,
+                bm1387::CHIP_OSC_CLK_BASE_BAUD_DIV,
+            )
+            .unwrap();
+            assert_eq!(
+                baud_clock_div, *baud_div,
+                "Calculated baud divisor doesn't match, requested: {} baud, actual: {} baud",
+                baud_rate, actual_baud_rate
+            )
+        }
+    }
+
+    /// Test higher baud rate than supported
+    #[test]
+    fn test_calc_baud_div_over_baud_rate_bm1387() {
+        let result = calc_baud_clock_div(
+            3_500_000,
+            CHIP_OSC_CLK_HZ,
+            bm1387::CHIP_OSC_CLK_BASE_BAUD_DIV,
+        );
+        assert!(
+            result.is_err(),
+            "Baud clock divisor unexpectedly calculated!"
+        );
     }
 
 }
