@@ -1,6 +1,7 @@
 use packed_struct::prelude::*;
 use packed_struct::types::IntegerAsBytes;
 
+use std::io;
 use std::mem::size_of;
 
 pub const GET_ADDRESS_REG: u8 = 0x00;
@@ -8,6 +9,12 @@ pub const PLL_PARAM_REG: u8 = 0x0c;
 pub const HASH_COUNTING_REG: u8 = 0x14;
 pub const TICKET_MASK_REG: u8 = 0x14;
 pub const MISC_CONTROL_REG: u8 = 0x1c;
+
+/// Maximum supported baud rate clock divisor
+const MAX_BAUD_CLOCK_DIV: usize = 26;
+
+/// Basic divisor of the clock speed when calculating the value for the baud register
+pub const CHIP_OSC_CLK_BASE_BAUD_DIV: usize = 8;
 
 /// Control or work command layout
 #[derive(PackedStruct, Debug)]
@@ -216,7 +223,34 @@ pub struct MiscCtrlReg {
     pub mmen: bool,
 }
 
-//impl MiscCtrlReg {
+impl MiscCtrlReg {
+    /// Builds register instance and sanity checks the divisor for the baud rate generator
+    pub fn new(
+        not_set_baud: bool,
+        inv_clock: bool,
+        baud_div: usize,
+        gate_block: bool,
+        mmen: bool,
+    ) -> Result<Self, io::Error> {
+        if baud_div <= MAX_BAUD_CLOCK_DIV {
+            return Ok(Self {
+                not_set_baud,
+                inv_clock,
+                baud_div: (baud_div as u8).into(),
+                gate_block,
+                mmen,
+            });
+        } else {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!(
+                    "Baud rate divisor out of range: {}, maximum allowed: {}",
+                    baud_div, MAX_BAUD_CLOCK_DIV
+                ),
+            ));
+        }
+    }
+}
 //    pub fn to_u32(&self) -> u32 {
 //        let reg_bytes = self.pack();
 //        IntegerAsBytes::from_lsb_bytes(&reg_bytes)
@@ -233,6 +267,9 @@ impl Into<u32> for MiscCtrlReg {
 #[cfg(test)]
 mod test {
     use super::*;
+    /// Typical oscillator speed of the chip
+    const CHIP_OSC_SPEED_HZ: usize = 25_000_000;
+
     /// TODO: factor out command serialization tests into a macro
     /// Helper function for converting test data into fpga word slice
     fn u8_as_fpga_slice(cmd: &[u8]) -> &[u32] {
@@ -372,5 +409,4 @@ mod test {
             reg_value, expected_reg_value
         );
     }
-
 }
