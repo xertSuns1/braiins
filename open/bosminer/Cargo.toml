@@ -1,7 +1,7 @@
 [package]
 name = "rminer"
 version = "0.1.0"
-authors = ["Jan Čapek <jan.capek@braiins.cz>"]
+authors = ["Jan Čapek <jan@braiins.com>"]
 
 [workspace]
 
