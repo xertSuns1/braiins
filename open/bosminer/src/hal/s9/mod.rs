@@ -184,7 +184,7 @@ where
 
         self.set_ip_core_baud_rate(INIT_CHIP_BAUD_RATE)?;
         // TODO consolidate hardcoded constant - calculate time constant based on PLL settings etc.
-        self.set_ip_core_work_time(50000);
+        self.set_ip_core_work_time(350000);
         self.set_ip_core_midstate_count();
 
         Ok(())
@@ -733,7 +733,7 @@ mod test {
         // verify sane register values
         assert_eq!(
             h_chain_ctl.hash_chain_ios[0].work_time.read().bits(),
-            50000,
+            350000,
             "Unexpected work time value"
         );
         assert_eq!(
