@@ -1,5 +1,4 @@
 use packed_struct::prelude::*;
-use packed_struct::types::IntegerAsBytes;
 
 use std::io;
 use std::mem::size_of;
@@ -190,36 +189,36 @@ impl Default for ChipRev {
 /// TODO: research set_baud_with_addr() in bmminer-mix as there seems to be some magic setting
 /// I2C interface of the chip or something like that
 #[derive(PackedStruct, Debug)]
-#[packed_struct(bit_numbering = "lsb0", size_bytes = "4", endian = "lsb")]
+#[packed_struct(bit_numbering = "lsb0", size_bytes = "4", endian = "msb")]
 pub struct MiscCtrlReg {
     /// Exact meaning of this field is unknown, when setting baud rate, it is 0, when
     /// initializing the chain it is 1
     /// bit 6
-    #[packed_field(bits = "30")]
+    #[packed_field(bits = "6")]
     pub not_set_baud: bool,
 
     /// Invert clock pin -> used on S9's
     /// bit 13
-    #[packed_field(bits = "21")]
+    #[packed_field(bits = "13")]
     pub inv_clock: bool,
 
     /// baudrate divisor - maximum divisor is 26. To calculate the divisor:
     /// baud_div = min(OSC/8*baud - 1, 26)
     /// Oscillator frequency is 25 MHz
     /// bit 20:16
-    #[packed_field(bits = "12:8")]
+    #[packed_field(bits = "20:16")]
     pub baud_div: Integer<u8, packed_bits::Bits5>,
 
     /// This field causes all blocks of the hashing chip to ignore any incoming
     /// work and allows enabling the blocks one-by-one when a mining work with bit[0] set to 1
     /// arrives
     /// bit 23
-    #[packed_field(bits = "15")]
+    #[packed_field(bits = "23")]
     pub gate_block: bool,
 
     /// Enable multi midstate processing = "AsicBoost"
     /// bit 31
-    #[packed_field(bits = "7")]
+    #[packed_field(bits = "31")]
     pub mmen: bool,
 }
 
@@ -260,7 +259,7 @@ impl MiscCtrlReg {
 impl Into<u32> for MiscCtrlReg {
     fn into(self) -> u32 {
         let reg_bytes = self.pack();
-        IntegerAsBytes::from_lsb_bytes(&reg_bytes)
+        u32::from_be_bytes(reg_bytes)
     }
 }
 
@@ -380,15 +379,15 @@ mod test {
             gate_block: true,
             mmen: true,
         };
-        let expected_reg = [0x40u8, 0x20, 0x9a, 0x80];
+        let expected_reg_msb = [0x80u8, 0x9a, 0x20, 0x40];
 
         let reg_bytes = reg.pack();
 
         assert_eq!(
-            reg_bytes, expected_reg,
+            reg_bytes, expected_reg_msb,
             "Incorrectly composed register:{:#04x?} sliced view: {:#04x?} expected view: \
              {:#04x?}",
-            reg, reg_bytes, expected_reg
+            reg, reg_bytes, expected_reg_msb
         );
     }
 
