@@ -46,6 +46,30 @@ cargo build
 
 The resulting binary is in: ```target/arm-unknown-linux-musleabi/debug/rminer```. Currently, all musl targets are being statically linked - see here for details: https://github.com/japaric/rust-cross
 
+# Implementation Notes
+
+## Register field bit mapping
+We use the [packed_struct](https://github.com/hashmismatch/packed_struct.rs) crate. The use of bit fields in case of registers longer than 1 byte is counter intuitive. This issue provides details https://github.com/hashmismatch/packed_struct.rs/issues/35. The counter-intuitive part is when using LSB byte mapping of the register with *LSB0* bit mapping. The crate starts the bit index at the highest byte which is not intuitive.
+
+- Example of a 4 byte register mapped as least significant byte first (LSB) with LSB0 bit mapping:
+
+| Description | byte | byte | byte | byte |
+|--- | --- | --- | --- | --- |
+| byte index | 3 | 2 | 1 | 0 |
+|packed_struct bit index | bits 7:0 | bits 15:8 | bits 23:16 | bits 31:24 |
+|actual bit index | bits 31:24 | bits 23:16 | bits 15:8 | bits 7:0 |
+
+- Example of a 4 byte register mapped as most significant byte first (MSB) with LSB0 bit mapping:
+
+| Description | byte | byte | byte | byte |
+|--- | --- | --- | --- | --- |
+| byte index | 3 | 2 | 1 | 0 |
+|packed_struct bit index | bits 31:24 | bits 23:16 | bits 15:8 | bits 7:0 |
+|actual bit index | bits 31:24 | bits 23:16 | bits 15:8 | bits 7:0 |
+
+The implementation uses the MSB + LSB0 variant for registers longer than 1 byte that require individual bit mappings. It ensures the resulting array of bytes after packing is interpreted correctly e.g. using [u32::from_be_bytes()](https://doc.rust-lang.org/stable/std/primitive.u32.html#method.from_be_bytes).
+
+
 
 # Testing
 ```shell
