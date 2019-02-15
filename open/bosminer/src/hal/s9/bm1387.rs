@@ -250,11 +250,6 @@ impl MiscCtrlReg {
         }
     }
 }
-//    pub fn to_u32(&self) -> u32 {
-//        let reg_bytes = self.pack();
-//        IntegerAsBytes::from_lsb_bytes(&reg_bytes)
-//    }
-//}
 
 impl Into<u32> for MiscCtrlReg {
     fn into(self) -> u32 {
@@ -266,16 +261,6 @@ impl Into<u32> for MiscCtrlReg {
 #[cfg(test)]
 mod test {
     use super::*;
-    /// Typical oscillator speed of the chip
-    const CHIP_OSC_SPEED_HZ: usize = 25_000_000;
-
-    /// TODO: factor out command serialization tests into a macro
-    /// Helper function for converting test data into fpga word slice
-    fn u8_as_fpga_slice(cmd: &[u8]) -> &[u32] {
-        unsafe {
-            core::slice::from_raw_parts(cmd.as_ptr() as *const u32, cmd.len() / size_of::<u32>())
-        }
-    }
 
     #[test]
     /// Builds a sample set_config command (here the PLL register @ 0x0c with a value of
