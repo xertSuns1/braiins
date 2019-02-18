@@ -164,6 +164,9 @@ module s9io_v0_1_tb();
         tc_error_counter_1();
         tc_error_counter_2();
 
+        // testcase 9 - test of baudrate speed change
+        tc_baudrate_sync();
+
         // -----------------------------------------------------------------------------------------
         // final report
         $display("############################################################");
@@ -1222,6 +1225,53 @@ module s9io_v0_1_tb();
         // check if register is zero
         axi_read(ERR_COUNTER, rdata);
         compare_data(32'h0, rdata, "ERR_COUNTER");
+    endtask
+
+
+    // ---------------------------------------------------------------------------------------------
+    // Testcase 9: Test of baudrate speed change
+    // ---------------------------------------------------------------------------------------------
+    // Test of baudrate speed change and synchronization
+    task tc_baudrate_sync();
+        // Tx FIFO data
+        static logic[31:0] fifo_data1[$] = {
+            32'h00000000, 32'hffffffff, 32'hffffffff, 32'hffffffff, 32'h00000000, 32'h00000000,
+            32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000
+        };
+
+        // reference data send out through UART
+        static logic[7:0] uart_data1[$] = {
+            8'h21, 8'h36, 8'h00, 8'h01, 8'h00, 8'h00, 8'h00, 8'h00, 8'hff, 8'hff, 8'hff, 8'hff,
+            8'hff, 8'hff, 8'hff, 8'hff, 8'hff, 8'hff, 8'hff, 8'hff, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h5f, 8'hd3
+        };
+
+        $display("Testcase 9a: baudrate speed change and synchronization");
+
+        // set 1 midstate mode
+        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+
+        // send work
+        fifo_write_work(fifo_data1);
+
+        // wait some time and change UART baudrate speed to 1.5625 MBd (@50MHz)
+        # 1us;
+        axi_write(BAUD_REG, 1);
+
+        // check reference data that should be at previous speed
+        uart_read_and_compare(uart_data1);
+
+        // change speed of UART BFM
+        i_uart.UART_PERIOD = 640ns;
+
+        // send work frame again
+        fifo_write_work(fifo_data1);
+        uart_read_and_compare(uart_data1);
+
+        // revert UART baudrate speed to 3.125 MBd (@50MHz)
+        axi_write(BAUD_REG, 0);
     endtask
 
 

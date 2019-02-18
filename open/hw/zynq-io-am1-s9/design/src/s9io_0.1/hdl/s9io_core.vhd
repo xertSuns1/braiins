@@ -192,6 +192,7 @@ architecture RTL of s9io_core is
     signal uart_tx_data_wr      : std_logic_vector(7 downto 0);
 
     -- UART status
+    signal uart_sync_busy       : std_logic;
     signal uart_frame_err       : std_logic;
     signal uart_over_err        : std_logic;
 
@@ -315,7 +316,7 @@ begin
     p_fsm_cmb: process (fsm_q,
         ctrl_enable, ctrl_midstate_cnt,
         ctrl_rst_work_tx, ctrl_rst_work_rx, ctrl_rst_cmd_tx, ctrl_rst_cmd_rx,
-        work_time_out_q,
+        work_time_out_q, uart_sync_busy,
         work_tx_fifo_empty, work_tx_fifo_data_r, work_tx_fifo_thr_ready,
         cmd_tx_fifo_empty, cmd_tx_fifo_data_r,
         work_ready, cmd_tx_ready,
@@ -370,7 +371,7 @@ begin
                 end if;
 
             when st_wait_sync =>
-                if (work_time_out_q = '1') then  -- wait for synchronization
+                if ((work_time_out_q = '1') and (uart_sync_busy = '0')) then  -- wait for synchronization
                     fsm_d <= st_check;
 
                     work_time_ack <= '1';
@@ -743,6 +744,7 @@ begin
         division   => reg_uart_divisor,
 
         -- UART status
+        sync_busy  => uart_sync_busy,
         frame_err  => uart_frame_err,
         over_err   => uart_over_err
     );

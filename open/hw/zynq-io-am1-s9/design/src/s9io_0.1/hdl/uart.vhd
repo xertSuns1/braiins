@@ -56,6 +56,7 @@ entity uart is
         division   : in  std_logic_vector(11 downto 0);
 
         -- UART status
+        sync_busy  : out std_logic;    -- baudrate synchronization busy signal
         frame_err  : out std_logic;
         over_err   : out std_logic
     );
@@ -103,6 +104,9 @@ architecture RTL of uart is
     signal rx_frame_error           : std_logic;
     signal tx_ready                 : std_logic;
 
+    -- UART TX ready signal
+    signal uart_tx_ready            : std_logic;
+
 begin
 
     ------------------------------------------------------------------------------------------------
@@ -124,10 +128,19 @@ begin
             if (rst = '0') then
                 frame_err_q <= '0';
                 over_err_q  <= '0';
-                division_q  <= (others => '0');
             else
                 frame_err_q <= frame_err_d;
                 over_err_q  <= over_err_d;
+            end if;
+        end if;
+    end process;
+
+    -- update baudrate only if transmitter is ready
+    process (clk) begin
+        if rising_edge(clk) then
+            if (rst = '0') then
+                division_q  <= (others => '0');
+            elsif (uart_tx_ready = '1') then
                 division_q  <= division;
             end if;
         end if;
@@ -153,6 +166,10 @@ begin
             frame_err_d <= '1';
         end if;
     end process;
+
+    ------------------------------------------------------------------------------------------------
+    -- UART TX is ready when transmitter is ready and no data in buffer
+    uart_tx_ready <= tx_ready and tx_fifo_empty;
 
     ------------------------------------------------------------------------------------------------
     -- Modulo divider as baud-rate generator
@@ -265,6 +282,7 @@ begin
     tx_fifo_data_w <= tx_data_wr;
 
     -- UART status
+    sync_busy <= '1' when ((uart_tx_ready = '0') and (division_q /= division)) else '0';
     frame_err <= frame_err_q;
     over_err  <= over_err_q;
 
