@@ -78,6 +78,10 @@ validate_bd_design
 set wrapper_file [make_wrapper -files [get_files ${design_name}.bd] -top -force]
 import_files -force -norecurse $wrapper_file
 
+# make current fileset active and delete original fileset
+current_fileset -simset [get_filesets $fileset]
+delete_fileset sim_1
+
 set_property target_simulator XSim [current_project]
 set_property -name {xsim.simulate.runtime} -value {100ms} -objects [get_filesets $fileset]
 set_property SOURCE_SET sources_1 [get_filesets $fileset]
