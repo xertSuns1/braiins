@@ -256,8 +256,10 @@ where
         // set PLL
         self.set_pll()?;
 
-        // enable hashing chain
-        self.configure_hash_chain(INIT_CHIP_BAUD_RATE, false, true)?;
+        // configure the hashing chain to operate at desired baud rate. Note that gate block is
+        // enabled to allow continuous start of chips in the chain
+        self.configure_hash_chain(TARGET_CHIP_BAUD_RATE, false, true)?;
+        self.set_ip_core_baud_rate(TARGET_CHIP_BAUD_RATE)?;
 
         Ok(())
     }
@@ -370,7 +372,13 @@ where
             CHIP_OSC_CLK_HZ,
             bm1387::CHIP_OSC_CLK_BASE_BAUD_DIV,
         )?;
-
+        info!(
+            LOGGER,
+            "Setting Hash chain baud rate @ requested: {}, actual: {}, divisor {:#04x}",
+            baud_rate,
+            actual_baud_rate,
+            baud_clock_div
+        );
         // Each chip is always configured with inverted clock
         let ctl_reg =
             bm1387::MiscCtrlReg::new(not_set_baud, true, baud_clock_div, gate_block, true)?;
