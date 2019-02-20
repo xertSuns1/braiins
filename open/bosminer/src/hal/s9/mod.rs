@@ -382,6 +382,8 @@ where
         // Each chip is always configured with inverted clock
         let ctl_reg =
             bm1387::MiscCtrlReg::new(not_set_baud, true, baud_clock_div, gate_block, true)?;
+        // TODO: rework the setconfig::new interface to accept the register directly and
+        // eliminate the register address in this place
         let cmd = bm1387::SetConfigCmd::new(0, true, bm1387::MISC_CONTROL_REG, ctl_reg.into());
         // wait until all commands have been sent
         self.send_ctl_cmd(&cmd.pack(), true);
