@@ -249,12 +249,13 @@ mod test {
         );
     }
 }
-/// * `_i` - unique identifier that makes the work distinct
-fn prepare_test_work(_i: u64) -> hal::MiningWork {
+
+/// * `i` - unique identifier for the generated midstate
+fn prepare_test_work(i: u64) -> hal::MiningWork {
     hal::MiningWork {
         version: 0,
         extranonce_2: 0,
-        midstates: vec![uint::U256([0, 0, 0, 0])],
+        midstates: vec![uint::U256([i, 0, 0, 0])],
         merkel_root_lsw: 0xffff_ffff,
         nbits: 0xffff_ffff,
         ntime: 0xffff_ffff,
