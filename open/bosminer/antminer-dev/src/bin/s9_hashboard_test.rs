@@ -286,6 +286,11 @@ where
 {
     let mut work_generated = 0usize;
     // work sending part
+    trace!(
+        LOGGER,
+        "filling FIFO work TX fifo, midstate start={}",
+        midstate_start
+    );
     while !h_chain_ctl.is_work_tx_fifo_full() {
         let test_work = prepare_test_work(*midstate_start);
         let work_id = h_chain_ctl.send_work(&test_work).unwrap() as usize;
@@ -294,6 +299,11 @@ where
         *midstate_start = midstate_start.wrapping_add(1);
         work_generated += 1;
     }
+    trace!(
+        LOGGER,
+        "Stored {} mining work items in TX FIFO",
+        work_generated
+    );
 
     thread::sleep(Duration::from_millis(10));
     // result receiving/filtering part
@@ -324,6 +334,7 @@ where
             }
         }
     }
+    trace!(LOGGER, "Fetched all available solutions from RX FIFO");
     work_generated
 }
 
