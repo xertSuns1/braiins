@@ -305,7 +305,6 @@ where
         work_generated
     );
 
-    thread::sleep(Duration::from_millis(10));
     // result receiving/filtering part
     while let Some(solution) = h_chain_ctl.recv_work_result().unwrap() {
         let work_id = h_chain_ctl.get_work_id_from_result_id(solution.result_id) as usize;
