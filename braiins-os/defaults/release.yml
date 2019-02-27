@@ -3,8 +3,6 @@ core:
   list:
     - ca-bundle
     - ca-certificates
-    - cgminer
-    - cgminer_monitor
     - gdbserver
     - ip6tables
     - iptables
@@ -27,7 +25,6 @@ core:
     - lua
     - lua-cjson
     - luasocket
-    - luci-app-cgminer
     - luci-base
     - luci-lib-ip
     - luci-lib-jsonc

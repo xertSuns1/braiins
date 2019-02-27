@@ -1,6 +1,6 @@
 bos:
   # possible platforms are zynq-dm1-g9, zynq-dm1-g19, zynq-dm1-g29, zynq-am1-s9
-  platform: zynq-dm1-g29
+  platform: zynq-am1-s9
   # bOS device HW identifier
 #  hwid: Q50QDhdWuWq9yDr5
   # select NAND firmware which is used for boot
@@ -111,12 +111,6 @@ remote:
       project: u-boot-xlnx.git
     linux:
       project: linux-xlnx.git
-    cgminer:
-      match:
-        zynq-dm1:
-          project: cgminer.git
-        zynq-am1:
-          project: bmminer.git
     # it is possible to continue with any user repositories
 
 local:
