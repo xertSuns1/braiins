@@ -3,6 +3,11 @@ name = "s9-io"
 version = "0.1.0"
 authors = ["Jan Čapek <jan.capek@braiins.cz>"]
 
+[lib]
+# the 'lib.rs' file is generated and cargo does not know what type this crate
+# is prior to build this allows plan build system before the file is generated
+path = "src/lib.rs"
+
 [dependencies]
 bare-metal = "0.2.0"
 vcell = "0.1.0"
