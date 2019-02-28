@@ -3,44 +3,39 @@
 # Build
 
 ## Prerequisities
+
 - rust toolchain installed via [rustup](https://rustup.rs/)
 - arm target
 - svd2rust
 - rustfmt-preview
 
-### Install prerequisites
+### Install Prerequisites
+
 ```shell
 cargo install svd2rust
 cargo install form
 rustup component add rustfmt-preview
 ```
 Install target toolchain for the project.
+
 ```shell
-cd to/rminer
+cd to/rurminer
 rustup target add arm-unknown-linux-musleabi
 ```
 
-## (Re)generating s9-io module
+## Build Process
 
-Peripheral module is generated from a **fpga-io.xml**. The steps are currently manual:
-```shell
-svd2rust -i s9-io/fpga-io.xml --target none > lib.rs &&
-mkdir -p s9-io/src &&
-form -i lib.rs -o s9-io/src/ &&
-rm lib.rs &&
-cargo fmt
-```
 - setup toolchain path - note this assumes you have our lede meta environment build tool (```bb.py```) in path. Also, the selected config (if not left to default configuration) has to for the **musl** libc toolchain as stated above.
 
 ```
-cd to/braiinsos/
+cd to/braiins-os/
 eval $(./bb.py toolchain 2>/dev/null)
 ```
 
 - build:
 
 ```shell
-cd to/rminer
+cd to/rurminer
 cargo build
 ```
 
