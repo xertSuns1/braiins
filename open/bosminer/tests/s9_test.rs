@@ -13,8 +13,8 @@ use linux_embedded_hal::I2cdev;
 use std::thread;
 use std::time::Duration;
 
-/// * `_i` - unique identifier that makes the work distinct
-fn prepare_test_work(_i: usize) -> hal::MiningWork {
+/// Prepares sample work with empty midstates
+fn prepare_test_work() -> hal::MiningWork {
     hal::MiningWork {
         version: 0,
         extranonce_2: 0,
@@ -22,21 +22,15 @@ fn prepare_test_work(_i: usize) -> hal::MiningWork {
         merkel_root_lsw: 0xffff_ffff,
         nbits: 0xffff_ffff,
         ntime: 0xffff_ffff,
-        //            version: 0,
-        //            extranonce_2: 0,
-        //            midstates: vec![uint::U256([v, 2, 3, 4])],
-        //            merkel_root_lsw: 0xdeadbeef,
-        //            nbits: 0x1a44b9f2,
-        //            ntime: 0x4dd7f5c7,
     }
 }
 
-/// * `work_start` - beginning of the unique test work range
-/// * `end_start` - end of the unique test work range (excluded)
+///
+/// * `work_count` - number of work items to generate
+/// * `expected_result_count` - number of expected solutions that the hash chain should provide
 fn send_and_receive_test_workloads<T>(
     h_chain_ctl: &mut hal::s9::HChainCtl<T>,
-    work_start: usize,
-    work_end: usize,
+    work_count: usize,
     expected_result_count: usize,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
@@ -45,8 +39,8 @@ fn send_and_receive_test_workloads<T>(
 
     let mut work_result_count = 0usize;
 
-    for i in work_start..work_end {
-        let test_work = prepare_test_work(i);
+    for i in 0..work_count {
+        let test_work = prepare_test_work();
         let work_id = h_chain_ctl.send_work(&test_work).unwrap();
         // wait until the work is physically sent out it takes around 5 ms for the FPGA IP core
         // to send out the work @ 115.2 kBaud
@@ -87,8 +81,10 @@ fn test_work_generation() {
 
     // the first 3 work loads don't produce any results, these are merely to initialize the input
     // queue of each hashing chip
-    send_and_receive_test_workloads(&mut h_chain_ctl, 0, 3, 0);
-    // submit 2 more workloads, these are expected to yield the same results from every single chip
-    let expected_result_count = 2 * h_chain_ctl.get_chip_count();
-    send_and_receive_test_workloads(&mut h_chain_ctl, 3, 5, expected_result_count);
+    send_and_receive_test_workloads(&mut h_chain_ctl, 3, 0);
+    // submit 2 more work items, since we are intentionally being slow all chips should send a
+    // result for the submitted work
+    let more_work_count = 2usize;
+    let expected_result_count = more_work_count * h_chain_ctl.get_chip_count();
+    send_and_receive_test_workloads(&mut h_chain_ctl, more_work_count, expected_result_count);
 }
