@@ -14,6 +14,9 @@ use std::thread;
 use std::time::Duration;
 
 /// Prepares sample work with empty midstates
+/// NOTE: this work has 2 valid nonces:
+/// - 0x83ea0372 (solution 0)
+/// - 0x09f86be1 (solution 1)
 fn prepare_test_work() -> hal::MiningWork {
     hal::MiningWork {
         version: 0,
@@ -61,6 +64,14 @@ fn send_and_receive_test_workloads<T>(
     )
 }
 
+/// Verifies work generation for a hash chain
+///
+/// The test runs two batches of work:
+/// - the first 3 work items are for initializing input queues of the chips and result in no
+/// action (no solutions are provided
+/// - the next 2 work items yield actual solutions. Since we don't push more work items, the
+/// solution 1 never appears on the bus and leave chips output queues. This is fine as this test
+/// is intended for initial check of correct operation
 #[test]
 fn test_work_generation() {
     use hal::s9::power::VoltageCtrlBackend;
