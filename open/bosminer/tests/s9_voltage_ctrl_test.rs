@@ -9,7 +9,10 @@ use embedded_hal::digital::InputPin;
 use embedded_hal::digital::OutputPin;
 use linux_embedded_hal::I2cdev;
 
-/// Helper function that tests 1 hashchain
+/// Helper function that tests voltage controller on a particular hashboard.
+///
+/// The test simply verifies that the voltage controller responds with a valid version
+///
 /// * `ctrl_pin_manager` - provides accesss to  GPIO control pins connected to the hashboard
 /// * `idx` - index of the hashboard
 fn test_voltage_ctrl_on_1_hashboard(idx: usize, ctrl_pin_manager: &gpio::ControlPinManager) {
