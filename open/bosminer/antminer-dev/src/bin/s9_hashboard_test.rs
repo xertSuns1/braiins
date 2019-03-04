@@ -27,7 +27,7 @@ struct MiningWorkRegistryItem {
     /// Each slot in the vector is associated with particular solution index as reported by
     /// the chips. Generally, hash board may fail to send a preceding solution due to
     /// corrupted communication frames. Therefore, each solution slot is optional.
-    solutions: std::vec::Vec<Option<hal::MiningWorkSolution>>,
+    solutions: std::vec::Vec<hal::MiningWorkSolution>,
 }
 
 impl MiningWorkRegistryItem {
@@ -38,7 +38,7 @@ impl MiningWorkRegistryItem {
     /// order. The index is reported by the hashing chip
     fn insert_solution(
         &mut self,
-        solution: hal::MiningWorkSolution,
+        new_solution: hal::MiningWorkSolution,
         solution_idx: usize,
     ) -> InsertSolutionStatus {
         let mut status = InsertSolutionStatus {
@@ -46,34 +46,27 @@ impl MiningWorkRegistryItem {
             mismatched_nonce: false,
             unique_solution: None,
         };
-        // solution index determines the slot in solutions vector
-        // if it's already present, we increment duplicate count
-        if solution_idx < self.results.len() {
-            if let Some(ref current_work_solution) = &self.results[solution_idx] {
-                if current_work_solution.nonce != solution.nonce {
-                    status.mismatched_nonce = true;
-                } else {
-                    status.duplicate = true;
-                }
+        // scan the current solutions and detect a duplicate
+        for solution in self.solutions.iter() {
+            if solution.nonce == new_solution.nonce {
+                status.duplicate = true;
+                return status;
             }
-        } else {
-            // append empty slots so that we can process solutions that came out of order. This
-            // is typically due to previously corrupted communication frames
-            for _i in 0..solution_idx - self.results.len() {
-                self.results.push(None);
-            }
-
-            self.results.push(Some(solution.clone()));
-
-            let cloned_work = self.work.clone();
-
-            // report the unique solution via status
-            status.unique_solution = Some(UniqueMiningWorkSolution {
-                timestamp: SystemTime::now(),
-                work: cloned_work,
-                solution: solution,
-            });
         }
+
+        // At this point, we know such solution has not been received yet. If it is valid (no
+        // hardware error detected == meets the target), it can be appended to the solution list
+        // for this work item
+        // TODO: call the evaluator for the solution
+        self.solutions.push(new_solution.clone());
+
+        let cloned_work = self.work.clone();
+        // report the unique solution via status
+        status.unique_solution = Some(UniqueMiningWorkSolution {
+            timestamp: SystemTime::now(),
+            work: cloned_work,
+            solution: new_solution,
+        });
         status
     }
 }
