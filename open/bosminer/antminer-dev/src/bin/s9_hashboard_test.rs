@@ -27,7 +27,7 @@ struct MiningWorkRegistryItem {
     /// Each slot in the vector is associated with particular solution index as reported by
     /// the chips. Generally, hash board may fail to send a preceding solution due to
     /// corrupted communication frames. Therefore, each solution slot is optional.
-    results: std::vec::Vec<Option<hal::MiningWorkResult>>,
+    solutions: std::vec::Vec<Option<hal::MiningWorkSolution>>,
 }
 
 impl MiningWorkRegistryItem {
@@ -38,7 +38,7 @@ impl MiningWorkRegistryItem {
     /// order. The index is reported by the hashing chip
     fn insert_solution(
         &mut self,
-        solution: hal::MiningWorkResult,
+        solution: hal::MiningWorkSolution,
         solution_idx: usize,
     ) -> InsertSolutionStatus {
         let mut status = InsertSolutionStatus {
@@ -91,12 +91,12 @@ struct InsertSolutionStatus {
 /// Container with mining work and a corresponding solution received at a particular time
 /// This data structure is used when posting work+solution pairs for further submission upstream.
 struct UniqueMiningWorkSolution {
-    /// time stamp when it has been fetched from the result FIFO
+    /// time stamp when it has been fetched from the solution FIFO
     timestamp: std::time::SystemTime,
-    /// Original mining work associated with this result
+    /// Original mining work associated with this solution
     work: hal::MiningWork,
     /// solution of the PoW puzzle
-    solution: hal::MiningWorkResult,
+    solution: hal::MiningWorkSolution,
 }
 
 /// Simple mining work registry that stores each work in a slot denoted by its work ID.
@@ -104,9 +104,9 @@ struct UniqueMiningWorkSolution {
 /// The slots are handled in circular fashion, when storing new work, any work older than
 /// MAX_WORK_LIST_COUNT/2 sequence ID's in the past is to be retired.
 struct MiningWorkRegistry {
-    /// Current pending work list Each work item has a list of associated work results
+    /// Current pending work list Each work item has a list of associated work solutions
     pending_work_list: std::vec::Vec<Option<MiningWorkRegistryItem>>,
-    /// Keeps track of the ID, so that we can identify stale results
+    /// Keeps track of the ID, so that we can identify stale solutions
     last_work_id: Option<usize>,
 }
 
@@ -150,10 +150,10 @@ impl MiningWorkRegistry {
 
         self.pending_work_list[id] = Some(MiningWorkRegistryItem {
             work,
-            results: std::vec::Vec::new(),
+            solutions: std::vec::Vec::new(),
         });
 
-        // retire old work that is not expected to have any result => work with ID older than
+        // retire old work that is not expected to have any solution => work with ID older than
         // MAX_WORK_LIST_COUNT/2 is marked obsolete
         let retire_id = Self::index_sub(id, MAX_WORK_LIST_COUNT / 2);
 
@@ -271,8 +271,8 @@ fn prepare_test_work(i: u64) -> hal::MiningWork {
 /// Generates enough testing work until the work FIFO becomes full
 /// The work is made unique by specifying a unique midstate.
 ///
-/// As the next step the method starts collecting results, eliminating duplicates and extracting
-/// valid results for further processing
+/// As the next step the method starts collecting solutions, eliminating duplicates and extracting
+/// valid solutions for further processing
 ///
 /// Returns the amount of work generated during this run
 fn send_and_receive_test_workloads<T>(
@@ -305,14 +305,14 @@ where
         work_generated
     );
 
-    // result receiving/filtering part
-    while let Some(solution) = h_chain_ctl.recv_work_result().unwrap() {
-        let work_id = h_chain_ctl.get_work_id_from_result_id(solution.result_id) as usize;
+    // solution receiving/filtering part
+    while let Some(solution) = h_chain_ctl.recv_solution().unwrap() {
+        let work_id = h_chain_ctl.get_work_id_from_solution_id(solution.solution_id) as usize;
 
         let mut work = work_registry.find_work(work_id);
         match work {
             Some(work_item) => {
-                let solution_idx = h_chain_ctl.get_solution_idx_from_result_id(solution.result_id);
+                let solution_idx = h_chain_ctl.get_solution_idx_from_solution_id(solution.solution_id);
                 let status = work_item.insert_solution(solution, solution_idx);
 
                 // work item detected a new unique solution, we will push it for further processing
@@ -325,7 +325,7 @@ where
             None => {
                 trace!(
                     LOGGER,
-                    "No work present for result, ID:{:#x} {:#010x?}",
+                    "No work present for solution, ID:{:#x} {:#010x?}",
                     work_id,
                     solution
                 );

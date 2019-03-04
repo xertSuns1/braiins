@@ -30,17 +30,17 @@ fn prepare_test_work() -> hal::MiningWork {
 
 ///
 /// * `work_count` - number of work items to generate
-/// * `expected_result_count` - number of expected solutions that the hash chain should provide
+/// * `expected_solution_count` - number of expected solutions that the hash chain should provide
 fn send_and_receive_test_workloads<T>(
     h_chain_ctl: &mut hal::s9::HChainCtl<T>,
     work_count: usize,
-    expected_result_count: usize,
+    expected_solution_count: usize,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
     use hal::HardwareCtl;
 
-    let mut work_result_count = 0usize;
+    let mut solution_count = 0usize;
 
     for i in 0..work_count {
         let test_work = prepare_test_work();
@@ -48,27 +48,27 @@ fn send_and_receive_test_workloads<T>(
         // wait until the work is physically sent out it takes around 5 ms for the FPGA IP core
         // to send out the work @ 115.2 kBaud
         thread::sleep(Duration::from_millis(10));
-        while let Some(work_result) = h_chain_ctl.recv_work_result().unwrap() {
-            println!("Iteration:{}\n{:#010x?}", i, work_result);
+        while let Some(solution) = h_chain_ctl.recv_solution().unwrap() {
+            println!("Iteration:{}\n{:#010x?}", i, solution);
             assert_eq!(
                 work_id,
-                h_chain_ctl.get_work_id_from_result(&work_result),
-                "Unexpected work ID detected in returned mining result"
+                h_chain_ctl.get_work_id_from_solution(&solution),
+                "Unexpected work ID detected in returned mining work solution"
             );
-            work_result_count += 1;
+            solution_count += 1;
         }
     }
     assert_eq!(
-        work_result_count, expected_result_count,
-        "Unexpected number of work results"
+        solution_count, expected_solution_count,
+        "Unexpected number of solutions"
     )
 }
 
 /// Verifies work generation for a hash chain
 ///
 /// The test runs two batches of work:
-/// - the first 3 work items are for initializing input queues of the chips and result in no
-/// action (no solutions are provided
+/// - the first 3 work items are for initializing input queues of the chips and don't provide any
+/// solutions
 /// - the next 2 work items yield actual solutions. Since we don't push more work items, the
 /// solution 1 never appears on the bus and leave chips output queues. This is fine as this test
 /// is intended for initial check of correct operation
@@ -90,12 +90,12 @@ fn test_work_generation() {
 
     h_chain_ctl.init().unwrap();
 
-    // the first 3 work loads don't produce any results, these are merely to initialize the input
+    // the first 3 work loads don't produce any solutions, these are merely to initialize the input
     // queue of each hashing chip
     send_and_receive_test_workloads(&mut h_chain_ctl, 3, 0);
     // submit 2 more work items, since we are intentionally being slow all chips should send a
-    // result for the submitted work
+    // solution for the submitted work
     let more_work_count = 2usize;
-    let expected_result_count = more_work_count * h_chain_ctl.get_chip_count();
-    send_and_receive_test_workloads(&mut h_chain_ctl, more_work_count, expected_result_count);
+    let expected_solution_count = more_work_count * h_chain_ctl.get_chip_count();
+    send_and_receive_test_workloads(&mut h_chain_ctl, more_work_count, expected_solution_count);
 }

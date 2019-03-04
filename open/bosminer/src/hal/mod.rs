@@ -28,17 +28,17 @@ pub struct MiningWork {
     pub nbits: u32,
 }
 
-/// Represents raw result from the mining hardware
+/// Represents raw solution from the mining hardware
 #[derive(Clone, Debug)]
-pub struct MiningWorkResult {
+pub struct MiningWorkSolution {
     /// actual nonce
     pub nonce: u32,
-    /// nTime of the result in case the HW also rolls the nTime field
+    /// nTime of the solution in case the HW also rolls the nTime field
     pub ntime: Option<u32>,
     /// index of a midstate that corresponds to the found nonce
     pub midstate_idx: usize,
-    /// Unique identifier for the result
-    pub result_id: u32,
+    /// Unique identifier for the solution
+    pub solution_id: u32,
 }
 
 /// Any hardware mining controller should implement at least these methods
@@ -49,11 +49,11 @@ pub trait HardwareCtl {
     /// registry
     fn send_work(&mut self, work: &MiningWork) -> Result<u32, io::Error>;
 
-    /// Receives 1 MiningWorkResult
-    fn recv_work_result(&mut self) -> Result<Option<MiningWorkResult>, io::Error>;
+    /// Receives 1 MiningWorkSolution
+    fn recv_solution(&mut self) -> Result<Option<MiningWorkSolution>, io::Error>;
 
-    /// Extracts original work ID for a mining result
-    fn get_work_id_from_result(&self, result: &MiningWorkResult) -> u32;
+    /// Extracts original work ID for a mining solution
+    fn get_work_id_from_solution(&self, solution: &MiningWorkSolution) -> u32;
 
     /// Returns the number of detected chips
     fn get_chip_count(&self) -> usize;

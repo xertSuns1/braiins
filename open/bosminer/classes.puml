@@ -39,7 +39,7 @@ class MiningWork {
   nbits : u32
 }
 
-class MiningWorkResult {
+class MiningWorkSolution {
   nonce : u32
   ntime : u32
   midstate_idx : int
@@ -58,7 +58,7 @@ MiningWork .. MWN1
 
 Interface HChainCtrl {
   send_work(&work) : u32
-  recv_work_result() : Result<MiningWorkResult>
+  recv_solution() : Result<MiningWorkSolution>
   build_mining_work_registry() : MiningWorkRegistry
 }
 
@@ -74,7 +74,7 @@ MiningJobProcessor --> MiningWork : produces
 MiningJobProcessor --> HChainCtrl : uses
 MiningJobProcessor --> MiningWorkRegistry : uses
 
-MiningWork "1" *-- "0..N" MiningWorkResult : has
+MiningWork "1" *-- "0..N" MiningWorkSolution : has
 
 
 
