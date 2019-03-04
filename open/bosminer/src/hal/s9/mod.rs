@@ -44,7 +44,7 @@ const INIT_DELAY_MS: u64 = 1000;
 const MAX_CHIPS_ON_CHAIN: usize = 64;
 
 /// Bit position where work ID starts in the second word provided by the IP core with mining work
-/// result
+/// solution
 const WORK_ID_OFFSET: usize = 8;
 
 /// Oscillator speed for all chips on S9 hash boards
@@ -65,7 +65,7 @@ const FPGA_IPCORE_F_CLK_BASE_BAUD_DIV: usize = 16;
 ///
 /// Main responsibilities:
 /// - memory mapping of the FPGA control interface
-/// - mining work submission and result processing
+/// - mining work submission and solution processing
 ///
 /// TODO: implement drop trait (results in unmap)
 /// TODO: rename to HashBoardCtrl and get rid of the hash_chain identifiers + array
@@ -512,21 +512,21 @@ where
     }
 
     #[inline]
-    /// Helper function that extracts work ID from the result ID
-    pub fn get_work_id_from_result_id(&self, result_id: u32) -> u32 {
-        ((result_id >> WORK_ID_OFFSET) >> self.midstate_count_bits)
+    /// Helper function that extracts work ID from the solution ID
+    pub fn get_work_id_from_solution_id(&self, solution_id: u32) -> u32 {
+        ((solution_id >> WORK_ID_OFFSET) >> self.midstate_count_bits)
     }
 
     #[inline]
-    /// Extracts midstate index from the result ID
-    fn get_midstate_idx_from_result_id(&self, result_id: u32) -> usize {
-        ((result_id >> WORK_ID_OFFSET) & ((1u32 << self.midstate_count_bits) - 1)) as usize
+    /// Extracts midstate index from the solution ID
+    fn get_midstate_idx_from_solution_id(&self, solution_id: u32) -> usize {
+        ((solution_id >> WORK_ID_OFFSET) & ((1u32 << self.midstate_count_bits) - 1)) as usize
     }
 
     #[inline]
-    /// Extracts solution index from the result ID
-    pub fn get_solution_idx_from_result_id(&self, result_id: u32) -> usize {
-        (result_id & ((1u32 << WORK_ID_OFFSET) - 1)) as usize
+    /// Extracts solution index from the solution ID
+    pub fn get_solution_idx_from_solution_id(&self, solution_id: u32) -> usize {
+        (solution_id & ((1u32 << WORK_ID_OFFSET) - 1)) as usize
     }
 
     /// Serializes command into 32-bit words and submits it to the command TX FIFO
@@ -613,7 +613,7 @@ where
         Ok(work_id)
     }
 
-    fn recv_work_result(&mut self) -> Result<Option<super::MiningWorkResult>, io::Error> {
+    fn recv_solution(&mut self) -> Result<Option<super::MiningWorkSolution>, io::Error> {
         let nonce; // = self.read_from_work_rx_fifo()?;
                    // TODO: to be refactored once we have asynchronous handling in place
                    // fetch command response from IP core's fifo
@@ -630,20 +630,20 @@ where
 
         let word2 = self.read_from_work_rx_fifo()?;
 
-        let result = super::MiningWorkResult {
+        let solution = super::MiningWorkSolution {
             nonce,
             // this hardware doesn't do any nTime rolling, keep it @ None
             ntime: None,
-            midstate_idx: self.get_midstate_idx_from_result_id(word2),
+            midstate_idx: self.get_midstate_idx_from_solution_id(word2),
             // leave the result ID as-is so that we can extract solution index etc later.
-            result_id: word2 & 0xffffffu32,
+            solution_id: word2 & 0xffffffu32,
         };
 
-        Ok(Some(result))
+        Ok(Some(solution))
     }
 
-    fn get_work_id_from_result(&self, result: &super::MiningWorkResult) -> u32 {
-        self.get_work_id_from_result_id(result.result_id)
+    fn get_work_id_from_solution(&self, solution: &super::MiningWorkSolution) -> u32 {
+        self.get_work_id_from_solution_id(solution.solution_id)
     }
 
     fn get_chip_count(&self) -> usize {
@@ -764,46 +764,47 @@ mod test {
         );
     }
 
-    /// This test verifies correct parsing of work result for all multi-midstate configurations.
-    /// The result_word represents the second word of the work result (after nonce) provided by the
-    /// FPGA IP core
+    /// This test verifies correct parsing of mining work solution for all multi-midstate
+    /// configurations.
+    /// The solution_word represents the second word of data provided that follows the nonce as
+    /// provided by the FPGA IP core
     #[test]
-    fn test_get_result_word_attributes() {
-        let result_word = 0x00123502;
-        struct ExpectedResultData {
+    fn test_get_solution_word_attributes() {
+        let solution_word = 0x00123502;
+        struct ExpectedSolutionData {
             work_id: u32,
             midstate_idx: usize,
             solution_idx: usize,
             midstate_count: hchainio0::ctrl_reg::MIDSTATE_CNTW,
         };
-        let expected_result_data = [
-            ExpectedResultData {
+        let expected_solution_data = [
+            ExpectedSolutionData {
                 work_id: 0x1235,
                 midstate_idx: 0,
                 solution_idx: 2,
                 midstate_count: hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
             },
-            ExpectedResultData {
+            ExpectedSolutionData {
                 work_id: 0x1235 >> 1,
                 midstate_idx: 1,
                 solution_idx: 2,
                 midstate_count: hchainio0::ctrl_reg::MIDSTATE_CNTW::TWO,
             },
-            ExpectedResultData {
+            ExpectedSolutionData {
                 work_id: 0x1235 >> 2,
                 midstate_idx: 1,
                 solution_idx: 2,
                 midstate_count: hchainio0::ctrl_reg::MIDSTATE_CNTW::FOUR,
             },
         ];
-        for (i, expected_result_data) in expected_result_data.iter().enumerate() {
+        for (i, expected_solution_data) in expected_solution_data.iter().enumerate() {
             // The midstate configuration (ctrl_reg::MIDSTATE_CNTW) doesn't implement a debug
             // trait. Therefore, we extract only those parts that can be easily displayed when a
             // test failed.
             let expected_data = (
-                expected_result_data.work_id,
-                expected_result_data.midstate_idx,
-                expected_result_data.solution_idx,
+                expected_solution_data.work_id,
+                expected_solution_data.midstate_idx,
+                expected_solution_data.solution_idx,
             );
             let gpio_mgr = gpio::ControlPinManager::new();
             let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
@@ -811,27 +812,27 @@ mod test {
                 &gpio_mgr,
                 voltage_ctrl_backend,
                 8,
-                &expected_result_data.midstate_count,
+                &expected_solution_data.midstate_count,
             )
             .unwrap();
 
             assert_eq!(
-                h_chain_ctl.get_work_id_from_result_id(result_word),
-                expected_result_data.work_id,
+                h_chain_ctl.get_work_id_from_solution_id(solution_word),
+                expected_solution_data.work_id,
                 "Invalid work ID, iteration: {}, test data: {:#06x?}",
                 i,
                 expected_data
             );
             assert_eq!(
-                h_chain_ctl.get_midstate_idx_from_result_id(result_word),
-                expected_result_data.midstate_idx,
+                h_chain_ctl.get_midstate_idx_from_solution_id(solution_word),
+                expected_solution_data.midstate_idx,
                 "Invalid midstate index, iteration: {}, test data: {:#06x?}",
                 i,
                 expected_data
             );
             assert_eq!(
-                h_chain_ctl.get_solution_idx_from_result_id(result_word),
-                expected_result_data.solution_idx,
+                h_chain_ctl.get_solution_idx_from_solution_id(solution_word),
+                expected_solution_data.solution_idx,
                 "Invalid solution index, iteration: {}, test data: {:#06x?}",
                 i,
                 expected_data
