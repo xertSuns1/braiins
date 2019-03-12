@@ -3,6 +3,7 @@
 use failure::{Backtrace, Context, Fail};
 use std::fmt::{self, Display};
 use std::io;
+use uio;
 
 #[derive(Debug)]
 pub struct Error {
@@ -14,6 +15,10 @@ pub enum ErrorKind {
     /// Standard input/output error.
     #[fail(display = "IO error: {}", _0)]
     Io(String),
+
+    /// Error when opening UIO device
+    #[fail(display = "UIO error: {}", _0)]
+    Uio(String),
 
     /// General error used for more specific input/output error.
     #[fail(display = "General error: {}", _0)]
@@ -111,6 +116,15 @@ impl From<Context<String>> for Error {
     fn from(context: Context<String>) -> Self {
         Self {
             inner: context.map(|info| ErrorKind::General(info)),
+        }
+    }
+}
+
+impl From<uio::UioError> for Error {
+    fn from(uio_error: uio::UioError) -> Self {
+        let msg = uio_error.to_string();
+        Self {
+            inner: Context::new(ErrorKind::Uio(msg)),
         }
     }
 }
