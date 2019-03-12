@@ -2,6 +2,7 @@
 name = "antminer-dev"
 version = "0.1.0"
 authors = ["Jan Čapek <jan@braiins.com>"]
+edition = '2018'
 
 [dependencies]
 rminer = { path = "../" }

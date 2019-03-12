@@ -1,4 +1,6 @@
 use packed_struct::prelude::*;
+use packed_struct_codegen::PackedStruct;
+use packed_struct_codegen::{PrimitiveEnum_u16, PrimitiveEnum_u8};
 
 use std::io;
 use std::mem::size_of;

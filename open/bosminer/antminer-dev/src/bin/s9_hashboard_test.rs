@@ -1,9 +1,3 @@
-extern crate linux_embedded_hal;
-extern crate rminer;
-extern crate s9_io;
-extern crate slog;
-extern crate uint;
-
 use rminer::hal;
 use rminer::hal::s9::gpio;
 use rminer::hal::s9::power;
@@ -14,7 +8,6 @@ use slog::{info, trace};
 
 use linux_embedded_hal::I2cdev;
 
-use std::thread;
 use std::time::{Duration, SystemTime};
 
 /// Maximum length of pending work list corresponds with the work ID range supported by the FPGA
@@ -302,10 +295,11 @@ where
     while let Some(solution) = h_chain_ctl.recv_solution().unwrap() {
         let work_id = h_chain_ctl.get_work_id_from_solution_id(solution.solution_id) as usize;
 
-        let mut work = work_registry.find_work(work_id);
+        let work = work_registry.find_work(work_id);
         match work {
             Some(work_item) => {
-                let solution_idx = h_chain_ctl.get_solution_idx_from_solution_id(solution.solution_id);
+                let solution_idx =
+                    h_chain_ctl.get_solution_idx_from_solution_id(solution.solution_id);
                 let status = work_item.insert_solution(solution, solution_idx);
 
                 // work item detected a new unique solution, we will push it for further processing

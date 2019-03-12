@@ -1,13 +1,8 @@
-extern crate libc;
-extern crate nix;
-extern crate s9_io;
-
-use self::nix::sys::mman::{MapFlags, ProtFlags};
+use nix::sys::mman::{MapFlags, ProtFlags};
 
 use std::fs::OpenOptions;
 use std::io;
 use std::mem::size_of;
-use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 // TODO: remove thread specific components
 use std::thread;
@@ -17,18 +12,15 @@ use std::time::SystemTime;
 
 use slog::{error, info, trace};
 
-use misc::LOGGER;
-
-use uint;
+use crate::misc::LOGGER;
 
 use byteorder::{ByteOrder, LittleEndian};
 use packed_struct::{PackedStruct, PackedStructSlice};
 
 use embedded_hal::digital::InputPin;
 use embedded_hal::digital::OutputPin;
-use linux_embedded_hal::I2cdev;
 
-use self::s9_io::hchainio0;
+use s9_io::hchainio0;
 
 mod bm1387;
 pub mod gpio;

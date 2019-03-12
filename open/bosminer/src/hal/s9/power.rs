@@ -1,5 +1,4 @@
 // TODO remove thread specific code
-use std;
 use std::io;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -8,7 +7,7 @@ use std::time::{Duration, SystemTime};
 
 use slog::trace;
 
-use misc::LOGGER;
+use crate::misc::LOGGER;
 
 use byteorder::{BigEndian, ByteOrder};
 
