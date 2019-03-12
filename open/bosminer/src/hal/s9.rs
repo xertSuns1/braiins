@@ -87,31 +87,28 @@ pub struct HChainCtl<'a, VBackend> {
     last_heartbeat_sent: Option<SystemTime>,
 }
 
+fn find_uio_by_name(uio_name: String) -> error::Result<uio::UioDevice> {
+    let mut i = 0;
+    loop {
+        let dev = uio::UioDevice::new(i)?;
+        let name = dev.get_name()?;
+        if name == uio_name {
+            return Ok(dev);
+        }
+        i = i + 1;
+    }
+}
+
 impl<'a, VBackend> HChainCtl<'a, VBackend>
 where
     VBackend: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
     /// Performs memory mapping of IP core's register block
-    fn mmap() -> error::Result<*const hchainio0::RegisterBlock> {
-        let mem_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .custom_flags(libc::O_SYNC)
-            .open("/dev/mem")
-            .context("cannot open system memory device")?;
-
-        let mmap = unsafe {
-            nix::sys::mman::mmap(
-                0 as *mut libc::c_void,
-                4096,
-                ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-                MapFlags::MAP_SHARED,
-                mem_file.as_raw_fd(),
-                s9_io::HCHAINIO0::ptr() as libc::off_t,
-            )
-        };
-        let address = mmap.context("cannot map IP core register block")?;
-        Ok(address as *const hchainio0::RegisterBlock)
+    fn mmap(hashboard_idx: usize) -> error::Result<*const hchainio0::RegisterBlock> {
+        let uio_name = format!("chain{}", hashboard_idx);
+        let uio = find_uio_by_name(uio_name)?;
+        let mem = uio.map_mapping(0)?;
+        Ok(mem as *const hchainio0::RegisterBlock)
     }
 
     /// Creates a new hashboard controller with memory mapped FPGA IP core
@@ -149,7 +146,7 @@ where
                 "failed to initialize reset pin".to_string(),
             ))?;
 
-        let hash_chain_io = Self::mmap()?;
+        let hash_chain_io = Self::mmap(hashboard_idx)?;
         let hash_chain_io = unsafe { &*hash_chain_io };
 
         Ok(Self {
