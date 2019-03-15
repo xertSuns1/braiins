@@ -27,27 +27,39 @@ const PIC_COMMAND_2: u8 = 0xAA;
 
 // All commands provided by the PIC based voltage controller
 const SET_PIC_FLASH_POINTER: u8 = 0x01;
-const _SEND_DATA_TO_IIC: u8 = 0x02;
+#[allow(dead_code)]
+const SEND_DATA_TO_IIC: u8 = 0x02;
 const READ_DATA_FROM_IIC: u8 = 0x03;
-const _ERASE_IIC_FLASH: u8 = 0x04;
-const _WRITE_DATA_INTO_PIC: u8 = 0x05;
+#[allow(dead_code)]
+const ERASE_IIC_FLASH: u8 = 0x04;
+#[allow(dead_code)]
+const WRITE_DATA_INTO_PIC: u8 = 0x05;
 const JUMP_FROM_LOADER_TO_APP: u8 = 0x06;
 const RESET_PIC: u8 = 0x07;
 const GET_PIC_FLASH_POINTER: u8 = 0x08;
-const _ERASE_PIC_APP_PROGRAM: u8 = 0x09;
+#[allow(dead_code)]
+const ERASE_PIC_APP_PROGRAM: u8 = 0x09;
 const SET_VOLTAGE: u8 = 0x10;
-const _SET_VOLTAGE_TIME: u8 = 0x11;
-const _SET_HASH_BOARD_ID: u8 = 0x12;
-const _GET_HASH_BOARD_ID: u8 = 0x13;
-const _SET_HOST_MAC_ADDRESS: u8 = 0x14;
+#[allow(dead_code)]
+const SET_VOLTAGE_TIME: u8 = 0x11;
+#[allow(dead_code)]
+const SET_HASH_BOARD_ID: u8 = 0x12;
+#[allow(dead_code)]
+const GET_HASH_BOARD_ID: u8 = 0x13;
+#[allow(dead_code)]
+const SET_HOST_MAC_ADDRESS: u8 = 0x14;
 const ENABLE_VOLTAGE: u8 = 0x15;
 const SEND_HEART_BEAT: u8 = 0x16;
 const GET_PIC_SOFTWARE_VERSION: u8 = 0x17;
 const GET_VOLTAGE: u8 = 0x18;
-const _GET_DATE: u8 = 0x19;
-const _GET_WHICH_MAC: u8 = 0x20;
-const _GET_MAC: u8 = 0x21;
-const _WR_TEMP_OFFSET_VALUE: u8 = 0x22;
+#[allow(dead_code)]
+const GET_DATE: u8 = 0x19;
+#[allow(dead_code)]
+const GET_WHICH_MAC: u8 = 0x20;
+#[allow(dead_code)]
+const GET_MAC: u8 = 0x21;
+#[allow(dead_code)]
+const WR_TEMP_OFFSET_VALUE: u8 = 0x22;
 const RD_TEMP_OFFSET_VALUE: u8 = 0x23;
 
 /// The PIC firmware in the voltage controller is expected to provide/return this version

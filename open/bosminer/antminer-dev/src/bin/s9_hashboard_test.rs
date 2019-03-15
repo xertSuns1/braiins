@@ -32,7 +32,7 @@ impl MiningWorkRegistryItem {
     fn insert_solution(
         &mut self,
         new_solution: hal::MiningWorkSolution,
-        solution_idx: usize,
+        _solution_idx: usize,
     ) -> InsertSolutionStatus {
         let mut status = InsertSolutionStatus {
             duplicate: false,
@@ -74,6 +74,7 @@ struct InsertSolutionStatus {
     unique_solution: Option<UniqueMiningWorkSolution>,
 }
 
+#[allow(dead_code)]
 /// Container with mining work and a corresponding solution received at a particular time
 /// This data structure is used when posting work+solution pairs for further submission upstream.
 struct UniqueMiningWorkSolution {
