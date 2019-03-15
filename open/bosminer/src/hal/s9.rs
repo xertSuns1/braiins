@@ -73,10 +73,12 @@ pub struct HChainCtl<'a, VBackend> {
     /// TODO: consider making voltage ctrl a shared instance so that heartbeat and regular
     /// processing can use it. More: the backend should also become shared instance?
     voltage_ctrl: power::VoltageCtrl<VBackend>,
+    #[allow(dead_code)]
     /// Plug pin that indicates the hashboard is present
     plug_pin: gpio::PinIn,
     /// Pin for resetting the hashboard
     rst_pin: gpio::PinOut,
+    #[allow(dead_code)]
     /// When the heartbeat was last sent
     last_heartbeat_sent: Option<SystemTime>,
 }

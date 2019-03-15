@@ -7,7 +7,9 @@ use std::mem::size_of;
 
 pub const GET_ADDRESS_REG: u8 = 0x00;
 pub const PLL_PARAM_REG: u8 = 0x0c;
+#[allow(dead_code)]
 pub const HASH_COUNTING_REG: u8 = 0x14;
+#[allow(dead_code)]
 pub const TICKET_MASK_REG: u8 = 0x14;
 pub const MISC_CONTROL_REG: u8 = 0x1c;
 
@@ -73,6 +75,7 @@ impl CmdHeader {
     }
 
     #[inline]
+    #[allow(dead_code)]
     /// Helper method - when streaming multiple commands to eliminate the need to create a new
     /// command instance every time, we allow modifying the chip address
     pub fn set_chip_address(&mut self, addr: u8) {
