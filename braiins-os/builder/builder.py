@@ -2215,6 +2215,7 @@ class Builder:
         staging_dir = os.path.join(self._working_dir, 'staging_dir')
         target_dir = os.path.join(staging_dir, target_name)
         toolchain_dir = os.path.join(staging_dir, toolchain_name)
+        cross_prefix = "arm-openwrt-linux"
 
         if not os.path.exists(target_dir):
             msg = "Target directory '{}' does not exist".format(target_dir)
@@ -2235,6 +2236,7 @@ class Builder:
         sys.stdout.write('TARGET="{}";\n'.format(target_dir))
         sys.stdout.write('TOOLCHAIN="{}";\n'.format(toolchain_dir))
         sys.stdout.write('export STAGING_DIR="${TARGET}";\n')
+        sys.stdout.write('export CROSS_COMPILE={};\n'.format(cross_prefix))
 
         if (toolchain_dir + '/bin') not in env_path:
             # export PATH only if it has not been exported already

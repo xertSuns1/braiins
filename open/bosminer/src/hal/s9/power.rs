@@ -1,5 +1,4 @@
 // TODO remove thread specific code
-use std::io;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
@@ -7,6 +6,9 @@ use std::time::{Duration, SystemTime};
 
 use slog::trace;
 
+use failure::ResultExt;
+
+use crate::error::{self, ErrorKind};
 use crate::misc::LOGGER;
 
 use byteorder::{BigEndian, ByteOrder};
@@ -69,11 +71,10 @@ pub const EXPECTED_VOLTAGE_CTRL_VERSION: u8 = 0x03;
 pub trait VoltageCtrlBackend {
     /// Sends a Write transaction for a voltage controller on a particular hashboard
     /// * `data` - payload of the command
-    fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> Result<(), io::Error>;
+    fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()>;
     /// Sends a Read transaction for a voltage controller on a particular hashboard
     /// * `length` - size of the expected response in bytes
-    fn read(&mut self, hashboard_idx: usize, command: u8, length: u8)
-        -> Result<Vec<u8>, io::Error>;
+    fn read(&mut self, hashboard_idx: usize, command: u8, length: u8) -> error::Result<Vec<u8>>;
 
     /// Custom clone implementation
     /// TODO: review how this could be eliminated
@@ -108,40 +109,26 @@ impl VoltageCtrlI2cBlockingBackend<I2cdev> {
 impl<T, E> VoltageCtrlBackend for VoltageCtrlI2cBlockingBackend<T>
 where
     T: Read<Error = E> + Write<Error = E>,
-    E: std::error::Error,
+    E: failure::Fail,
 {
-    fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> Result<(), io::Error> {
+    fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()> {
         let command_bytes = [&[PIC_COMMAND_1, PIC_COMMAND_2, command], data].concat();
         self.inner
             .write(Self::get_i2c_address(hashboard_idx), &command_bytes)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("I2C write error: {}", e)))?;
+            .with_context(|e| ErrorKind::I2c(e.to_string()))?;
         // I2C transactions require a delay, so that the Linux driver processes them properly
         // TODO: investigate this topic
         thread::sleep(Duration::from_millis(I2C_TIMEOUT_MS));
         Ok(())
     }
 
-    fn read(
-        &mut self,
-        hashboard_idx: usize,
-        command: u8,
-        length: u8,
-    ) -> Result<Vec<u8>, io::Error> {
-        self.write(hashboard_idx, command, &[]).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("I2C read error in sending command: {}", e),
-            )
-        })?;
+    fn read(&mut self, hashboard_idx: usize, command: u8, length: u8) -> error::Result<Vec<u8>> {
+        self.write(hashboard_idx, command, &[])
+            .with_context(|e| ErrorKind::I2c(e.to_string()))?;
         let mut result = vec![0; length as usize];
         self.inner
             .read(Self::get_i2c_address(hashboard_idx), &mut result)
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("I2C read error in receiving data: {}", e),
-                )
-            })?;
+            .with_context(|e| ErrorKind::I2c(e.to_string()))?;
         Ok(result)
     }
 
@@ -164,16 +151,11 @@ where
 impl VoltageCtrlBackend
     for VoltageCtrlI2cSharedBlockingBackend<VoltageCtrlI2cBlockingBackend<I2cdev>>
 {
-    fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> Result<(), io::Error> {
+    fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()> {
         self.0.lock().unwrap().write(hashboard_idx, command, data)
     }
 
-    fn read(
-        &mut self,
-        hashboard_idx: usize,
-        command: u8,
-        length: u8,
-    ) -> Result<Vec<u8>, io::Error> {
+    fn read(&mut self, hashboard_idx: usize, command: u8, length: u8) -> error::Result<Vec<u8>> {
         self.0.lock().unwrap().read(hashboard_idx, command, length)
     }
 
@@ -195,73 +177,70 @@ pub struct VoltageCtrl<T> {
     hashboard_idx: usize,
 }
 
-/// Aliasing
-type VoltageCtrlResult<T> = Result<T, io::Error>;
-
 impl<T> VoltageCtrl<T>
 where
     T: 'static + VoltageCtrlBackend + Send,
 {
-    fn read(&mut self, command: u8, length: u8) -> Result<Vec<u8>, io::Error> {
+    fn read(&mut self, command: u8, length: u8) -> error::Result<Vec<u8>> {
         self.backend.read(self.hashboard_idx, command, length)
     }
 
-    fn write(&mut self, command: u8, data: &[u8]) -> Result<(), io::Error> {
+    fn write(&mut self, command: u8, data: &[u8]) -> error::Result<()> {
         self.backend.write(self.hashboard_idx, command, data)
     }
 
-    pub fn reset(&mut self) -> VoltageCtrlResult<()> {
+    pub fn reset(&mut self) -> error::Result<()> {
         self.write(RESET_PIC, &[])
     }
 
-    pub fn jump_from_loader_to_app(&mut self) -> VoltageCtrlResult<()> {
+    pub fn jump_from_loader_to_app(&mut self) -> error::Result<()> {
         self.write(JUMP_FROM_LOADER_TO_APP, &[])
     }
 
-    pub fn get_version(&mut self) -> VoltageCtrlResult<u8> {
+    pub fn get_version(&mut self) -> error::Result<u8> {
         Ok(self.read(GET_PIC_SOFTWARE_VERSION, 1)?[0])
     }
 
-    pub fn set_flash_pointer(&mut self, address: u16) -> VoltageCtrlResult<()> {
+    pub fn set_flash_pointer(&mut self, address: u16) -> error::Result<()> {
         let mut address_bytes = [0; 2];
         BigEndian::write_u16(&mut address_bytes, address);
         self.write(SET_PIC_FLASH_POINTER, &[address_bytes[0], address_bytes[1]])
     }
 
-    pub fn get_flash_pointer(&mut self) -> VoltageCtrlResult<u16> {
+    pub fn get_flash_pointer(&mut self) -> error::Result<u16> {
         let address_bytes = self.read(GET_PIC_FLASH_POINTER, 1)?;
         Ok(BigEndian::read_u16(&address_bytes))
     }
 
-    pub fn read_data_from_iic(&mut self) -> VoltageCtrlResult<[u8; 16]> {
+    pub fn read_data_from_iic(&mut self) -> error::Result<[u8; 16]> {
         let data = self.read(READ_DATA_FROM_IIC, 16)?;
         let mut data_array = [0; 16];
         data_array.copy_from_slice(&data);
         Ok(data_array)
     }
 
-    pub fn enable_voltage(&mut self) -> VoltageCtrlResult<()> {
+    pub fn enable_voltage(&mut self) -> error::Result<()> {
         self.write(ENABLE_VOLTAGE, &[true as u8])
     }
 
-    pub fn disable_voltage(&mut self) -> VoltageCtrlResult<()> {
+    pub fn disable_voltage(&mut self) -> error::Result<()> {
         self.write(ENABLE_VOLTAGE, &[false as u8])
     }
 
-    pub fn set_voltage(&mut self, value: u8) -> VoltageCtrlResult<()> {
+    pub fn set_voltage(&mut self, value: u8) -> error::Result<()> {
         trace!(LOGGER, "Setting voltage to {}", value);
         self.write(SET_VOLTAGE, &[value])
     }
 
-    pub fn get_voltage(&mut self) -> VoltageCtrlResult<u8> {
+    pub fn get_voltage(&mut self) -> error::Result<u8> {
         Ok(self.read(GET_VOLTAGE, 1)?[0])
     }
 
-    pub fn send_heart_beat(&mut self) -> VoltageCtrlResult<()> {
+    pub fn send_heart_beat(&mut self) -> error::Result<()> {
         self.write(SEND_HEART_BEAT, &[])
     }
 
-    pub fn get_temperature_offset(&mut self) -> VoltageCtrlResult<u64> {
+    pub fn get_temperature_offset(&mut self) -> error::Result<u64> {
         let offset = self.read(RD_TEMP_OFFSET_VALUE, 8)?;
         Ok(BigEndian::read_u64(&offset))
     }
@@ -295,12 +274,7 @@ where
                     // of the heart beat period
                     let elapsed = now
                         .elapsed()
-                        .map_err(|e| {
-                            io::Error::new(
-                                io::ErrorKind::Other,
-                                format!("System time error: {}", e),
-                            )
-                        })
+                        .context("cannot measure elapsed time")
                         .unwrap();
                     // sleep only if we have not exceeded the heart beat period. This makes the
                     // code more robust when running it in debugger to prevent underflow time

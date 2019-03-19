@@ -28,7 +28,7 @@ lazy_static = "1.2"
 slog = { version = "~2.4", features = ["max_level_trace", "release_max_level_trace"] }
 slog-term = "2.4"
 slog-async = "2.3"
-
+failure = "0.1.5"
 
 [dependencies.embedded-hal]
 version = "0.2.0"

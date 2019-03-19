@@ -1,4 +1,3 @@
-use std::io;
 use uint;
 
 pub mod s9;
@@ -47,10 +46,10 @@ pub trait HardwareCtl {
     ///
     /// Returns a unique ID that can be used for registering the work within a hardware specific
     /// registry
-    fn send_work(&mut self, work: &MiningWork) -> Result<u32, io::Error>;
+    fn send_work(&mut self, work: &MiningWork) -> Result<u32, failure::Error>;
 
     /// Receives 1 MiningWorkSolution
-    fn recv_solution(&mut self) -> Result<Option<MiningWorkSolution>, io::Error>;
+    fn recv_solution(&mut self) -> Result<Option<MiningWorkSolution>, failure::Error>;
 
     /// Extracts original work ID for a mining solution
     fn get_work_id_from_solution(&self, solution: &MiningWorkSolution) -> u32;
