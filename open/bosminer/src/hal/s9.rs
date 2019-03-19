@@ -1,7 +1,7 @@
+use nix;
 use nix::sys::mman::{MapFlags, ProtFlags};
 
 use std::fs::OpenOptions;
-use std::io;
 use std::mem::size_of;
 use std::os::unix::io::AsRawFd;
 // TODO: remove thread specific components
@@ -10,8 +10,11 @@ use std::thread;
 use std::time::Duration;
 use std::time::SystemTime;
 
-use slog::{error, info, trace};
+use slog::{info, trace};
 
+use failure::ResultExt;
+
+use crate::error::{self, ErrorKind};
 use crate::misc::LOGGER;
 
 use byteorder::{ByteOrder, LittleEndian};
@@ -90,11 +93,11 @@ where
     /// Performs memory mapping of IP core's register block
     /// # TODO
     /// Research why custom flags - specifically O_SYNC and O_LARGEFILE fail
-    fn mmap() -> Result<*const hchainio0::RegisterBlock, io::Error> {
+    fn mmap() -> error::Result<*const hchainio0::RegisterBlock> {
         let mem_file = //File::open(path)?;
             OpenOptions::new().read(true).write(true)
                 //.custom_flags(libc::O_RDWR | libc::O_SYNC | libc::O_LARGEFILE)
-                .open("/dev/mem")?;
+                .open("/dev/mem").context("cannot open system memory device")?;
 
         let mmap = unsafe {
             nix::sys::mman::mmap(
@@ -106,8 +109,8 @@ where
                 s9_io::HCHAINIO0::ptr() as libc::off_t,
             )
         };
-        mmap.map(|addr| addr as *const hchainio0::RegisterBlock)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("mmap error! {:?}", e)))
+        let address = mmap.context("cannot map IP core register block")?;
+        Ok(address as *const hchainio0::RegisterBlock)
     }
 
     /// Creates a new hashboard controller with memory mapped FPGA IP core
@@ -121,44 +124,34 @@ where
         voltage_ctrl_backend: VBackend,
         hashboard_idx: usize,
         midstate_count: &s9_io::hchainio0::ctrl_reg::MIDSTATE_CNTW,
-    ) -> Result<Self, io::Error> {
+    ) -> error::Result<Self> {
         // Hashboard creation is aborted if the pin is not present
         let plug_pin = gpio_mgr
             .get_pin_in(gpio::PinInName::Plug(hashboard_idx))
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!(
-                        "Hashboard {} failed to initialize plug pin: {}",
-                        hashboard_idx, e
-                    ),
-                )
-            })?;
+            .context(ErrorKind::Hashboard(
+                hashboard_idx,
+                "failed to initialize plug pin".to_string(),
+            ))?;
         // also detect that the board is present
         if plug_pin.is_low() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Hashboard {} not present", hashboard_idx),
-            ));
+            Err(ErrorKind::Hashboard(
+                hashboard_idx,
+                "not present".to_string(),
+            ))?
         }
 
         // Instantiate the reset pin
         let rst_pin = gpio_mgr
             .get_pin_out(gpio::PinOutName::Rst(hashboard_idx))
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!(
-                        "Hashboard {}: failed to initialize reset pin: {}",
-                        hashboard_idx, e
-                    ),
-                )
-            })?;
+            .context(ErrorKind::Hashboard(
+                hashboard_idx,
+                "failed to initialize reset pin".to_string(),
+            ))?;
 
         let hash_chain_io = Self::mmap()?;
         let hash_chain_io = unsafe { &*hash_chain_io };
 
-        Result::Ok(Self {
+        Ok(Self {
             hash_chain_ios: [hash_chain_io, hash_chain_io],
             work_id: 0,
             chip_count: 0,
@@ -171,7 +164,7 @@ where
     }
 
     /// Helper method that initializes the FPGA IP core
-    fn ip_core_init(&self) -> Result<(), io::Error> {
+    fn ip_core_init(&self) -> error::Result<()> {
         // Disable ip core
         self.disable_ip_core();
         self.enable_ip_core();
@@ -198,7 +191,7 @@ where
     }
 
     /// Initializes the complete hashboard including enumerating all chips
-    pub fn init(&mut self) -> Result<(), io::Error> {
+    pub fn init(&mut self) -> error::Result<()> {
         self.ip_core_init()?;
         info!(LOGGER, "Hashboard IP core initialized");
         self.voltage_ctrl.reset()?;
@@ -212,13 +205,12 @@ where
         );
         // TODO accept multiple
         if version != power::EXPECTED_VOLTAGE_CTRL_VERSION {
-            let err_msg = format!(
-                "Unexpected voltage controller firmware version: {}, expected: {}",
-                version,
-                power::EXPECTED_VOLTAGE_CTRL_VERSION
-            );
-            error!(LOGGER, "{}", err_msg);
-            return Err(io::Error::new(io::ErrorKind::Other, err_msg));
+            // TODO: error!(LOGGER, "{}", err_msg);
+            Err(ErrorKind::UnexpectedVersion(
+                "voltage controller firmware".to_string(),
+                version.to_string(),
+                power::EXPECTED_VOLTAGE_CTRL_VERSION.to_string(),
+            ))?
         }
         // Voltage controller successfully initialized at this point, we should start sending
         // heart beats to it. Otherwise, it would shut down in about 10 seconds.
@@ -265,39 +257,33 @@ where
     }
 
     /// Detects the number of chips on the hashing chain and assigns an address to each chip
-    fn enumerate_chips(&mut self) -> Result<(), io::Error> {
+    fn enumerate_chips(&mut self) -> error::Result<()> {
         // Enumerate all chips (broadcast read address register request)
         let get_addr_cmd = bm1387::GetStatusCmd::new(0, true, bm1387::GET_ADDRESS_REG).pack();
         self.send_ctl_cmd(&get_addr_cmd, true);
         self.chip_count = 0;
         while let Some(addr_reg) = self.recv_ctl_cmd_resp::<bm1387::GetAddressReg>()? {
             if addr_reg.chip_rev != bm1387::ChipRev::Bm1387 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!(
-                        "Unexpected revision of chip {} (expected: {:?} received: {:?})",
-                        self.chip_count,
-                        addr_reg.chip_rev,
-                        bm1387::ChipRev::Bm1387
-                    ),
-                ));
+                Err(ErrorKind::Hashchip(format!(
+                    "unexpected revision of chip {} (expected: {:?} received: {:?})",
+                    self.chip_count,
+                    addr_reg.chip_rev,
+                    bm1387::ChipRev::Bm1387
+                )))?
             }
             self.chip_count += 1;
         }
 
         if self.chip_count >= MAX_CHIPS_ON_CHAIN {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Detected {} chips, expected less than 256 chips on 1 chain. Possibly a hardware issue?",
-                    self.chip_count
-                ),
-            ));
+            Err(ErrorKind::Hashchip(format!(
+                "detected {} chips, expected less than 256 chips on 1 chain. Possibly a hardware issue?",
+                self.chip_count
+            )))?
         }
         if self.chip_count == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "No chips detected on the current chain.",
-            ));
+            Err(ErrorKind::Hashchip(
+                "no chips detected on the current chain".to_string(),
+            ))?
         }
         // Set all chips to be offline before address assignment. This is important so that each
         // chip after initially accepting the address will pass on further addresses down the chain
@@ -319,12 +305,11 @@ where
     }
 
     /// Helper method that applies a function to all detected chips on the chain
-    fn for_all_chips<F, R>(&self, f: F) -> Result<R, io::Error>
+    fn for_all_chips<F, R>(&self, f: F) -> error::Result<R>
     where
-        F: Fn(u8) -> Result<R, io::Error>,
+        F: Fn(u8) -> error::Result<R>,
     {
-        let mut result: Result<R, io::Error> =
-            Err(io::Error::new(io::ErrorKind::Other, "no chips to iterate"));
+        let mut result = Err(ErrorKind::Hashchip("no chips to iterate".to_string()).into());
         for addr in (0..self.chip_count * 4).step_by(4) {
             // the enumeration takes care that address always fits into 8 bits.
             // Therefore, we can truncate the bits here.
@@ -335,7 +320,7 @@ where
     }
 
     /// Loads PLL register with a starting value
-    fn set_pll(&self) -> Result<(), io::Error> {
+    fn set_pll(&self) -> error::Result<()> {
         self.for_all_chips(|addr| {
             let cmd = bm1387::SetConfigCmd::new(addr, false, bm1387::PLL_PARAM_REG, 0x21026800);
             self.send_ctl_cmd(&cmd.pack(), false);
@@ -360,7 +345,7 @@ where
         baud_rate: usize,
         not_set_baud: bool,
         gate_block: bool,
-    ) -> Result<usize, io::Error> {
+    ) -> error::Result<usize> {
         let (baud_clock_div, actual_baud_rate) = calc_baud_clock_div(
             baud_rate,
             CHIP_OSC_CLK_HZ,
@@ -406,7 +391,7 @@ where
     ///
     /// Note: change baud rate of the FPGA is only desirable as a step after all chips in the
     /// chain have been reconfigured for a different speed, too.
-    fn set_ip_core_baud_rate(&self, baud: usize) -> Result<(), io::Error> {
+    fn set_ip_core_baud_rate(&self, baud: usize) -> error::Result<()> {
         let (baud_clock_div, actual_baud_rate) = calc_baud_clock_div(
             baud,
             FPGA_IPCORE_F_CLK_SPEED_HZ,
@@ -462,7 +447,7 @@ where
     }
 
     #[inline]
-    fn read_from_work_rx_fifo(&self) -> Result<u32, io::Error> {
+    fn read_from_work_rx_fifo(&self) -> error::Result<u32> {
         let hash_chain_io = self.hash_chain_ios[0];
         // TODO temporary workaround until we have asynchronous handling - wait 5 ms if the FIFO
         // is empty
@@ -470,10 +455,10 @@ where
             thread::sleep(Duration::from_millis(5));
         }
         if hash_chain_io.stat_reg.read().work_rx_empty().bit() {
-            return Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "Work RX fifo empty",
-            ));
+            Err(ErrorKind::Fifo(
+                error::Fifo::TimedOut(5),
+                "work RX fifo empty".to_string(),
+            ))?
         }
         Ok(hash_chain_io.work_rx_fifo.read().bits())
     }
@@ -487,7 +472,7 @@ where
     }
 
     #[inline]
-    fn read_from_cmd_rx_fifo(&self) -> Result<u32, io::Error> {
+    fn read_from_cmd_rx_fifo(&self) -> error::Result<u32> {
         let hash_chain_io = self.hash_chain_ios[0];
         // TODO temporary workaround until we have asynchronous handling - wait 5 ms if the FIFO
         // is empty
@@ -497,10 +482,10 @@ where
         }
         if hash_chain_io.stat_reg.read().cmd_rx_empty().bit() {
             trace!(LOGGER, "Reading CMD RX FIFO timed out!");
-            return Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "Command RX fifo empty, read has timedout",
-            ));
+            Err(ErrorKind::Fifo(
+                error::Fifo::TimedOut(5),
+                "command RX fifo empty".to_string(),
+            ))?
         }
         Ok(hash_chain_io.cmd_rx_fifo.read().bits())
     }
@@ -549,19 +534,16 @@ where
     /// - A timeout when reading the first word is converted into an empty response.
     ///   The method propagates any error other than timeout
     /// - An error that occurs during reading the second word from the FIFO is propagated.
-    fn recv_ctl_cmd_resp<T: PackedStructSlice>(&self) -> Result<Option<T>, io::Error> {
+    fn recv_ctl_cmd_resp<T: PackedStructSlice>(&self) -> error::Result<Option<T>> {
         let mut cmd_resp = [0u8; 8];
 
         // TODO: to be refactored once we have asynchronous handling in place
         // fetch command response from IP core's fifo
         match self.read_from_cmd_rx_fifo() {
-            Err(e) => {
-                if e.kind() == io::ErrorKind::TimedOut {
-                    return Ok(None);
-                } else {
-                    return Err(e);
-                }
-            }
+            Err(e) => match e.kind() {
+                ErrorKind::Fifo(error::Fifo::TimedOut(_), _) => return Ok(None),
+                e => return Err(e.into()),
+            },
             Ok(resp_word) => LittleEndian::write_u32(&mut cmd_resp[..4], resp_word),
         }
         // All errors from reading the second word are propagated
@@ -571,17 +553,11 @@ where
         // build the response instance - drop the extra byte due to FIFO being 32-bit word based
         // and drop the checksum
         // TODO: optionally verify the checksum (use debug_assert?)
-        T::unpack_from_slice(&cmd_resp[..6])
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!(
-                        "Control command unpacking error! {:?} {:#04x?}",
-                        e, cmd_resp
-                    ),
-                )
-            })
-            .map(|resp| Some(resp))
+        let resp = T::unpack_from_slice(&cmd_resp[..6]).context(format!(
+            "control command unpacking error! {:#04x?}",
+            cmd_resp
+        ))?;
+        Ok(Some(resp))
     }
 }
 
@@ -589,7 +565,7 @@ impl<'a, VBackend> super::HardwareCtl for HChainCtl<'a, VBackend>
 where
     VBackend: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
-    fn send_work(&mut self, work: &super::MiningWork) -> Result<u32, io::Error> {
+    fn send_work(&mut self, work: &super::MiningWork) -> Result<u32, failure::Error> {
         let work_id = self.next_work_id();
 
         self.write_to_work_tx_fifo(work_id);
@@ -607,18 +583,15 @@ where
         Ok(work_id)
     }
 
-    fn recv_solution(&mut self) -> Result<Option<super::MiningWorkSolution>, io::Error> {
+    fn recv_solution(&mut self) -> Result<Option<super::MiningWorkSolution>, failure::Error> {
         let nonce; // = self.read_from_work_rx_fifo()?;
                    // TODO: to be refactored once we have asynchronous handling in place
                    // fetch command response from IP core's fifo
         match self.read_from_work_rx_fifo() {
-            Err(e) => {
-                if e.kind() == io::ErrorKind::TimedOut {
-                    return Ok(None);
-                } else {
-                    return Err(e);
-                }
-            }
+            Err(e) => match e.kind() {
+                ErrorKind::Fifo(error::Fifo::TimedOut(_), _) => return Ok(None),
+                e => return Err(e.into()),
+            },
             Ok(resp_word) => nonce = resp_word,
         }
 
@@ -657,7 +630,7 @@ fn calc_baud_clock_div(
     baud_rate: usize,
     base_clock_hz: usize,
     base_clock_div: usize,
-) -> Result<(usize, usize), io::Error> {
+) -> error::Result<(usize, usize)> {
     const MAX_BAUD_RATE_ERR_PERC: usize = 5;
     // The actual calculation is:
     // base_clock_hz / (base_clock_div * baud_rate) - 1
@@ -673,13 +646,10 @@ fn calc_baud_clock_div(
     };
     // the baud rate has to be within a few percents
     if baud_rate_diff > (MAX_BAUD_RATE_ERR_PERC * baud_rate / 100) {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!(
-                "Invalid baudrate - requested: {} baud, resulting {} baud",
-                baud_rate, actual_baud_rate
-            ),
-        ));
+        Err(ErrorKind::BaudRate(format!(
+            "requested {} baud, resulting {} baud",
+            baud_rate, actual_baud_rate
+        )))?
     }
     Ok((baud_div, actual_baud_rate))
 }

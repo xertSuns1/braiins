@@ -2,8 +2,9 @@ use packed_struct::prelude::*;
 use packed_struct_codegen::PackedStruct;
 use packed_struct_codegen::{PrimitiveEnum_u16, PrimitiveEnum_u8};
 
-use std::io;
 use std::mem::size_of;
+
+use crate::error::{self, ErrorKind};
 
 pub const GET_ADDRESS_REG: u8 = 0x00;
 pub const PLL_PARAM_REG: u8 = 0x0c;
@@ -235,24 +236,20 @@ impl MiscCtrlReg {
         baud_div: usize,
         gate_block: bool,
         mmen: bool,
-    ) -> Result<Self, io::Error> {
-        if baud_div <= MAX_BAUD_CLOCK_DIV {
-            return Ok(Self {
-                not_set_baud,
-                inv_clock,
-                baud_div: (baud_div as u8).into(),
-                gate_block,
-                mmen,
-            });
-        } else {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "Baud rate divisor out of range: {}, maximum allowed: {}",
-                    baud_div, MAX_BAUD_CLOCK_DIV
-                ),
-            ));
+    ) -> error::Result<Self> {
+        if baud_div > MAX_BAUD_CLOCK_DIV {
+            Err(ErrorKind::BaudRate(format!(
+                "divisor {} is out of range, maximum allowed is {}",
+                baud_div, MAX_BAUD_CLOCK_DIV
+            )))?
         }
+        Ok(Self {
+            not_set_baud,
+            inv_clock,
+            baud_div: (baud_div as u8).into(),
+            gate_block,
+            mmen,
+        })
     }
 }
 
