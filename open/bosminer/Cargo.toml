@@ -35,3 +35,7 @@ uio = { version = "0.2", path = "uio" }
 version = "0.2.0"
 # Temporary for InputPin and OutputPin traits
 features = ["unproven"]
+
+[features]
+default = []
+hctl_polling = []

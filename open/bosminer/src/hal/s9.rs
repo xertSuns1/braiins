@@ -1,10 +1,4 @@
-use nix;
-use nix::sys::mman::{MapFlags, ProtFlags};
-
-use std::fs::OpenOptions;
 use std::mem::size_of;
-use std::os::unix::fs::OpenOptionsExt;
-use std::os::unix::io::AsRawFd;
 // TODO: remove thread specific components
 use std::thread;
 
@@ -24,9 +18,8 @@ use packed_struct::{PackedStruct, PackedStructSlice};
 use embedded_hal::digital::InputPin;
 use embedded_hal::digital::OutputPin;
 
-use s9_io::hchainio0;
-
 mod bm1387;
+mod fifo;
 pub mod gpio;
 pub mod power;
 
@@ -66,7 +59,6 @@ const FPGA_IPCORE_F_CLK_BASE_BAUD_DIV: usize = 16;
 /// TODO: implement drop trait (results in unmap)
 /// TODO: rename to HashBoardCtrl and get rid of the hash_chain identifiers + array
 pub struct HChainCtl<'a, VBackend> {
-    hash_chain_ios: [&'a hchainio0::RegisterBlock; 2],
     /// Current work ID once it rolls over, we can start retiring old jobs
     work_id: u16,
     /// Number of chips that have been detected
@@ -77,40 +69,21 @@ pub struct HChainCtl<'a, VBackend> {
     /// TODO: consider making voltage ctrl a shared instance so that heartbeat and regular
     /// processing can use it. More: the backend should also become shared instance?
     voltage_ctrl: power::VoltageCtrl<VBackend>,
-    #[allow(dead_code)]
     /// Plug pin that indicates the hashboard is present
+    #[allow(dead_code)]
     plug_pin: gpio::PinIn,
     /// Pin for resetting the hashboard
     rst_pin: gpio::PinOut,
-    #[allow(dead_code)]
     /// When the heartbeat was last sent
+    #[allow(dead_code)]
     last_heartbeat_sent: Option<SystemTime>,
-}
-
-fn find_uio_by_name(uio_name: String) -> error::Result<uio::UioDevice> {
-    let mut i = 0;
-    loop {
-        let dev = uio::UioDevice::new(i)?;
-        let name = dev.get_name()?;
-        if name == uio_name {
-            return Ok(dev);
-        }
-        i = i + 1;
-    }
+    pub fifo: fifo::HChainFifo<'a>,
 }
 
 impl<'a, VBackend> HChainCtl<'a, VBackend>
 where
     VBackend: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
-    /// Performs memory mapping of IP core's register block
-    fn mmap(hashboard_idx: usize) -> error::Result<*const hchainio0::RegisterBlock> {
-        let uio_name = format!("chain{}", hashboard_idx);
-        let uio = find_uio_by_name(uio_name)?;
-        let mem = uio.map_mapping(0)?;
-        Ok(mem as *const hchainio0::RegisterBlock)
-    }
-
     /// Creates a new hashboard controller with memory mapped FPGA IP core
     ///
     /// * `gpio_mgr` - gpio manager used for producing pins required for hashboard control
@@ -146,11 +119,7 @@ where
                 "failed to initialize reset pin".to_string(),
             ))?;
 
-        let hash_chain_io = Self::mmap(hashboard_idx)?;
-        let hash_chain_io = unsafe { &*hash_chain_io };
-
         Ok(Self {
-            hash_chain_ios: [hash_chain_io, hash_chain_io],
             work_id: 0,
             chip_count: 0,
             midstate_count_bits: midstate_count._bits(),
@@ -158,26 +127,28 @@ where
             plug_pin,
             rst_pin,
             last_heartbeat_sent: None,
+            fifo: fifo::HChainFifo::new(hashboard_idx)?,
         })
     }
 
     /// Helper method that initializes the FPGA IP core
     fn ip_core_init(&self) -> error::Result<()> {
         // Disable ip core
-        self.disable_ip_core();
-        self.enable_ip_core();
+        self.fifo.disable_ip_core();
+        self.fifo.enable_ip_core();
 
         self.set_ip_core_baud_rate(INIT_CHIP_BAUD_RATE)?;
         // TODO consolidate hardcoded constant - calculate time constant based on PLL settings etc.
-        self.set_ip_core_work_time(350000);
-        self.set_ip_core_midstate_count();
+        self.fifo.set_ip_core_work_time(350000);
+        self.fifo
+            .set_ip_core_midstate_count(self.midstate_count_bits);
 
         Ok(())
     }
 
     /// Puts the board into reset mode and disables the associated IP core
     fn enter_reset(&mut self) {
-        self.disable_ip_core();
+        self.fifo.disable_ip_core();
         // perform reset of the hashboard
         self.rst_pin.set_low();
     }
@@ -185,7 +156,7 @@ where
     /// Leaves reset mode
     fn exit_reset(&mut self) {
         self.rst_pin.set_high();
-        self.enable_ip_core();
+        self.fifo.enable_ip_core();
     }
 
     /// Initializes the complete hashboard including enumerating all chips
@@ -246,12 +217,6 @@ where
         self.set_ip_core_baud_rate(TARGET_CHIP_BAUD_RATE)?;
 
         Ok(())
-    }
-
-    #[inline]
-    pub fn is_work_tx_fifo_full(&self) -> bool {
-        let hash_chain_io = self.hash_chain_ios[0];
-        hash_chain_io.stat_reg.read().work_tx_full().bit()
     }
 
     /// Detects the number of chips on the hashing chain and assigns an address to each chip
@@ -367,24 +332,6 @@ where
         Ok(actual_baud_rate)
     }
 
-    fn enable_ip_core(&self) {
-        self.hash_chain_ios[0]
-            .ctrl_reg
-            .modify(|_, w| w.enable().bit(true));
-    }
-
-    fn disable_ip_core(&self) {
-        self.hash_chain_ios[0]
-            .ctrl_reg
-            .modify(|_, w| w.enable().bit(false));
-    }
-
-    fn set_ip_core_work_time(&self, work_time: u32) {
-        self.hash_chain_ios[0]
-            .work_time
-            .write(|w| unsafe { w.bits(work_time) });
-    }
-
     /// This method only changes the communication speed of the FPGA IP core with the chips.
     ///
     /// Note: change baud rate of the FPGA is only desirable as a step after all chips in the
@@ -403,16 +350,8 @@ where
             baud_clock_div
         );
 
-        self.hash_chain_ios[0]
-            .baud_reg
-            .write(|w| unsafe { w.bits(baud_clock_div as u32) });
+        self.fifo.set_baud_clock_div(baud_clock_div as u32);
         Ok(())
-    }
-
-    fn set_ip_core_midstate_count(&self) {
-        self.hash_chain_ios[0]
-            .ctrl_reg
-            .modify(|_, w| unsafe { w.midstate_cnt().bits(self.midstate_count_bits) });
     }
 
     fn u256_as_u32_slice(src: &uint::U256) -> &[u32] {
@@ -424,8 +363,8 @@ where
         }
     }
 
-    #[inline]
     /// Work ID's are generated with a step that corresponds to the number of configured midstates
+    #[inline]
     fn next_work_id(&mut self) -> u32 {
         let retval = self.work_id as u32;
         // compiler has to know that work ID rolls over regularly
@@ -433,75 +372,20 @@ where
         retval
     }
 
-    #[inline]
-    /// TODO: implement error handling/make interface ready for ASYNC execution
-    /// Writes single word into a TX fifo
-    fn write_to_work_tx_fifo(&self, item: u32) {
-        let hash_chain_io = self.hash_chain_ios[0];
-        while self.is_work_tx_fifo_full() {}
-        hash_chain_io
-            .work_tx_fifo
-            .write(|w| unsafe { w.bits(item) });
-    }
-
-    #[inline]
-    fn read_from_work_rx_fifo(&self) -> error::Result<u32> {
-        let hash_chain_io = self.hash_chain_ios[0];
-        // TODO temporary workaround until we have asynchronous handling - wait 5 ms if the FIFO
-        // is empty
-        if hash_chain_io.stat_reg.read().work_rx_empty().bit() {
-            thread::sleep(Duration::from_millis(5));
-        }
-        if hash_chain_io.stat_reg.read().work_rx_empty().bit() {
-            Err(ErrorKind::Fifo(
-                error::Fifo::TimedOut(5),
-                "work RX fifo empty".to_string(),
-            ))?
-        }
-        Ok(hash_chain_io.work_rx_fifo.read().bits())
-    }
-
-    #[inline]
-    /// TODO get rid of busy waiting, prepare for non-blocking API
-    fn write_to_cmd_tx_fifo(&self, item: u32) {
-        let hash_chain_io = self.hash_chain_ios[0];
-        while hash_chain_io.stat_reg.read().cmd_tx_full().bit() {}
-        hash_chain_io.cmd_tx_fifo.write(|w| unsafe { w.bits(item) });
-    }
-
-    #[inline]
-    fn read_from_cmd_rx_fifo(&self) -> error::Result<u32> {
-        let hash_chain_io = self.hash_chain_ios[0];
-        // TODO temporary workaround until we have asynchronous handling - wait 5 ms if the FIFO
-        // is empty
-        trace!(LOGGER, "Checking CMD RX FIFO empty bit");
-        if hash_chain_io.stat_reg.read().cmd_rx_empty().bit() {
-            thread::sleep(Duration::from_millis(5));
-        }
-        if hash_chain_io.stat_reg.read().cmd_rx_empty().bit() {
-            trace!(LOGGER, "Reading CMD RX FIFO timed out!");
-            Err(ErrorKind::Fifo(
-                error::Fifo::TimedOut(5),
-                "command RX fifo empty".to_string(),
-            ))?
-        }
-        Ok(hash_chain_io.cmd_rx_fifo.read().bits())
-    }
-
-    #[inline]
     /// Helper function that extracts work ID from the solution ID
+    #[inline]
     pub fn get_work_id_from_solution_id(&self, solution_id: u32) -> u32 {
         ((solution_id >> WORK_ID_OFFSET) >> self.midstate_count_bits)
     }
 
-    #[inline]
     /// Extracts midstate index from the solution ID
+    #[inline]
     fn get_midstate_idx_from_solution_id(&self, solution_id: u32) -> usize {
         ((solution_id >> WORK_ID_OFFSET) & ((1u32 << self.midstate_count_bits) - 1)) as usize
     }
 
-    #[inline]
     /// Extracts solution index from the solution ID
+    #[inline]
     pub fn get_solution_idx_from_solution_id(&self, solution_id: u32) -> usize {
         (solution_id & ((1u32 << WORK_ID_OFFSET) - 1)) as usize
     }
@@ -518,11 +402,12 @@ where
         );
         trace!(LOGGER, "Sending Control Command {:x?}", cmd);
         for chunk in cmd.chunks(4) {
-            self.write_to_cmd_tx_fifo(LittleEndian::read_u32(chunk));
+            self.fifo
+                .write_to_cmd_tx_fifo(LittleEndian::read_u32(chunk));
         }
         // TODO busy waiting has to be replaced once asynchronous processing is in place
         if wait {
-            while !self.hash_chain_ios[0].stat_reg.read().cmd_tx_empty().bit() {}
+            self.fifo.wait_cmd_tx_fifo_empty();
         }
     }
 
@@ -532,21 +417,25 @@ where
     /// - A timeout when reading the first word is converted into an empty response.
     ///   The method propagates any error other than timeout
     /// - An error that occurs during reading the second word from the FIFO is propagated.
-    fn recv_ctl_cmd_resp<T: PackedStructSlice>(&self) -> error::Result<Option<T>> {
+    fn recv_ctl_cmd_resp<T: PackedStructSlice>(&mut self) -> error::Result<Option<T>> {
         let mut cmd_resp = [0u8; 8];
 
         // TODO: to be refactored once we have asynchronous handling in place
         // fetch command response from IP core's fifo
-        match self.read_from_cmd_rx_fifo() {
-            Err(e) => match e.kind() {
-                ErrorKind::Fifo(error::Fifo::TimedOut(_), _) => return Ok(None),
-                e => return Err(e.into()),
-            },
-            Ok(resp_word) => LittleEndian::write_u32(&mut cmd_resp[..4], resp_word),
+        match self.fifo.read_from_cmd_rx_fifo()? {
+            None => return Ok(None),
+            Some(resp_word) => LittleEndian::write_u32(&mut cmd_resp[..4], resp_word),
         }
         // All errors from reading the second word are propagated
-        let resp_word = self.read_from_cmd_rx_fifo()?;
-        LittleEndian::write_u32(&mut cmd_resp[4..], resp_word);
+        match self.fifo.read_from_cmd_rx_fifo()? {
+            None => {
+                return Err(ErrorKind::Fifo(
+                    error::Fifo::TimedOut,
+                    "work RX fifo empty".to_string(),
+                ))?;
+            }
+            Some(resp_word) => LittleEndian::write_u32(&mut cmd_resp[4..], resp_word),
+        }
 
         // build the response instance - drop the extra byte due to FIFO being 32-bit word based
         // and drop the checksum
@@ -566,34 +455,40 @@ where
     fn send_work(&mut self, work: &super::MiningWork) -> Result<u32, failure::Error> {
         let work_id = self.next_work_id();
 
-        self.write_to_work_tx_fifo(work_id);
-        self.write_to_work_tx_fifo(work.nbits);
-        self.write_to_work_tx_fifo(work.ntime);
-        self.write_to_work_tx_fifo(work.merkel_root_lsw);
+        self.fifo.write_to_work_tx_fifo(work_id)?;
+        self.fifo.write_to_work_tx_fifo(work.nbits)?;
+        self.fifo.write_to_work_tx_fifo(work.ntime)?;
+        self.fifo.write_to_work_tx_fifo(work.merkel_root_lsw)?;
 
         for midstate in work.midstates.iter() {
             let midstate = HChainCtl::<VBackend>::u256_as_u32_slice(&midstate);
             // Chip expects the midstate in reverse word order
             for midstate_word in midstate.iter().rev() {
-                self.write_to_work_tx_fifo(*midstate_word);
+                self.fifo.write_to_work_tx_fifo(*midstate_word)?;
             }
         }
         Ok(work_id)
     }
 
     fn recv_solution(&mut self) -> Result<Option<super::MiningWorkSolution>, failure::Error> {
-        let nonce; // = self.read_from_work_rx_fifo()?;
+        let nonce; // = self.fifo.read_from_work_rx_fifo()?;
                    // TODO: to be refactored once we have asynchronous handling in place
                    // fetch command response from IP core's fifo
-        match self.read_from_work_rx_fifo() {
-            Err(e) => match e.kind() {
-                ErrorKind::Fifo(error::Fifo::TimedOut(_), _) => return Ok(None),
-                e => return Err(e.into()),
-            },
-            Ok(resp_word) => nonce = resp_word,
+        match self.fifo.read_from_work_rx_fifo()? {
+            None => return Ok(None),
+            Some(resp_word) => nonce = resp_word,
         }
 
-        let word2 = self.read_from_work_rx_fifo()?;
+        let word2;
+        match self.fifo.read_from_work_rx_fifo()? {
+            None => {
+                return Err(ErrorKind::Fifo(
+                    error::Fifo::TimedOut,
+                    "work RX fifo empty".to_string(),
+                ))?;
+            }
+            Some(resp_word) => word2 = resp_word,
+        }
 
         let solution = super::MiningWorkSolution {
             nonce,
@@ -655,6 +550,7 @@ fn calc_baud_clock_div(
 #[cfg(test)]
 mod test {
     use super::*;
+    use s9_io::hchainio0;
     //    use std::sync::{Once, ONCE_INIT};
     //
     //    static H_CHAIN_CTL_INIT: Once = ONCE_INIT;
@@ -708,23 +604,28 @@ mod test {
 
         // verify sane register values
         assert_eq!(
-            h_chain_ctl.hash_chain_ios[0].work_time.read().bits(),
+            h_chain_ctl.fifo.hash_chain_io.work_time.read().bits(),
             350000,
             "Unexpected work time value"
         );
         assert_eq!(
-            h_chain_ctl.hash_chain_ios[0].baud_reg.read().bits(),
+            h_chain_ctl.fifo.hash_chain_io.baud_reg.read().bits(),
             0x1a,
             "Unexpected baud rate register value for {} baud",
             INIT_CHIP_BAUD_RATE
         );
         assert_eq!(
-            h_chain_ctl.hash_chain_ios[0].stat_reg.read().bits(),
+            h_chain_ctl.fifo.hash_chain_io.stat_reg.read().bits(),
             0x855,
             "Unexpected status register value"
         );
         assert_eq!(
-            h_chain_ctl.hash_chain_ios[0].ctrl_reg.read().midstate_cnt(),
+            h_chain_ctl
+                .fifo
+                .hash_chain_io
+                .ctrl_reg
+                .read()
+                .midstate_cnt(),
             hchainio0::ctrl_reg::MIDSTATE_CNTR::ONE,
             "Unexpected midstate count"
         );
