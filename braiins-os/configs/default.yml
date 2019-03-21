@@ -84,7 +84,7 @@ remote:
   # default location for remote repositories
   location: bos
   # default branch for repositories
-  branch: '{meta_branch}'
+  branch: 'bos-rurminer'
   # list of remote repositories
   repos:
     lede:
@@ -107,10 +107,12 @@ remote:
       match:
         zynq:
           project: zynq-io-bin.git
+          branch: story-1834-uio-bitstream
     u-boot:
       project: u-boot-xlnx.git
     linux:
       project: linux-xlnx.git
+      branch: story-1834-uio-bitstream
     # it is possible to continue with any user repositories
 
 local:
