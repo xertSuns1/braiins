@@ -16,7 +16,11 @@ pub enum ErrorKind {
     #[fail(display = "IO error: {}", _0)]
     Io(String),
 
-    /// Error when opening UIO device
+    /// Error tied to a particular UIO device
+    #[fail(display = "UIO device {} error: {}", _0, _1)]
+    UioDevice(String, String),
+
+    /// Generic UIO error
     #[fail(display = "UIO error: {}", _0)]
     Uio(String),
 
@@ -52,7 +56,7 @@ pub enum ErrorKind {
 #[derive(Clone, Eq, PartialEq, Debug, Fail)]
 pub enum Fifo {
     #[fail(display = "timed out")]
-    TimedOut(usize),
+    TimedOut,
 }
 
 /// Implement Fail trait instead of use Derive to get more control over custom type.
@@ -124,7 +128,7 @@ impl From<uio::UioError> for Error {
     fn from(uio_error: uio::UioError) -> Self {
         let msg = uio_error.to_string();
         Self {
-            inner: Context::new(ErrorKind::Uio(msg)),
+            inner: uio_error.context(ErrorKind::Uio(msg)),
         }
     }
 }

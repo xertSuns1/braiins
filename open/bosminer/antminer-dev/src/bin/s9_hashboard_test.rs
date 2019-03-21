@@ -278,7 +278,7 @@ where
         "filling FIFO work TX fifo, midstate start={}",
         midstate_start
     );
-    while !h_chain_ctl.is_work_tx_fifo_full() {
+    while h_chain_ctl.fifo.has_work_tx_space_for_one_job() {
         let test_work = prepare_test_work(*midstate_start);
         let work_id = h_chain_ctl.send_work(&test_work).unwrap() as usize;
         work_registry.store_work(work_id, test_work);
