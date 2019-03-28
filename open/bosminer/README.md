@@ -4,6 +4,7 @@
 
 ## Prerequisities
 
+- python 3
 - rust toolchain installed via [rustup](https://rustup.rs/)
 - arm target
 - svd2rust
@@ -11,12 +12,21 @@
 
 ### Install Prerequisites
 
+Install python modules:
+
+```shell
+python3 -m pip3 install -r scripts/requirements.txt
+```
+
+Install cargo utilities:
+
 ```shell
 cargo install svd2rust
 cargo install form
 rustup component add rustfmt-preview
 ```
-Install target toolchain for the project.
+
+Install target toolchain for the project:
 
 ```shell
 cd to/rurminer
@@ -67,11 +77,24 @@ The implementation uses the MSB + LSB0 variant for registers longer than 1 byte 
 
 
 # Testing
+
+```shell
+cargo test -- --hostname <HOSTNAME>
+```
+
+This runs all tests on remote machine specified by argument *--hostname*. It is possible to omit this additional parameter
+by providing a configuration file *Test.toml* stored in crate root directory:
+
+```toml
+[remote]
+hostname = "<HOSTNAME>"
+```
+
+With this settings it is possible to call following command:
+
 ```shell
 cargo test
 ```
-
-This fails as cargo attempts to run the test case on the build host. However, it is possible to deploy the compiled test binary to the target. See below for dinghy and issues.
 
 ## Integration tests
 The sources for integration tests can be found in ```tests/``` subdirectory.
