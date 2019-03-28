@@ -3,3 +3,4 @@ target = "arm-unknown-linux-musleabi"
 
 [target.arm-unknown-linux-musleabi]
 linker = "arm-openwrt-linux-muslgnueabi-gcc"
+runner = ["/usr/bin/env", "python3", "scripts/runner.py"]
