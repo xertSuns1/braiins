@@ -14,7 +14,14 @@
 
 Install python modules:
 
+Setup virtual env if don't want to install packages into ~/.local or to the
+system.
 ```shell
+virtualenv --python=/usr/bin/python3 .venv
+```
+
+```shell
+
 python3 -m pip3 install -r scripts/requirements.txt
 ```
 
@@ -78,6 +85,11 @@ The implementation uses the MSB + LSB0 variant for registers longer than 1 byte 
 
 # Testing
 
+The remote target that is used for running the tests should be accessible
+via ssh key authenticated channel.
+NOTE: for the time being, the key MUST NOT have a passphrase. Therefore, only
+temporary development key should be used.
+
 ```shell
 cargo test -- --hostname <HOSTNAME>
 ```
@@ -97,18 +109,9 @@ cargo test
 ```
 
 ## Integration tests
-The sources for integration tests can be found in ```tests/``` subdirectory.
-The command ```cargo test``` also results in building all integration tests
-(since each is a separate crate, there are separate binaries for each test). Due
- to the same issue as above, the test can be found in ```target/arm-unknown-linux-musleabi/debug/```, too. The binary file starts
-with the prefix that corresponds with the integration test source name. E.g:
+The sources for integration tests can be found in ```tests/``` subdirectory. The command ```cargo test``` also results in building all integration tests. Since each test is a separate crate, there are separate binaries for each test. The resulting test binaries can be found in ```target/arm-unknown-linux-musleabi/debug/```, too. The binary file starts with the prefix that corresponds with the integration test source name. E.g:
 
-```tests/s9_test.rs``` -> ```s9_test-c86bb9af61985799``` The hash would be
-different for each build for the current state of the project sources.
-
-# Dinghy Integration (tool for deploying)
-
-- this is currently incomplete as dinghy requires toolchain path and sysroot. The latter is a problem as we currently have no sysroot. The issue is being discussed here: https://github.com/snipsco/dinghy/issues/71
+```tests/s9_test.rs``` -> ```s9_test-c86bb9af61985799``` The hash would be different for each build for the current state of the project sources.
 
 # TODO
 - logging infrastructure

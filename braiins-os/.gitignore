@@ -1,4 +1,4 @@
-/.env/
+.*env/
 /build/
 /output/
 /.local.yml
