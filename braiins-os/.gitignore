@@ -6,7 +6,7 @@ __pycache__/
 # Unit test / coverage reports
 .cache
 
-/.env/
+.*env/
 /build/
 /output/
 /.local.yml
