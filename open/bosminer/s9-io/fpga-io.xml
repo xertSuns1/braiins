@@ -181,7 +181,7 @@
               </enumeratedValues>
             </field>
             <field>
-              <name>IRQ_EN_WORK_RX</name>
+              <name>IRQ_EN_WORK_TX</name>
               <access>read-write</access>
               <description>Enable interrupts from work RX FIFO</description>
               <bitRange>[11:11]</bitRange>
@@ -197,7 +197,7 @@
               </enumeratedValues>
             </field>
             <field>
-              <name>IRQ_EN_WORK_TX</name>
+              <name>IRQ_EN_WORK_RX</name>
               <access>read-write</access>
               <description>Enable interrupts from work TX FIFO</description>
               <bitRange>[12:12]</bitRange>
@@ -306,12 +306,12 @@
               <bitRange>[10:10]</bitRange>
             </field>
             <field>
-              <name>IRQ_PEND_WORK_RX</name>
+              <name>IRQ_PEND_WORK_TX</name>
               <description>Interrupt pending for Work Receive FIFO</description>
               <bitRange>[11:11]</bitRange>
             </field>
             <field>
-              <name>IRQ_PEND_WORK_TX</name>
+              <name>IRQ_PEND_WORK_RX</name>
               <description>Interrupt pending for Work Transmit
                 FIFO</description>
               <bitRange>[12:12]</bitRange>
