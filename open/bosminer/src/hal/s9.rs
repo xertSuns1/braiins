@@ -3,6 +3,7 @@ use nix::sys::mman::{MapFlags, ProtFlags};
 
 use std::fs::OpenOptions;
 use std::mem::size_of;
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 // TODO: remove thread specific components
 use std::thread;
@@ -91,13 +92,13 @@ where
     VBackend: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
     /// Performs memory mapping of IP core's register block
-    /// # TODO
-    /// Research why custom flags - specifically O_SYNC and O_LARGEFILE fail
     fn mmap() -> error::Result<*const hchainio0::RegisterBlock> {
-        let mem_file = //File::open(path)?;
-            OpenOptions::new().read(true).write(true)
-                //.custom_flags(libc::O_RDWR | libc::O_SYNC | libc::O_LARGEFILE)
-                .open("/dev/mem").context("cannot open system memory device")?;
+        let mem_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(libc::O_SYNC)
+            .open("/dev/mem")
+            .context("cannot open system memory device")?;
 
         let mmap = unsafe {
             nix::sys::mman::mmap(
