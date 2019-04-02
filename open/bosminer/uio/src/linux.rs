@@ -1,19 +1,21 @@
 use fs2::FileExt;
 use libc;
 use nix::sys::mman::{MapFlags, ProtFlags};
+use std::error::Error;
+use std::fmt;
 use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::prelude::*;
-use std::mem::transmute;
 use std::num::ParseIntError;
 use std::os::unix::prelude::AsRawFd;
+use std::time::{Duration, Instant};
+use timeout_readwrite::TimeoutReader;
 
 const PAGESIZE: usize = 4096;
 
 #[derive(Debug)]
 pub enum UioError {
-    Address,
     Io(io::Error),
     Map(nix::Error),
     Parse,
@@ -37,6 +39,34 @@ impl From<nix::Error> for UioError {
     }
 }
 
+impl fmt::Display for UioError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UioError::Parse => write!(f, "integer conversion error"),
+            UioError::Io(ref e) => write!(f, "{}", e),
+            UioError::Map(ref e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl Error for UioError {
+    fn description(&self) -> &str {
+        match self {
+            UioError::Io(ref e) => e.description(),
+            UioError::Map(ref e) => e.description(),
+            UioError::Parse => "integer conversion error",
+        }
+    }
+
+    fn cause(&self) -> Option<&Error> {
+        match self {
+            UioError::Io(ref e) => Some(e),
+            UioError::Map(ref e) => Some(e),
+            UioError::Parse => None,
+        }
+    }
+}
+
 pub struct UioDevice {
     uio_num: usize,
     //path: &'static str,
@@ -53,6 +83,23 @@ impl UioDevice {
         let devfile = try!(OpenOptions::new().read(true).write(true).open(path));
         devfile.lock_exclusive()?;
         Ok(UioDevice { uio_num, devfile })
+    }
+
+    /// Go through all UIO devices in /sys and try to find one with
+    /// matching name.
+    ///
+    /// # Arguments
+    ///  * uio_name - name of the uio device (must match the one in sysfs)
+    pub fn open_by_name(uio_name: &String) -> io::Result<UioDevice> {
+        let mut i = 0;
+        loop {
+            let path = format!("/sys/class/uio/uio{}/name", i);
+            let name = fs::read_to_string(path)?;
+            if name.trim() == uio_name {
+                return Ok(UioDevice::new(i)?);
+            }
+            i = i + 1;
+        }
     }
 
     /// Return a vector of mappable resources (i.e., PCI bars) including their size.
@@ -221,29 +268,80 @@ impl UioDevice {
     }
 
     /// Enable interrupt
-    pub fn irq_enable(&mut self) -> io::Result<()> {
-        let bytes: [u8; 4] = unsafe { transmute(1u32) };
-        self.devfile.write(&bytes)?;
+    pub fn irq_enable(&self) -> io::Result<()> {
+        let bytes = 1u32.to_ne_bytes();
+        self.devfile.try_clone()?.write(&bytes)?;
         Ok(())
     }
 
     /// Disable interrupt
-    pub fn irq_disable(&mut self) -> io::Result<()> {
-        let bytes: [u8; 4] = unsafe { transmute(0u32) };
-        self.devfile.write(&bytes)?;
+    pub fn irq_disable(&self) -> io::Result<()> {
+        let bytes = 0u32.to_ne_bytes();
+        self.devfile.try_clone()?.write(&bytes)?;
         Ok(())
     }
 
     /// Wait for interrupt
-    pub fn irq_wait(&mut self) -> io::Result<u32> {
-        let mut bytes: [u8; 4] = [0, 0, 0, 0];
-        self.devfile.read(&mut bytes)?;
-        Ok(unsafe { transmute(bytes) })
+    pub fn irq_wait(&self) -> io::Result<u32> {
+        let mut bytes = [0u8; 4];
+        self.devfile.try_clone()?.read(&mut bytes)?;
+        Ok(u32::from_ne_bytes(bytes))
+    }
+
+    pub fn irq_wait_timeout(&self, timeout: Duration) -> io::Result<Option<u32>> {
+        let mut rdr = TimeoutReader::new(self.devfile.try_clone()?, timeout);
+        let mut bytes = [0u8; 4];
+        let res = rdr.read_exact(&mut bytes);
+
+        // Handle timeout, because it's not an error condition
+        if let Err(e) = res {
+            if e.kind() == io::ErrorKind::TimedOut {
+                Ok(None)
+            } else {
+                Err(e)
+            }
+        } else {
+            Ok(Some(u32::from_ne_bytes(bytes)))
+        }
+    }
+
+    pub fn irq_wait_cond<T>(&self, cond: T, timeout: Option<Duration>) -> io::Result<Option<()>>
+    where
+        T: Fn() -> bool,
+    {
+        let start = Instant::now();
+
+        while !cond() {
+            self.irq_enable()?;
+            if cond() {
+                // this check is to cover the window between `cond()`
+                // in while head and `irq_enable()` that follows (it is
+                // relevant only for edge-sensitive interrupts though)
+                break;
+            }
+            if let Some(timeout) = timeout {
+                let passed = start.elapsed();
+                if passed >= timeout {
+                    return Ok(None);
+                }
+                self.irq_wait_timeout(timeout - passed)?;
+            } else {
+                self.irq_wait()?;
+            }
+        }
+        Ok(Some(()))
+    }
+}
+
+impl Drop for UioDevice {
+    fn drop(&mut self) {
+        self.devfile.unlock().unwrap();
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
     fn open() {
