@@ -85,8 +85,10 @@ The implementation uses the MSB + LSB0 variant for registers longer than 1 byte 
 
 # Testing
 
-The remote target that is used for running the tests should be accessible
-via ssh key authenticated channel.
+Authentication method "none" (no password) DOES NOT WORK.
+
+For authentication, you MUST use either "publickey" authentication or "password" (although beware, this is not confirmed to be working from all sources).
+
 NOTE: for the time being, the key MUST NOT have a passphrase. Therefore, only
 temporary development key should be used.
 
