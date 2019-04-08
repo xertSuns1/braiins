@@ -23,15 +23,13 @@ def main(argv):
 
     parser.add_argument('test',
                         help='path to executable with the test')
-    parser.add_argument('filter', nargs='?',
-                        help='run only tests whose names contain the filter')
     parser.add_argument('--user',
                         help='name of pool worker')
     parser.add_argument(ARG_HOSTNAME,
                         help='ip address or hostname of remote bOS device with ssh server')
 
     # parse command line arguments
-    args = parser.parse_args(argv)
+    (args, extra_args) = parser.parse_known_args(argv)
 
     cfg_user = None
     cfg_hostname = None
@@ -62,8 +60,7 @@ def main(argv):
 
     # disable parallelism in tests
     remote_argv = ['--test-threads', '1']
-    if args.filter:
-        remote_argv.append(args.filter)
+    remote_argv += extra_args
 
     try:
         with Connection('{}@{}'.format(user, hostname)) as c:
