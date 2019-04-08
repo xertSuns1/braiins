@@ -11,6 +11,7 @@ TARGET_DIR = '/tmp'
 CONFIG_FILE = 'Test.toml'
 ARG_HOSTNAME = '--hostname'
 DEFAULT_USER = 'root'
+CONFIG_PATHS = ['.', '..']
 
 
 class RunnerError(Exception):
@@ -35,9 +36,13 @@ def main(argv):
     cfg_user = None
     cfg_hostname = None
 
-    if os.path.isfile(CONFIG_FILE):
+    # construct all config file locations
+    cfg_locations = [os.path.join(dir, CONFIG_FILE) for dir in CONFIG_PATHS]
+    cfg_path = next((path for path in cfg_locations if os.path.isfile(path)), None)
+
+    if cfg_path is not None:
         # try to get default configuration from configuration file
-        config = toml.load(CONFIG_FILE)
+        config = toml.load(cfg_path)
         remote = config.get('remote')
         if remote:
             cfg_user = remote.get('user')
