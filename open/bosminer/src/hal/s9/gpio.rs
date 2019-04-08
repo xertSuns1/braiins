@@ -138,6 +138,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_get_pin_in_verify_default_rst_values() {
         let ctrl_pin_manager = ControlPinManager::new();
         for i in 1..9 {
