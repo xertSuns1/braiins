@@ -139,7 +139,7 @@ where
 
         self.set_ip_core_baud_rate(INIT_CHIP_BAUD_RATE)?;
         // TODO consolidate hardcoded constant - calculate time constant based on PLL settings etc.
-        self.fifo.set_ip_core_work_time(350000);
+        self.fifo.set_ip_core_work_time(75000);
         self.fifo
             .set_ip_core_midstate_count(self.midstate_count_bits);
 
