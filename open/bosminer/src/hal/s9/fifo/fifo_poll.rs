@@ -55,8 +55,12 @@ impl<'a> HChainFifo<'a> {
     }
 
     pub fn new(hashboard_idx: usize) -> error::Result<Self> {
-        let hash_chain_io = mmap(hashboard_idx)?;
+        let hash_chain_map = mmap(hashboard_idx)?;
+        let hash_chain_io = hash_chain_map.ptr as *const hchainio0::RegisterBlock;
         let hash_chain_io = unsafe { &*hash_chain_io };
-        Ok(Self { hash_chain_io })
+        Ok(Self {
+            _hash_chain_map: hash_chain_map,
+            hash_chain_io,
+        })
     }
 }

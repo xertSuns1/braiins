@@ -84,11 +84,13 @@ impl<'a> HChainFifo<'a> {
     }
 
     pub fn new(hashboard_idx: usize) -> error::Result<Self> {
-        let hash_chain_io = mmap(hashboard_idx)?;
+        let hash_chain_map = mmap(hashboard_idx)?;
+        let hash_chain_io = hash_chain_map.ptr as *const hchainio0::RegisterBlock;
         let hash_chain_io = unsafe { &*hash_chain_io };
 
         let mut fifo = Self {
-            hash_chain_io: hash_chain_io,
+            _hash_chain_map: hash_chain_map,
+            hash_chain_io,
             work_tx_irq: map_irq(hashboard_idx, "work-tx")?,
             work_rx_irq: map_irq(hashboard_idx, "work-rx")?,
             cmd_rx_irq: map_irq(hashboard_idx, "cmd-rx")?,

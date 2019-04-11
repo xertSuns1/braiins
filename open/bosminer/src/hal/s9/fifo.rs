@@ -17,11 +17,15 @@ const FIFO_READ_TIMEOUT: Duration = Duration::from_millis(5);
 
 #[cfg(feature = "hctl_polling")]
 pub struct HChainFifo<'a> {
+    // the purpose of _hash_chain_map is to keep mmap()-ed memory alive
+    _hash_chain_map: uio::UioMapping,
     pub hash_chain_io: &'a hchainio0::RegisterBlock,
 }
 
 #[cfg(not(feature = "hctl_polling"))]
 pub struct HChainFifo<'a> {
+    // the purpose of _hash_chain_map is to keep mmap()-ed memory alive
+    _hash_chain_map: uio::UioMapping,
     pub hash_chain_io: &'a hchainio0::RegisterBlock,
     work_tx_irq: uio::UioDevice,
     work_rx_irq: uio::UioDevice,
@@ -30,13 +34,13 @@ pub struct HChainFifo<'a> {
 
 /// Performs memory mapping of IP core's register block
 /// * `hashboard_idx` is the number of chain (numbering must match in device-tree)
-fn mmap(hashboard_idx: usize) -> error::Result<*const hchainio0::RegisterBlock> {
+fn mmap(hashboard_idx: usize) -> error::Result<uio::UioMapping> {
     let uio_name = format!("chain{}-mem", hashboard_idx - 1);
     let uio = uio::UioDevice::open_by_name(&uio_name)?;
-    let mem = uio
+    let map = uio
         .map_mapping(0)
         .with_context(|_| ErrorKind::UioDevice(uio_name, "cannot map uio device".to_string()))?;
-    Ok(mem as *const hchainio0::RegisterBlock)
+    Ok(map)
 }
 
 /// Performs IRQ mapping of IP core's block
