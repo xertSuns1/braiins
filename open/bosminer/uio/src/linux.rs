@@ -67,6 +67,23 @@ impl Error for UioError {
     }
 }
 
+/// This structure represents memory mapping as performed by `mmap()` syscall.
+/// Lifetime of this structure is directly tied to the mapping and once the
+/// structure goes out of the scope, the mapping is `unmmap()`-ed.
+///
+/// The inner pointer `ptr` is public, but the responsibility to not use it
+/// after UioMapping structure had got out of the scope is on the caller.
+pub struct UioMapping {
+    pub ptr: *mut libc::c_void,
+    length: usize,
+}
+
+impl Drop for UioMapping {
+    fn drop(&mut self) {
+        unsafe { nix::sys::mman::munmap(self.ptr, self.length) }.expect("munmap is successful");
+    }
+}
+
 pub struct UioDevice {
     uio_num: usize,
     //path: &'static str,
@@ -128,9 +145,12 @@ impl UioDevice {
 
     /// Maps a given resource into the virtual address space of the process.
     ///
+    /// Returns UioMapping structure, which represents the mapping. Lifetime
+    /// of the structure is directly tied to the mapping.
+    ///
     /// # Arguments
     ///   * bar_nr: The index to the given resource (i.e., 1 for /sys/class/uio/uioX/device/resource1)
-    pub fn map_resource(&self, bar_nr: usize) -> Result<*mut libc::c_void, UioError> {
+    pub fn map_resource(&self, bar_nr: usize) -> Result<UioMapping, UioError> {
         let filename = format!(
             "/sys/class/uio/uio{}/device/resource{}",
             self.uio_num, bar_nr
@@ -141,11 +161,12 @@ impl UioDevice {
             .open(filename.to_string()));
         let metadata = try!(fs::metadata(filename.clone()));
         let fd = f.as_raw_fd();
+        let length = metadata.len() as usize;
 
         let res = unsafe {
             nix::sys::mman::mmap(
                 0 as *mut libc::c_void,
-                metadata.len() as usize,
+                length,
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
                 MapFlags::MAP_SHARED,
                 fd,
@@ -153,7 +174,7 @@ impl UioDevice {
             )
         };
         match res {
-            Ok(m) => Ok(m),
+            Ok(m) => Ok(UioMapping { ptr: m, length }),
             Err(e) => Err(UioError::from(e)),
         }
     }
@@ -244,17 +265,20 @@ impl UioDevice {
 
     /// Map an available memory mapping.
     ///
+    /// Returns UioMapping structure, which represents the mapping. Lifetime
+    /// of the structure is directly tied to the mapping.
+    ///
     /// # Arguments
     ///  * mapping: The given index of the mapping (i.e., 1 for /sys/class/uio/uioX/maps/map1)
-    pub fn map_mapping(&self, mapping: usize) -> Result<*mut libc::c_void, UioError> {
+    pub fn map_mapping(&self, mapping: usize) -> Result<UioMapping, UioError> {
         let offset = mapping * PAGESIZE;
         let fd = self.devfile.as_raw_fd();
-        let map_size = self.map_size(mapping).unwrap(); // TODO
+        let map_size = self.map_size(mapping).unwrap() as usize; // TODO
 
         let res = unsafe {
             nix::sys::mman::mmap(
                 0 as *mut libc::c_void,
-                map_size as usize,
+                map_size,
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
                 MapFlags::MAP_SHARED,
                 fd,
@@ -262,7 +286,10 @@ impl UioDevice {
             )
         };
         match res {
-            Ok(m) => Ok(m),
+            Ok(m) => Ok(UioMapping {
+                ptr: m,
+                length: map_size,
+            }),
             Err(e) => Err(UioError::from(e)),
         }
     }
@@ -330,12 +357,6 @@ impl UioDevice {
             }
         }
         Ok(Some(()))
-    }
-}
-
-impl Drop for UioDevice {
-    fn drop(&mut self) {
-        self.devfile.unlock().unwrap();
     }
 }
 
