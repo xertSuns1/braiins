@@ -138,7 +138,8 @@ mod test {
     }
 
     /// Try to map memory twice.
-    /// This is to check that the UIO locking/unlocking (in Drop) is working.
+    /// This is to check that the UioMapping Drop trait is working: Drop
+    /// does perform unmap which drops the Uio fd lock.
     #[test]
     fn test_map_uio_twice_checklock() {
         mmap(8).unwrap();
@@ -155,22 +156,19 @@ mod test {
     /// Test it on empty tx queue (IRQ always asserted).
     #[test]
     fn test_get_irq() {
-        let mut irq = map_irq(8, "work-tx").unwrap();
+        let irq = map_irq(8, "work-tx").unwrap();
         irq.irq_enable().unwrap();
         let res = irq.irq_wait_timeout(FIFO_READ_TIMEOUT);
-        res.expect("immediate interrupt expected");
+        assert!(res.unwrap().is_some(), "expected interrupt");
     }
 
     /// Test that we get timeout when waiting for IRQ.
     /// Test it on empty rx queue (IRQ always deasserted).
     #[test]
     fn test_get_irq_timeout() {
-        let mut irq = map_irq(8, "work-rx").unwrap();
+        let irq = map_irq(8, "work-rx").unwrap();
         irq.irq_enable().unwrap();
         let res = irq.irq_wait_timeout(FIFO_READ_TIMEOUT);
-        assert!(
-            res.expect_err("expecting timeout").kind() == io::ErrorKind::TimedOut,
-            "expecting timeout error"
-        );
+        assert!(res.unwrap().is_none(), "expected timeout");
     }
 }
