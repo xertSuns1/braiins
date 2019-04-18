@@ -32,11 +32,18 @@ pub struct HChainFifo<'a> {
     cmd_rx_irq: uio::UioDevice,
 }
 
+fn open_ip_core_uio(
+    hashboard_idx: usize,
+    uio_type: &'static str,
+) -> error::Result<(uio::UioDevice, String)> {
+    let uio_name = format!("chain{}-{}", hashboard_idx - 1, uio_type);
+    Ok((uio::UioDevice::open_by_name(&uio_name)?, uio_name))
+}
+
 /// Performs memory mapping of IP core's register block
 /// * `hashboard_idx` is the number of chain (numbering must match in device-tree)
 fn mmap(hashboard_idx: usize) -> error::Result<uio::UioMapping> {
-    let uio_name = format!("chain{}-mem", hashboard_idx - 1);
-    let uio = uio::UioDevice::open_by_name(&uio_name)?;
+    let (uio, uio_name) = open_ip_core_uio(hashboard_idx, "mem")?;
     let map = uio
         .map_mapping(0)
         .with_context(|_| ErrorKind::UioDevice(uio_name, "cannot map uio device".to_string()))?;
@@ -45,8 +52,7 @@ fn mmap(hashboard_idx: usize) -> error::Result<uio::UioMapping> {
 
 /// Performs IRQ mapping of IP core's block
 fn map_irq(hashboard_idx: usize, irq_type: &'static str) -> error::Result<uio::UioDevice> {
-    let uio_name = format!("chain{}-{}", hashboard_idx - 1, irq_type);
-    let uio = uio::UioDevice::open_by_name(&uio_name)?;
+    let (uio, _uio_name) = open_ip_core_uio(hashboard_idx, irq_type)?;
     Ok(uio)
 }
 
