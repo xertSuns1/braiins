@@ -1,16 +1,21 @@
 use fs2::FileExt;
+use futures::Future as OldFuture;
 use libc;
 use nix::sys::mman::{MapFlags, ProtFlags};
 use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::fs::{File, OpenOptions};
+use std::future::Future as NewFuture;
 use std::io;
 use std::io::prelude::*;
 use std::num::ParseIntError;
 use std::os::unix::prelude::AsRawFd;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use timeout_readwrite::TimeoutReader;
+use tokio::await;
+use tokio::timer::Delay;
 
 const PAGESIZE: usize = 4096;
 
@@ -307,6 +312,16 @@ impl UioDevice {
         let mut bytes = [0u8; 4];
         self.devfile.try_clone()?.read(&mut bytes)?;
         Ok(u32::from_ne_bytes(bytes))
+    }
+
+    pub async fn irq_wait_async(&self) -> io::Result<u32> {
+        let file = tokio_file_unix::File::new_nb(self.devfile.try_clone()?)?;
+        let file = file.into_reader(&tokio::reactor::Handle::default())?;
+        let buf = [0u8; 4];
+        let read_task = tokio::io::read_exact(file, buf);
+        let (_file_, buf_) = await!(read_task)?;
+        let res = u32::from_ne_bytes(buf_);
+        Ok(res)
     }
 
     pub fn irq_wait_timeout(&self, timeout: Duration) -> io::Result<Option<u32>> {
