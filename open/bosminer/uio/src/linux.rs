@@ -97,7 +97,7 @@ impl UioDevice {
     ///  * uio_num - UIO index of device (i.e., 1 for /dev/uio1)
     pub fn new(uio_num: usize) -> io::Result<UioDevice> {
         let path = format!("/dev/uio{}", uio_num);
-        let devfile = try!(OpenOptions::new().read(true).write(true).open(path));
+        let devfile = OpenOptions::new().read(true).write(true).open(path)?;
         devfile.lock_exclusive()?;
         Ok(UioDevice { uio_num, devfile })
     }
@@ -121,21 +121,18 @@ impl UioDevice {
 
     /// Return a vector of mappable resources (i.e., PCI bars) including their size.
     pub fn get_resource_info(&mut self) -> Result<Vec<(String, u64)>, UioError> {
-        let paths = try!(fs::read_dir(format!(
-            "/sys/class/uio/uio{}/device/",
-            self.uio_num
-        )));
+        let paths = fs::read_dir(format!("/sys/class/uio/uio{}/device/", self.uio_num))?;
 
         let mut bars = Vec::new();
         for p in paths {
-            let path = try!(p);
+            let path = p?;
             let file_name = path
                 .file_name()
                 .into_string()
                 .expect("Is valid UTF-8 string.");
 
             if file_name.starts_with("resource") && file_name.len() > "resource".len() {
-                let metadata = try!(fs::metadata(path.path()));
+                let metadata = fs::metadata(path.path())?;
                 bars.push((file_name, metadata.len()));
             }
         }
@@ -155,11 +152,11 @@ impl UioDevice {
             "/sys/class/uio/uio{}/device/resource{}",
             self.uio_num, bar_nr
         );
-        let f = try!(OpenOptions::new()
+        let f = OpenOptions::new()
             .read(true)
             .write(true)
-            .open(filename.to_string()));
-        let metadata = try!(fs::metadata(filename.clone()));
+            .open(filename.to_string())?;
+        let metadata = fs::metadata(filename.clone())?;
         let fd = f.as_raw_fd();
         let length = metadata.len() as usize;
 
@@ -180,9 +177,9 @@ impl UioDevice {
     }
 
     fn read_file(&self, path: String) -> Result<String, UioError> {
-        let mut file = try!(File::open(path));
+        let mut file = File::open(path)?;
         let mut buffer = String::new();
-        try!(file.read_to_string(&mut buffer));
+        file.read_to_string(&mut buffer)?;
         Ok(buffer.trim().to_string())
     }
 
@@ -242,14 +239,11 @@ impl UioDevice {
 
     /// Return a list of all possible memory mappings.
     pub fn get_map_info(&mut self) -> Result<Vec<String>, UioError> {
-        let paths = try!(fs::read_dir(format!(
-            "/sys/class/uio/uio{}/maps/",
-            self.uio_num
-        )));
+        let paths = fs::read_dir(format!("/sys/class/uio/uio{}/maps/", self.uio_num))?;
 
         let mut map = Vec::new();
         for p in paths {
-            let path = try!(p);
+            let path = p?;
             let file_name = path
                 .file_name()
                 .into_string()
