@@ -278,8 +278,9 @@ where
     );
     while h_chain_ctl.fifo.has_work_tx_space_for_one_job() {
         let test_work = prepare_test_work(*midstate_start);
-        let work_id = h_chain_ctl.send_work(&test_work).unwrap() as usize;
-        work_registry.store_work(work_id, test_work);
+        let work_id = h_chain_ctl.next_work_id();
+        h_chain_ctl.fifo.send_work(&test_work, work_id).unwrap();
+        work_registry.store_work(work_id as usize, test_work);
         // the midstate identifier may wrap around (considering its size, effectively never...)
         *midstate_start = midstate_start.wrapping_add(1);
         work_generated += 1;
@@ -291,7 +292,7 @@ where
     );
 
     // solution receiving/filtering part
-    while let Some(solution) = h_chain_ctl.recv_solution().unwrap() {
+    while let Some(solution) = h_chain_ctl.fifo.recv_solution().unwrap() {
         let work_id = h_chain_ctl.get_work_id_from_solution_id(solution.solution_id) as usize;
 
         let work = work_registry.find_work(work_id);
