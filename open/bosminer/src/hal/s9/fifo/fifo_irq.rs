@@ -94,6 +94,7 @@ impl<'a> HChainFifo<'a> {
             work_tx_irq: map_irq(hashboard_idx, "work-tx")?,
             work_rx_irq: map_irq(hashboard_idx, "work-rx")?,
             cmd_rx_irq: map_irq(hashboard_idx, "cmd-rx")?,
+            midstate_count_bits: 2,
         };
         fifo.init_irqs();
         Ok(fifo)

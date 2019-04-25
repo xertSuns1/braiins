@@ -3,6 +3,7 @@
 /// Exports FIFO management/send/receive and register access.
 use crate::error::{self, ErrorKind};
 use failure::ResultExt;
+use std::mem::size_of;
 use std::time::Duration;
 
 use s9_io::hchainio0;
@@ -14,12 +15,14 @@ mod fifo_poll;
 
 /// How long to wait for RX interrupt
 const FIFO_READ_TIMEOUT: Duration = Duration::from_millis(5);
+const WORK_ID_OFFSET: usize = 8;
 
 #[cfg(feature = "hctl_polling")]
 pub struct HChainFifo<'a> {
     // the purpose of _hash_chain_map is to keep mmap()-ed memory alive
     _hash_chain_map: uio::UioMapping,
     pub hash_chain_io: &'a hchainio0::RegisterBlock,
+    midstate_count_bits: u8,
 }
 
 #[cfg(not(feature = "hctl_polling"))]
@@ -30,6 +33,7 @@ pub struct HChainFifo<'a> {
     work_tx_irq: uio::UioDevice,
     work_rx_irq: uio::UioDevice,
     cmd_rx_irq: uio::UioDevice,
+    midstate_count_bits: u8,
 }
 
 fn open_ip_core_uio(
@@ -54,6 +58,15 @@ fn mmap(hashboard_idx: usize) -> error::Result<uio::UioMapping> {
 fn map_irq(hashboard_idx: usize, irq_type: &'static str) -> error::Result<uio::UioDevice> {
     let (uio, _uio_name) = open_ip_core_uio(hashboard_idx, irq_type)?;
     Ok(uio)
+}
+
+fn u256_as_u32_slice(src: &uint::U256) -> &[u32] {
+    unsafe {
+        core::slice::from_raw_parts(
+            src.0.as_ptr() as *const u32,
+            size_of::<uint::U256>() / size_of::<u32>(),
+        )
+    }
 }
 
 /// This is common implementation
@@ -112,6 +125,65 @@ impl<'a> HChainFifo<'a> {
         self.hash_chain_io
             .ctrl_reg
             .modify(|_, w| unsafe { w.midstate_cnt().bits(count) });
+    }
+
+    pub fn send_work(
+        &mut self,
+        work: &crate::hal::MiningWork,
+        work_id: u32,
+    ) -> Result<u32, failure::Error> {
+        self.write_to_work_tx_fifo(work_id)?;
+        self.write_to_work_tx_fifo(work.nbits)?;
+        self.write_to_work_tx_fifo(work.ntime)?;
+        self.write_to_work_tx_fifo(work.merkel_root_lsw)?;
+
+        for midstate in work.midstates.iter() {
+            let midstate = u256_as_u32_slice(&midstate);
+            // Chip expects the midstate in reverse word order
+            for midstate_word in midstate.iter().rev() {
+                self.write_to_work_tx_fifo(*midstate_word)?;
+            }
+        }
+        Ok(work_id)
+    }
+
+    #[inline]
+    fn get_midstate_idx_from_solution_id(&self, solution_id: u32) -> usize {
+        ((solution_id >> WORK_ID_OFFSET) & ((1u32 << self.midstate_count_bits) - 1)) as usize
+    }
+
+    pub fn recv_solution(
+        &mut self,
+    ) -> Result<Option<crate::hal::MiningWorkSolution>, failure::Error> {
+        let nonce; // = self.fifo.read_from_work_rx_fifo()?;
+                   // TODO: to be refactored once we have asynchronous handling in place
+                   // fetch command response from IP core's fifo
+        match self.read_from_work_rx_fifo()? {
+            None => return Ok(None),
+            Some(resp_word) => nonce = resp_word,
+        }
+
+        let word2;
+        match self.read_from_work_rx_fifo()? {
+            None => {
+                return Err(ErrorKind::Fifo(
+                    error::Fifo::TimedOut,
+                    "work RX fifo empty".to_string(),
+                ))?;
+            }
+            Some(resp_word) => word2 = resp_word,
+        }
+
+        let solution = crate::hal::MiningWorkSolution {
+            nonce,
+            // this hardware doesn't do any nTime rolling, keep it @ None
+            ntime: None,
+            midstate_idx: self.get_midstate_idx_from_solution_id(word2),
+            // leave the result ID as-is so that we can extract solution index etc later.
+            solution_id: word2 & 0xffffffu32,
+        };
+
+        Ok(Some(solution))
     }
 }
 
