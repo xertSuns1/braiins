@@ -341,6 +341,23 @@ impl UioDevice {
         }
     }
 
+    pub async fn async_irq_wait_cond<T>(&self, cond: T) -> io::Result<()>
+    where
+        T: Fn() -> bool,
+    {
+        while !cond() {
+            self.irq_enable()?;
+            if cond() {
+                // this check is to cover the window between `cond()`
+                // in while head and `irq_enable()` that follows (it is
+                // relevant only for edge-sensitive interrupts though)
+                break;
+            }
+            await!(self.irq_wait_async())?;
+        }
+        Ok(())
+    }
+
     pub fn irq_wait_cond<T>(&self, cond: T, timeout: Option<Duration>) -> io::Result<Option<()>>
     where
         T: Fn() -> bool,
