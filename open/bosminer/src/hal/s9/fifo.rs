@@ -152,6 +152,23 @@ impl<'a> HChainFifo<'a> {
         ((solution_id >> WORK_ID_OFFSET) & ((1u32 << self.midstate_count_bits) - 1)) as usize
     }
 
+    pub async fn async_recv_solution(
+        &mut self,
+    ) -> Result<Option<crate::hal::MiningWorkSolution>, failure::Error> {
+        let nonce = await!(self.async_read_from_work_rx_fifo())?;
+        let word2 = await!(self.async_read_from_work_rx_fifo())?;
+
+        let solution = crate::hal::MiningWorkSolution {
+            nonce,
+            // this hardware doesn't do any nTime rolling, keep it @ None
+            ntime: None,
+            midstate_idx: self.get_midstate_idx_from_solution_id(word2),
+            // leave the result ID as-is so that we can extract solution index etc later.
+            solution_id: word2 & 0xffffffu32,
+        };
+
+        Ok(Some(solution))
+    }
     pub fn recv_solution(
         &mut self,
     ) -> Result<Option<crate::hal::MiningWorkSolution>, failure::Error> {

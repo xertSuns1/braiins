@@ -36,6 +36,12 @@ impl<'a> HChainFifo<'a> {
         Ok(got_irq.and_then(|_| Some(self.hash_chain_io.work_rx_fifo.read().bits())))
     }
 
+    pub async fn async_read_from_work_rx_fifo(&mut self) -> error::Result<u32> {
+        let cond = || !self.is_work_rx_fifo_empty();
+        await!(self.work_rx_irq.async_irq_wait_cond(cond))?;
+        Ok(self.hash_chain_io.work_rx_fifo.read().bits())
+    }
+
     /// Try to write command to cmd tx fifo.
     /// Performs blocking write without timeout. Uses polling.
     /// TODO get rid of busy waiting, prepare for non-blocking API
@@ -56,6 +62,12 @@ impl<'a> HChainFifo<'a> {
             .cmd_rx_irq
             .irq_wait_cond(cond, Some(FIFO_READ_TIMEOUT))?;
         Ok(got_irq.and_then(|_| Some(self.hash_chain_io.cmd_rx_fifo.read().bits())))
+    }
+
+    pub async fn async_read_from_cmd_rx_fifo(&mut self) -> error::Result<u32> {
+        let cond = || !self.is_cmd_rx_fifo_empty();
+        await!(self.cmd_rx_irq.async_irq_wait_cond(cond))?;
+        Ok(self.hash_chain_io.cmd_rx_fifo.read().bits())
     }
 
     #[inline]
