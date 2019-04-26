@@ -30,6 +30,10 @@ slog-term = "2.4"
 slog-async = "2.3"
 failure = "0.1.5"
 uio = { version = "0.2", path = "uio" }
+futures-locks = "0.3.3"
+futures = "0.1.26"
+tokio-async-await = "0.1.7"
+tokio = { version = "0.1.19", features = ["async-await-preview"] }
 
 [dependencies.embedded-hal]
 version = "0.2.0"
