@@ -103,7 +103,6 @@ impl UioDevice {
     pub fn new(uio_num: usize) -> io::Result<UioDevice> {
         let path = format!("/dev/uio{}", uio_num);
         let devfile = OpenOptions::new().read(true).write(true).open(path)?;
-        devfile.lock_exclusive()?;
         Ok(UioDevice { uio_num, devfile })
     }
 
