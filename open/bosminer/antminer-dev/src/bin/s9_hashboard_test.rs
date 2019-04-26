@@ -1,3 +1,5 @@
+#![feature(await_macro, async_await, futures_api)]
+
 use rminer::hal;
 use rminer::hal::s9::gpio;
 use rminer::hal::s9::power;
@@ -7,6 +9,8 @@ use rminer::misc::LOGGER;
 use slog::{info, trace};
 
 use std::time::{Duration, SystemTime};
+
+use futures_locks::Mutex;
 
 /// Maximum length of pending work list corresponds with the work ID range supported by the FPGA
 const MAX_WORK_LIST_COUNT: usize = 65536;
