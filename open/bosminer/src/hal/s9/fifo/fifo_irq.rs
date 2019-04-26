@@ -70,9 +70,10 @@ impl<'a> HChainFifo<'a> {
         Ok(self.hash_chain_io.cmd_rx_fifo.read().bits())
     }
 
-    #[inline]
-    pub fn has_work_tx_space_for_one_job(&self) -> bool {
-        self.hash_chain_io.stat_reg.read().irq_pend_work_tx().bit()
+    pub async fn async_wait_for_work_tx_room(&self) -> error::Result<()> {
+        let cond = || !self.has_work_tx_space_for_one_job();
+        await!(self.work_tx_irq.async_irq_wait_cond(cond))?;
+        Ok(())
     }
 
     fn init_irqs(&mut self) {

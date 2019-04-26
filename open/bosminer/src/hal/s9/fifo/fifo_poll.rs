@@ -49,11 +49,6 @@ impl<'a> HChainFifo<'a> {
         Ok(Some(self.hash_chain_io.cmd_rx_fifo.read().bits()))
     }
 
-    #[inline]
-    pub fn has_work_tx_space_for_one_job(&self) -> bool {
-        self.hash_chain_io.stat_reg.read().irq_pend_work_tx().bit()
-    }
-
     pub fn new(hashboard_idx: usize) -> error::Result<Self> {
         let hash_chain_map = mmap(hashboard_idx)?;
         let hash_chain_io = hash_chain_map.ptr as *const hchainio0::RegisterBlock;
