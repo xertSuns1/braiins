@@ -86,6 +86,11 @@ impl<'a> HChainFifo<'a> {
         self.hash_chain_io.stat_reg.read().cmd_rx_empty().bit()
     }
 
+    #[inline]
+    pub fn has_work_tx_space_for_one_job(&self) -> bool {
+        self.hash_chain_io.stat_reg.read().irq_pend_work_tx().bit()
+    }
+
     /// Wait fro command FIFO to become empty.
     /// Uses polling.
     pub fn wait_cmd_tx_fifo_empty(&self) {
