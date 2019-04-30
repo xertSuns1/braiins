@@ -19,7 +19,7 @@ use embedded_hal::digital::InputPin;
 use embedded_hal::digital::OutputPin;
 
 mod bm1387;
-mod fifo;
+pub mod fifo;
 pub mod gpio;
 pub mod power;
 
@@ -77,6 +77,7 @@ pub struct HChainCtl<'a, VBackend> {
     /// When the heartbeat was last sent
     #[allow(dead_code)]
     last_heartbeat_sent: Option<SystemTime>,
+    hashboard_idx: usize,
     pub fifo: fifo::HChainFifo<'a>,
 }
 
@@ -126,9 +127,14 @@ where
             voltage_ctrl: power::VoltageCtrl::new(voltage_ctrl_backend, hashboard_idx),
             plug_pin,
             rst_pin,
+            hashboard_idx,
             last_heartbeat_sent: None,
             fifo: fifo::HChainFifo::new(hashboard_idx)?,
         })
+    }
+
+    pub fn open_uio(&self) -> error::Result<fifo::HChainFifo<'a>> {
+        fifo::HChainFifo::new(self.hashboard_idx)
     }
 
     /// Helper method that initializes the FPGA IP core
