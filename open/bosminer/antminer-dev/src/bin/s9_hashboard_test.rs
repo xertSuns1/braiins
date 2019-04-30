@@ -10,7 +10,8 @@ use slog::{info, trace};
 
 use std::time::{Duration, SystemTime};
 
-use futures_locks::Mutex;
+use crate::hal::s9::fifo;
+use std::sync::{Arc, Mutex};
 
 /// Maximum length of pending work list corresponds with the work ID range supported by the FPGA
 const MAX_WORK_LIST_COUNT: usize = 65536;
@@ -266,7 +267,7 @@ fn prepare_test_work(i: u64) -> hal::MiningWork {
 /// Returns the amount of work generated during this run
 fn send_and_receive_test_workloads<T>(
     h_chain_ctl: &mut hal::s9::HChainCtl<T>,
-    work_registry: &mut MiningWorkRegistry,
+    work_registry: Arc<Mutex<MiningWorkRegistry>>,
     solution_registry: &mut SolutionRegistry,
     midstate_start: &mut u64,
 ) -> usize
@@ -284,7 +285,10 @@ where
         let test_work = prepare_test_work(*midstate_start);
         let work_id = h_chain_ctl.next_work_id();
         h_chain_ctl.fifo.send_work(&test_work, work_id).unwrap();
-        work_registry.store_work(work_id as usize, test_work);
+        work_registry
+            .lock()
+            .expect("locking ok")
+            .store_work(work_id as usize, test_work);
         // the midstate identifier may wrap around (considering its size, effectively never...)
         *midstate_start = midstate_start.wrapping_add(1);
         work_generated += 1;
@@ -299,6 +303,7 @@ where
     while let Some(solution) = h_chain_ctl.fifo.recv_solution().unwrap() {
         let work_id = h_chain_ctl.get_work_id_from_solution_id(solution.solution_id) as usize;
 
+        let mut work_registry = work_registry.lock().expect("locking ok");
         let work = work_registry.find_work(work_id);
         match work {
             Some(work_item) => {
@@ -354,11 +359,12 @@ fn test_work_generation() {
     h_chain_ctl.init().unwrap();
     info!(LOGGER, "Hash chain controller initialized");
 
+    let a_work_registry = Arc::new(Mutex::new(work_registry));
     let mut last_hashrate_report = SystemTime::now();
     loop {
         total_work_generated += send_and_receive_test_workloads(
             &mut h_chain_ctl,
-            &mut work_registry,
+            a_work_registry.clone(),
             &mut solution_registry,
             &mut midstate_start,
         );
