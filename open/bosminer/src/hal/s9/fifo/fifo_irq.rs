@@ -71,7 +71,7 @@ impl<'a> HChainFifo<'a> {
     }
 
     pub async fn async_wait_for_work_tx_room(&self) -> error::Result<()> {
-        let cond = || !self.has_work_tx_space_for_one_job();
+        let cond = || self.has_work_tx_space_for_one_job();
         await!(self.work_tx_irq.async_irq_wait_cond(cond))?;
         Ok(())
     }
@@ -96,7 +96,7 @@ impl<'a> HChainFifo<'a> {
             .modify(|_, w| w.irq_en_cmd_rx().set_bit());
     }
 
-    pub fn new(hashboard_idx: usize) -> error::Result<Self> {
+    pub fn new(hashboard_idx: usize, midstate_count_bits: u8) -> error::Result<Self> {
         let hash_chain_map = mmap(hashboard_idx)?;
         let hash_chain_io = hash_chain_map.ptr as *const hchainio0::RegisterBlock;
         let hash_chain_io = unsafe { &*hash_chain_io };
@@ -107,7 +107,7 @@ impl<'a> HChainFifo<'a> {
             work_tx_irq: map_irq(hashboard_idx, "work-tx")?,
             work_rx_irq: map_irq(hashboard_idx, "work-rx")?,
             cmd_rx_irq: map_irq(hashboard_idx, "cmd-rx")?,
-            midstate_count_bits: 2,
+            midstate_count_bits,
         };
         fifo.init_irqs();
         Ok(fifo)

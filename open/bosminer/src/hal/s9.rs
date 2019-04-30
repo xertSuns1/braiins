@@ -81,6 +81,11 @@ pub struct HChainCtl<'a, VBackend> {
     pub fifo: fifo::HChainFifo<'a>,
 }
 
+//unsafe impl Send for MyBox {}
+//unsafe impl Sync for MyBox {}
+unsafe impl<'a, VBackend> Send for HChainCtl<'a, VBackend> {}
+unsafe impl<'a, VBackend> Sync for HChainCtl<'a, VBackend> {}
+
 impl<'a, VBackend> HChainCtl<'a, VBackend>
 where
     VBackend: 'static + Send + Sync + power::VoltageCtrlBackend,
@@ -120,21 +125,22 @@ where
                 "failed to initialize reset pin".to_string(),
             ))?;
 
+        let midstate_count_bits = midstate_count._bits();
         Ok(Self {
             work_id: 0,
             chip_count: 0,
-            midstate_count_bits: midstate_count._bits(),
+            midstate_count_bits,
             voltage_ctrl: power::VoltageCtrl::new(voltage_ctrl_backend, hashboard_idx),
             plug_pin,
             rst_pin,
             hashboard_idx,
             last_heartbeat_sent: None,
-            fifo: fifo::HChainFifo::new(hashboard_idx)?,
+            fifo: fifo::HChainFifo::new(hashboard_idx, midstate_count_bits)?,
         })
     }
 
-    pub fn open_uio(&self) -> error::Result<fifo::HChainFifo<'a>> {
-        fifo::HChainFifo::new(self.hashboard_idx)
+    pub fn clone_fifo(&self) -> error::Result<fifo::HChainFifo<'a>> {
+        fifo::HChainFifo::new(self.hashboard_idx, self.midstate_count_bits)
     }
 
     /// Helper method that initializes the FPGA IP core

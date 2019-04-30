@@ -17,6 +17,9 @@ mod fifo_poll;
 const FIFO_READ_TIMEOUT: Duration = Duration::from_millis(5);
 const WORK_ID_OFFSET: usize = 8;
 
+unsafe impl<'a> Send for HChainFifo<'a> {}
+unsafe impl<'a> Sync for HChainFifo<'a> {}
+
 #[cfg(feature = "hctl_polling")]
 pub struct HChainFifo<'a> {
     // the purpose of _hash_chain_map is to keep mmap()-ed memory alive
