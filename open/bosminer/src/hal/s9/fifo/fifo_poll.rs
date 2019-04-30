@@ -49,13 +49,14 @@ impl<'a> HChainFifo<'a> {
         Ok(Some(self.hash_chain_io.cmd_rx_fifo.read().bits()))
     }
 
-    pub fn new(hashboard_idx: usize) -> error::Result<Self> {
+    pub fn new(hashboard_idx: usize, midstate_count_bits: u8) -> error::Result<Self> {
         let hash_chain_map = mmap(hashboard_idx)?;
         let hash_chain_io = hash_chain_map.ptr as *const hchainio0::RegisterBlock;
         let hash_chain_io = unsafe { &*hash_chain_io };
         Ok(Self {
             _hash_chain_map: hash_chain_map,
             hash_chain_io,
+            midstate_count_bits,
         })
     }
 }

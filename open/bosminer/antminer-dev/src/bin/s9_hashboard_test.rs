@@ -1,5 +1,8 @@
 #![feature(await_macro, async_await, futures_api)]
 
+extern crate futures;
+extern crate tokio;
+
 use rminer::hal;
 use rminer::hal::s9::gpio;
 use rminer::hal::s9::power;
@@ -8,12 +11,15 @@ use rminer::misc::LOGGER;
 
 use slog::{info, trace};
 
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::hal::s9::fifo;
-use futures::future::Future;
+//use futures::future::Future;
 use futures_locks::Mutex as FutMutex;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::await;
+//use tokio::prelude::*;
+use tokio::timer::Delay;
 
 /// Maximum length of pending work list corresponds with the work ID range supported by the FPGA
 const MAX_WORK_LIST_COUNT: usize = 65536;
@@ -260,13 +266,6 @@ fn prepare_test_work(i: u64) -> hal::MiningWork {
     }
 }
 
-async fn async_send_jobs<'a>(
-    work_registry: Arc<FutMutex<MiningWorkRegistry>>,
-    fifo: fifo::HChainFifo<'a>,
-) {
-
-}
-
 /// Generates enough testing work until the work FIFO becomes full
 /// The work is made unique by specifying a unique midstate.
 ///
@@ -274,55 +273,60 @@ async fn async_send_jobs<'a>(
 /// valid solutions for further processing
 ///
 /// Returns the amount of work generated during this run
-fn send_and_receive_test_workloads<T>(
-    h_chain_ctl: &mut hal::s9::HChainCtl<T>,
+
+async fn async_send_work<'a, T>(
     work_registry: Arc<FutMutex<MiningWorkRegistry>>,
-    solution_registry: &mut SolutionRegistry,
-    midstate_start: &mut u64,
-) -> usize
-where
+    h_chain_ctl: Arc<FutMutex<hal::s9::HChainCtl<'a, T>>>,
+    mut tx_fifo: fifo::HChainFifo<'a>,
+    work_generated: Arc<FutMutex<usize>>,
+) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
-    let mut work_generated = 0usize;
-    // work sending part
-    trace!(
-        LOGGER,
-        "filling FIFO work TX fifo, midstate start={}",
-        midstate_start
-    );
-    let tx_fifo = h_chain_ctl.open_uio().expect("open ok");
+    let mut midstate_start = 0;
+    loop {
+        await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
 
-    async_send_jobs(work_registry.clone(), tx_fifo);
-
-    while h_chain_ctl.fifo.has_work_tx_space_for_one_job() {
-        let test_work = prepare_test_work(*midstate_start);
-        let work_id = h_chain_ctl.next_work_id();
-        h_chain_ctl.fifo.send_work(&test_work, work_id).unwrap();
-        work_registry
-            .lock()
-            .wait()
+        let test_work = prepare_test_work(midstate_start);
+        let work_id = await!(h_chain_ctl.lock())
+            .expect("h_chain lock")
+            .next_work_id();
+        // send work is synchronous
+        tx_fifo.send_work(&test_work, work_id).expect("send work");
+        await!(work_registry.lock())
             .expect("locking ok")
             .store_work(work_id as usize, test_work);
         // the midstate identifier may wrap around (considering its size, effectively never...)
-        *midstate_start = midstate_start.wrapping_add(1);
-        work_generated += 1;
+        midstate_start = midstate_start.wrapping_add(1);
+        *await!(work_generated.lock()).expect("lock counter") += 1;
     }
-    trace!(
-        LOGGER,
-        "Stored {} mining work items in TX FIFO",
-        work_generated
-    );
+}
 
+async fn async_recv_solutions<'a, T>(
+    work_registry: Arc<FutMutex<MiningWorkRegistry>>,
+    solution_registry: Arc<FutMutex<SolutionRegistry>>,
+    h_chain_ctl: Arc<FutMutex<hal::s9::HChainCtl<'a, T>>>,
+    mut rx_fifo: fifo::HChainFifo<'a>,
+) where
+    T: 'static + Send + Sync + power::VoltageCtrlBackend,
+{
     // solution receiving/filtering part
-    while let Some(solution) = h_chain_ctl.fifo.recv_solution().unwrap() {
-        let work_id = h_chain_ctl.get_work_id_from_solution_id(solution.solution_id) as usize;
+    loop {
+        let solution = await!(rx_fifo.async_recv_solution())
+            .expect("recv solution")
+            .expect("solution is ok");
+        let work_id = await!(h_chain_ctl.lock())
+            .expect("h_chain lock")
+            .get_work_id_from_solution_id(solution.solution_id) as usize;
 
-        let mut work_registry = work_registry.lock().wait().expect("locking ok");
+        let mut work_registry = await!(work_registry.lock()).expect("locking ok");
+        let mut solution_registry =
+            await!(solution_registry.lock()).expect("solution registry lock");
         let work = work_registry.find_work(work_id);
         match work {
             Some(work_item) => {
-                let solution_idx =
-                    h_chain_ctl.get_solution_idx_from_solution_id(solution.solution_id);
+                let solution_idx = await!(h_chain_ctl.lock())
+                    .expect("h_chain lock")
+                    .get_solution_idx_from_solution_id(solution.solution_id);
                 let status = work_item.insert_solution(solution, solution_idx);
 
                 // work item detected a new unique solution, we will push it for further processing
@@ -343,8 +347,48 @@ where
             }
         }
     }
-    trace!(LOGGER, "Fetched all available solutions from RX FIFO");
-    work_generated
+}
+
+async fn async_hashrate_meter(
+    solution_registry: Arc<FutMutex<SolutionRegistry>>,
+    work_generated: Arc<FutMutex<usize>>,
+) {
+    let hashing_started = SystemTime::now();
+    let mut total_shares: u128 = 0;
+
+    loop {
+        await!(Delay::new(Instant::now() + Duration::from_secs(1))).unwrap();
+
+        let total_work_generated = await!(work_generated.lock()).expect("lock counter");
+        {
+            let mut solution_registry =
+                await!(solution_registry.lock()).expect("solution registry lock");
+
+            total_shares = total_shares + solution_registry.solutions.len() as u128;
+            // processing solution in the test simply means removing them
+            solution_registry.solutions.clear();
+
+            let total_hashing_time = hashing_started.elapsed().expect("time read ok");
+
+            println!(
+                "Hash rate: {} Gh/s",
+                ((total_shares * (1u128 << 32)) as f32 / (total_hashing_time.as_secs() as f32))
+                    * 1e-9_f32,
+            );
+            println!(
+                "Total_shares: {}, total_time: {} s, total work generated: {}",
+                total_shares,
+                total_hashing_time.as_secs(),
+                *total_work_generated,
+            );
+            println!(
+                "Mismatched nonce count: {}, stale solutions: {}, duplicate solutions: {}",
+                solution_registry.mismatched_solution_nonces,
+                solution_registry.stale_solutions,
+                solution_registry.duplicate_solutions,
+            );
+        }
+    }
 }
 
 fn test_work_generation() {
@@ -361,54 +405,49 @@ fn test_work_generation() {
         &s9_io::hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
     )
     .unwrap();
-    let mut work_registry = MiningWorkRegistry::new();
-    let mut solution_registry = SolutionRegistry::new();
-    // sequence number when generating midstates
-    let mut midstate_start = 0;
-    let mut total_hashing_time: Duration = Duration::from_secs(0);
-    let mut total_shares: u128 = 0;
-    let mut total_work_generated: usize = 0;
+    let work_registry = MiningWorkRegistry::new();
+    let solution_registry = SolutionRegistry::new();
 
     info!(LOGGER, "Initializing hash chain controller");
     h_chain_ctl.init().unwrap();
     info!(LOGGER, "Hash chain controller initialized");
 
-    let a_work_registry = Arc::new(FutMutex::new(work_registry));
-    let mut last_hashrate_report = SystemTime::now();
-    loop {
-        total_work_generated += send_and_receive_test_workloads(
-            &mut h_chain_ctl,
-            a_work_registry.clone(),
-            &mut solution_registry,
-            &mut midstate_start,
-        );
-        let last_hashrate_report_elapsed = last_hashrate_report.elapsed().unwrap();
-        if last_hashrate_report_elapsed >= Duration::from_secs(1) {
-            total_shares = total_shares + solution_registry.solutions.len() as u128;
-            // processing solution in the test simply means removing them
-            solution_registry.solutions.clear();
+    let work_generated = 0usize;
 
-            total_hashing_time += last_hashrate_report_elapsed;
-            println!(
-                "Hash rate: {} Gh/s",
-                ((total_shares * (1u128 << 32)) as f32 / (total_hashing_time.as_secs() as f32))
-                    * 1e-9_f32,
-            );
-            println!(
-                "Total_shares: {}, total_time: {} s, total work generated: {}",
-                total_shares,
-                total_hashing_time.as_secs(),
-                total_work_generated,
-            );
-            println!(
-                "Mismatched nonce count: {}, stale solutions: {}, duplicate solutions: {}",
-                solution_registry.mismatched_solution_nonces,
-                solution_registry.stale_solutions,
-                solution_registry.duplicate_solutions,
-            );
-            last_hashrate_report = SystemTime::now()
-        }
-    }
+    let a_work_registry = Arc::new(FutMutex::new(work_registry));
+    let a_solution_registry = Arc::new(FutMutex::new(solution_registry));
+    let a_work_generated = Arc::new(FutMutex::new(work_generated));
+    let a_h_chain_ctl = Arc::new(FutMutex::new(h_chain_ctl));
+
+    tokio::run_async(async move {
+        let c_h_chain_ctl = a_h_chain_ctl.clone();
+        let c_work_registry = a_work_registry.clone();
+        let c_work_generated = a_work_generated.clone();
+        tokio::spawn_async(async move {
+            let tx_fifo = await!(c_h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
+            await!(async_send_work(
+                c_work_registry,
+                c_h_chain_ctl,
+                tx_fifo,
+                c_work_generated,
+            ));
+        });
+        let c_h_chain_ctl = a_h_chain_ctl.clone();
+        let c_work_registry = a_work_registry.clone();
+        let c_solution_registry = a_solution_registry.clone();
+        tokio::spawn_async(async move {
+            let rx_fifo = await!(c_h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
+            await!(async_recv_solutions(
+                c_work_registry,
+                c_solution_registry,
+                c_h_chain_ctl,
+                rx_fifo,
+            ));
+        });
+        let c_solution_registry = a_solution_registry.clone();
+        let c_work_generated = a_work_generated.clone();
+        await!(async_hashrate_meter(c_solution_registry, c_work_generated,));
+    });
 }
 
 fn main() {
