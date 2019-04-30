@@ -11,6 +11,8 @@ use slog::{info, trace};
 use std::time::{Duration, SystemTime};
 
 use crate::hal::s9::fifo;
+use futures::future::Future;
+use futures_locks::Mutex as FutMutex;
 use std::sync::{Arc, Mutex};
 
 /// Maximum length of pending work list corresponds with the work ID range supported by the FPGA
@@ -258,6 +260,13 @@ fn prepare_test_work(i: u64) -> hal::MiningWork {
     }
 }
 
+async fn async_send_jobs<'a>(
+    work_registry: Arc<FutMutex<MiningWorkRegistry>>,
+    fifo: fifo::HChainFifo<'a>,
+) {
+
+}
+
 /// Generates enough testing work until the work FIFO becomes full
 /// The work is made unique by specifying a unique midstate.
 ///
@@ -267,7 +276,7 @@ fn prepare_test_work(i: u64) -> hal::MiningWork {
 /// Returns the amount of work generated during this run
 fn send_and_receive_test_workloads<T>(
     h_chain_ctl: &mut hal::s9::HChainCtl<T>,
-    work_registry: Arc<Mutex<MiningWorkRegistry>>,
+    work_registry: Arc<FutMutex<MiningWorkRegistry>>,
     solution_registry: &mut SolutionRegistry,
     midstate_start: &mut u64,
 ) -> usize
@@ -281,12 +290,17 @@ where
         "filling FIFO work TX fifo, midstate start={}",
         midstate_start
     );
+    let tx_fifo = h_chain_ctl.open_uio().expect("open ok");
+
+    async_send_jobs(work_registry.clone(), tx_fifo);
+
     while h_chain_ctl.fifo.has_work_tx_space_for_one_job() {
         let test_work = prepare_test_work(*midstate_start);
         let work_id = h_chain_ctl.next_work_id();
         h_chain_ctl.fifo.send_work(&test_work, work_id).unwrap();
         work_registry
             .lock()
+            .wait()
             .expect("locking ok")
             .store_work(work_id as usize, test_work);
         // the midstate identifier may wrap around (considering its size, effectively never...)
@@ -303,7 +317,7 @@ where
     while let Some(solution) = h_chain_ctl.fifo.recv_solution().unwrap() {
         let work_id = h_chain_ctl.get_work_id_from_solution_id(solution.solution_id) as usize;
 
-        let mut work_registry = work_registry.lock().expect("locking ok");
+        let mut work_registry = work_registry.lock().wait().expect("locking ok");
         let work = work_registry.find_work(work_id);
         match work {
             Some(work_item) => {
@@ -359,7 +373,7 @@ fn test_work_generation() {
     h_chain_ctl.init().unwrap();
     info!(LOGGER, "Hash chain controller initialized");
 
-    let a_work_registry = Arc::new(Mutex::new(work_registry));
+    let a_work_registry = Arc::new(FutMutex::new(work_registry));
     let mut last_hashrate_report = SystemTime::now();
     loop {
         total_work_generated += send_and_receive_test_workloads(
