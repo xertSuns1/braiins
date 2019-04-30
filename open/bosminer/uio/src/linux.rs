@@ -95,6 +95,9 @@ pub struct UioDevice {
     devfile: File,
 }
 
+unsafe impl Send for UioMapping {}
+unsafe impl Sync for UioMapping {}
+
 impl UioDevice {
     /// Creates a new UIO device for Linux.
     ///
