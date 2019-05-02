@@ -318,7 +318,7 @@ impl UioDevice {
 
     pub async fn irq_wait_async(&self) -> io::Result<u32> {
         let file = tokio_file_unix::File::new_nb(self.devfile.try_clone()?)?;
-        let file = file.into_reader(&tokio::reactor::Handle::default())?;
+        let file = file.into_io(&tokio::reactor::Handle::default())?;
         let buf = [0u8; 4];
         let read_task = tokio::io::read_exact(file, buf);
         let (_file_, buf_) = await!(read_task)?;
