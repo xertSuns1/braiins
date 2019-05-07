@@ -6,8 +6,6 @@ use rminer::misc::LOGGER;
 
 use slog::{info, trace};
 
-use linux_embedded_hal::I2cdev;
-
 use std::time::{Duration, SystemTime};
 
 /// Maximum length of pending work list corresponds with the work ID range supported by the FPGA
@@ -329,7 +327,7 @@ fn test_work_generation() {
     use hal::s9::power::VoltageCtrlBackend;
 
     let gpio_mgr = gpio::ControlPinManager::new();
-    let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
+    let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
     let voltage_ctrl_backend =
         power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
     let mut h_chain_ctl = hal::s9::HChainCtl::new(

@@ -84,19 +84,16 @@ pub trait VoltageCtrlBackend {
 /// Newtype that represents an I2C voltage controller communication backend
 /// S9 devices have a single I2C master that manages the voltage controllers on all hashboards.
 /// Therefore, this will be a single communication instance
-/// TODO: consider removing the type parameter as it will always be an I2cDev
-pub struct VoltageCtrlI2cBlockingBackend<T> {
-    inner: T,
+pub struct VoltageCtrlI2cBlockingBackend {
+    inner: I2cdev,
 }
 
-impl<T> VoltageCtrlI2cBlockingBackend<T> {
+impl VoltageCtrlI2cBlockingBackend {
     /// Calculates I2C address of the controller based on hashboard index.
     fn get_i2c_address(hashboard_idx: usize) -> u8 {
         PIC_BASE_ADDRESS + hashboard_idx as u8 - 1
     }
-}
 
-impl VoltageCtrlI2cBlockingBackend<I2cdev> {
     /// Instantiates a new I2C backend
     /// * `i2c_interface_num` - index of the I2C interface in Linux dev filesystem
     pub fn new(i2c_interface_num: usize) -> Self {
@@ -106,11 +103,7 @@ impl VoltageCtrlI2cBlockingBackend<I2cdev> {
     }
 }
 
-impl<T, E> VoltageCtrlBackend for VoltageCtrlI2cBlockingBackend<T>
-where
-    T: Read<Error = E> + Write<Error = E>,
-    E: failure::Fail,
-{
+impl VoltageCtrlBackend for VoltageCtrlI2cBlockingBackend {
     fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()> {
         let command_bytes = [&[PIC_COMMAND_1, PIC_COMMAND_2, command], data].concat();
         self.inner
@@ -148,9 +141,7 @@ where
     }
 }
 
-impl VoltageCtrlBackend
-    for VoltageCtrlI2cSharedBlockingBackend<VoltageCtrlI2cBlockingBackend<I2cdev>>
-{
+impl VoltageCtrlBackend for VoltageCtrlI2cSharedBlockingBackend<VoltageCtrlI2cBlockingBackend> {
     fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()> {
         self.0.lock().unwrap().write(hashboard_idx, command, data)
     }
@@ -295,7 +286,7 @@ mod test {
 
     #[test]
     fn test_get_address() {
-        let addr = VoltageCtrlI2cBlockingBackend::<I2cdev>::get_i2c_address(8);
+        let addr = VoltageCtrlI2cBlockingBackend::get_i2c_address(8);
         let expected_addr = 0x57u8;
         assert_eq!(addr, expected_addr, "Unexpected hashboard I2C address");
     }
