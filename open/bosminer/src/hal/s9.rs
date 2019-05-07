@@ -567,10 +567,8 @@ mod test {
 
     #[test]
     fn test_hchain_ctl_instance() {
-        use linux_embedded_hal::I2cdev;
-
         let gpio_mgr = gpio::ControlPinManager::new();
-        let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
+        let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
         let h_chain_ctl = HChainCtl::new(
             &gpio_mgr,
             voltage_ctrl_backend,
@@ -585,10 +583,8 @@ mod test {
 
     #[test]
     fn test_hchain_ctl_init() {
-        use linux_embedded_hal::I2cdev;
-
         let gpio_mgr = gpio::ControlPinManager::new();
-        let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
+        let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
         let h_chain_ctl = HChainCtl::new(
             &gpio_mgr,
             voltage_ctrl_backend,
@@ -637,8 +633,6 @@ mod test {
     /// provided by the FPGA IP core
     #[test]
     fn test_get_solution_word_attributes() {
-        use linux_embedded_hal::I2cdev;
-
         let solution_word = 0x00123502;
         struct ExpectedSolutionData {
             work_id: u32,
@@ -676,7 +670,7 @@ mod test {
                 expected_solution_data.solution_idx,
             );
             let gpio_mgr = gpio::ControlPinManager::new();
-            let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::<I2cdev>::new(0);
+            let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
             let h_chain_ctl = HChainCtl::new(
                 &gpio_mgr,
                 voltage_ctrl_backend,
