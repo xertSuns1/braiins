@@ -605,7 +605,7 @@ mod test {
         // verify sane register values
         assert_eq!(
             h_chain_ctl.fifo.hash_chain_io.work_time.read().bits(),
-            350000,
+            75000,
             "Unexpected work time value"
         );
         assert_eq!(
