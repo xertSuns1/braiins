@@ -3,7 +3,9 @@
 /// Exports FIFO management/send/receive and register access.
 use crate::error::{self, ErrorKind};
 use failure::ResultExt;
+use std::marker::PhantomData;
 use std::mem::size_of;
+use std::ops;
 use std::time::Duration;
 
 use s9_io::hchainio0;
@@ -20,19 +22,49 @@ const WORK_ID_OFFSET: usize = 8;
 unsafe impl Send for HChainFifo {}
 unsafe impl Sync for HChainFifo {}
 
+/// Reference-like type holding a memory map created using UioMapping
+/// Used to hold a memory mapping of IP core's register block
+pub struct Mmap<T = u8> {
+    map: uio::UioMapping,
+    _marker: PhantomData<*const T>,
+}
+
+impl<T> Mmap<T> {
+    /// Create a new memory mapping
+    /// * `hashboard_idx` is the number of chain (numbering must match in device-tree)
+    ///
+    /// Marked `unsafe` because we can't check whether `T` is sized correctly and makes sense
+    unsafe fn new(hashboard_idx: usize) -> error::Result<Self> {
+        let (uio, uio_name) = open_ip_core_uio(hashboard_idx, "mem")?;
+        let map = uio.map_mapping(0).with_context(|_| {
+            ErrorKind::UioDevice(uio_name, "cannot map uio device".to_string())
+        })?;
+
+        Ok(Self {
+            map,
+            _marker: PhantomData,
+        })
+    }
+}
+
+impl<T> ops::Deref for Mmap<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        let ptr = self.map.ptr as *const T;
+        unsafe { &*ptr }
+    }
+}
+
 #[cfg(feature = "hctl_polling")]
 pub struct HChainFifo {
-    // the purpose of _hash_chain_map is to keep mmap()-ed memory alive
-    _hash_chain_map: uio::UioMapping,
-    pub hash_chain_io: &'static hchainio0::RegisterBlock,
+    pub hash_chain_io: Mmap<hchainio0::RegisterBlock>,
     midstate_count_bits: u8,
 }
 
 #[cfg(not(feature = "hctl_polling"))]
 pub struct HChainFifo {
-    // the purpose of _hash_chain_map is to keep mmap()-ed memory alive
-    _hash_chain_map: uio::UioMapping,
-    pub hash_chain_io: &'static hchainio0::RegisterBlock,
+    pub hash_chain_io: Mmap<hchainio0::RegisterBlock>,
     work_tx_irq: uio::UioDevice,
     work_rx_irq: uio::UioDevice,
     cmd_rx_irq: uio::UioDevice,
@@ -45,16 +77,6 @@ fn open_ip_core_uio(
 ) -> error::Result<(uio::UioDevice, String)> {
     let uio_name = format!("chain{}-{}", hashboard_idx - 1, uio_type);
     Ok((uio::UioDevice::open_by_name(&uio_name)?, uio_name))
-}
-
-/// Performs memory mapping of IP core's register block
-/// * `hashboard_idx` is the number of chain (numbering must match in device-tree)
-fn mmap(hashboard_idx: usize) -> error::Result<uio::UioMapping> {
-    let (uio, uio_name) = open_ip_core_uio(hashboard_idx, "mem")?;
-    let map = uio
-        .map_mapping(0)
-        .with_context(|_| ErrorKind::UioDevice(uio_name, "cannot map uio device".to_string()))?;
-    Ok(map)
 }
 
 /// Performs IRQ mapping of IP core's block
@@ -241,7 +263,7 @@ mod test {
     /// Try mapping memory from UIO device.
     #[test]
     fn test_map_uio() {
-        mmap(8).unwrap();
+        unsafe { Mmap::new(8).unwrap(); }
     }
 
     /// Try to map memory twice.
@@ -249,8 +271,10 @@ mod test {
     /// does perform unmap which drops the Uio fd lock.
     #[test]
     fn test_map_uio_twice_checklock() {
-        mmap(8).unwrap();
-        mmap(8).unwrap();
+        unsafe {
+            Mmap::new(8).unwrap();
+            Mmap::new(8).unwrap();
+        }
     }
 
     /// Try to map IRQ.
