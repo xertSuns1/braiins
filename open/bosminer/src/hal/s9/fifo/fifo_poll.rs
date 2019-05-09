@@ -50,11 +50,9 @@ impl HChainFifo {
     }
 
     pub fn new(hashboard_idx: usize, midstate_count_bits: u8) -> error::Result<Self> {
-        let hash_chain_map = mmap(hashboard_idx)?;
-        let hash_chain_io = hash_chain_map.ptr as *const hchainio0::RegisterBlock;
-        let hash_chain_io = unsafe { &*hash_chain_io };
+        let hash_chain_io = unsafe { Mmap::new(hashboard_idx)? };
+
         Ok(Self {
-            _hash_chain_map: hash_chain_map,
             hash_chain_io,
             midstate_count_bits,
         })
