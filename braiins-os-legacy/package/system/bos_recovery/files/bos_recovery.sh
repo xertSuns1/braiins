@@ -115,6 +115,7 @@ if [ x${FACTORY_RESET} == x"yes" ]; then
 	# reboot system
 	echo "Restarting system..."
 	reboot
+	return
 fi
 
 # remove network settings passed from standard mode
