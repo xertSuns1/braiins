@@ -87,9 +87,9 @@ set_property -name {xsim.simulate.runtime} -value {100ms} -objects [get_filesets
 set_property SOURCE_SET sources_1 [get_filesets $fileset]
 
 # import verification files
-import_files -fileset $fileset -norecurse -force "src/s9io_0.1/fve/s9io_tb.sv"
-import_files -fileset $fileset -norecurse -force "src/s9io_0.1/fve/s9io_pkg.sv"
-import_files -fileset $fileset -norecurse -force "src/s9io_0.1/fve/bfm_uart.sv"
+add_files -fileset $fileset -norecurse "src/s9io_0.1/fve/s9io_tb.sv"
+add_files -fileset $fileset -norecurse "src/s9io_0.1/fve/s9io_pkg.sv"
+add_files -fileset $fileset -norecurse "src/s9io_0.1/fve/bfm_uart.sv"
 
 set_property top s9io_v0_1_tb [get_filesets $fileset]
 set_property top_lib {} [get_filesets $fileset]

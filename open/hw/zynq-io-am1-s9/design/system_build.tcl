@@ -49,14 +49,14 @@ add_files -fileset sources_1 -norecurse $projdir/${design}.srcs/sources_1/bd/${d
 ####################################################################################################
 # Prepare for synthesis
 ####################################################################################################
-if {[info exists oh_synthesis_options]} {
-    puts "INFO: Synthesis with following options: $oh_synthesis_options"
-    set_property -name {STEPS.SYNTH_DESIGN.ARGS.MORE OPTIONS} -value $oh_synthesis_options -objects [get_runs synth_1]
+if {[info exists synthesis_options]} {
+    puts "INFO: Synthesis with following options: $synthesis_options"
+    set_property -name {STEPS.SYNTH_DESIGN.ARGS.MORE OPTIONS} -value $synthesis_options -objects [get_runs synth_1]
 }
 # Newer Vivado doesn't seem to support the above
-if {[info exists oh_verilog_define]} {
-    puts "INFO: Adding following verilog defines to fileset: ${oh_verilog_define}"
-    set_property verilog_define ${oh_verilog_define} [current_fileset]
+if {[info exists verilog_define]} {
+    puts "INFO: Adding following verilog defines to fileset: ${verilog_define}"
+    set_property verilog_define ${verilog_define} [current_fileset]
 }
 
 # # Write system definition
@@ -81,8 +81,14 @@ if { $synth_status != "synth_design Complete!" || $synth_progress != "100%" } {
     exit 1
 }
 
+####################################################################################################
+# Create reports
+####################################################################################################
 open_run synth_1
 report_timing_summary -file $projdir/reports/timing_synth.rpt
+report_utilization -file $projdir/reports/utilization_synth.rpt
+report_utilization -hierarchical -file $projdir/reports/utilization_synth_hier.rpt
+report_drc -file $projdir/reports/drc_synth.rpt
 
 ####################################################################################################
 # Create hardware definition file
@@ -108,17 +114,17 @@ if { $impl_status != "route_design Complete!" || $impl_progress != "100%" } {
     exit 1
 }
 
-open_run impl_1
-report_timing_summary -file $projdir/reports/timing_impl.rpt
-report_utilization -file $projdir/reports/utilization_placed.rpt
-report_utilization -hierarchical -file $projdir/reports/utilization_hierarchical.rpt
-report_io -file $projdir/reports/io_placed.rpt
-report_drc -file $projdir/reports/drc_routed.rpt
-
 ####################################################################################################
 # Create netlist + reports
 ####################################################################################################
 # write_verilog ./${design}.v
+
+open_run impl_1
+report_timing_summary -file $projdir/reports/timing_routed.rpt
+report_utilization -file $projdir/reports/utilization_routed.rpt
+report_utilization -hierarchical -file $projdir/reports/utilization_routed_hier.rpt
+report_io -file $projdir/reports/io_placed.rpt
+report_drc -file $projdir/reports/drc_routed.rpt
 
 ####################################################################################################
 # Write bitstream
@@ -130,9 +136,9 @@ write_bitstream -force -bin_file -file $projdir/results/${design}.bit
 # Write system definition
 ####################################################################################################
 write_sysdef -force \
-	-hwdef $projdir/results/${design}.hwdef \
-	-bitfile $projdir/results/${design}.bit \
-	-file $projdir/results/${design}.hdf
+    -hwdef $projdir/results/${design}.hwdef \
+    -bitfile $projdir/results/${design}.bit \
+    -file $projdir/results/${design}.hdf
 
 # extract content of archive
 puts "Extracting content of hardware definition file ..."
