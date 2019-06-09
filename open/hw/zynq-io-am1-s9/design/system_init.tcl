@@ -37,8 +37,8 @@ if {[info exists board_part]} {
 ####################################################################################################
 # Create Report/Results Directory
 ####################################################################################################
-set report_dir  $projdir/reports
-set results_dir $projdir/results
+set report_dir [file join $projdir reports]
+set results_dir [file join $projdir results]
 if ![file exists $report_dir]  {file mkdir $report_dir}
 if ![file exists $results_dir] {file mkdir $results_dir}
 

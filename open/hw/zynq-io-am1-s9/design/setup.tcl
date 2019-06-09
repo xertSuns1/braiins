@@ -34,27 +34,27 @@ proc timestamp {arg} {
 ####################################################################################################
 # check number of arguments
 if {$argc == 1} {
-	set board [lindex $argv 0]
+    set board [lindex $argv 0]
 } else {
-	puts "Wrong number of TCL arguments! Expected 1 argument, get $argc"
-	puts "List of arguments: $argv"
-	exit 1
+    puts "ERROR: Wrong number of TCL arguments! Expected 1 argument, get $argc"
+    puts "List of arguments: $argv"
+    exit 1
 }
 
 # check name of the board
 if {$board != "S9"} {
-	puts "Unknown board: $board"
-	puts "Only supported board is S9!"
-	exit 1
+    puts "ERROR: Unknown board: $board"
+    puts "List of supported boards: S9"
+    exit 1
 }
-
-puts [string repeat "-" 80]
-puts "Board name: $board"
 
 ####################################################################################################
 # Preset global variables and attributes
 ####################################################################################################
-# Design name ("system" recommended)
+# Project name
+set project "Zynq IO"
+
+# Design name
 set design "system"
 
 # Device name
@@ -68,7 +68,7 @@ set projdir "./build_$board"
 
 # Paths to all IP blocks to use in Vivado "system.bd"
 set ip_repos [ list \
-	"$projdir" \
+    "$projdir" \
 ]
 
 # Set source files
@@ -77,16 +77,23 @@ set hdl_files [ \
 
 # Set synthesis and implementation constraints files
 set constraints_files [list \
-	"src/constrs/pin_assignment.tcl" \
+    "src/constrs/pin_assignment.tcl" \
 ]
 
 ####################################################################################################
-# Generate files with Build ID information
+# Set name of top module
+set top_module "system_wrapper"
+
+####################################################################################################
+# Generate build ID information
 ####################################################################################################
 # get timestamp
 set build_id [clock seconds]
 set date_time [clock format $build_id -format "%d.%m.%Y %H:%M:%S"]
 
+puts [string repeat "-" 80]
+puts "Project:  $project"
+puts "Board:    $board"
 puts "Build ID: ${build_id} (${date_time})"
 
 ####################################################################################################
@@ -98,8 +105,8 @@ source "system_init.tcl"
 # Run synthesis, implementation and bitstream generation
 source "system_build.tcl"
 
-# Generate verification environment for IP core s9io and run simulation
-source "src/s9io_0.1/fve/design.tcl"
+# Run simulation & verification
+source "src/s9io_0.1/fve/sim.tcl"
 
 ####################################################################################################
 # Exit Vivado
