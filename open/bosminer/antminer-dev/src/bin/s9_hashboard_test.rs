@@ -274,10 +274,10 @@ fn prepare_test_work(i: u64) -> hal::MiningWork {
 ///
 /// Returns the amount of work generated during this run
 
-async fn async_send_work<'a, T>(
+async fn async_send_work<T>(
     work_registry: Arc<FutMutex<MiningWorkRegistry>>,
-    h_chain_ctl: Arc<FutMutex<hal::s9::HChainCtl<'a, T>>>,
-    mut tx_fifo: fifo::HChainFifo<'a>,
+    h_chain_ctl: Arc<FutMutex<hal::s9::HChainCtl<T>>>,
+    mut tx_fifo: fifo::HChainFifo,
     work_generated: Arc<FutMutex<usize>>,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
@@ -301,11 +301,11 @@ async fn async_send_work<'a, T>(
     }
 }
 
-async fn async_recv_solutions<'a, T>(
+async fn async_recv_solutions<T>(
     work_registry: Arc<FutMutex<MiningWorkRegistry>>,
     solution_registry: Arc<FutMutex<SolutionRegistry>>,
-    h_chain_ctl: Arc<FutMutex<hal::s9::HChainCtl<'a, T>>>,
-    mut rx_fifo: fifo::HChainFifo<'a>,
+    h_chain_ctl: Arc<FutMutex<hal::s9::HChainCtl<T>>>,
+    mut rx_fifo: fifo::HChainFifo,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {

@@ -58,7 +58,7 @@ const FPGA_IPCORE_F_CLK_BASE_BAUD_DIV: usize = 16;
 ///
 /// TODO: implement drop trait (results in unmap)
 /// TODO: rename to HashBoardCtrl and get rid of the hash_chain identifiers + array
-pub struct HChainCtl<'a, VBackend> {
+pub struct HChainCtl<VBackend> {
     /// Current work ID once it rolls over, we can start retiring old jobs
     work_id: u16,
     /// Number of chips that have been detected
@@ -78,15 +78,15 @@ pub struct HChainCtl<'a, VBackend> {
     #[allow(dead_code)]
     last_heartbeat_sent: Option<SystemTime>,
     hashboard_idx: usize,
-    pub fifo: fifo::HChainFifo<'a>,
+    pub fifo: fifo::HChainFifo,
 }
 
 //unsafe impl Send for MyBox {}
 //unsafe impl Sync for MyBox {}
-unsafe impl<'a, VBackend> Send for HChainCtl<'a, VBackend> {}
-unsafe impl<'a, VBackend> Sync for HChainCtl<'a, VBackend> {}
+unsafe impl<VBackend> Send for HChainCtl<VBackend> {}
+unsafe impl<VBackend> Sync for HChainCtl<VBackend> {}
 
-impl<'a, VBackend> HChainCtl<'a, VBackend>
+impl<VBackend> HChainCtl<VBackend>
 where
     VBackend: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -139,7 +139,7 @@ where
         })
     }
 
-    pub fn clone_fifo(&self) -> error::Result<fifo::HChainFifo<'a>> {
+    pub fn clone_fifo(&self) -> error::Result<fifo::HChainFifo> {
         fifo::HChainFifo::new(self.hashboard_idx, self.midstate_count_bits)
     }
 
@@ -460,7 +460,7 @@ where
     }
 }
 
-impl<'a, VBackend> super::HardwareCtl for HChainCtl<'a, VBackend>
+impl<VBackend> super::HardwareCtl for HChainCtl<VBackend>
 where
     VBackend: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
