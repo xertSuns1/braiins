@@ -265,10 +265,10 @@ async fn async_send_work<T>(
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
-    let mut wd = workdef::WorkDef::new();
+    let wd = workdef::WorkDef::new();
     loop {
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
-        let test_work = wd.get_work();
+        let test_work = await!(wd.get_work());
         let work_id = await!(h_chain_ctl.lock())
             .expect("h_chain lock")
             .next_work_id();
