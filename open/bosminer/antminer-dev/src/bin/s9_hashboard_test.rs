@@ -15,7 +15,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use crate::hal::s9::fifo;
 //use futures::future::Future;
-use futures_locks::Mutex as FutMutex;
+use futures_locks::Mutex;
 use std::sync::Arc;
 use tokio::await;
 //use tokio::prelude::*;
@@ -275,10 +275,10 @@ fn prepare_test_work(i: u64) -> hal::MiningWork {
 /// Returns the amount of work generated during this run
 
 async fn async_send_work<T>(
-    work_registry: Arc<FutMutex<MiningWorkRegistry>>,
-    h_chain_ctl: Arc<FutMutex<hal::s9::HChainCtl<T>>>,
+    work_registry: Arc<Mutex<MiningWorkRegistry>>,
+    h_chain_ctl: Arc<Mutex<hal::s9::HChainCtl<T>>>,
     mut tx_fifo: fifo::HChainFifo,
-    work_generated: Arc<FutMutex<usize>>,
+    work_generated: Arc<Mutex<usize>>,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -302,9 +302,9 @@ async fn async_send_work<T>(
 }
 
 async fn async_recv_solutions<T>(
-    work_registry: Arc<FutMutex<MiningWorkRegistry>>,
-    solution_registry: Arc<FutMutex<SolutionRegistry>>,
-    h_chain_ctl: Arc<FutMutex<hal::s9::HChainCtl<T>>>,
+    work_registry: Arc<Mutex<MiningWorkRegistry>>,
+    solution_registry: Arc<Mutex<SolutionRegistry>>,
+    h_chain_ctl: Arc<Mutex<hal::s9::HChainCtl<T>>>,
     mut rx_fifo: fifo::HChainFifo,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
@@ -350,8 +350,8 @@ async fn async_recv_solutions<T>(
 }
 
 async fn async_hashrate_meter(
-    solution_registry: Arc<FutMutex<SolutionRegistry>>,
-    work_generated: Arc<FutMutex<usize>>,
+    solution_registry: Arc<Mutex<SolutionRegistry>>,
+    work_generated: Arc<Mutex<usize>>,
 ) {
     let hashing_started = SystemTime::now();
     let mut total_shares: u128 = 0;
@@ -414,10 +414,10 @@ fn test_work_generation() {
 
     let work_generated = 0usize;
 
-    let a_work_registry = Arc::new(FutMutex::new(work_registry));
-    let a_solution_registry = Arc::new(FutMutex::new(solution_registry));
-    let a_work_generated = Arc::new(FutMutex::new(work_generated));
-    let a_h_chain_ctl = Arc::new(FutMutex::new(h_chain_ctl));
+    let a_work_registry = Arc::new(Mutex::new(work_registry));
+    let a_solution_registry = Arc::new(Mutex::new(solution_registry));
+    let a_work_generated = Arc::new(Mutex::new(work_generated));
+    let a_h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
 
     tokio::run_async(async move {
         let c_h_chain_ctl = a_h_chain_ctl.clone();
