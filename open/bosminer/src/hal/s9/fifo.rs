@@ -264,7 +264,7 @@ mod test {
     #[test]
     fn test_map_uio() {
         unsafe {
-            Mmap::new(8).unwrap();
+            let _m: Mmap<u8> = Mmap::new(8).unwrap();
         }
     }
 
@@ -274,8 +274,8 @@ mod test {
     #[test]
     fn test_map_uio_twice_checklock() {
         unsafe {
-            Mmap::new(8).unwrap();
-            Mmap::new(8).unwrap();
+            let _m: Mmap<u8> = Mmap::new(8).unwrap();
+            let _m: Mmap<u8> = Mmap::new(8).unwrap();
         }
     }
 
