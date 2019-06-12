@@ -263,7 +263,9 @@ mod test {
     /// Try mapping memory from UIO device.
     #[test]
     fn test_map_uio() {
-        unsafe { Mmap::new(8).unwrap(); }
+        unsafe {
+            Mmap::new(8).unwrap();
+        }
     }
 
     /// Try to map memory twice.
