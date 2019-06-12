@@ -25,6 +25,10 @@ use tokio::timer::Delay;
 /// Maximum length of pending work list corresponds with the work ID range supported by the FPGA
 const MAX_WORK_LIST_COUNT: usize = 65536;
 
+struct MiningStats {
+    work_generated: usize,
+}
+
 /// Mining registry item contains work and solutions
 #[derive(Clone, Debug)]
 struct MiningWorkRegistryItem {
@@ -261,7 +265,7 @@ async fn async_send_work<T>(
     work_registry: Arc<Mutex<MiningWorkRegistry>>,
     h_chain_ctl: Arc<Mutex<hal::s9::HChainCtl<T>>>,
     mut tx_fifo: fifo::HChainFifo,
-    work_generated: Arc<Mutex<usize>>,
+    mining_stats: Arc<Mutex<MiningStats>>,
     workdef: workdef::WorkDef,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
@@ -277,7 +281,9 @@ async fn async_send_work<T>(
         await!(work_registry.lock())
             .expect("locking ok")
             .store_work(work_id as usize, test_work);
-        *await!(work_generated.lock()).expect("lock counter") += 1;
+        let mut stats = await!(mining_stats.lock()).expect("minig stats lock");
+        stats.work_generated += 1;
+        drop(stats);
     }
 }
 
@@ -336,15 +342,16 @@ async fn async_recv_solutions<T>(
 
 async fn async_hashrate_meter(
     solution_registry: Arc<Mutex<SolutionRegistry>>,
-    work_generated: Arc<Mutex<usize>>,
+    mining_stats: Arc<Mutex<MiningStats>>,
 ) {
     let hashing_started = SystemTime::now();
     let mut total_shares: u128 = 0;
 
     loop {
         await!(Delay::new(Instant::now() + Duration::from_secs(1))).unwrap();
-
-        let total_work_generated = await!(work_generated.lock()).expect("lock counter");
+        let stats = await!(mining_stats.lock()).expect("lock mining stats");
+        let total_work_generated = stats.work_generated;
+        drop(stats);
         {
             let mut solution_registry =
                 await!(solution_registry.lock()).expect("solution registry lock");
@@ -364,7 +371,7 @@ async fn async_hashrate_meter(
                 "Total_shares: {}, total_time: {} s, total work generated: {}",
                 total_shares,
                 total_hashing_time.as_secs(),
-                *total_work_generated,
+                total_work_generated,
             );
             println!(
                 "Mismatched nonce count: {}, stale solutions: {}, duplicate solutions: {}",
@@ -397,23 +404,25 @@ fn start_hw(tx_nonce_queue: mpsc::UnboundedSender<()>, workdef: workdef::WorkDef
     h_chain_ctl.init().unwrap();
     info!(LOGGER, "Hash chain controller initialized");
 
-    let work_generated = 0usize;
+    let mining_stats = MiningStats {
+        work_generated: 0usize,
+    };
 
     let a_work_registry = Arc::new(Mutex::new(work_registry));
     let a_solution_registry = Arc::new(Mutex::new(solution_registry));
-    let a_work_generated = Arc::new(Mutex::new(work_generated));
+    let a_mining_stats = Arc::new(Mutex::new(mining_stats));
     let a_h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
 
     let c_h_chain_ctl = a_h_chain_ctl.clone();
     let c_work_registry = a_work_registry.clone();
-    let c_work_generated = a_work_generated.clone();
+    let c_mining_stats = a_mining_stats.clone();
     tokio::spawn_async(async move {
         let tx_fifo = await!(c_h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
         await!(async_send_work(
             c_work_registry,
             c_h_chain_ctl,
             tx_fifo,
-            c_work_generated,
+            c_mining_stats,
             workdef,
         ));
     });
@@ -431,8 +440,8 @@ fn start_hw(tx_nonce_queue: mpsc::UnboundedSender<()>, workdef: workdef::WorkDef
         ));
     });
     let c_solution_registry = a_solution_registry.clone();
-    let c_work_generated = a_work_generated.clone();
-    tokio::spawn_async(async_hashrate_meter(c_solution_registry, c_work_generated));
+    let c_mining_stats = a_mining_stats.clone();
+    tokio::spawn_async(async_hashrate_meter(c_solution_registry, c_mining_stats));
 }
 
 fn main() {
@@ -440,6 +449,6 @@ fn main() {
         let wd = workdef::WorkDef::new();
         let (tx_nonce, mut rx_nonce) = mpsc::unbounded();
         start_hw(tx_nonce, wd.clone());
-        while let Some(x) = await!(rx_nonce.next()) {}
+        while let Some(_x) = await!(rx_nonce.next()) {}
     });
 }
