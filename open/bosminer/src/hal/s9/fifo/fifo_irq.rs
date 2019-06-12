@@ -9,7 +9,7 @@ const FIFO_WORK_MAX_SIZE: u32 = 200;
 /// fit one more work.
 const FIFO_WORK_TX_THRESHOLD: u32 = FIFO_WORK_TX_SIZE - FIFO_WORK_MAX_SIZE;
 
-impl<'a> HChainFifo<'a> {
+impl HChainFifo {
     /// Try to write work item to work TX FIFO.
     /// Performs blocking write without timeout. Uses IRQ.
     /// The idea is that you don't call this function until you are sure you

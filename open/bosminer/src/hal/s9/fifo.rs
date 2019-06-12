@@ -17,22 +17,22 @@ mod fifo_poll;
 const FIFO_READ_TIMEOUT: Duration = Duration::from_millis(5);
 const WORK_ID_OFFSET: usize = 8;
 
-unsafe impl<'a> Send for HChainFifo<'a> {}
-unsafe impl<'a> Sync for HChainFifo<'a> {}
+unsafe impl Send for HChainFifo {}
+unsafe impl Sync for HChainFifo {}
 
 #[cfg(feature = "hctl_polling")]
-pub struct HChainFifo<'a> {
+pub struct HChainFifo {
     // the purpose of _hash_chain_map is to keep mmap()-ed memory alive
     _hash_chain_map: uio::UioMapping,
-    pub hash_chain_io: &'a hchainio0::RegisterBlock,
+    pub hash_chain_io: &'static hchainio0::RegisterBlock,
     midstate_count_bits: u8,
 }
 
 #[cfg(not(feature = "hctl_polling"))]
-pub struct HChainFifo<'a> {
+pub struct HChainFifo {
     // the purpose of _hash_chain_map is to keep mmap()-ed memory alive
     _hash_chain_map: uio::UioMapping,
-    pub hash_chain_io: &'a hchainio0::RegisterBlock,
+    pub hash_chain_io: &'static hchainio0::RegisterBlock,
     work_tx_irq: uio::UioDevice,
     work_rx_irq: uio::UioDevice,
     cmd_rx_irq: uio::UioDevice,
@@ -73,7 +73,7 @@ fn u256_as_u32_slice(src: &uint::U256) -> &[u32] {
 }
 
 /// This is common implementation
-impl<'a> HChainFifo<'a> {
+impl HChainFifo {
     #[inline]
     pub fn is_work_tx_fifo_full(&self) -> bool {
         self.hash_chain_io.stat_reg.read().work_tx_full().bit()

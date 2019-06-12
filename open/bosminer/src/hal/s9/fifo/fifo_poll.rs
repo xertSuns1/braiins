@@ -2,7 +2,7 @@ use super::*;
 use crate::error;
 use std::thread;
 
-impl<'a> HChainFifo<'a> {
+impl HChainFifo {
     /// TODO: implement error handling/make interface ready for ASYNC execution
     /// Writes single word into a TX fifo
     #[inline]
