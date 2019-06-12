@@ -26,7 +26,16 @@ use tokio::timer::Delay;
 const MAX_WORK_LIST_COUNT: usize = 65536;
 
 struct MiningStats {
+    /// Number of work items generated for the hw
     work_generated: usize,
+}
+
+impl MiningStats {
+    fn new() -> Self {
+        Self {
+            work_generated: 0usize,
+        }
+    }
 }
 
 /// Mining registry item contains work and solutions
@@ -350,8 +359,6 @@ async fn async_hashrate_meter(
     loop {
         await!(Delay::new(Instant::now() + Duration::from_secs(1))).unwrap();
         let stats = await!(mining_stats.lock()).expect("lock mining stats");
-        let total_work_generated = stats.work_generated;
-        drop(stats);
         {
             let mut solution_registry =
                 await!(solution_registry.lock()).expect("solution registry lock");
@@ -371,7 +378,7 @@ async fn async_hashrate_meter(
                 "Total_shares: {}, total_time: {} s, total work generated: {}",
                 total_shares,
                 total_hashing_time.as_secs(),
-                total_work_generated,
+                stats.work_generated,
             );
             println!(
                 "Mismatched nonce count: {}, stale solutions: {}, duplicate solutions: {}",
@@ -399,14 +406,11 @@ fn start_hw(tx_nonce_queue: mpsc::UnboundedSender<()>, workhub: workhub::WorkHub
     .unwrap();
     let work_registry = MiningWorkRegistry::new();
     let solution_registry = SolutionRegistry::new();
+    let mining_stats = MiningStats::new();
 
     info!(LOGGER, "Initializing hash chain controller");
     h_chain_ctl.init().unwrap();
     info!(LOGGER, "Hash chain controller initialized");
-
-    let mining_stats = MiningStats {
-        work_generated: 0usize,
-    };
 
     let a_work_registry = Arc::new(Mutex::new(work_registry));
     let a_solution_registry = Arc::new(Mutex::new(solution_registry));
