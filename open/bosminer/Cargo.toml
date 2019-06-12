@@ -34,6 +34,7 @@ futures-locks = "0.3.3"
 futures = "0.1.26"
 tokio-async-await = "0.1.7"
 tokio = { version = "0.1.19", features = ["async-await-preview"] }
+bitcoin_hashes = "0.3.2"
 
 [dependencies.embedded-hal]
 version = "0.2.0"
