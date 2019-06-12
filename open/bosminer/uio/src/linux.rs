@@ -1,21 +1,16 @@
-use fs2::FileExt;
-use futures::Future as OldFuture;
 use libc;
 use nix::sys::mman::{MapFlags, ProtFlags};
 use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::fs::{File, OpenOptions};
-use std::future::Future as NewFuture;
 use std::io;
 use std::io::prelude::*;
 use std::num::ParseIntError;
 use std::os::unix::prelude::AsRawFd;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use timeout_readwrite::TimeoutReader;
 use tokio::await;
-use tokio::timer::Delay;
 
 const PAGESIZE: usize = 4096;
 
