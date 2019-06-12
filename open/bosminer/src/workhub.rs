@@ -8,14 +8,14 @@ use tokio::await;
 /// This is wrapper that asynchronously locks structure for use in
 /// multiple tasks
 #[derive(Clone)]
-pub struct WorkDef(Arc<Mutex<WorkDefData>>);
+pub struct WorkHub(Arc<Mutex<WorkHubData>>);
 
 /// Internal structure that holds the actual work data
-pub struct WorkDefData {
+pub struct WorkHubData {
     midstate_start: u64,
 }
 
-impl WorkDefData {
+impl WorkHubData {
     pub fn get_work(&mut self) -> hal::MiningWork {
         let work = prepare_test_work(self.midstate_start);
         // the midstate identifier may wrap around (considering its size, effectively never...)
@@ -28,13 +28,13 @@ impl WorkDefData {
     }
 }
 
-impl WorkDef {
+impl WorkHub {
     pub async fn get_work(&self) -> hal::MiningWork {
         await!(self.0.lock()).expect("locking failed").get_work()
     }
 
     pub fn new() -> Self {
-        Self(Arc::new(Mutex::new(WorkDefData::new())))
+        Self(Arc::new(Mutex::new(WorkHubData::new())))
     }
 }
 
