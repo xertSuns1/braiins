@@ -265,11 +265,10 @@ async fn async_send_work<T>(
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
-    let mut midstate_start = 0;
+    let mut wd = workdef::WorkDef::new();
     loop {
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
-
-        let test_work = workdef::prepare_test_work(midstate_start);
+        let test_work = wd.get_work();
         let work_id = await!(h_chain_ctl.lock())
             .expect("h_chain lock")
             .next_work_id();
@@ -278,8 +277,6 @@ async fn async_send_work<T>(
         await!(work_registry.lock())
             .expect("locking ok")
             .store_work(work_id as usize, test_work);
-        // the midstate identifier may wrap around (considering its size, effectively never...)
-        midstate_start = midstate_start.wrapping_add(1);
         *await!(work_generated.lock()).expect("lock counter") += 1;
     }
 }

@@ -3,7 +3,7 @@ use crate::hal;
 //pub struct WorkDef<T>(Arc<Mutex<WorkDefInt>>);
 
 pub struct WorkDef {
-    i: u64,
+    midstate_start: u64,
 }
 
 /// * `i` - unique identifier for the generated midstate
@@ -25,9 +25,14 @@ pub fn prepare_test_work(i: u64) -> hal::MiningWork {
 }
 
 impl WorkDef {
-    fn get_work(&mut self) -> hal::MiningWork {
-        let work = prepare_test_work(self.i);
-        self.i = self.i.wrapping_add(1);
+    pub fn get_work(&mut self) -> hal::MiningWork {
+        let work = prepare_test_work(self.midstate_start);
+        // the midstate identifier may wrap around (considering its size, effectively never...)
+        self.midstate_start = self.midstate_start.wrapping_add(1);
         work
+    }
+
+    pub fn new() -> WorkDef {
+        WorkDef { midstate_start: 0 }
     }
 }
