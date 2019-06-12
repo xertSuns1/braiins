@@ -15,11 +15,11 @@ use slog::{info, trace};
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::hal::s9::fifo;
-//use futures::future::Future;
+use futures::sync::mpsc;
 use futures_locks::Mutex;
 use std::sync::Arc;
 use tokio::await;
-//use tokio::prelude::*;
+use tokio::prelude::*;
 use tokio::timer::Delay;
 
 /// Maximum length of pending work list corresponds with the work ID range supported by the FPGA
@@ -262,13 +262,13 @@ async fn async_send_work<T>(
     h_chain_ctl: Arc<Mutex<hal::s9::HChainCtl<T>>>,
     mut tx_fifo: fifo::HChainFifo,
     work_generated: Arc<Mutex<usize>>,
+    workdef: workdef::WorkDef,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
-    let wd = workdef::WorkDef::new();
     loop {
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
-        let test_work = await!(wd.get_work());
+        let test_work = await!(workdef.get_work());
         let work_id = await!(h_chain_ctl.lock())
             .expect("h_chain lock")
             .next_work_id();
@@ -286,6 +286,7 @@ async fn async_recv_solutions<T>(
     solution_registry: Arc<Mutex<SolutionRegistry>>,
     h_chain_ctl: Arc<Mutex<hal::s9::HChainCtl<T>>>,
     mut rx_fifo: fifo::HChainFifo,
+    solved_nonce_queue: mpsc::UnboundedSender<()>,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -315,6 +316,10 @@ async fn async_recv_solutions<T>(
                 }
                 solution_registry.duplicate_solutions += status.duplicate as u64;
                 solution_registry.mismatched_solution_nonces += status.mismatched_nonce as u64;
+
+                solved_nonce_queue
+                    .unbounded_send(())
+                    .expect("nonce enqueue failed");
             }
             None => {
                 trace!(
@@ -371,7 +376,7 @@ async fn async_hashrate_meter(
     }
 }
 
-fn test_work_generation() {
+fn start_hw(tx_nonce_queue: mpsc::UnboundedSender<()>, workdef: workdef::WorkDef) {
     use hal::s9::power::VoltageCtrlBackend;
 
     let gpio_mgr = gpio::ControlPinManager::new();
@@ -399,37 +404,42 @@ fn test_work_generation() {
     let a_work_generated = Arc::new(Mutex::new(work_generated));
     let a_h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
 
-    tokio::run_async(async move {
-        let c_h_chain_ctl = a_h_chain_ctl.clone();
-        let c_work_registry = a_work_registry.clone();
-        let c_work_generated = a_work_generated.clone();
-        tokio::spawn_async(async move {
-            let tx_fifo = await!(c_h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
-            await!(async_send_work(
-                c_work_registry,
-                c_h_chain_ctl,
-                tx_fifo,
-                c_work_generated,
-            ));
-        });
-        let c_h_chain_ctl = a_h_chain_ctl.clone();
-        let c_work_registry = a_work_registry.clone();
-        let c_solution_registry = a_solution_registry.clone();
-        tokio::spawn_async(async move {
-            let rx_fifo = await!(c_h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
-            await!(async_recv_solutions(
-                c_work_registry,
-                c_solution_registry,
-                c_h_chain_ctl,
-                rx_fifo,
-            ));
-        });
-        let c_solution_registry = a_solution_registry.clone();
-        let c_work_generated = a_work_generated.clone();
-        await!(async_hashrate_meter(c_solution_registry, c_work_generated,));
+    let c_h_chain_ctl = a_h_chain_ctl.clone();
+    let c_work_registry = a_work_registry.clone();
+    let c_work_generated = a_work_generated.clone();
+    tokio::spawn_async(async move {
+        let tx_fifo = await!(c_h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
+        await!(async_send_work(
+            c_work_registry,
+            c_h_chain_ctl,
+            tx_fifo,
+            c_work_generated,
+            workdef,
+        ));
     });
+    let c_h_chain_ctl = a_h_chain_ctl.clone();
+    let c_work_registry = a_work_registry.clone();
+    let c_solution_registry = a_solution_registry.clone();
+    tokio::spawn_async(async move {
+        let rx_fifo = await!(c_h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
+        await!(async_recv_solutions(
+            c_work_registry,
+            c_solution_registry,
+            c_h_chain_ctl,
+            rx_fifo,
+            tx_nonce_queue,
+        ));
+    });
+    let c_solution_registry = a_solution_registry.clone();
+    let c_work_generated = a_work_generated.clone();
+    tokio::spawn_async(async_hashrate_meter(c_solution_registry, c_work_generated));
 }
 
 fn main() {
-    test_work_generation();
+    tokio::run_async(async move {
+        let wd = workdef::WorkDef::new();
+        let (tx_nonce, mut rx_nonce) = mpsc::unbounded();
+        start_hw(tx_nonce, wd.clone());
+        while let Some(x) = await!(rx_nonce.next()) {}
+    });
 }
