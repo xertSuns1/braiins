@@ -8,7 +8,7 @@ use rminer::hal::s9::gpio;
 use rminer::hal::s9::power;
 use rminer::hal::HardwareCtl;
 use rminer::misc::LOGGER;
-use rminer::workdef;
+use rminer::workhub;
 
 use slog::{info, trace};
 
@@ -200,7 +200,7 @@ mod test {
     #[test]
     fn test_store_work_start() {
         let mut registry = MiningWorkRegistry::new();
-        let work = workdef::prepare_test_work(0);
+        let work = workhub::prepare_test_work(0);
 
         registry.store_work(0, work);
     }
@@ -209,8 +209,8 @@ mod test {
     #[should_panic]
     fn test_store_work_out_of_sequence_work_id() {
         let mut registry = MiningWorkRegistry::new();
-        let work1 = workdef::prepare_test_work(0);
-        let work2 = workdef::prepare_test_work(1);
+        let work1 = workhub::prepare_test_work(0);
+        let work2 = workhub::prepare_test_work(1);
         // store initial work
         registry.store_work(0, work1);
         // this should trigger a panic
@@ -222,7 +222,7 @@ mod test {
         let mut registry = MiningWorkRegistry::new();
         // after exhausting the full work list count, the first half of the slots must be retired
         for id in 0..MAX_WORK_LIST_COUNT {
-            let work = workdef::prepare_test_work(id as u64);
+            let work = workhub::prepare_test_work(id as u64);
             registry.store_work(id, work);
         }
         // verify the first half being empty
@@ -244,7 +244,7 @@ mod test {
 
         // store one more item should retire work at index MAX_WORK_LIST_COUNT/2
         let retire_idx_half = MAX_WORK_LIST_COUNT / 2;
-        registry.store_work(0, workdef::prepare_test_work(0));
+        registry.store_work(0, workhub::prepare_test_work(0));
         assert!(
             registry.pending_work_list[retire_idx_half].is_none(),
             "Work at {} was expected to be retired (after overwriting idx 0)",
@@ -266,13 +266,13 @@ async fn async_send_work<T>(
     h_chain_ctl: Arc<Mutex<hal::s9::HChainCtl<T>>>,
     mut tx_fifo: fifo::HChainFifo,
     mining_stats: Arc<Mutex<MiningStats>>,
-    workdef: workdef::WorkDef,
+    workhub: workhub::WorkHub,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
     loop {
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
-        let test_work = await!(workdef.get_work());
+        let test_work = await!(workhub.get_work());
         let work_id = await!(h_chain_ctl.lock())
             .expect("h_chain lock")
             .next_work_id();
@@ -383,7 +383,7 @@ async fn async_hashrate_meter(
     }
 }
 
-fn start_hw(tx_nonce_queue: mpsc::UnboundedSender<()>, workdef: workdef::WorkDef) {
+fn start_hw(tx_nonce_queue: mpsc::UnboundedSender<()>, workhub: workhub::WorkHub) {
     use hal::s9::power::VoltageCtrlBackend;
 
     let gpio_mgr = gpio::ControlPinManager::new();
@@ -423,7 +423,7 @@ fn start_hw(tx_nonce_queue: mpsc::UnboundedSender<()>, workdef: workdef::WorkDef
             c_h_chain_ctl,
             tx_fifo,
             c_mining_stats,
-            workdef,
+            workhub,
         ));
     });
     let c_h_chain_ctl = a_h_chain_ctl.clone();
@@ -446,7 +446,7 @@ fn start_hw(tx_nonce_queue: mpsc::UnboundedSender<()>, workdef: workdef::WorkDef
 
 fn main() {
     tokio::run_async(async move {
-        let wd = workdef::WorkDef::new();
+        let wd = workhub::WorkHub::new();
         let (tx_nonce, mut rx_nonce) = mpsc::unbounded();
         start_hw(tx_nonce, wd.clone());
         while let Some(_x) = await!(rx_nonce.next()) {}
