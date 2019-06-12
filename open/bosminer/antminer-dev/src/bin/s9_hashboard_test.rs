@@ -8,6 +8,7 @@ use rminer::hal::s9::gpio;
 use rminer::hal::s9::power;
 use rminer::hal::HardwareCtl;
 use rminer::misc::LOGGER;
+use rminer::workdef;
 
 use slog::{info, trace};
 
@@ -195,7 +196,7 @@ mod test {
     #[test]
     fn test_store_work_start() {
         let mut registry = MiningWorkRegistry::new();
-        let work = prepare_test_work(0);
+        let work = workdef::prepare_test_work(0);
 
         registry.store_work(0, work);
     }
@@ -204,8 +205,8 @@ mod test {
     #[should_panic]
     fn test_store_work_out_of_sequence_work_id() {
         let mut registry = MiningWorkRegistry::new();
-        let work1 = prepare_test_work(0);
-        let work2 = prepare_test_work(1);
+        let work1 = workdef::prepare_test_work(0);
+        let work2 = workdef::prepare_test_work(1);
         // store initial work
         registry.store_work(0, work1);
         // this should trigger a panic
@@ -217,7 +218,7 @@ mod test {
         let mut registry = MiningWorkRegistry::new();
         // after exhausting the full work list count, the first half of the slots must be retired
         for id in 0..MAX_WORK_LIST_COUNT {
-            let work = prepare_test_work(id as u64);
+            let work = workdef::prepare_test_work(id as u64);
             registry.store_work(id, work);
         }
         // verify the first half being empty
@@ -239,30 +240,12 @@ mod test {
 
         // store one more item should retire work at index MAX_WORK_LIST_COUNT/2
         let retire_idx_half = MAX_WORK_LIST_COUNT / 2;
-        registry.store_work(0, prepare_test_work(0));
+        registry.store_work(0, workdef::prepare_test_work(0));
         assert!(
             registry.pending_work_list[retire_idx_half].is_none(),
             "Work at {} was expected to be retired (after overwriting idx 0)",
             retire_idx_half
         );
-    }
-}
-
-/// * `i` - unique identifier for the generated midstate
-fn prepare_test_work(i: u64) -> hal::MiningWork {
-    hal::MiningWork {
-        version: 0,
-        extranonce_2: 0,
-        midstates: vec![uint::U256([i, 0, 0, 0])],
-        merkel_root_lsw: 0xffff_ffff,
-        nbits: 0xffff_ffff,
-        ntime: 0xffff_ffff,
-        //            version: 0,
-        //            extranonce_2: 0,
-        //            midstates: vec![uint::U256([v, 2, 3, 4])],
-        //            merkel_root_lsw: 0xdeadbeef,
-        //            nbits: 0x1a44b9f2,
-        //            ntime: 0x4dd7f5c7,
     }
 }
 
@@ -286,7 +269,7 @@ async fn async_send_work<T>(
     loop {
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
 
-        let test_work = prepare_test_work(midstate_start);
+        let test_work = workdef::prepare_test_work(midstate_start);
         let work_id = await!(h_chain_ctl.lock())
             .expect("h_chain lock")
             .next_work_id();
