@@ -39,9 +39,9 @@ package s9io_pkg;
     // ---------------------------------------------------------------------------------------------
     // Definition of IP core AXI interface
     // ---------------------------------------------------------------------------------------------
-    // Control Interface Receive FIFO, read-only
+    // Command Interface Receive FIFO, read-only
     parameter CMD_RX_FIFO  = 32'h00;
-    // Control Interface Transmit FIFO, write-only
+    // Command Interface Transmit FIFO, write-only
     parameter CMD_TX_FIFO = 32'h04;
     // Work Interface Receive FIFO, read-only
     parameter WORK_RX_FIFO = 32'h08;
@@ -59,8 +59,8 @@ package s9io_pkg;
     parameter IRQ_FIFO_THR = 32'h20;
     // Counter of dropped frames (CRC mismatch, ...), read-only
     parameter ERR_COUNTER = 32'h30;
-    // Last Job ID send to ASICs, read-only
-    parameter LAST_JOB_ID = 32'h34;
+    // Last Work ID send to ASICs, read-only
+    parameter LAST_WORK_ID = 32'h34;
     // Build ID (Unix timestamp), read-only
     parameter BUILD_ID = 32'h3C;
 
@@ -77,7 +77,7 @@ package s9io_pkg;
     parameter CTRL_IRQ_EN_WORK_RX = 32'h1000;
     // Enable interrupt for Work Transmit FIFO, read/write
     parameter CTRL_IRQ_EN_WORK_TX = 32'h0800;
-    // Enable interrupt for Control Receive FIFO, read/write
+    // Enable interrupt for Command Receive FIFO, read/write
     parameter CTRL_IRQ_EN_CMD_RX = 32'h0400;
     // Clear error counter, write-only
     parameter CTRL_ERR_CNT_CLEAR = 32'h0010;
@@ -85,9 +85,9 @@ package s9io_pkg;
     parameter CTRL_RST_WORK_TX_FIFO = 32'h0008;
     // Reset/clear Work Receive FIFO, write-only
     parameter CTRL_RST_WORK_RX_FIFO = 32'h0004;
-    // Reset/clear Control Transmit FIFO, write-only
+    // Reset/clear Command Transmit FIFO, write-only
     parameter CTRL_RST_CMD_TX_FIFO = 32'h0002;
-    // Reset/clear Control Receive FIFO, write-only
+    // Reset/clear Command Receive FIFO, write-only
     parameter CTRL_RST_CMD_RX_FIFO = 32'h0001;
 
     // ---------------------------------------------------------------------------------------------
@@ -97,7 +97,7 @@ package s9io_pkg;
     parameter STAT_IRQ_PEND_WORK_RX = 32'h1000;
     // Interrupt pending for Work Transmit FIFO
     parameter STAT_IRQ_PEND_WORK_TX = 32'h0800;
-    // Interrupt pending for Control Receive FIFO
+    // Interrupt pending for Command Receive FIFO
     parameter STAT_IRQ_PEND_CMD_RX = 32'h0400;
     // Work Interface Transmit FIFO Full
     parameter STAT_WORK_TX_FULL = 32'h0080;
@@ -107,13 +107,13 @@ package s9io_pkg;
     parameter STAT_WORK_RX_FULL = 32'h0020;
     // Work Interface Receive FIFO Empty
     parameter STAT_WORK_RX_EMPTY = 32'h0010;
-    // Control Interface Transmit FIFO Full
+    // Command Interface Transmit FIFO Full
     parameter STAT_CMD_TX_FULL = 32'h0008;
-    // Control Interface Transmit FIFO Empty
+    // Command Interface Transmit FIFO Empty
     parameter STAT_CMD_TX_EMPTY = 32'h0004;
-    // Control Interface Receive FIFO Full
+    // Command Interface Receive FIFO Full
     parameter STAT_CMD_RX_FULL = 32'h0002;
-    // Control Interface Receive FIFO Empty
+    // Command Interface Receive FIFO Empty
     parameter STAT_CMD_RX_EMPTY = 32'h0001;
 
 endpackage : s9io_pkg
