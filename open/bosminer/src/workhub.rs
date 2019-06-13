@@ -6,15 +6,12 @@ use futures_locks::Mutex;
 use std::sync::Arc;
 use tokio::await;
 
-/// Type for solution queue
-type SolutionData = ();
-
 /// This is wrapper that asynchronously locks structure for use in
 /// multiple tasks
 #[derive(Clone)]
 pub struct WorkHub {
     workhubdata: Arc<Mutex<WorkHubData>>,
-    solution_queue_tx: mpsc::UnboundedSender<SolutionData>,
+    solution_queue_tx: mpsc::UnboundedSender<hal::UniqueMiningWorkSolution>,
 }
 
 /// Internal structure that holds the actual work data
@@ -60,13 +57,13 @@ impl WorkHub {
             .get_work()
     }
 
-    pub fn submit_solution(&self) {
+    pub fn submit_solution(&self, solution: hal::UniqueMiningWorkSolution) {
         self.solution_queue_tx
-            .unbounded_send(())
+            .unbounded_send(solution)
             .expect("solution queue send failed");
     }
 
-    pub fn new() -> (Self, mpsc::UnboundedReceiver<SolutionData>) {
+    pub fn new() -> (Self, mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>) {
         let workhub = WorkHubData::new();
         let (tx, rx) = mpsc::unbounded();
         (

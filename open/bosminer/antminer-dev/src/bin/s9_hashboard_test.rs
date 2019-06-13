@@ -303,14 +303,11 @@ async fn async_recv_solutions<T>(
 
                 // work item detected a new unique solution, we will push it for further processing
                 if let Some(unique_solution) = status.unique_solution {
-                    //solution_registry.solutions.push(unique_solution);
                     stats.unique_solutions += 1;
-                    workhub.submit_solution();
+                    workhub.submit_solution(unique_solution);
                 }
                 stats.duplicate_solutions += status.duplicate as u64;
                 stats.mismatched_solution_nonces += status.mismatched_nonce as u64;
-
-                workhub.submit_solution();
             }
             None => {
                 trace!(
