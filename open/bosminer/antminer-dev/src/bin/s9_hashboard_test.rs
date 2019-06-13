@@ -25,14 +25,29 @@ use tokio::timer::Delay;
 const MAX_WORK_LIST_COUNT: usize = 65536;
 
 struct MiningStats {
-    /// Number of work items generated for the hw
+    /// Number of work items generated for the hardware
     work_generated: usize,
+    /// Number of stale solutions received from the hardware
+    stale_solutions: u64,
+    /// Unable to feed the hardware fast enough results in duplicate solutions as
+    /// multiple chips may process the same mining work
+    duplicate_solutions: u64,
+    /// Keep track of nonces that didn't match with previously received solutions (after
+    /// filtering hardware errors, this should really stay at 0, otherwise we have some weird
+    /// hardware problem)
+    mismatched_solution_nonces: u64,
+    /// Counter of unique solutions
+    unique_solutions: u64,
 }
 
 impl MiningStats {
     fn new() -> Self {
         Self {
             work_generated: 0usize,
+            stale_solutions: 0,
+            duplicate_solutions: 0,
+            mismatched_solution_nonces: 0,
+            unique_solutions: 0,
         }
     }
 }
@@ -79,7 +94,7 @@ impl MiningWorkRegistryItem {
 
         let cloned_work = self.work.clone();
         // report the unique solution via status
-        status.unique_solution = Some(UniqueMiningWorkSolution {
+        status.unique_solution = Some(hal::UniqueMiningWorkSolution {
             timestamp: SystemTime::now(),
             work: cloned_work,
             solution: new_solution,
@@ -95,19 +110,7 @@ struct InsertSolutionStatus {
     /// Solution is duplicate (given MiningWorkRegistryItem) already has it
     duplicate: bool,
     /// actual solution (defined if the above 2 are false)
-    unique_solution: Option<UniqueMiningWorkSolution>,
-}
-
-#[allow(dead_code)]
-/// Container with mining work and a corresponding solution received at a particular time
-/// This data structure is used when posting work+solution pairs for further submission upstream.
-struct UniqueMiningWorkSolution {
-    /// time stamp when it has been fetched from the solution FIFO
-    timestamp: std::time::SystemTime,
-    /// Original mining work associated with this solution
-    work: hal::MiningWork,
-    /// solution of the PoW puzzle
-    solution: hal::MiningWorkSolution,
+    unique_solution: Option<hal::UniqueMiningWorkSolution>,
 }
 
 /// Simple mining work registry that stores each work in a slot denoted by its work ID.
@@ -173,32 +176,6 @@ impl MiningWorkRegistry {
 
     fn find_work(&mut self, id: usize) -> &mut Option<MiningWorkRegistryItem> {
         &mut self.pending_work_list[id]
-    }
-}
-
-/// A registry of solutions with small statistics
-struct SolutionRegistry {
-    /// Unique solutions
-    solutions: std::vec::Vec<UniqueMiningWorkSolution>,
-    /// Number of stale solutions received from the hardware
-    stale_solutions: u64,
-    /// Unable to feed the hardware fast enough results in duplicate solutions as
-    /// multiple chips may process the same mining work
-    duplicate_solutions: u64,
-    /// Keep track of nonces that didn't match with previously received solutions (after
-    /// filtering hardware errors, this should really stay at 0, otherwise we have some weird
-    /// hardware problem)
-    mismatched_solution_nonces: u64,
-}
-
-impl SolutionRegistry {
-    fn new() -> Self {
-        Self {
-            solutions: std::vec::Vec::new(),
-            stale_solutions: 0,
-            duplicate_solutions: 0,
-            mismatched_solution_nonces: 0,
-        }
     }
 }
 
@@ -295,9 +272,10 @@ async fn async_send_work<T>(
     }
 }
 
+//solution_registry: Arc<Mutex<SolutionRegistry>>,
 async fn async_recv_solutions<T>(
     work_registry: Arc<Mutex<MiningWorkRegistry>>,
-    solution_registry: Arc<Mutex<SolutionRegistry>>,
+    mining_stats: Arc<Mutex<MiningStats>>,
     h_chain_ctl: Arc<Mutex<hal::s9::HChainCtl<T>>>,
     mut rx_fifo: fifo::HChainFifo,
     workhub: workhub::WorkHub,
@@ -312,10 +290,9 @@ async fn async_recv_solutions<T>(
         let work_id = await!(h_chain_ctl.lock())
             .expect("h_chain lock")
             .get_work_id_from_solution_id(solution.solution_id) as usize;
+        let mut stats = await!(mining_stats.lock()).expect("lock mining stats");
+        let mut work_registry = await!(work_registry.lock()).expect("work registry lock failed");
 
-        let mut work_registry = await!(work_registry.lock()).expect("locking ok");
-        let mut solution_registry =
-            await!(solution_registry.lock()).expect("solution registry lock");
         let work = work_registry.find_work(work_id);
         match work {
             Some(work_item) => {
@@ -326,10 +303,12 @@ async fn async_recv_solutions<T>(
 
                 // work item detected a new unique solution, we will push it for further processing
                 if let Some(unique_solution) = status.unique_solution {
-                    solution_registry.solutions.push(unique_solution);
+                    //solution_registry.solutions.push(unique_solution);
+                    stats.unique_solutions += 1;
+                    workhub.submit_solution();
                 }
-                solution_registry.duplicate_solutions += status.duplicate as u64;
-                solution_registry.mismatched_solution_nonces += status.mismatched_nonce as u64;
+                stats.duplicate_solutions += status.duplicate as u64;
+                stats.mismatched_solution_nonces += status.mismatched_nonce as u64;
 
                 workhub.submit_solution();
             }
@@ -340,29 +319,23 @@ async fn async_recv_solutions<T>(
                     work_id,
                     solution
                 );
-                solution_registry.stale_solutions += 1;
+                stats.stale_solutions += 1;
             }
         }
     }
 }
 
-async fn async_hashrate_meter(
-    solution_registry: Arc<Mutex<SolutionRegistry>>,
-    mining_stats: Arc<Mutex<MiningStats>>,
-) {
+async fn async_hashrate_meter(mining_stats: Arc<Mutex<MiningStats>>) {
     let hashing_started = SystemTime::now();
     let mut total_shares: u128 = 0;
 
     loop {
         await!(Delay::new(Instant::now() + Duration::from_secs(1))).unwrap();
-        let stats = await!(mining_stats.lock()).expect("lock mining stats");
+        let mut stats = await!(mining_stats.lock()).expect("lock mining stats");
         {
-            let mut solution_registry =
-                await!(solution_registry.lock()).expect("solution registry lock");
-
-            total_shares = total_shares + solution_registry.solutions.len() as u128;
+            total_shares = total_shares + stats.unique_solutions as u128;
             // processing solution in the test simply means removing them
-            solution_registry.solutions.clear();
+            stats.unique_solutions = 0;
 
             let total_hashing_time = hashing_started.elapsed().expect("time read ok");
 
@@ -379,9 +352,7 @@ async fn async_hashrate_meter(
             );
             println!(
                 "Mismatched nonce count: {}, stale solutions: {}, duplicate solutions: {}",
-                solution_registry.mismatched_solution_nonces,
-                solution_registry.stale_solutions,
-                solution_registry.duplicate_solutions,
+                stats.mismatched_solution_nonces, stats.stale_solutions, stats.duplicate_solutions,
             );
         }
     }
@@ -402,7 +373,6 @@ fn start_hw(workhub: workhub::WorkHub) {
     )
     .unwrap();
     let work_registry = MiningWorkRegistry::new();
-    let solution_registry = SolutionRegistry::new();
     let mining_stats = MiningStats::new();
 
     info!(LOGGER, "Initializing hash chain controller");
@@ -410,7 +380,6 @@ fn start_hw(workhub: workhub::WorkHub) {
     info!(LOGGER, "Hash chain controller initialized");
 
     let a_work_registry = Arc::new(Mutex::new(work_registry));
-    let a_solution_registry = Arc::new(Mutex::new(solution_registry));
     let a_mining_stats = Arc::new(Mutex::new(mining_stats));
     let a_h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
 
@@ -430,21 +399,20 @@ fn start_hw(workhub: workhub::WorkHub) {
     });
     let c_h_chain_ctl = a_h_chain_ctl.clone();
     let c_work_registry = a_work_registry.clone();
-    let c_solution_registry = a_solution_registry.clone();
+    let c_mining_stats = a_mining_stats.clone();
     let c_workhub = workhub.clone();
     tokio::spawn_async(async move {
         let rx_fifo = await!(c_h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
         await!(async_recv_solutions(
             c_work_registry,
-            c_solution_registry,
+            c_mining_stats,
             c_h_chain_ctl,
             rx_fifo,
             c_workhub,
         ));
     });
-    let c_solution_registry = a_solution_registry.clone();
     let c_mining_stats = a_mining_stats.clone();
-    tokio::spawn_async(async_hashrate_meter(c_solution_registry, c_mining_stats));
+    tokio::spawn_async(async_hashrate_meter(c_mining_stats));
 }
 
 fn main() {

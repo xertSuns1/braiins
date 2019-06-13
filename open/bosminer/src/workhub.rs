@@ -22,6 +22,22 @@ pub struct WorkHubData {
     midstate_start: u64,
 }
 
+/// A registry of solutions
+#[allow(dead_code)]
+struct SolutionRegistry {
+    /// Unique solutions
+    solutions: std::vec::Vec<hal::UniqueMiningWorkSolution>,
+}
+
+#[allow(dead_code)]
+impl SolutionRegistry {
+    fn new() -> Self {
+        Self {
+            solutions: std::vec::Vec::new(),
+        }
+    }
+}
+
 impl WorkHubData {
     pub fn get_work(&mut self) -> hal::MiningWork {
         let work = prepare_test_work(self.midstate_start);
@@ -35,6 +51,8 @@ impl WorkHubData {
     }
 }
 
+/// This trait represents common API for work solvers to get work and
+/// submit solutions
 impl WorkHub {
     pub async fn get_work(&self) -> hal::MiningWork {
         await!(self.workhubdata.lock())

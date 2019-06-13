@@ -40,6 +40,18 @@ pub struct MiningWorkSolution {
     pub solution_id: u32,
 }
 
+/// Container with mining work and a corresponding solution received at a particular time
+/// This data structure is used when posting work+solution pairs for further submission upstream.
+#[derive(Clone, Debug)]
+pub struct UniqueMiningWorkSolution {
+    /// time stamp when it has been fetched from the solution FIFO
+    pub timestamp: std::time::SystemTime,
+    /// Original mining work associated with this solution
+    pub work: MiningWork,
+    /// solution of the PoW puzzle
+    pub solution: MiningWorkSolution,
+}
+
 /// Any hardware mining controller should implement at least these methods
 pub trait HardwareCtl {
     /// Sends work to the hash chain
