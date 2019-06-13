@@ -44,7 +44,7 @@ impl WorkHubData {
 /// multiple tasks
 #[derive(Clone)]
 pub struct WorkHub {
-    workhubdata: Arc<Mutex<WorkHubData>>,
+    workhub_data: Arc<Mutex<WorkHubData>>,
     solution_queue_tx: mpsc::UnboundedSender<hal::UniqueMiningWorkSolution>,
 }
 
@@ -53,7 +53,7 @@ pub struct WorkHub {
 impl WorkHub {
     /// Hardware-facing API
     pub async fn get_work(&self) -> hal::MiningWork {
-        await!(self.workhubdata.lock())
+        await!(self.workhub_data.lock())
             .expect("locking failed")
             .get_work()
     }
@@ -68,11 +68,10 @@ impl WorkHub {
     /// Construct new WorkHub and associated queue to send work through
     /// This is runner/orchestrator/pump-facing function
     pub fn new() -> (Self, mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>) {
-        let workhub = WorkHubData::new();
         let (tx, rx) = mpsc::unbounded();
         (
             Self {
-                workhubdata: Arc::new(Mutex::new(workhub)),
+                workhub_data: Arc::new(Mutex::new(WorkHubData::new())),
                 solution_queue_tx: tx,
             },
             rx,
