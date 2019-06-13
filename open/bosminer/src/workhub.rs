@@ -51,18 +51,22 @@ impl WorkHubData {
 /// This trait represents common API for work solvers to get work and
 /// submit solutions
 impl WorkHub {
+    /// Hardware-facing API
     pub async fn get_work(&self) -> hal::MiningWork {
         await!(self.workhubdata.lock())
             .expect("locking failed")
             .get_work()
     }
 
+    /// Hardware-facing API
     pub fn submit_solution(&self, solution: hal::UniqueMiningWorkSolution) {
         self.solution_queue_tx
             .unbounded_send(solution)
             .expect("solution queue send failed");
     }
 
+    /// Construct new WorkHub and associated queue to send work through
+    /// This is runner/orchestrator/pump-facing function
     pub fn new() -> (Self, mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>) {
         let workhub = WorkHubData::new();
         let (tx, rx) = mpsc::unbounded();
