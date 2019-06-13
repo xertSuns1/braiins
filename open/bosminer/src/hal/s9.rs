@@ -22,6 +22,7 @@ mod bm1387;
 pub mod fifo;
 pub mod gpio;
 pub mod power;
+pub mod registry;
 
 /// Timing constants
 const INACTIVATE_FROM_CHAIN_DELAY_MS: u64 = 100;
