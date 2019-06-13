@@ -1,14 +1,21 @@
 extern crate futures;
 
 use crate::hal;
+use futures::sync::mpsc;
 use futures_locks::Mutex;
 use std::sync::Arc;
 use tokio::await;
 
+/// Type for solution queue
+type SolutionData = ();
+
 /// This is wrapper that asynchronously locks structure for use in
 /// multiple tasks
 #[derive(Clone)]
-pub struct WorkHub(Arc<Mutex<WorkHubData>>);
+pub struct WorkHub {
+    workhubdata: Arc<Mutex<WorkHubData>>,
+    solution_queue_tx: mpsc::UnboundedSender<SolutionData>,
+}
 
 /// Internal structure that holds the actual work data
 pub struct WorkHubData {
@@ -30,11 +37,27 @@ impl WorkHubData {
 
 impl WorkHub {
     pub async fn get_work(&self) -> hal::MiningWork {
-        await!(self.0.lock()).expect("locking failed").get_work()
+        await!(self.workhubdata.lock())
+            .expect("locking failed")
+            .get_work()
     }
 
-    pub fn new() -> Self {
-        Self(Arc::new(Mutex::new(WorkHubData::new())))
+    pub fn submit_solution(&self) {
+        self.solution_queue_tx
+            .unbounded_send(())
+            .expect("solution queue send failed");
+    }
+
+    pub fn new() -> (Self, mpsc::UnboundedReceiver<SolutionData>) {
+        let workhub = WorkHubData::new();
+        let (tx, rx) = mpsc::unbounded();
+        (
+            Self {
+                workhubdata: Arc::new(Mutex::new(workhub)),
+                solution_queue_tx: tx,
+            },
+            rx,
+        )
     }
 }
 
