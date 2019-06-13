@@ -1,3 +1,6 @@
+use crate::workhub;
+use futures_locks::Mutex;
+use std::sync::Arc;
 use uint;
 
 pub mod s9;
@@ -83,18 +86,7 @@ impl MiningStats {
 
 /// Any hardware mining controller should implement at least these methods
 pub trait HardwareCtl {
-    /// Sends work to the hash chain
-    ///
-    /// Returns a unique ID that can be used for registering the work within a hardware specific
-    /// registry
-    fn send_work(&mut self, work: &MiningWork) -> Result<u32, failure::Error>;
-
-    /// Receives 1 MiningWorkSolution
-    fn recv_solution(&mut self) -> Result<Option<MiningWorkSolution>, failure::Error>;
-
-    /// Extracts original work ID for a mining solution
-    fn get_work_id_from_solution(&self, solution: &MiningWorkSolution) -> u32;
-
-    /// Returns the number of detected chips
-    fn get_chip_count(&self) -> usize;
+    /// Starts hardware controller connected to workhub, while storing
+    /// stats in `a_mining_stats`
+    fn start_hw(&self, workhub: workhub::WorkHub, a_mining_stats: Arc<Mutex<MiningStats>>);
 }
