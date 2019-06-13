@@ -135,6 +135,7 @@ impl MiningWorkRegistry {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::workhub;
     #[test]
     fn test_store_work_start() {
         let mut registry = MiningWorkRegistry::new();
