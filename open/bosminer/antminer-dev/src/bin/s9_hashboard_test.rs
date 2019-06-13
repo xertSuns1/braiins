@@ -15,7 +15,6 @@ use slog::{info, trace};
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::hal::s9::fifo;
-use futures::sync::mpsc;
 use futures_locks::Mutex;
 use std::sync::Arc;
 use tokio::await;
@@ -301,7 +300,7 @@ async fn async_recv_solutions<T>(
     solution_registry: Arc<Mutex<SolutionRegistry>>,
     h_chain_ctl: Arc<Mutex<hal::s9::HChainCtl<T>>>,
     mut rx_fifo: fifo::HChainFifo,
-    solved_nonce_queue: mpsc::UnboundedSender<()>,
+    workhub: workhub::WorkHub,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -332,9 +331,7 @@ async fn async_recv_solutions<T>(
                 solution_registry.duplicate_solutions += status.duplicate as u64;
                 solution_registry.mismatched_solution_nonces += status.mismatched_nonce as u64;
 
-                solved_nonce_queue
-                    .unbounded_send(())
-                    .expect("nonce enqueue failed");
+                workhub.submit_solution();
             }
             None => {
                 trace!(
@@ -390,7 +387,7 @@ async fn async_hashrate_meter(
     }
 }
 
-fn start_hw(tx_nonce_queue: mpsc::UnboundedSender<()>, workhub: workhub::WorkHub) {
+fn start_hw(workhub: workhub::WorkHub) {
     use hal::s9::power::VoltageCtrlBackend;
 
     let gpio_mgr = gpio::ControlPinManager::new();
@@ -420,6 +417,7 @@ fn start_hw(tx_nonce_queue: mpsc::UnboundedSender<()>, workhub: workhub::WorkHub
     let c_h_chain_ctl = a_h_chain_ctl.clone();
     let c_work_registry = a_work_registry.clone();
     let c_mining_stats = a_mining_stats.clone();
+    let c_workhub = workhub.clone();
     tokio::spawn_async(async move {
         let tx_fifo = await!(c_h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
         await!(async_send_work(
@@ -427,12 +425,13 @@ fn start_hw(tx_nonce_queue: mpsc::UnboundedSender<()>, workhub: workhub::WorkHub
             c_h_chain_ctl,
             tx_fifo,
             c_mining_stats,
-            workhub,
+            c_workhub,
         ));
     });
     let c_h_chain_ctl = a_h_chain_ctl.clone();
     let c_work_registry = a_work_registry.clone();
     let c_solution_registry = a_solution_registry.clone();
+    let c_workhub = workhub.clone();
     tokio::spawn_async(async move {
         let rx_fifo = await!(c_h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
         await!(async_recv_solutions(
@@ -440,7 +439,7 @@ fn start_hw(tx_nonce_queue: mpsc::UnboundedSender<()>, workhub: workhub::WorkHub
             c_solution_registry,
             c_h_chain_ctl,
             rx_fifo,
-            tx_nonce_queue,
+            c_workhub,
         ));
     });
     let c_solution_registry = a_solution_registry.clone();
@@ -450,9 +449,8 @@ fn start_hw(tx_nonce_queue: mpsc::UnboundedSender<()>, workhub: workhub::WorkHub
 
 fn main() {
     tokio::run_async(async move {
-        let wd = workhub::WorkHub::new();
-        let (tx_nonce, mut rx_nonce) = mpsc::unbounded();
-        start_hw(tx_nonce, wd.clone());
-        while let Some(_x) = await!(rx_nonce.next()) {}
+        let (workhub, mut rx) = workhub::WorkHub::new();
+        start_hw(workhub.clone());
+        while let Some(_x) = await!(rx.next()) {}
     });
 }
