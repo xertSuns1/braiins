@@ -22,34 +22,6 @@ use tokio::await;
 use tokio::prelude::*;
 use tokio::timer::Delay;
 
-struct MiningStats {
-    /// Number of work items generated for the hardware
-    work_generated: usize,
-    /// Number of stale solutions received from the hardware
-    stale_solutions: u64,
-    /// Unable to feed the hardware fast enough results in duplicate solutions as
-    /// multiple chips may process the same mining work
-    duplicate_solutions: u64,
-    /// Keep track of nonces that didn't match with previously received solutions (after
-    /// filtering hardware errors, this should really stay at 0, otherwise we have some weird
-    /// hardware problem)
-    mismatched_solution_nonces: u64,
-    /// Counter of unique solutions
-    unique_solutions: u64,
-}
-
-impl MiningStats {
-    fn new() -> Self {
-        Self {
-            work_generated: 0usize,
-            stale_solutions: 0,
-            duplicate_solutions: 0,
-            mismatched_solution_nonces: 0,
-            unique_solutions: 0,
-        }
-    }
-}
-
 /// Generates enough testing work until the work FIFO becomes full
 /// The work is made unique by specifying a unique midstate.
 ///
@@ -62,7 +34,7 @@ async fn async_send_work<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
     h_chain_ctl: Arc<Mutex<hal::s9::HChainCtl<T>>>,
     mut tx_fifo: fifo::HChainFifo,
-    mining_stats: Arc<Mutex<MiningStats>>,
+    mining_stats: Arc<Mutex<hal::MiningStats>>,
     workhub: workhub::WorkHub,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
@@ -87,7 +59,7 @@ async fn async_send_work<T>(
 //solution_registry: Arc<Mutex<SolutionRegistry>>,
 async fn async_recv_solutions<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
-    mining_stats: Arc<Mutex<MiningStats>>,
+    mining_stats: Arc<Mutex<hal::MiningStats>>,
     h_chain_ctl: Arc<Mutex<hal::s9::HChainCtl<T>>>,
     mut rx_fifo: fifo::HChainFifo,
     workhub: workhub::WorkHub,
@@ -134,7 +106,7 @@ async fn async_recv_solutions<T>(
     }
 }
 
-async fn async_hashrate_meter(mining_stats: Arc<Mutex<MiningStats>>) {
+async fn async_hashrate_meter(mining_stats: Arc<Mutex<hal::MiningStats>>) {
     let hashing_started = SystemTime::now();
     let mut total_shares: u128 = 0;
 
@@ -167,7 +139,7 @@ async fn async_hashrate_meter(mining_stats: Arc<Mutex<MiningStats>>) {
     }
 }
 
-fn start_hw(workhub: workhub::WorkHub, a_mining_stats: Arc<Mutex<MiningStats>>) {
+fn start_hw(workhub: workhub::WorkHub, a_mining_stats: Arc<Mutex<hal::MiningStats>>) {
     use hal::s9::power::VoltageCtrlBackend;
 
     let gpio_mgr = gpio::ControlPinManager::new();
@@ -226,7 +198,7 @@ fn main() {
         let (workhub, mut rx) = workhub::WorkHub::new();
 
         // Create mining stats
-        let a_mining_stats = Arc::new(Mutex::new(MiningStats::new()));
+        let a_mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
 
         // Start hardware
         let c_mining_stats = a_mining_stats.clone();
