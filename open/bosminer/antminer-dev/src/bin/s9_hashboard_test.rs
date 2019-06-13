@@ -57,16 +57,14 @@ fn main() {
         let (workhub, mut rx) = workhub::WorkHub::new();
 
         // Create mining stats
-        let a_mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
+        let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
 
         // create one chain
         let chain = hal::s9::HChain::new();
-        let c_mining_stats = a_mining_stats.clone();
-        chain.start_hw(workhub.clone(), c_mining_stats);
+        chain.start_hw(workhub.clone(), mining_stats.clone());
 
         // Start hashrate-meter task
-        let c_mining_stats = a_mining_stats.clone();
-        tokio::spawn_async(async_hashrate_meter(c_mining_stats));
+        tokio::spawn_async(async_hashrate_meter(mining_stats));
 
         // Receive solutions
         while let Some(_x) = await!(rx.next()) {}
