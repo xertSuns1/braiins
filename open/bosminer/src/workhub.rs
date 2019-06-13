@@ -6,19 +6,6 @@ use futures_locks::Mutex;
 use std::sync::Arc;
 use tokio::await;
 
-/// This is wrapper that asynchronously locks structure for use in
-/// multiple tasks
-#[derive(Clone)]
-pub struct WorkHub {
-    workhubdata: Arc<Mutex<WorkHubData>>,
-    solution_queue_tx: mpsc::UnboundedSender<hal::UniqueMiningWorkSolution>,
-}
-
-/// Internal structure that holds the actual work data
-pub struct WorkHubData {
-    midstate_start: u64,
-}
-
 /// A registry of solutions
 #[allow(dead_code)]
 struct SolutionRegistry {
@@ -35,6 +22,11 @@ impl SolutionRegistry {
     }
 }
 
+/// Internal structure that holds the actual work data
+pub struct WorkHubData {
+    midstate_start: u64,
+}
+
 impl WorkHubData {
     pub fn get_work(&mut self) -> hal::MiningWork {
         let work = prepare_test_work(self.midstate_start);
@@ -46,6 +38,14 @@ impl WorkHubData {
     pub fn new() -> Self {
         Self { midstate_start: 0 }
     }
+}
+
+/// This is wrapper that asynchronously locks structure for use in
+/// multiple tasks
+#[derive(Clone)]
+pub struct WorkHub {
+    workhubdata: Arc<Mutex<WorkHubData>>,
+    solution_queue_tx: mpsc::UnboundedSender<hal::UniqueMiningWorkSolution>,
 }
 
 /// This trait represents common API for work solvers to get work and
