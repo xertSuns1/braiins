@@ -52,6 +52,35 @@ pub struct UniqueMiningWorkSolution {
     pub solution: MiningWorkSolution,
 }
 
+/// Holds all hardware-related statistics for a hashchain
+pub struct MiningStats {
+    /// Number of work items generated for the hardware
+    pub work_generated: usize,
+    /// Number of stale solutions received from the hardware
+    pub stale_solutions: u64,
+    /// Unable to feed the hardware fast enough results in duplicate solutions as
+    /// multiple chips may process the same mining work
+    pub duplicate_solutions: u64,
+    /// Keep track of nonces that didn't match with previously received solutions (after
+    /// filtering hardware errors, this should really stay at 0, otherwise we have some weird
+    /// hardware problem)
+    pub mismatched_solution_nonces: u64,
+    /// Counter of unique solutions
+    pub unique_solutions: u64,
+}
+
+impl MiningStats {
+    pub fn new() -> Self {
+        Self {
+            work_generated: 0,
+            stale_solutions: 0,
+            duplicate_solutions: 0,
+            mismatched_solution_nonces: 0,
+            unique_solutions: 0,
+        }
+    }
+}
+
 /// Any hardware mining controller should implement at least these methods
 pub trait HardwareCtl {
     /// Sends work to the hash chain
