@@ -358,7 +358,7 @@ async fn async_hashrate_meter(mining_stats: Arc<Mutex<MiningStats>>) {
     }
 }
 
-fn start_hw(workhub: workhub::WorkHub) {
+fn start_hw(workhub: workhub::WorkHub, a_mining_stats: Arc<Mutex<MiningStats>>) {
     use hal::s9::power::VoltageCtrlBackend;
 
     let gpio_mgr = gpio::ControlPinManager::new();
@@ -373,14 +373,12 @@ fn start_hw(workhub: workhub::WorkHub) {
     )
     .unwrap();
     let work_registry = MiningWorkRegistry::new();
-    let mining_stats = MiningStats::new();
 
     info!(LOGGER, "Initializing hash chain controller");
     h_chain_ctl.init().unwrap();
     info!(LOGGER, "Hash chain controller initialized");
 
     let a_work_registry = Arc::new(Mutex::new(work_registry));
-    let a_mining_stats = Arc::new(Mutex::new(mining_stats));
     let a_h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
 
     let c_h_chain_ctl = a_h_chain_ctl.clone();
@@ -411,14 +409,25 @@ fn start_hw(workhub: workhub::WorkHub) {
             c_workhub,
         ));
     });
-    let c_mining_stats = a_mining_stats.clone();
-    tokio::spawn_async(async_hashrate_meter(c_mining_stats));
 }
 
 fn main() {
     tokio::run_async(async move {
+        // Create workhub
         let (workhub, mut rx) = workhub::WorkHub::new();
-        start_hw(workhub.clone());
+
+        // Create mining stats
+        let a_mining_stats = Arc::new(Mutex::new(MiningStats::new()));
+
+        // Start hardware
+        let c_mining_stats = a_mining_stats.clone();
+        start_hw(workhub.clone(), c_mining_stats);
+
+        // Start hashrate-meter task
+        let c_mining_stats = a_mining_stats.clone();
+        tokio::spawn_async(async_hashrate_meter(c_mining_stats));
+
+        // Receive solutions
         while let Some(_x) = await!(rx.next()) {}
     });
 }
