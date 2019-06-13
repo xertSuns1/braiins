@@ -278,7 +278,7 @@ begin
       loc_addr := axi_awaddr(ADDR_LSB + OPT_MEM_ADDR_BITS downto ADDR_LSB);
       if (slv_reg_wren = '1') then
         case loc_addr is
-          -- Control Interface Transmit FIFO
+          -- Command Interface Transmit FIFO
           when b"0001" =>
             cmd_tx_fifo_wr <= '1';
             for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
@@ -460,7 +460,7 @@ begin
         -- Address decoding for reading registers
         loc_addr := axi_araddr(ADDR_LSB + OPT_MEM_ADDR_BITS downto ADDR_LSB);
         case loc_addr is
-          -- Control Interface Receive FIFO
+          -- Command Interface Receive FIFO
           when b"0000" =>
             cmd_rx_fifo_rd <= slv_reg_rden;
             reg_data_out <= (others => '0');
@@ -486,7 +486,7 @@ begin
           -- Counter of dropped frames (CRC mismatch, ...)
           when b"1100" =>
             reg_data_out <= slv_reg12;
-          -- Last Job ID send to ASICs
+          -- Last Work ID send to ASICs
           when b"1101" =>
             reg_data_out <= std_logic_vector(resize(unsigned(slv_reg13), 32));
           -- Build ID
@@ -544,11 +544,11 @@ begin
         -- Signalization of work time delay
         work_time_ack     => work_time_ack,
 
-        -- Control FIFO read port
+        -- Command FIFO read port
         cmd_rx_fifo_rd    => cmd_rx_fifo_rd,
         cmd_rx_fifo_data  => slv_reg0,
 
-        -- Control FIFO write port
+        -- Command FIFO write port
         cmd_tx_fifo_wr    => cmd_tx_fifo_wr,
         cmd_tx_fifo_data  => slv_reg1,
 
@@ -578,8 +578,8 @@ begin
         -- Error counter (output)
         reg_err_counter   => slv_reg12,
 
-        -- Last Job ID send to ASICs (output)
-        reg_last_job_id   => slv_reg13
+        -- Last Work ID sent to ASICs (output)
+        reg_last_work_id  => slv_reg13
 
     );
 

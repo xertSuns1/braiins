@@ -148,11 +148,11 @@ module s9io_v0_1_tb();
         tc_irq_work_rx();
         tc_irq_work_tx();
 
-        // testcase 6 - test of last job ID
-        tc_job_id_1();
-        tc_job_id_2();
-        tc_job_id_3();
-        tc_job_id_4();
+        // testcase 6 - test of last work ID
+        tc_work_id_1();
+        tc_work_id_2();
+        tc_work_id_3();
+        tc_work_id_4();
 
         // Testcase 7 - test of IP core reset by enable flag
         tc_ip_core_reset_1();
@@ -475,8 +475,8 @@ module s9io_v0_1_tb();
 
         $display("Testcase 3b: work response");
 
-        // initialization of job ID to max. value
-        init_job_id();
+        // initialization of work ID to max. value
+        init_work_id();
 
         uart_send_data(uart_data1);
         fifo_read_and_compare_work(fifo_data1);
@@ -697,8 +697,8 @@ module s9io_v0_1_tb();
 
         $display("Testcase 5b: IRQ RX work response");
 
-        // initialization of job ID to max. value
-        init_job_id();
+        // initialization of work ID to max. value
+        init_work_id();
 
         // check IRQ ports
         check_irq(3'b000, 3'b001, "initial state");
@@ -792,10 +792,10 @@ module s9io_v0_1_tb();
     endtask
 
     // ---------------------------------------------------------------------------------------------
-    // Testcase 6: Test of last job ID
+    // Testcase 6: Test of last work ID
     // ---------------------------------------------------------------------------------------------
-    // response has the same job ID as last work
-    task tc_job_id_1();
+    // response has the same work ID as last work
+    task tc_work_id_1();
         // Tx FIFO data
         static logic[31:0] fifo_data1[$] = {
             32'h00000000, 32'hffffffff, 32'hffffffff, 32'hffffffff, 32'h00000000, 32'h00000000,
@@ -817,7 +817,7 @@ module s9io_v0_1_tb();
         // reference Rx FIFO data
         static logic[31:0] fifo_data2[$] = {32'h083c0648, 32'h8d000000};
 
-        $display("Testcase 6a: job ID, response with same ID");
+        $display("Testcase 6a: work ID, response with same ID");
 
         // set 1 midstate mode
         axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
@@ -831,8 +831,8 @@ module s9io_v0_1_tb();
     endtask
 
     // ---------------------------------------------------------------------------------------------
-    // response has the same job ID as last work, full range
-    task tc_job_id_2();
+    // response has the same work ID as last work, full range
+    task tc_work_id_2();
         // Tx FIFO data
         static logic[31:0] fifo_data1[$] = {
             32'h0000cdef, 32'hffffffff, 32'hffffffff, 32'hffffffff, 32'h00000000, 32'h00000000,
@@ -854,7 +854,7 @@ module s9io_v0_1_tb();
         // reference Rx FIFO data
         static logic[31:0] fifo_data2[$] = {32'h083c0648, 32'h8dcdef00};
 
-        $display("Testcase 6b: job ID, response with same ID, full range");
+        $display("Testcase 6b: work ID, response with same ID, full range");
 
         // set 1 midstate mode
         axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
@@ -868,8 +868,8 @@ module s9io_v0_1_tb();
     endtask
 
     // ---------------------------------------------------------------------------------------------
-    // response has smaller job ID then last work
-    task tc_job_id_3();
+    // response has smaller work ID then last work
+    task tc_work_id_3();
         // Tx FIFO data
         static logic[31:0] fifo_data1[$] = {
             32'h00001234, 32'hffffffff, 32'hffffffff, 32'hffffffff, 32'h00000000, 32'h00000000,
@@ -891,7 +891,7 @@ module s9io_v0_1_tb();
         // reference Rx FIFO data
         static logic[31:0] fifo_data2[$] = {32'h083c0648, 32'h9f123000};
 
-        $display("Testcase 6c: job ID, response with smaller ID then last work");
+        $display("Testcase 6c: work ID, response with smaller ID then last work");
 
         // set 1 midstate mode
         axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
@@ -905,8 +905,8 @@ module s9io_v0_1_tb();
     endtask
 
     // ---------------------------------------------------------------------------------------------
-    // response has higher job ID then last work (should not happen in real HW)
-    task tc_job_id_4();
+    // response has higher work ID then last work (should not happen in real HW)
+    task tc_work_id_4();
         // Tx FIFO data
         static logic[31:0] fifo_data1[$] = {
             32'h00001234, 32'hffffffff, 32'hffffffff, 32'hffffffff, 32'h00000000, 32'h00000000,
@@ -928,7 +928,7 @@ module s9io_v0_1_tb();
         // reference Rx FIFO data
         static logic[31:0] fifo_data2[$] = {32'h083c0648, 32'h9011c000};
 
-        $display("Testcase 6c: job ID, response with higher ID then last work");
+        $display("Testcase 6c: work ID, response with higher ID then last work");
 
         // set 1 midstate mode
         axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
@@ -1045,8 +1045,8 @@ module s9io_v0_1_tb();
 
         $display("Testcase 7c: IP core reset, work RX FIFO");
 
-        // initialization of job ID to max. value
-        init_job_id();
+        // initialization of work ID to max. value
+        init_work_id();
 
         // check if FIFO is empty
         check_status(STAT_WORK_RX_EMPTY, 1'b1, "FIFO is not empty");
@@ -1447,9 +1447,9 @@ module s9io_v0_1_tb();
     endtask
 
     // ---------------------------------------------------------------------------------------------
-    // initialization of job ID to max. value
-    task init_job_id();
-        // Tx FIFO data - to set correct job ID
+    // initialization of work ID to max. value
+    task init_work_id();
+        // Tx FIFO data - to set correct work ID
         static logic[31:0] fifo_data1[$] = {
             32'h0000007f, 32'hffffffff, 32'hffffffff, 32'hffffffff, 32'h00000000, 32'h00000000,
             32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000

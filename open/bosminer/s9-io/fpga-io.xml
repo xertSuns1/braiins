@@ -61,7 +61,7 @@
       <registers>
         <register>
           <name>CMD_RX_FIFO</name>
-          <description>FIFO for responses from control commands</description>
+          <description>FIFO for responses from commands</description>
           <addressOffset>0x00</addressOffset>
           <size>32</size>
           <access>read-only</access>
@@ -262,22 +262,22 @@
           <fields>
             <field>
               <name>CMD_RX_EMPTY</name>
-              <description>Control Interface Receive FIFO Empty</description>
+              <description>Command Interface Receive FIFO Empty</description>
               <bitRange>[0:0]</bitRange>
             </field>
             <field>
               <name>CMD_RX_FULL</name>
-              <description>Control Interface Receive FIFO Full</description>
+              <description>Command Interface Receive FIFO Full</description>
               <bitRange>[1:1]</bitRange>
             </field>
             <field>
               <name>CMD_TX_EMPTY</name>
-              <description>Control Interface Transmit FIFO Empty</description>
+              <description>Command Interface Transmit FIFO Empty</description>
               <bitRange>[2:2]</bitRange>
             </field>
             <field>
               <name>CMD_TX_FULL</name>
-              <description>Control Interface Transmit FIFO Full</description>
+              <description>Command Interface Transmit FIFO Full</description>
               <bitRange>[3:3]</bitRange>
             </field>
             <field>
@@ -302,7 +302,7 @@
             </field>
             <field>
               <name>IRQ_PEND_CMD_RX</name>
-              <description>Interrupt pending for Control Receive FIFO</description>
+              <description>Interrupt pending for Command Receive FIFO</description>
               <bitRange>[10:10]</bitRange>
             </field>
             <field>

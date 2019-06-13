@@ -47,11 +47,11 @@ entity s9io_core is
         -- Signalization of work time delay
         work_time_ack     : out std_logic;
 
-        -- Control FIFO read port
+        -- Command FIFO read port
         cmd_rx_fifo_rd    : in  std_logic;
         cmd_rx_fifo_data  : out std_logic_vector(31 downto 0);
 
-        -- Control FIFO write port
+        -- Command FIFO write port
         cmd_tx_fifo_wr    : in  std_logic;
         cmd_tx_fifo_data  : in  std_logic_vector(31 downto 0);
 
@@ -81,8 +81,8 @@ entity s9io_core is
         -- Error counter
         reg_err_counter   : out std_logic_vector(31 downto 0);
 
-        -- Last Job ID send to ASICs
-        reg_last_job_id   : out std_logic_vector(15 downto 0)
+        -- Last Work ID send to ASICs
+        reg_last_work_id   : out std_logic_vector(15 downto 0)
     );
 end entity s9io_core;
 
@@ -115,15 +115,15 @@ architecture RTL of s9io_core is
     signal word_cnt_d           : unsigned(4 downto 0);
     signal word_cnt_q           : unsigned(4 downto 0);
 
-    -- value of rest bytes in the last word for control command
+    -- value of rest bytes in the last word for commands
     signal byte_rest_d          : unsigned(1 downto 0);
     signal byte_rest_q          : unsigned(1 downto 0);
 
-    -- extra job ID
-    signal job_id               : std_logic_vector(15 downto 0);
-    signal job_id_tx_d          : std_logic_vector(15 downto 0);
-    signal job_id_tx_q          : std_logic_vector(15 downto 0);
-    signal job_id_rx            : std_logic_vector(6 downto 0);
+    -- extra work ID
+    signal work_id              : std_logic_vector(15 downto 0);
+    signal work_id_tx_d         : std_logic_vector(15 downto 0);
+    signal work_id_tx_q         : std_logic_vector(15 downto 0);
+    signal work_id_rx           : std_logic_vector(6 downto 0);
 
     -- Rx FSM type and signals declaration
     type fsm_rx_type_t is (st_idle, st_wait, st_read, st_calc_crc, st_check_crc,
@@ -154,13 +154,13 @@ architecture RTL of s9io_core is
     signal ctrl_rst_cmd_tx      : std_logic;
     signal ctrl_rst_cmd_rx      : std_logic;
 
-    -- Control receive FIFO
+    -- Command receive FIFO
     signal cmd_rx_fifo_wr       : std_logic;
     signal cmd_rx_fifo_full     : std_logic;
     signal cmd_rx_fifo_data_w   : std_logic_vector(31 downto 0);
     signal cmd_rx_fifo_empty    : std_logic;
 
-    -- Control transmit FIFO
+    -- Command transmit FIFO
     signal cmd_tx_fifo_full     : std_logic;
     signal cmd_tx_fifo_rd       : std_logic;
     signal cmd_tx_fifo_empty    : std_logic;
@@ -301,13 +301,13 @@ begin
                 byte_cnt_q <= (others => '0');
                 word_cnt_q <= (others => '0');
                 byte_rest_q <= (others => '0');
-                job_id_tx_q <= (others => '0');
+                work_id_tx_q <= (others => '0');
             else
                 fsm_q <= fsm_d;
                 byte_cnt_q <= byte_cnt_d;
                 word_cnt_q <= word_cnt_d;
                 byte_rest_q <= byte_rest_d;
-                job_id_tx_q <= job_id_tx_d;
+                work_id_tx_q <= work_id_tx_d;
             end if;
         end if;
     end process;
@@ -320,7 +320,7 @@ begin
         work_tx_fifo_empty, work_tx_fifo_data_r, work_tx_fifo_thr_ready,
         cmd_tx_fifo_empty, cmd_tx_fifo_data_r,
         work_ready, cmd_tx_ready,
-        byte_cnt_q, word_cnt_q, byte_rest_q, job_id_tx_q,
+        byte_cnt_q, word_cnt_q, byte_rest_q, work_id_tx_q,
         crc5_tx, crc16
     ) begin
 
@@ -330,7 +330,7 @@ begin
         byte_cnt_d <= byte_cnt_q;
         word_cnt_d <= word_cnt_q;
         byte_rest_d <= byte_rest_q;
-        job_id_tx_d <= job_id_tx_q;
+        work_id_tx_d <= work_id_tx_q;
 
         work_time_ack <= '0';
         err_cnt_clear <= '0';
@@ -385,7 +385,7 @@ begin
                 end if;
 
             when st_check =>                        -- check of reset FIFOs, reload of baudrate, ...
-                if (work_tx_fifo_thr_ready = '1') then    -- work has higher priority, start only when complete job is in FIFO
+                if (work_tx_fifo_thr_ready = '1') then    -- work has higher priority, start only when complete work is in FIFO
                     fsm_d <= st_work_cmd;
                     crc16_clear <= '1';
                 elsif (cmd_tx_fifo_empty = '0') then  -- control has lower priority
@@ -424,7 +424,7 @@ begin
                     uart_tx_write <= '1';
                     crc16_wr <= '1';
                     uart_tx_data_wr <= '0' & work_tx_fifo_data_r(6 downto 0);
-                    job_id_tx_d <= work_tx_fifo_data_r(15 downto 0);
+                    work_id_tx_d <= work_tx_fifo_data_r(15 downto 0);
                 end if;
 
             when st_work_optv =>
@@ -605,7 +605,7 @@ begin
     end process;
 
     ------------------------------------------------------------------------------------------------
-    -- Control receive FIFO
+    -- Command Receive FIFO
     i_cmd_rx_fifo: entity work.fifo_block
     generic map (
         A => 8,     -- address width of FIFO - 256 words
@@ -630,7 +630,7 @@ begin
     );
 
     ------------------------------------------------------------------------------------------------
-    -- Control transmit FIFO
+    -- Command Transmit FIFO
     i_cmd_tx_fifo: entity work.fifo_block
     generic map (
         A => 10,    -- address width of FIFO - 1k words
@@ -655,7 +655,7 @@ begin
     );
 
     ------------------------------------------------------------------------------------------------
-    -- Work receive FIFO
+    -- Work Receive FIFO
     i_work_rx_fifo: entity work.fifo_block
     generic map (
         A => 10,    -- address width of FIFO - 1k words
@@ -680,7 +680,7 @@ begin
     );
 
     ------------------------------------------------------------------------------------------------
-    -- Work transmit FIFO
+    -- Work Transmit FIFO
     i_work_tx_fifo: entity work.fifo_block_thr
     generic map (
         A => 11,    -- address width of FIFO - 2k words
@@ -751,22 +751,22 @@ begin
 
 
     ------------------------------------------------------------------------------------------------
-    -- calculation of full job ID
-    p_job_id_calc: process (fsm_rx_q, job_id_rx, job_id_tx_q) begin
+    -- calculation of full work ID
+    p_work_id_calc: process (fsm_rx_q, work_id_rx, work_id_tx_q) begin
         -- default assignment
-        job_id <= (others => '0');
+        work_id <= (others => '0');
 
         if (fsm_rx_q = st_write_work2) then
-            job_id(6 downto 0) <= job_id_rx;                  -- copy received job ID
-            job_id(15 downto 7) <= job_id_tx_q(15 downto 7);  -- preset of last send job ID
+            work_id(6 downto 0) <= work_id_rx;                  -- copy received work ID
+            work_id(15 downto 7) <= work_id_tx_q(15 downto 7);  -- preset of last send work ID
 
-            if (job_id_rx > job_id_tx_q(6 downto 0)) then
-                job_id(15 downto 7) <= std_logic_vector(unsigned(job_id_tx_q(15 downto 7)) - 1);
+            if (work_id_rx > work_id_tx_q(6 downto 0)) then
+                work_id(15 downto 7) <= std_logic_vector(unsigned(work_id_tx_q(15 downto 7)) - 1);
             end if;
         end if;
     end process;
 
-    job_id_rx <= response_q(5)(6 downto 0);
+    work_id_rx <= response_q(5)(6 downto 0);
 
     ------------------------------------------------------------------------------------------------
     -- sequential part of receive FSM (state register)
@@ -792,7 +792,7 @@ begin
     p_fsm_rx_cmb: process (fsm_rx_q, ctrl_enable,
         work_rx_fifo_full, cmd_rx_fifo_full,
         uart_rx_empty, uart_rx_data_rd,
-        byte_cnt_rx_q, response_q, crc5_rx_ready, crc5_rx_crc, job_id,
+        byte_cnt_rx_q, response_q, crc5_rx_ready, crc5_rx_crc, work_id,
         irq_pending_work_rx_q, irq_pending_cmd_rx_q,
         work_rx_fifo_rd, cmd_rx_fifo_rd, rst_fifo_work_rx, rst_fifo_cmd_rx
     ) begin
@@ -899,7 +899,7 @@ begin
                     fsm_rx_d <= st_wait;
                     irq_pending_work_rx_d <= '1';
                     work_rx_fifo_wr <= '1';
-                    work_rx_fifo_data_w <= response_q(6) & job_id & response_q(4);
+                    work_rx_fifo_data_w <= response_q(6) & work_id & response_q(4);
                 end if;
 
             when st_write_cmd1 =>
@@ -1013,8 +1013,8 @@ begin
     -- error counter
     reg_err_counter <= std_logic_vector(err_cnt_q);
 
-    -- last job ID
-    reg_last_job_id <= job_id_tx_q;
+    -- last work ID
+    reg_last_work_id <= work_id_tx_q;
 
 end architecture;
 
