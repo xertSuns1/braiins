@@ -1,8 +1,8 @@
-# FPGA Zynq Platform Design
+# FPGA Zynq IO Design
 
-## General parameters of the platform
+## General Parameters of the Platform
 
-**Target Board:** G9/G19
+**Target Boards:** G9, G19, G29
 
 **Device:** xc7z010clg400-1
 
@@ -12,7 +12,7 @@
 
 **DDR clock:** 533 MHz
 
-## List of implemented IP cores
+## List of Implemented IP Cores
 
   Name of IP         | Type of IP                | Memory address   | IRQ         | Frequency [MHz]
   ------------------ | ------------------------- | ---------------- | ----------- | -----------------

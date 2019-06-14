@@ -21,9 +21,12 @@
 # SOFTWARE.
 ####################################################################################################
 
-###########################################################
-# CREATE PROJECT
-###########################################################
+####################################################################################################
+timestamp "Executing system_init.tcl ..."
+
+####################################################################################################
+# Create project
+####################################################################################################
 create_project -force $design $projdir -part $partname
 set_property target_language Verilog [current_project]
 
@@ -31,26 +34,34 @@ if {[info exists board_part]} {
     set_property board_part $board_part [current_project]
 }
 
-###########################################################
+####################################################################################################
 # Create Report/Results Directory
-###########################################################
-set report_dir  $projdir/reports
-set results_dir $projdir/results
+####################################################################################################
+set report_dir [file join $projdir reports]
+set results_dir [file join $projdir results]
 if ![file exists $report_dir]  {file mkdir $report_dir}
 if ![file exists $results_dir] {file mkdir $results_dir}
 
-###########################################################
+####################################################################################################
+# Generate IP Cores
+####################################################################################################
+source generate_ip_vid_gen.tcl
+
+####################################################################################################
 # Add IP Repositories to search path
-###########################################################
+####################################################################################################
 
 set other_repos [get_property ip_repo_paths [current_project]]
 set_property  ip_repo_paths  "$ip_repos $other_repos" [current_project]
 
-update_ip_catalog
+update_ip_catalog -rebuild
 
-###########################################################
+####################################################################################################
 # CREATE BLOCK DESIGN (GUI/TCL COMBO)
-###########################################################
+####################################################################################################
+timestamp "Generating system block design ..."
+
+set_property target_language Verilog [current_project]
 
 create_bd_design "system"
 
@@ -63,13 +74,16 @@ if {$board == "G29"} {
     set_property -dict [list CONFIG.PCW_USB0_PERIPHERAL_ENABLE {0}] [get_bd_cells processing_system7_0]
 }
 
+validate_bd_design
+write_bd_tcl -force ./${design}.backup.tcl
+
 make_wrapper -files [get_files $projdir/${design}.srcs/sources_1/bd/system/system.bd] -top
 
-###########################################################
-# ADD FILES
-###########################################################
+####################################################################################################
+# Add files
+####################################################################################################
 
-#HDL
+# HDL
 if {[string equal [get_filesets -quiet sources_1] ""]} {
     create_fileset -srcset sources_1
 }
@@ -80,7 +94,7 @@ if {[llength $hdl_files] != 0} {
     add_files -norecurse -fileset [get_filesets sources_1] $hdl_files
 }
 
-#CONSTRAINTS
+# Constraints
 if {[string equal [get_filesets -quiet constrs_1] ""]} {
   create_fileset -constrset constrs_1
 }
