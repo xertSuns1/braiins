@@ -471,7 +471,8 @@ where
         self.fifo.write_to_work_tx_fifo(work_id)?;
         self.fifo.write_to_work_tx_fifo(work.nbits)?;
         self.fifo.write_to_work_tx_fifo(work.ntime)?;
-        self.fifo.write_to_work_tx_fifo(work.merkel_root_lsw)?;
+        self.fifo
+            .write_to_work_tx_fifo(work.merkel_root_lsw::<LittleEndian>())?;
 
         for midstate in work.midstates.iter() {
             let midstate = HChainCtl::<VBackend>::u256_as_u32_slice(&midstate);

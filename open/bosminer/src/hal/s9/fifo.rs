@@ -2,6 +2,7 @@
 /// and associated interrupts.
 /// Exports FIFO management/send/receive and register access.
 use crate::error::{self, ErrorKind};
+use byteorder::{ByteOrder, LittleEndian};
 use failure::ResultExt;
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -165,7 +166,7 @@ impl HChainFifo {
         self.write_to_work_tx_fifo(work_id)?;
         self.write_to_work_tx_fifo(work.nbits)?;
         self.write_to_work_tx_fifo(work.ntime)?;
-        self.write_to_work_tx_fifo(work.merkel_root_lsw)?;
+        self.write_to_work_tx_fifo(work.merkel_root_lsw::<LittleEndian>())?;
 
         for midstate in work.midstates.iter() {
             let midstate = u256_as_u32_slice(&midstate);
