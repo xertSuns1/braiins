@@ -1,6 +1,7 @@
 extern crate futures;
 
 use crate::hal;
+use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 use futures::sync::mpsc;
 use futures_locks::Mutex;
 use std::any::Any;
@@ -80,18 +81,44 @@ impl WorkHub {
     }
 }
 
-struct DummyJob;
+struct DummyJob(Hash);
 
-impl hal::BtcBlock for DummyJob {
-    fn get_version(&self) -> u32 {
+impl DummyJob {
+    pub fn new() -> Self {
+        DummyJob(Hash::from_slice(&[0xffu8; 32]).unwrap())
+    }
+}
+
+impl hal::BitcoinJob for DummyJob {
+    fn version(&self) -> u32 {
         0
+    }
+
+    fn version_mask(&self) -> u32 {
+        0
+    }
+
+    fn previous_hash(&self) -> &Hash {
+        &self.0
+    }
+
+    fn merkle_root(&self) -> &Hash {
+        &self.0
+    }
+
+    fn time(&self) -> u32 {
+        0xffff_ffff
+    }
+
+    fn bits(&self) -> u32 {
+        0xffff_ffff
     }
 }
 
 /// * `i` - unique identifier for the generated midstate
 pub fn prepare_test_work(i: u64) -> hal::MiningWork {
     hal::MiningWork {
-        block: Arc::new(DummyJob),
+        job: Arc::new(DummyJob::new()),
         version: 0,
         extranonce_2: 0,
         midstates: vec![uint::U256([i, 0, 0, 0])],
