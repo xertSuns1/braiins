@@ -6,6 +6,7 @@ use futures::sync::mpsc;
 use futures_locks::Mutex;
 use std::sync::Arc;
 use tokio::await;
+use crate::hal::BitcoinJob;
 
 /// A registry of solutions
 #[allow(dead_code)]
@@ -116,17 +117,12 @@ impl hal::BitcoinJob for DummyJob {
 
 /// * `i` - unique identifier for the generated midstate
 pub fn prepare_test_work(i: u64) -> hal::MiningWork {
+    let job = Arc::new(DummyJob::new());
+    let time = job.time();
     hal::MiningWork {
-        job: Arc::new(DummyJob::new()),
+        job,
         version: 0,
         midstates: vec![uint::U256([i, 0, 0, 0])],
-        nbits: 0xffff_ffff,
-        ntime: 0xffff_ffff,
-        //            version: 0,
-        //            extranonce_2: 0,
-        //            midstates: vec![uint::U256([v, 2, 3, 4])],
-        //            merkel_root_lsw: 0xdeadbeef,
-        //            nbits: 0x1a44b9f2,
-        //            ntime: 0x4dd7f5c7,
+        ntime: time,
     }
 }

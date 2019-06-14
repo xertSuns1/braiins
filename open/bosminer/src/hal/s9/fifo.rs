@@ -163,9 +163,9 @@ impl HChainFifo {
         work: &crate::hal::MiningWork,
         work_id: u32,
     ) -> Result<u32, failure::Error> {
-        self.write_to_work_tx_fifo(work_id)?;
-        self.write_to_work_tx_fifo(work.nbits)?;
-        self.write_to_work_tx_fifo(work.ntime)?;
+        self.write_to_work_tx_fifo(work_id.to_le())?;
+        self.write_to_work_tx_fifo(work.bits().to_le())?;
+        self.write_to_work_tx_fifo(work.ntime.to_le())?;
         self.write_to_work_tx_fifo(work.merkel_root_lsw::<LittleEndian>())?;
 
         for midstate in work.midstates.iter() {
