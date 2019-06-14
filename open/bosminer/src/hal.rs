@@ -1,4 +1,5 @@
 use crate::workhub;
+use bitcoin_hashes::sha256d::Hash;
 use downcast_rs::{impl_downcast, Downcast};
 use futures_locks::Mutex;
 use std::sync::Arc;
@@ -6,13 +7,29 @@ use uint;
 
 pub mod s9;
 
-/// Represents interface for Bitcoin block header from which the new work will be generated
-/// The trait is bound to Downcast which enables connect work solution with original job
+/// Represents interface for Bitcoin job with access to block header from which the new work will be
+/// generated. The trait is bound to Downcast which enables connect work solution with original job
 /// and hide protocol specific details.
-pub trait BtcBlock: Downcast + Send + Sync {
-    fn get_version(&self) -> u32;
+pub trait BitcoinJob: Downcast + Send + Sync {
+    /// Original version field that reflects the current network consensus
+    fn version(&self) -> u32;
+    /// Bit-mask with general purpose bits which can be freely manipulated (specified by BIP320)
+    fn version_mask(&self) -> u32;
+    /// Double SHA256 hash of the previous block header
+    fn previous_hash(&self) -> &Hash;
+    /// Double SHA256 hash based on all of the transactions in the block
+    fn merkle_root(&self) -> &Hash;
+    /// Current block timestamp as seconds since 1970-01-01T00:00 UTC
+    fn time(&self) -> u32;
+    /// Maximal timestamp for current block as seconds since 1970-01-01T00:00 UTC
+    fn max_time(&self) -> u32 {
+        self.time()
+    }
+    /// Current target in compact format (network difficulty)
+    /// https://en.bitcoin.it/wiki/Difficulty
+    fn bits(&self) -> u32;
 }
-impl_downcast!(BtcBlock);
+impl_downcast!(BitcoinJob);
 
 /// Describes actual mining work for submission to a hashing hardware.
 /// Starting with merkel_root_lsw the data goes to chunk2 of SHA256.
@@ -24,8 +41,8 @@ impl_downcast!(BtcBlock);
 /// Add ntime limit for supporting hardware that can do nTime rolling on its own
 #[derive(Clone)]
 pub struct MiningWork {
-    /// Bitcoin block header shared with initial network protocol and work solution
-    pub block: Arc<dyn BtcBlock>,
+    /// Bitcoin job shared with initial network protocol and work solution
+    pub job: Arc<dyn BitcoinJob>,
     /// Version field used for calculating the midstate
     pub version: u32,
     /// Extranonce 2 used for calculating merkelroot
