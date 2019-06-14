@@ -50,16 +50,19 @@ pub struct MiningWork {
     pub midstates: Vec<uint::U256>,
     /// Start value for nTime, hardware may roll nTime further.
     pub ntime: u32,
-    /// Network difficulty encoded as nbits (exponent + mantissa - see
-    /// https://en.bitcoin.it/wiki/Difficulty)
-    pub nbits: u32,
 }
 
 impl MiningWork {
-    /// Extract least-significant word of merkleroot that goes to chunk2 of SHA256
+    /// Extract least-significant word of merkle root that goes to chunk2 of SHA256
     pub fn merkel_root_lsw<T: ByteOrder>(&self) -> u32 {
         let bytes = &self.job.merkle_root().into_inner();
         T::read_u32(&bytes[bytes.len() - 4..])
+    }
+
+    /// Shorthand for getting current target (nBits)
+    #[inline]
+    pub fn bits(&self) -> u32 {
+        self.job.bits()
     }
 }
 
