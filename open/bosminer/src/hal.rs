@@ -1,5 +1,6 @@
 use crate::workhub;
-use bitcoin_hashes::sha256d::Hash;
+use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
+use byteorder::ByteOrder;
 use downcast_rs::{impl_downcast, Downcast};
 use futures_locks::Mutex;
 use std::sync::Arc;
@@ -45,17 +46,21 @@ pub struct MiningWork {
     pub job: Arc<dyn BitcoinJob>,
     /// Version field used for calculating the midstate
     pub version: u32,
-    /// Extranonce 2 used for calculating merkelroot
-    pub extranonce_2: u32,
     /// Multiple midstates can be generated for each work - these are the full
     pub midstates: Vec<uint::U256>,
-    /// least-significant word of merkleroot that goes to chunk2 of SHA256
-    pub merkel_root_lsw: u32,
     /// Start value for nTime, hardware may roll nTime further.
     pub ntime: u32,
     /// Network difficulty encoded as nbits (exponent + mantissa - see
     /// https://en.bitcoin.it/wiki/Difficulty)
     pub nbits: u32,
+}
+
+impl MiningWork {
+    /// Extract least-significant word of merkleroot that goes to chunk2 of SHA256
+    pub fn merkel_root_lsw<T: ByteOrder>(&self) -> u32 {
+        let bytes = &self.job.merkle_root().into_inner();
+        T::read_u32(&bytes[bytes.len() - 4..])
+    }
 }
 
 /// Represents raw solution from the mining hardware

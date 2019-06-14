@@ -4,7 +4,6 @@ use crate::hal;
 use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 use futures::sync::mpsc;
 use futures_locks::Mutex;
-use std::any::Any;
 use std::sync::Arc;
 use tokio::await;
 
@@ -120,9 +119,7 @@ pub fn prepare_test_work(i: u64) -> hal::MiningWork {
     hal::MiningWork {
         job: Arc::new(DummyJob::new()),
         version: 0,
-        extranonce_2: 0,
         midstates: vec![uint::U256([i, 0, 0, 0])],
-        merkel_root_lsw: 0xffff_ffff,
         nbits: 0xffff_ffff,
         ntime: 0xffff_ffff,
         //            version: 0,
