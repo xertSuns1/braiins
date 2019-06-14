@@ -6,7 +6,7 @@ use std::time::SystemTime;
 const MAX_WORK_LIST_COUNT: usize = 65536;
 
 /// Mining registry item contains work and solutions
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct MiningWorkRegistryItem {
     work: hal::MiningWork,
     /// Each slot in the vector is associated with particular solution index as reported by

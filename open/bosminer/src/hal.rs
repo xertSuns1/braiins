@@ -1,9 +1,18 @@
 use crate::workhub;
+use downcast_rs::{impl_downcast, Downcast};
 use futures_locks::Mutex;
 use std::sync::Arc;
 use uint;
 
 pub mod s9;
+
+/// Represents interface for Bitcoin block header from which the new work will be generated
+/// The trait is bound to Downcast which enables connect work solution with original job
+/// and hide protocol specific details.
+pub trait BtcBlock: Downcast + Send + Sync {
+    fn get_version(&self) -> u32;
+}
+impl_downcast!(BtcBlock);
 
 /// Describes actual mining work for submission to a hashing hardware.
 /// Starting with merkel_root_lsw the data goes to chunk2 of SHA256.
@@ -13,8 +22,10 @@ pub mod s9;
 /// This may need further refactoring.
 /// # TODO
 /// Add ntime limit for supporting hardware that can do nTime rolling on its own
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct MiningWork {
+    /// Bitcoin block header shared with initial network protocol and work solution
+    pub block: Arc<dyn BtcBlock>,
     /// Version field used for calculating the midstate
     pub version: u32,
     /// Extranonce 2 used for calculating merkelroot
@@ -45,7 +56,7 @@ pub struct MiningWorkSolution {
 
 /// Container with mining work and a corresponding solution received at a particular time
 /// This data structure is used when posting work+solution pairs for further submission upstream.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct UniqueMiningWorkSolution {
     /// time stamp when it has been fetched from the solution FIFO
     pub timestamp: std::time::SystemTime,

@@ -3,6 +3,7 @@ extern crate futures;
 use crate::hal;
 use futures::sync::mpsc;
 use futures_locks::Mutex;
+use std::any::Any;
 use std::sync::Arc;
 use tokio::await;
 
@@ -79,9 +80,18 @@ impl WorkHub {
     }
 }
 
+struct DummyJob;
+
+impl hal::BtcBlock for DummyJob {
+    fn get_version(&self) -> u32 {
+        0
+    }
+}
+
 /// * `i` - unique identifier for the generated midstate
 pub fn prepare_test_work(i: u64) -> hal::MiningWork {
     hal::MiningWork {
+        block: Arc::new(DummyJob),
         version: 0,
         extranonce_2: 0,
         midstates: vec![uint::U256([i, 0, 0, 0])],
