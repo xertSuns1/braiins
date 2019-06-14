@@ -2,6 +2,7 @@
 /.Xil/
 /vivado.jou
 /vivado.log
+/hs_err*.log
 
 # ignore build directory
 /build*/
@@ -11,3 +12,11 @@
 /system_bd.backup.tcl
 /system.backup.tcl
 
+/ps_clock_registers.log
+
+# ignore build history file
+/build_history.txt
+/report.csv
+
+# ignore backup directory
+/backup/
