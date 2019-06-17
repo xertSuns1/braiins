@@ -96,7 +96,7 @@ impl HChainFifo {
             .modify(|_, w| w.irq_en_cmd_rx().set_bit());
     }
 
-    pub fn new(hashboard_idx: usize, midstate_count_bits: u8) -> error::Result<Self> {
+    pub fn new(hashboard_idx: usize) -> error::Result<Self> {
         let hash_chain_io = unsafe { Mmap::new(hashboard_idx)? };
 
         let mut fifo = Self {
@@ -104,7 +104,6 @@ impl HChainFifo {
             work_tx_irq: map_irq(hashboard_idx, "work-tx")?,
             work_rx_irq: map_irq(hashboard_idx, "work-rx")?,
             cmd_rx_irq: map_irq(hashboard_idx, "cmd-rx")?,
-            midstate_count_bits,
         };
         fifo.init_irqs();
         Ok(fifo)
