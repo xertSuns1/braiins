@@ -18,7 +18,6 @@ mod fifo_poll;
 
 /// How long to wait for RX interrupt
 const FIFO_READ_TIMEOUT: Duration = Duration::from_millis(5);
-const WORK_ID_OFFSET: usize = 8;
 
 unsafe impl Send for HChainFifo {}
 unsafe impl Sync for HChainFifo {}
@@ -145,24 +144,6 @@ impl HChainFifo {
         self.hash_chain_io
             .ctrl_reg
             .modify(|_, w| unsafe { w.midstate_cnt().bits(count) });
-    }
-
-    pub fn send_work(
-        &mut self,
-        work: &crate::hal::MiningWork,
-        work_id: u32,
-    ) -> Result<u32, failure::Error> {
-        self.write_to_work_tx_fifo(work_id.to_le())?;
-        self.write_to_work_tx_fifo(work.bits().to_le())?;
-        self.write_to_work_tx_fifo(work.ntime.to_le())?;
-        self.write_to_work_tx_fifo(work.merkel_root_lsw::<LittleEndian>())?;
-
-        for mid in work.midstates.iter() {
-            for midstate_word in mid.state.chunks(size_of::<u32>()) {
-                self.write_to_work_tx_fifo(LittleEndian::read_u32(midstate_word))?;
-            }
-        }
-        Ok(work_id)
     }
 }
 
