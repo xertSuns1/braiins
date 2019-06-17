@@ -465,7 +465,7 @@ where
         self.chip_count
     }
 
-    pub async fn async_recv_solution(
+    async fn recv_solution(
         h_chain_ctl: Arc<Mutex<Self>>,
         mut rx_fifo: fifo::HChainFifo,
     ) -> Result<(fifo::HChainFifo, Option<crate::hal::MiningWorkSolution>), failure::Error> {
@@ -483,6 +483,24 @@ where
         };
 
         Ok((rx_fifo, Some(solution)))
+    }
+
+    fn send_work(
+        tx_fifo: &mut fifo::HChainFifo,
+        work: &crate::hal::MiningWork,
+        work_id: u32,
+    ) -> Result<u32, failure::Error> {
+        tx_fifo.write_to_work_tx_fifo(work_id.to_le())?;
+        tx_fifo.write_to_work_tx_fifo(work.bits().to_le())?;
+        tx_fifo.write_to_work_tx_fifo(work.ntime.to_le())?;
+        tx_fifo.write_to_work_tx_fifo(work.merkel_root_lsw::<LittleEndian>())?;
+
+        for mid in work.midstates.iter() {
+            for midstate_word in mid.state.chunks(size_of::<u32>()) {
+                tx_fifo.write_to_work_tx_fifo(LittleEndian::read_u32(midstate_word))?;
+            }
+        }
+        Ok(work_id)
     }
 }
 
@@ -510,7 +528,7 @@ async fn async_send_work<T>(
             .expect("h_chain lock")
             .next_work_id();
         // send work is synchronous
-        tx_fifo.send_work(&test_work, work_id).expect("send work");
+        super::s9::HChainCtl::<T>::send_work(&mut tx_fifo, &test_work, work_id).expect("send work");
         await!(work_registry.lock())
             .expect("locking ok")
             .store_work(work_id as usize, test_work);
@@ -532,7 +550,7 @@ async fn async_recv_solutions<T>(
 {
     // solution receiving/filtering part
     loop {
-        let (rx_fifo_out, solution) = await!(super::s9::HChainCtl::async_recv_solution(
+        let (rx_fifo_out, solution) = await!(super::s9::HChainCtl::recv_solution(
             h_chain_ctl.clone(),
             rx_fifo
         ))
@@ -541,7 +559,7 @@ async fn async_recv_solutions<T>(
         let solution = solution.expect("solution is ok");
         let work_id = await!(h_chain_ctl.lock())
             .expect("h_chain lock")
-            .get_work_id_from_solution_id(solution.solution_id) as usize;
+            .get_work_id_from_solution(&solution) as usize;
         let mut stats = await!(mining_stats.lock()).expect("lock mining stats");
         let mut work_registry = await!(work_registry.lock()).expect("work registry lock failed");
 
