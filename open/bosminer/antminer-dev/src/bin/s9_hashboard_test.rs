@@ -87,7 +87,7 @@ where
 fn main() {
     run_async_main_exits(async move {
         // Create workhub
-        let (workhub, mut rx) = workhub::WorkHub::new();
+        let (work_hub, mut job_solver) = workhub::WorkHub::new();
 
         // Create mining stats
         let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
@@ -97,13 +97,13 @@ fn main() {
 
         // Create one chain
         let chain = hal::s9::HChain::new();
-        chain.start_hw(workhub.clone(), mining_stats.clone(), shutdown_tx.clone());
+        chain.start_hw(work_hub, mining_stats.clone(), shutdown_tx.clone());
 
         // Start hashrate-meter task
         tokio::spawn_async(async_hashrate_meter(mining_stats));
 
         // Receive solutions
-        tokio::spawn_async(async move { while let Some(_x) = await!(rx.next()) {} });
+        tokio::spawn_async(async move { while let Some(_x) = await!(job_solver.receive_solution()) {} });
 
         // Wait for shutdown
         let msg = await!(shutdown_rx.next());
