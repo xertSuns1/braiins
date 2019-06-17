@@ -1,12 +1,14 @@
 extern crate futures;
 
 use crate::hal;
+use crate::hal::BitcoinJob;
 use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
+use byteorder::{ByteOrder, LittleEndian};
+use downcast_rs::Downcast;
 use futures::sync::mpsc;
 use futures_locks::Mutex;
 use std::sync::Arc;
 use tokio::await;
-use crate::hal::BitcoinJob;
 
 /// A registry of solutions
 #[allow(dead_code)]
@@ -119,10 +121,16 @@ impl hal::BitcoinJob for DummyJob {
 pub fn prepare_test_work(i: u64) -> hal::MiningWork {
     let job = Arc::new(DummyJob::new());
     let time = job.time();
+
+    let mut mid = hal::Midstate {
+        version: 0,
+        state: [0u8; 32],
+    };
+    LittleEndian::write_u64(&mut mid.state, i);
+
     hal::MiningWork {
         job,
-        version: 0,
-        midstates: vec![uint::U256([i, 0, 0, 0])],
+        midstates: vec![mid],
         ntime: time,
     }
 }

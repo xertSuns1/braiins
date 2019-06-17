@@ -4,7 +4,6 @@ use byteorder::ByteOrder;
 use downcast_rs::{impl_downcast, Downcast};
 use futures_locks::Mutex;
 use std::sync::Arc;
-use uint;
 
 pub mod s9;
 
@@ -32,6 +31,14 @@ pub trait BitcoinJob: Downcast + Send + Sync {
 }
 impl_downcast!(BitcoinJob);
 
+#[derive(Clone, Debug)]
+pub struct Midstate {
+    /// Version field used for calculating the midstate
+    pub version: u32,
+    /// Internal state of SHA256 after processing the first chunk (32 bytes)
+    pub state: [u8; 32],
+}
+
 /// Describes actual mining work for submission to a hashing hardware.
 /// Starting with merkel_root_lsw the data goes to chunk2 of SHA256.
 ///
@@ -44,10 +51,8 @@ impl_downcast!(BitcoinJob);
 pub struct MiningWork {
     /// Bitcoin job shared with initial network protocol and work solution
     pub job: Arc<dyn BitcoinJob>,
-    /// Version field used for calculating the midstate
-    pub version: u32,
-    /// Multiple midstates can be generated for each work - these are the full
-    pub midstates: Vec<uint::U256>,
+    /// Multiple midstates can be generated for each work
+    pub midstates: Vec<Midstate>,
     /// Start value for nTime, hardware may roll nTime further.
     pub ntime: u32,
 }

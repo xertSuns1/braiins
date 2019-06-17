@@ -373,15 +373,6 @@ where
         Ok(())
     }
 
-    fn u256_as_u32_slice(src: &uint::U256) -> &[u32] {
-        unsafe {
-            core::slice::from_raw_parts(
-                src.0.as_ptr() as *const u32,
-                size_of::<uint::U256>() / size_of::<u32>(),
-            )
-        }
-    }
-
     /// Work ID's are generated with a step that corresponds to the number of configured midstates
     #[inline]
     pub fn next_work_id(&mut self) -> u32 {

@@ -86,15 +86,6 @@ fn map_irq(hashboard_idx: usize, irq_type: &'static str) -> error::Result<uio::U
     Ok(uio)
 }
 
-fn u256_as_u32_slice(src: &uint::U256) -> &[u32] {
-    unsafe {
-        core::slice::from_raw_parts(
-            src.0.as_ptr() as *const u32,
-            size_of::<uint::U256>() / size_of::<u32>(),
-        )
-    }
-}
-
 /// This is common implementation
 impl HChainFifo {
     #[inline]
@@ -168,11 +159,9 @@ impl HChainFifo {
         self.write_to_work_tx_fifo(work.ntime.to_le())?;
         self.write_to_work_tx_fifo(work.merkel_root_lsw::<LittleEndian>())?;
 
-        for midstate in work.midstates.iter() {
-            let midstate = u256_as_u32_slice(&midstate);
-            // Chip expects the midstate in reverse word order
-            for midstate_word in midstate.iter().rev() {
-                self.write_to_work_tx_fifo(*midstate_word)?;
+        for mid in work.midstates.iter() {
+            for midstate_word in mid.state.chunks(size_of::<u32>()) {
+                self.write_to_work_tx_fifo(LittleEndian::read_u32(midstate_word))?;
             }
         }
         Ok(work_id)
