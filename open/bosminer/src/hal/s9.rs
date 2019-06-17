@@ -514,9 +514,9 @@ where
 
 async fn async_send_work<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
+    mining_stats: Arc<Mutex<super::MiningStats>>,
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     mut tx_fifo: fifo::HChainFifo,
-    mining_stats: Arc<Mutex<super::MiningStats>>,
     workhub: workhub::WorkHub,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
@@ -592,6 +592,46 @@ async fn async_recv_solutions<T>(
     }
 }
 
+fn spawn_tx_task<T>(
+    work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
+    mining_stats: Arc<Mutex<super::MiningStats>>,
+    h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
+    workhub: workhub::WorkHub,
+) where
+    T: 'static + Send + Sync + power::VoltageCtrlBackend,
+{
+    tokio::spawn_async(async move {
+        let tx_fifo = await!(h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
+        await!(async_send_work(
+            work_registry,
+            mining_stats,
+            h_chain_ctl,
+            tx_fifo,
+            workhub,
+        ));
+    });
+}
+
+fn spawn_rx_task<T>(
+    work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
+    mining_stats: Arc<Mutex<super::MiningStats>>,
+    h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
+    workhub: workhub::WorkHub,
+) where
+    T: 'static + Send + Sync + power::VoltageCtrlBackend,
+{
+    tokio::spawn_async(async move {
+        let rx_fifo = await!(h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
+        await!(async_recv_solutions(
+            work_registry,
+            mining_stats,
+            h_chain_ctl,
+            rx_fifo,
+            workhub,
+        ));
+    });
+}
+
 pub struct HChain {}
 
 impl HChain {
@@ -601,7 +641,7 @@ impl HChain {
 }
 
 impl super::HardwareCtl for HChain {
-    fn start_hw(&self, workhub: workhub::WorkHub, a_mining_stats: Arc<Mutex<super::MiningStats>>) {
+    fn start_hw(&self, workhub: workhub::WorkHub, mining_stats: Arc<Mutex<super::MiningStats>>) {
         use super::s9::power::VoltageCtrlBackend;
 
         let gpio_mgr = gpio::ControlPinManager::new();
@@ -615,43 +655,26 @@ impl super::HardwareCtl for HChain {
             &s9_io::hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
         )
         .unwrap();
-        let work_registry = registry::MiningWorkRegistry::new();
 
         info!(LOGGER, "Initializing hash chain controller");
         h_chain_ctl.init().unwrap();
         info!(LOGGER, "Hash chain controller initialized");
 
-        let a_work_registry = Arc::new(Mutex::new(work_registry));
-        let a_h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
+        let work_registry = Arc::new(Mutex::new(registry::MiningWorkRegistry::new()));
+        let h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
 
-        let c_h_chain_ctl = a_h_chain_ctl.clone();
-        let c_work_registry = a_work_registry.clone();
-        let c_mining_stats = a_mining_stats.clone();
-        let c_workhub = workhub.clone();
-        tokio::spawn_async(async move {
-            let tx_fifo = await!(c_h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
-            await!(async_send_work(
-                c_work_registry,
-                c_h_chain_ctl,
-                tx_fifo,
-                c_mining_stats,
-                c_workhub,
-            ));
-        });
-        let c_h_chain_ctl = a_h_chain_ctl.clone();
-        let c_work_registry = a_work_registry.clone();
-        let c_mining_stats = a_mining_stats.clone();
-        let c_workhub = workhub.clone();
-        tokio::spawn_async(async move {
-            let rx_fifo = await!(c_h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
-            await!(async_recv_solutions(
-                c_work_registry,
-                c_mining_stats,
-                c_h_chain_ctl,
-                rx_fifo,
-                c_workhub,
-            ));
-        });
+        spawn_tx_task(
+            work_registry.clone(),
+            mining_stats.clone(),
+            h_chain_ctl.clone(),
+            workhub.clone(),
+        );
+        spawn_rx_task(
+            work_registry.clone(),
+            mining_stats.clone(),
+            h_chain_ctl.clone(),
+            workhub.clone(),
+        );
     }
 }
 
