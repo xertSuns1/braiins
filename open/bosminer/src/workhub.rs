@@ -9,6 +9,7 @@ use futures::sync::mpsc;
 use futures_locks::Mutex;
 use std::sync::Arc;
 use tokio::await;
+use tokio::prelude::*;
 
 /// A registry of solutions
 #[allow(dead_code)]
@@ -71,15 +72,38 @@ impl WorkHub {
 
     /// Construct new WorkHub and associated queue to send work through
     /// This is runner/orchestrator/pump-facing function
-    pub fn new() -> (Self, mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>) {
+    pub fn new() -> (Self, JobSolver) {
         let (tx, rx) = mpsc::unbounded();
+        let workhub_data = Arc::new(Mutex::new(WorkHubData::new()));
         (
             Self {
-                workhub_data: Arc::new(Mutex::new(WorkHubData::new())),
+                workhub_data: workhub_data.clone(),
                 solution_queue_tx: tx,
             },
-            rx,
+            JobSolver {
+                workhub_data,
+                solution_queue_rx: rx,
+            },
         )
+    }
+}
+
+pub struct JobSolver {
+    workhub_data: Arc<Mutex<WorkHubData>>,
+    solution_queue_rx: mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
+}
+
+impl JobSolver {
+    pub fn send_job(&self, job: Arc<dyn hal::BitcoinJob>) {
+        // TODO:
+    }
+
+    pub async fn receive_solution(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
+        if let Some(Ok(solution)) = await!(self.solution_queue_rx.next()) {
+            Some(solution)
+        } else {
+            None
+        }
     }
 }
 
