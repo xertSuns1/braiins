@@ -60,7 +60,6 @@ impl<T> ops::Deref for Mmap<T> {
 #[cfg(feature = "hctl_polling")]
 pub struct HChainFifo {
     pub hash_chain_io: Mmap<hchainio0::RegisterBlock>,
-    midstate_count_bits: u8,
 }
 
 #[cfg(not(feature = "hctl_polling"))]
@@ -69,7 +68,6 @@ pub struct HChainFifo {
     work_tx_irq: uio::UioDevice,
     work_rx_irq: uio::UioDevice,
     cmd_rx_irq: uio::UioDevice,
-    midstate_count_bits: u8,
 }
 
 fn open_ip_core_uio(
@@ -165,62 +163,6 @@ impl HChainFifo {
             }
         }
         Ok(work_id)
-    }
-
-    #[inline]
-    fn get_midstate_idx_from_solution_id(&self, solution_id: u32) -> usize {
-        ((solution_id >> WORK_ID_OFFSET) & ((1u32 << self.midstate_count_bits) - 1)) as usize
-    }
-
-    pub async fn async_recv_solution(
-        &mut self,
-    ) -> Result<Option<crate::hal::MiningWorkSolution>, failure::Error> {
-        let nonce = await!(self.async_read_from_work_rx_fifo())?;
-        let word2 = await!(self.async_read_from_work_rx_fifo())?;
-
-        let solution = crate::hal::MiningWorkSolution {
-            nonce,
-            // this hardware doesn't do any nTime rolling, keep it @ None
-            ntime: None,
-            midstate_idx: self.get_midstate_idx_from_solution_id(word2),
-            // leave the result ID as-is so that we can extract solution index etc later.
-            solution_id: word2 & 0xffffffu32,
-        };
-
-        Ok(Some(solution))
-    }
-    pub fn recv_solution(
-        &mut self,
-    ) -> Result<Option<crate::hal::MiningWorkSolution>, failure::Error> {
-        let nonce; // = self.fifo.read_from_work_rx_fifo()?;
-                   // TODO: to be refactored once we have asynchronous handling in place
-                   // fetch command response from IP core's fifo
-        match self.read_from_work_rx_fifo()? {
-            None => return Ok(None),
-            Some(resp_word) => nonce = resp_word,
-        }
-
-        let word2;
-        match self.read_from_work_rx_fifo()? {
-            None => {
-                return Err(ErrorKind::Fifo(
-                    error::Fifo::TimedOut,
-                    "work RX fifo empty".to_string(),
-                ))?;
-            }
-            Some(resp_word) => word2 = resp_word,
-        }
-
-        let solution = crate::hal::MiningWorkSolution {
-            nonce,
-            // this hardware doesn't do any nTime rolling, keep it @ None
-            ntime: None,
-            midstate_idx: self.get_midstate_idx_from_solution_id(word2),
-            // leave the result ID as-is so that we can extract solution index etc later.
-            solution_id: word2 & 0xffffffu32,
-        };
-
-        Ok(Some(solution))
     }
 }
 

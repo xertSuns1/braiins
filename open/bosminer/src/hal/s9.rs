@@ -142,12 +142,12 @@ where
             rst_pin,
             hashboard_idx,
             last_heartbeat_sent: None,
-            fifo: fifo::HChainFifo::new(hashboard_idx, midstate_count_bits)?,
+            fifo: fifo::HChainFifo::new(hashboard_idx)?,
         })
     }
 
     pub fn clone_fifo(&self) -> error::Result<fifo::HChainFifo> {
-        fifo::HChainFifo::new(self.hashboard_idx, self.midstate_count_bits)
+        fifo::HChainFifo::new(self.hashboard_idx)
     }
 
     /// Helper method that initializes the FPGA IP core
@@ -457,44 +457,32 @@ where
         Ok(Some(resp))
     }
 
-    fn recv_solution(&mut self) -> Result<Option<super::MiningWorkSolution>, failure::Error> {
-        let nonce; // = self.fifo.read_from_work_rx_fifo()?;
-                   // TODO: to be refactored once we have asynchronous handling in place
-                   // fetch command response from IP core's fifo
-        match self.fifo.read_from_work_rx_fifo()? {
-            None => return Ok(None),
-            Some(resp_word) => nonce = resp_word,
-        }
-
-        let word2;
-        match self.fifo.read_from_work_rx_fifo()? {
-            None => {
-                return Err(ErrorKind::Fifo(
-                    error::Fifo::TimedOut,
-                    "work RX fifo empty".to_string(),
-                ))?;
-            }
-            Some(resp_word) => word2 = resp_word,
-        }
-
-        let solution = super::MiningWorkSolution {
-            nonce,
-            // this hardware doesn't do any nTime rolling, keep it @ None
-            ntime: None,
-            midstate_idx: self.get_midstate_idx_from_solution_id(word2),
-            // leave the result ID as-is so that we can extract solution index etc later.
-            solution_id: word2 & 0xffffffu32,
-        };
-
-        Ok(Some(solution))
-    }
-
     fn get_work_id_from_solution(&self, solution: &super::MiningWorkSolution) -> u32 {
         self.get_work_id_from_solution_id(solution.solution_id)
     }
 
     fn get_chip_count(&self) -> usize {
         self.chip_count
+    }
+
+    pub async fn async_recv_solution(
+        h_chain_ctl: Arc<Mutex<Self>>,
+        mut rx_fifo: fifo::HChainFifo,
+    ) -> Result<(fifo::HChainFifo, Option<crate::hal::MiningWorkSolution>), failure::Error> {
+        let nonce = await!(rx_fifo.async_read_from_work_rx_fifo())?;
+        let word2 = await!(rx_fifo.async_read_from_work_rx_fifo())?;
+
+        let h_chain_ctl = await!(h_chain_ctl.lock()).expect("h_chain lock failed");
+        let solution = crate::hal::MiningWorkSolution {
+            nonce,
+            // this hardware doesn't do any nTime rolling, keep it @ None
+            ntime: None,
+            midstate_idx: h_chain_ctl.get_midstate_idx_from_solution_id(word2),
+            // leave the result ID as-is so that we can extract solution index etc later.
+            solution_id: word2 & 0xffffffu32,
+        };
+
+        Ok((rx_fifo, Some(solution)))
     }
 }
 
@@ -544,9 +532,13 @@ async fn async_recv_solutions<T>(
 {
     // solution receiving/filtering part
     loop {
-        let solution = await!(rx_fifo.async_recv_solution())
-            .expect("recv solution")
-            .expect("solution is ok");
+        let (rx_fifo_out, solution) = await!(super::s9::HChainCtl::async_recv_solution(
+            h_chain_ctl.clone(),
+            rx_fifo
+        ))
+        .expect("recv solution");
+        rx_fifo = rx_fifo_out;
+        let solution = solution.expect("solution is ok");
         let work_id = await!(h_chain_ctl.lock())
             .expect("h_chain lock")
             .get_work_id_from_solution_id(solution.solution_id) as usize;
