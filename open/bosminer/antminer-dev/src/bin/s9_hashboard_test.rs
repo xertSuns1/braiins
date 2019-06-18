@@ -8,7 +8,9 @@ use rminer::hal::HardwareCtl;
 use rminer::misc::LOGGER;
 use rminer::workhub;
 
-use slog::{error, info};
+use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
+
+use slog::{info, trace};
 
 use std::time::{Duration, Instant, SystemTime};
 
@@ -21,6 +23,60 @@ use std::sync::Arc;
 use tokio::await;
 use tokio::prelude::*;
 use tokio::timer::Delay;
+
+#[derive(Copy, Clone)]
+struct DummyJob {
+    hash: Hash,
+    time: u32,
+}
+
+impl DummyJob {
+    pub fn new() -> Self {
+        Self {
+            hash: Hash::from_slice(&[0xffu8; 32]).unwrap(),
+            time: 0,
+        }
+    }
+
+    fn next(&mut self) {
+        self.time += 1;
+    }
+}
+
+impl hal::BitcoinJob for DummyJob {
+    fn version(&self) -> u32 {
+        0
+    }
+
+    fn version_mask(&self) -> u32 {
+        0
+    }
+
+    fn previous_hash(&self) -> &Hash {
+        &self.hash
+    }
+
+    fn merkle_root(&self) -> &Hash {
+        &self.hash
+    }
+
+    fn time(&self) -> u32 {
+        self.time
+    }
+
+    fn bits(&self) -> u32 {
+        0xffff_ffff
+    }
+}
+
+async fn dummy_job_generator(job_sender: workhub::JobSender) {
+    let mut dummy_job = DummyJob::new();
+    loop {
+        await!(Delay::new(Instant::now() + Duration::from_secs(10))).unwrap();
+        job_sender.send(Arc::new(dummy_job));
+        dummy_job.next();
+    }
+}
 
 async fn async_hashrate_meter(mining_stats: Arc<Mutex<hal::MiningStats>>) {
     let hashing_started = SystemTime::now();
@@ -87,7 +143,7 @@ where
 fn main() {
     run_async_main_exits(async move {
         // Create workhub
-        let (work_hub, mut job_solver) = workhub::WorkHub::new();
+        let (work_hub, job_solver) = workhub::WorkHub::new();
 
         // Create mining stats
         let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
@@ -101,6 +157,11 @@ fn main() {
 
         // Start hashrate-meter task
         tokio::spawn_async(async_hashrate_meter(mining_stats));
+
+        let (job_sender, mut job_solution) = job_solver.split();
+
+        // Start dummy job generator task
+        tokio::spawn_async(dummy_job_generator(job_sender));
 
         // Receive solutions
         tokio::spawn_async(async move { while let Some(_x) = await!(job_solver.receive_solution()) {} });

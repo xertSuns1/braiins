@@ -4,6 +4,7 @@
 name = "antminer-dev"
 version = "0.1.0"
 dependencies = [
+ "bitcoin_hashes 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.26 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-locks 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "linux-embedded-hal 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
