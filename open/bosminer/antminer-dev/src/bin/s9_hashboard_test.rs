@@ -8,10 +8,11 @@ use rminer::hal::HardwareCtl;
 use rminer::misc::LOGGER;
 use rminer::workhub;
 
-use slog::{info, trace};
+use slog::{error, info};
 
 use std::time::{Duration, Instant, SystemTime};
 
+use futures::sync::mpsc;
 use futures::Future as OldFuture;
 use futures_locks::Mutex;
 use std::future::Future as NewFuture;
@@ -91,14 +92,28 @@ fn main() {
         // Create mining stats
         let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
 
-        // create one chain
+        // Create shutdown channel
+        let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded();
+
+        // Create one chain
         let chain = hal::s9::HChain::new();
-        chain.start_hw(workhub.clone(), mining_stats.clone());
+        chain.start_hw(workhub.clone(), mining_stats.clone(), shutdown_tx.clone());
 
         // Start hashrate-meter task
         tokio::spawn_async(async_hashrate_meter(mining_stats));
 
         // Receive solutions
-        while let Some(_x) = await!(rx.next()) {}
+        tokio::spawn_async(async move { while let Some(_x) = await!(rx.next()) {} });
+
+        // Wait for shutdown
+        let msg = await!(shutdown_rx.next());
+        match msg {
+            None => {
+                error!(LOGGER, "SHUTDOWN: hchain failed");
+            }
+            Some(reason) => {
+                info!(LOGGER, "SHUTDOWN: {}", reason.expect("reason is error"));
+            }
+        };
     });
 }

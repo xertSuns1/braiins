@@ -2,6 +2,7 @@ use crate::workhub;
 use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 use byteorder::ByteOrder;
 use downcast_rs::{impl_downcast, Downcast};
+use futures::sync::mpsc;
 use futures_locks::Mutex;
 use std::sync::Arc;
 
@@ -125,9 +126,19 @@ impl MiningStats {
     }
 }
 
+/// Channel used for shutdown synchronization
+pub type ShutdownMsg = &'static str;
+pub type ShutdownChanTx = mpsc::UnboundedSender<ShutdownMsg>;
+pub type ShutdownChanRx = mpsc::UnboundedReceiver<ShutdownMsg>;
+
 /// Any hardware mining controller should implement at least these methods
 pub trait HardwareCtl {
     /// Starts hardware controller connected to workhub, while storing
     /// stats in `a_mining_stats`
-    fn start_hw(&self, workhub: workhub::WorkHub, a_mining_stats: Arc<Mutex<MiningStats>>);
+    fn start_hw(
+        &self,
+        workhub: workhub::WorkHub,
+        a_mining_stats: Arc<Mutex<MiningStats>>,
+        shutdown: ShutdownChanTx,
+    );
 }
