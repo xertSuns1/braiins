@@ -518,23 +518,35 @@ async fn async_send_work<T>(
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     mut tx_fifo: fifo::HChainFifo,
     workhub: workhub::WorkHub,
+    shutdown: crate::hal::ShutdownChanTx,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
     loop {
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
-        let test_work = await!(workhub.get_work()).expect("no more work");
-        let work_id = await!(h_chain_ctl.lock())
-            .expect("h_chain lock")
-            .next_work_id();
-        // send work is synchronous
-        super::s9::HChainCtl::<T>::send_work(&mut tx_fifo, &test_work, work_id).expect("send work");
-        await!(work_registry.lock())
-            .expect("locking ok")
-            .store_work(work_id as usize, test_work);
-        let mut stats = await!(mining_stats.lock()).expect("minig stats lock");
-        stats.work_generated += 1;
-        drop(stats);
+        let work = await!(workhub.get_work());
+        match work {
+            None => {
+                shutdown
+                    .unbounded_send("no more work from workhub")
+                    .expect("send failed");
+                break;
+            }
+            Some(work) => {
+                let work_id = await!(h_chain_ctl.lock())
+                    .expect("h_chain lock")
+                    .next_work_id();
+                // send work is synchronous
+                super::s9::HChainCtl::<T>::send_work(&mut tx_fifo, &work, work_id)
+                    .expect("send work");
+                await!(work_registry.lock())
+                    .expect("locking ok")
+                    .store_work(work_id as usize, work);
+                let mut stats = await!(mining_stats.lock()).expect("minig stats lock");
+                stats.work_generated += 1;
+                drop(stats);
+            }
+        }
     }
 }
 
@@ -597,6 +609,7 @@ fn spawn_tx_task<T>(
     mining_stats: Arc<Mutex<super::MiningStats>>,
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     workhub: workhub::WorkHub,
+    shutdown: crate::hal::ShutdownChanTx,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -608,6 +621,7 @@ fn spawn_tx_task<T>(
             h_chain_ctl,
             tx_fifo,
             workhub,
+            shutdown,
         ));
     });
 }
@@ -641,7 +655,12 @@ impl HChain {
 }
 
 impl super::HardwareCtl for HChain {
-    fn start_hw(&self, workhub: workhub::WorkHub, mining_stats: Arc<Mutex<super::MiningStats>>) {
+    fn start_hw(
+        &self,
+        workhub: workhub::WorkHub,
+        mining_stats: Arc<Mutex<super::MiningStats>>,
+        shutdown: crate::hal::ShutdownChanTx,
+    ) {
         use super::s9::power::VoltageCtrlBackend;
 
         let gpio_mgr = gpio::ControlPinManager::new();
@@ -668,6 +687,7 @@ impl super::HardwareCtl for HChain {
             mining_stats.clone(),
             h_chain_ctl.clone(),
             workhub.clone(),
+            shutdown.clone(),
         );
         spawn_rx_task(
             work_registry.clone(),
