@@ -12,8 +12,11 @@ use slog::{info, trace};
 
 use std::time::{Duration, Instant, SystemTime};
 
+use futures::Future as OldFuture;
 use futures_locks::Mutex;
+use std::future::Future as NewFuture;
 use std::sync::Arc;
+
 use tokio::await;
 use tokio::prelude::*;
 use tokio::timer::Delay;
@@ -51,8 +54,37 @@ async fn async_hashrate_meter(mining_stats: Arc<Mutex<hal::MiningStats>>) {
     }
 }
 
+/// Convert async/await future into old style future
+fn backward<I, E>(f: impl NewFuture<Output = Result<I, E>>) -> impl OldFuture<Item = I, Error = E> {
+    use tokio_async_await::compat::backward;
+    backward::Compat::new(f)
+}
+
+/// Start Tokio runtime
+///
+/// It is much like tokio::run_async, but instead of waiting for all
+/// tasks to finish, wait just for the main task.
+///
+/// This is a way to shutdown Tokio without diving too deep into
+/// Tokio internals.
+fn run_async_main_exits<F>(future: F)
+where
+    F: NewFuture<Output = ()> + Send + 'static,
+{
+    use tokio::runtime::Runtime;
+
+    let mut runtime = Runtime::new().expect("failed to start new Runtime");
+    let future = backward(async move {
+        await!(future);
+        Result::<(), std::io::Error>::Ok(())
+    });
+    runtime
+        .block_on(future)
+        .expect("main task can't return error");
+}
+
 fn main() {
-    tokio::run_async(async move {
+    run_async_main_exits(async move {
         // Create workhub
         let (workhub, mut rx) = workhub::WorkHub::new();
 
