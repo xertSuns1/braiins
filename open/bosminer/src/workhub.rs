@@ -4,8 +4,8 @@ use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 use byteorder::{ByteOrder, LittleEndian};
 use downcast_rs::Downcast;
 use futures::sync::mpsc;
-use futures_locks::Mutex;
-use std::sync::Arc;
+use std::sync::atomic::Ordering::AcqRel;
+use std::sync::{Arc, Mutex};
 use tokio::await;
 use tokio::prelude::*;
 
@@ -47,27 +47,107 @@ impl WorkHub {
     /// Construct new WorkHub and associated queue to send work through
     /// This is runner/orchestrator/pump-facing function
     pub fn new() -> (Self, JobSolver) {
-        let (job_queue_tx, job_queue_rx) = mpsc::unbounded();
+        let job_queue = Arc::new(Mutex::new(None));
+        let (job_event_tx, job_event_rx) = mpsc::channel(1);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
         (
             Self(
-                WorkGenerator(job_queue_rx.peekable()),
+                WorkGenerator::new(job_event_rx, job_queue.clone()),
                 WorkSolutionSender(solution_queue_tx),
             ),
             JobSolver(
-                JobSender(job_queue_tx),
+                JobSender::new(job_event_tx, job_queue),
                 JobSolutionReceiver(solution_queue_rx),
             ),
         )
     }
 }
 
-pub struct WorkGenerator(stream::Peekable<mpsc::UnboundedReceiver<Arc<dyn hal::BitcoinJob>>>);
+pub struct NewJobEvent;
+
+type JobQueue = Arc<Mutex<Option<Arc<dyn BitcoinJob>>>>;
+
+pub struct WorkGenerator {
+    job_event: mpsc::Receiver<NewJobEvent>,
+    job_queue: JobQueue,
+    job: Option<Arc<dyn BitcoinJob>>,
+    next_version: u16,
+}
 
 impl WorkGenerator {
+    pub fn new(job_event: mpsc::Receiver<NewJobEvent>, job_queue: JobQueue) -> Self {
+        Self {
+            job_event,
+            job_queue,
+            job: None,
+            next_version: 0,
+        }
+    }
+
+    /// Returns current job from which the new work is generated
+    /// When the current job has been replaced with a new one
+    /// then it is indicated in the second return value
+    async fn get_job(&mut self) -> (Arc<dyn BitcoinJob>, bool) {
+        let mut new_job = self.job.is_none();
+
+        if new_job {
+            // wait for event which signals delivery of a new job
+            await!(self.job_event.next());
+        }
+
+        // the job queue have to now contain a new job
+        let job_queue_top = self
+            .job_queue
+            .lock()
+            .expect("cannot lock queue for receiving new job")
+            .as_ref()
+            .expect("job queue is empty")
+            .clone();
+
+        if !new_job {
+            // check job queue top differs from current job
+            new_job = !Arc::ptr_eq(self.job.as_ref().unwrap(), &job_queue_top);
+        }
+        if new_job {
+            // update current job with the latest one
+            self.job = Some(job_queue_top);
+        }
+        // return reference to the job and flag with a new job indication
+        (self.job.as_ref().unwrap().clone(), new_job)
+    }
+
+    /// Clears the current job when the whole address space is exhausted
+    /// After this method has been called, the get_job starts blocking until
+    /// the new job is delivered
+    fn finish_current_job(&mut self) {
+        // atomically remove current job from job queue and local reference
+        let mut job_queue_top = self
+            .job_queue
+            .lock()
+            .expect("cannot lock queue for receiving new job");
+        job_queue_top.take();
+        self.job.take();
+    }
+
+    /// Returns new work generated from the current job
     pub async fn generate(&mut self) -> hal::MiningWork {
-        await!(self.0.next());
-        prepare_test_work(0)
+        let (job, new_job) = await!(self.get_job());
+
+        let version;
+        if new_job {
+            version = 0;
+            self.next_version = 1;
+        } else {
+            version = self.next_version;
+            if let Some(next_version) = self.next_version.checked_add(1) {
+                self.next_version = next_version;
+            } else {
+                self.finish_current_job();
+                self.next_version = 0;
+            }
+        }
+
+        prepare_test_work(version as u64, job.clone())
     }
 }
 
@@ -85,7 +165,7 @@ impl WorkSolutionSender {
 pub struct JobSolver(JobSender, JobSolutionReceiver);
 
 impl JobSolver {
-    pub fn send_job(&self, job: Arc<dyn hal::BitcoinJob>) {
+    pub fn send_job(&mut self, job: Arc<dyn hal::BitcoinJob>) {
         self.0.send(job)
     }
 
@@ -99,11 +179,29 @@ impl JobSolver {
 }
 
 #[derive(Clone)]
-pub struct JobSender(mpsc::UnboundedSender<Arc<dyn hal::BitcoinJob>>);
+pub struct JobSender {
+    job_event: mpsc::Sender<NewJobEvent>,
+    job_queue: JobQueue,
+}
 
 impl JobSender {
-    pub fn send(&self, job: Arc<dyn hal::BitcoinJob>) {
-        self.0.unbounded_send(job).expect("job queue send failed");
+    pub fn new(job_event: mpsc::Sender<NewJobEvent>, job_queue: JobQueue) -> Self {
+        Self {
+            job_event,
+            job_queue,
+        }
+    }
+    pub fn send(&mut self, job: Arc<dyn hal::BitcoinJob>) {
+        let old_job = self
+            .job_queue
+            .lock()
+            .expect("cannot lock queue for sending new job")
+            .replace(job);
+        if old_job.is_none() {
+            self.job_event
+                .try_send(NewJobEvent)
+                .expect("cannot notify about new job");
+        }
     }
 }
 
@@ -119,43 +217,8 @@ impl JobSolutionReceiver {
     }
 }
 
-struct DummyJob(Hash);
-
-impl DummyJob {
-    pub fn new() -> Self {
-        DummyJob(Hash::from_slice(&[0xffu8; 32]).unwrap())
-    }
-}
-
-impl hal::BitcoinJob for DummyJob {
-    fn version(&self) -> u32 {
-        0
-    }
-
-    fn version_mask(&self) -> u32 {
-        0
-    }
-
-    fn previous_hash(&self) -> &Hash {
-        &self.0
-    }
-
-    fn merkle_root(&self) -> &Hash {
-        &self.0
-    }
-
-    fn time(&self) -> u32 {
-        0xffff_ffff
-    }
-
-    fn bits(&self) -> u32 {
-        0xffff_ffff
-    }
-}
-
 /// * `i` - unique identifier for the generated midstate
-pub fn prepare_test_work(i: u64) -> hal::MiningWork {
-    let job = Arc::new(DummyJob::new());
+pub fn prepare_test_work(i: u64, job: Arc<dyn BitcoinJob>) -> hal::MiningWork {
     let time = job.time();
 
     let mut mid = hal::Midstate {

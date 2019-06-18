@@ -69,7 +69,7 @@ impl hal::BitcoinJob for DummyJob {
     }
 }
 
-async fn dummy_job_generator(job_sender: workhub::JobSender) {
+async fn dummy_job_generator(mut job_sender: workhub::JobSender) {
     let mut dummy_job = DummyJob::new();
     loop {
         await!(Delay::new(Instant::now() + Duration::from_secs(10))).unwrap();
