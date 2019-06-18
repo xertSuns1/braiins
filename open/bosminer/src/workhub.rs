@@ -1,5 +1,3 @@
-extern crate futures;
-
 use crate::hal;
 use crate::hal::BitcoinJob;
 use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
@@ -27,79 +25,93 @@ impl SolutionRegistry {
     }
 }
 
-/// Internal structure that holds the actual work data
-pub struct WorkHubData {
-    midstate_start: u64,
-}
-
-impl WorkHubData {
-    pub fn get_work(&mut self) -> Option<hal::MiningWork> {
-        let work = prepare_test_work(self.midstate_start);
-        // the midstate identifier may wrap around (considering its size, effectively never...)
-        self.midstate_start = self.midstate_start.wrapping_add(1);
-        Some(work)
-    }
-
-    pub fn new() -> Self {
-        Self { midstate_start: 0 }
-    }
-}
-
-/// This is wrapper that asynchronously locks structure for use in
-/// multiple tasks
-#[derive(Clone)]
-pub struct WorkHub {
-    workhub_data: Arc<Mutex<WorkHubData>>,
-    solution_queue_tx: mpsc::UnboundedSender<hal::UniqueMiningWorkSolution>,
-}
+pub struct WorkHub(WorkGenerator, WorkSolutionSender);
 
 /// This trait represents common API for work solvers to get work and
 /// submit solutions
 impl WorkHub {
     /// Hardware-facing API
-    pub async fn get_work(&self) -> Option<hal::MiningWork> {
-        await!(self.workhub_data.lock())
-            .expect("locking failed")
-            .get_work()
+    pub async fn generate_work(&mut self) -> hal::MiningWork {
+        await!(self.0.generate())
     }
 
     /// Hardware-facing API
-    pub fn submit_solution(&self, solution: hal::UniqueMiningWorkSolution) {
-        self.solution_queue_tx
-            .unbounded_send(solution)
-            .expect("solution queue send failed");
+    pub fn send_solution(&self, solution: hal::UniqueMiningWorkSolution) {
+        self.1.send(solution);
+    }
+
+    pub fn split(self) -> (WorkGenerator, WorkSolutionSender) {
+        (self.0, self.1)
     }
 
     /// Construct new WorkHub and associated queue to send work through
     /// This is runner/orchestrator/pump-facing function
     pub fn new() -> (Self, JobSolver) {
-        let (tx, rx) = mpsc::unbounded();
-        let workhub_data = Arc::new(Mutex::new(WorkHubData::new()));
+        let (job_queue_tx, job_queue_rx) = mpsc::unbounded();
+        let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
         (
-            Self {
-                workhub_data: workhub_data.clone(),
-                solution_queue_tx: tx,
-            },
-            JobSolver {
-                workhub_data,
-                solution_queue_rx: rx,
-            },
+            Self(
+                WorkGenerator(job_queue_rx.peekable()),
+                WorkSolutionSender(solution_queue_tx),
+            ),
+            JobSolver(
+                JobSender(job_queue_tx),
+                JobSolutionReceiver(solution_queue_rx),
+            ),
         )
     }
 }
 
-pub struct JobSolver {
-    workhub_data: Arc<Mutex<WorkHubData>>,
-    solution_queue_rx: mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
+pub struct WorkGenerator(stream::Peekable<mpsc::UnboundedReceiver<Arc<dyn hal::BitcoinJob>>>);
+
+impl WorkGenerator {
+    pub async fn generate(&mut self) -> hal::MiningWork {
+        await!(self.0.next());
+        prepare_test_work(0)
+    }
 }
+
+#[derive(Clone)]
+pub struct WorkSolutionSender(mpsc::UnboundedSender<hal::UniqueMiningWorkSolution>);
+
+impl WorkSolutionSender {
+    pub fn send(&self, solution: hal::UniqueMiningWorkSolution) {
+        self.0
+            .unbounded_send(solution)
+            .expect("solution queue send failed");
+    }
+}
+
+pub struct JobSolver(JobSender, JobSolutionReceiver);
 
 impl JobSolver {
     pub fn send_job(&self, job: Arc<dyn hal::BitcoinJob>) {
-        // TODO:
+        self.0.send(job)
     }
 
     pub async fn receive_solution(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
-        if let Some(Ok(solution)) = await!(self.solution_queue_rx.next()) {
+        await!(self.1.receive())
+    }
+
+    pub fn split(self) -> (JobSender, JobSolutionReceiver) {
+        (self.0, self.1)
+    }
+}
+
+#[derive(Clone)]
+pub struct JobSender(mpsc::UnboundedSender<Arc<dyn hal::BitcoinJob>>);
+
+impl JobSender {
+    pub fn send(&self, job: Arc<dyn hal::BitcoinJob>) {
+        self.0.unbounded_send(job).expect("job queue send failed");
+    }
+}
+
+pub struct JobSolutionReceiver(mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>);
+
+impl JobSolutionReceiver {
+    pub async fn receive(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
+        if let Some(Ok(solution)) = await!(self.0.next()) {
             Some(solution)
         } else {
             None

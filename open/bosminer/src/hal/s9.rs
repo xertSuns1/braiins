@@ -517,14 +517,14 @@ async fn async_send_work<T>(
     mining_stats: Arc<Mutex<super::MiningStats>>,
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     mut tx_fifo: fifo::HChainFifo,
-    workhub: workhub::WorkHub,
+    mut work_generator: workhub::WorkGenerator,
     shutdown: crate::hal::ShutdownChanTx,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
     loop {
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
-        let work = await!(workhub.get_work());
+        let work = await!(work_generator.generate());
         match work {
             None => {
                 shutdown
@@ -556,7 +556,7 @@ async fn async_recv_solutions<T>(
     mining_stats: Arc<Mutex<super::MiningStats>>,
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     mut rx_fifo: fifo::HChainFifo,
-    workhub: workhub::WorkHub,
+    work_solution: workhub::WorkSolutionSender,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -586,7 +586,7 @@ async fn async_recv_solutions<T>(
                 // work item detected a new unique solution, we will push it for further processing
                 if let Some(unique_solution) = status.unique_solution {
                     stats.unique_solutions += 1;
-                    workhub.submit_solution(unique_solution);
+                    work_solution.send(unique_solution);
                 }
                 stats.duplicate_solutions += status.duplicate as u64;
                 stats.mismatched_solution_nonces += status.mismatched_nonce as u64;
@@ -608,7 +608,7 @@ fn spawn_tx_task<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
     mining_stats: Arc<Mutex<super::MiningStats>>,
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
-    workhub: workhub::WorkHub,
+    mut work_generator: workhub::WorkGenerator,
     shutdown: crate::hal::ShutdownChanTx,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
@@ -620,7 +620,7 @@ fn spawn_tx_task<T>(
             mining_stats,
             h_chain_ctl,
             tx_fifo,
-            workhub,
+            work_generator,
             shutdown,
         ));
     });
@@ -630,7 +630,7 @@ fn spawn_rx_task<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
     mining_stats: Arc<Mutex<super::MiningStats>>,
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
-    workhub: workhub::WorkHub,
+    work_solution: workhub::WorkSolutionSender,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -641,7 +641,7 @@ fn spawn_rx_task<T>(
             mining_stats,
             h_chain_ctl,
             rx_fifo,
-            workhub,
+            work_solution,
         ));
     });
 }
@@ -681,19 +681,20 @@ impl super::HardwareCtl for HChain {
 
         let work_registry = Arc::new(Mutex::new(registry::MiningWorkRegistry::new()));
         let h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
+        let (work_generator, work_solution) = workhub.split();
 
         spawn_tx_task(
             work_registry.clone(),
             mining_stats.clone(),
             h_chain_ctl.clone(),
-            workhub.clone(),
+            work_generator,
             shutdown.clone(),
         );
         spawn_rx_task(
             work_registry.clone(),
             mining_stats.clone(),
             h_chain_ctl.clone(),
-            workhub.clone(),
+            work_solution,
         );
     }
 }
