@@ -32,11 +32,11 @@ pub struct WorkHubData {
 }
 
 impl WorkHubData {
-    pub fn get_work(&mut self) -> hal::MiningWork {
+    pub fn get_work(&mut self) -> Option<hal::MiningWork> {
         let work = prepare_test_work(self.midstate_start);
         // the midstate identifier may wrap around (considering its size, effectively never...)
         self.midstate_start = self.midstate_start.wrapping_add(1);
-        work
+        Some(work)
     }
 
     pub fn new() -> Self {
@@ -56,7 +56,7 @@ pub struct WorkHub {
 /// submit solutions
 impl WorkHub {
     /// Hardware-facing API
-    pub async fn get_work(&self) -> hal::MiningWork {
+    pub async fn get_work(&self) -> Option<hal::MiningWork> {
         await!(self.workhub_data.lock())
             .expect("locking failed")
             .get_work()

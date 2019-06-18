@@ -523,7 +523,7 @@ async fn async_send_work<T>(
 {
     loop {
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
-        let test_work = await!(workhub.get_work());
+        let test_work = await!(workhub.get_work()).expect("no more work");
         let work_id = await!(h_chain_ctl.lock())
             .expect("h_chain lock")
             .next_work_id();
