@@ -2,10 +2,8 @@
 /// and associated interrupts.
 /// Exports FIFO management/send/receive and register access.
 use crate::error::{self, ErrorKind};
-use byteorder::{ByteOrder, LittleEndian};
 use failure::ResultExt;
 use std::marker::PhantomData;
-use std::mem::size_of;
 use std::ops;
 use std::time::Duration;
 

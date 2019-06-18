@@ -7,7 +7,6 @@ use std::time::Duration;
 use std::time::SystemTime;
 
 use tokio::await;
-use tokio::prelude::*;
 
 use slog::{info, trace};
 
@@ -608,7 +607,7 @@ fn spawn_tx_task<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
     mining_stats: Arc<Mutex<super::MiningStats>>,
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
-    mut work_generator: workhub::WorkGenerator,
+    work_generator: workhub::WorkGenerator,
     shutdown: crate::hal::ShutdownChanTx,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,

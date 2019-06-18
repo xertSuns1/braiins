@@ -1,10 +1,8 @@
 use crate::hal;
 use crate::hal::BitcoinJob;
-use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
+use bitcoin_hashes::{sha256, Hash, HashEngine};
 use byteorder::{ByteOrder, LittleEndian};
-use downcast_rs::Downcast;
 use futures::sync::mpsc;
-use std::sync::atomic::Ordering::AcqRel;
 use std::sync::{Arc, Mutex};
 use tokio::await;
 use tokio::prelude::*;
@@ -72,7 +70,9 @@ pub struct WorkGenerator {
     job_event: mpsc::Receiver<NewJobEvent>,
     job_queue: JobQueue,
     job: Option<Arc<dyn BitcoinJob>>,
+    midstates: usize,
     next_version: u16,
+    base_version: u32,
 }
 
 impl WorkGenerator {
@@ -81,7 +81,9 @@ impl WorkGenerator {
             job_event,
             job_queue,
             job: None,
+            midstates: 1,
             next_version: 0,
+            base_version: 0,
         }
     }
 
@@ -130,25 +132,63 @@ impl WorkGenerator {
         self.job.take();
     }
 
-    /// Returns new work generated from the current job
-    pub async fn generate(&mut self) -> Option<hal::MiningWork> {
-        let (job, new_job) = await!(self.get_job());
+    /// Roll new versions for Bitcoin header for all midstates
+    /// It finishes (clears) the current job if it determines then no new version
+    /// cannot be generated
+    fn next_versions(&mut self, job: &Arc<dyn BitcoinJob>, new_job: bool) -> Vec<u32> {
+        const MASK: u32 = 0x1fffe000;
+        const SHIFT: u32 = 13;
 
-        let version;
+        let version_start;
         if new_job {
-            version = 0;
-            self.next_version = 1;
+            version_start = 0;
+            self.next_version = self.midstates as u16;
+            self.base_version = job.version() & !MASK;
         } else {
-            version = self.next_version;
-            if let Some(next_version) = self.next_version.checked_add(1) {
+            version_start = self.next_version;
+            if let Some(next_version) = self.next_version.checked_add(self.midstates as u16) {
                 self.next_version = next_version;
             } else {
                 self.finish_current_job();
                 self.next_version = 0;
             }
+        };
+
+        let mut versions = Vec::with_capacity(self.midstates);
+        for version in version_start..self.next_version {
+            versions.push(self.base_version | ((version as u32) << SHIFT));
+        }
+        versions
+    }
+
+    /// Returns new work generated from the current job
+    pub async fn generate(&mut self) -> Option<hal::MiningWork> {
+        let (job, new_job) = await!(self.get_job());
+
+        let time = job.time();
+        let versions = self.next_versions(&job, new_job);
+        let mut midstates = Vec::with_capacity(versions.len());
+
+        let mut engine = sha256::Hash::engine();
+        let buffer = &mut [0u8; 64];
+
+        buffer[4..36].copy_from_slice(&job.previous_hash().into_inner());
+        buffer[36..64].copy_from_slice(&job.merkle_root().into_inner()[..32-4]);
+
+        for version in versions {
+            LittleEndian::write_u32(&mut buffer[0..4], version);
+            engine.input(buffer);
+            midstates.push(hal::Midstate {
+                version,
+                state: engine.midstate(),
+            })
         }
 
-        Some(prepare_test_work(version as u64, job.clone()))
+        Some(hal::MiningWork {
+            job,
+            midstates,
+            ntime: time,
+        })
     }
 }
 
@@ -220,6 +260,7 @@ impl JobSolutionReceiver {
 }
 
 /// * `i` - unique identifier for the generated midstate
+#[cfg(test)]
 pub fn prepare_test_work(i: u64, job: Arc<dyn BitcoinJob>) -> hal::MiningWork {
     let time = job.time();
 
