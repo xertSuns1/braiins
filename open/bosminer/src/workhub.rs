@@ -31,7 +31,7 @@ pub struct WorkHub(WorkGenerator, WorkSolutionSender);
 /// submit solutions
 impl WorkHub {
     /// Hardware-facing API
-    pub async fn generate_work(&mut self) -> hal::MiningWork {
+    pub async fn generate_work(&mut self) -> Option<hal::MiningWork> {
         await!(self.0.generate())
     }
 
@@ -130,7 +130,7 @@ impl WorkGenerator {
     }
 
     /// Returns new work generated from the current job
-    pub async fn generate(&mut self) -> hal::MiningWork {
+    pub async fn generate(&mut self) -> Option<hal::MiningWork> {
         let (job, new_job) = await!(self.get_job());
 
         let version;
@@ -147,7 +147,7 @@ impl WorkGenerator {
             }
         }
 
-        prepare_test_work(version as u64, job.clone())
+        Some(prepare_test_work(version as u64, job.clone()))
     }
 }
 
