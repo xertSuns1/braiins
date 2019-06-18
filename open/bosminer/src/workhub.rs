@@ -68,6 +68,7 @@ pub struct NewJobEvent;
 type JobQueue = Arc<Mutex<Option<Arc<dyn BitcoinJob>>>>;
 
 pub struct WorkGenerator {
+    // TODO: set number of midstates
     job_event: mpsc::Receiver<NewJobEvent>,
     job_queue: JobQueue,
     job: Option<Arc<dyn BitcoinJob>>,
@@ -209,6 +210,7 @@ pub struct JobSolutionReceiver(mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolu
 
 impl JobSolutionReceiver {
     pub async fn receive(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
+        // TODO: compare with target difficulty
         if let Some(Ok(solution)) = await!(self.0.next()) {
             Some(solution)
         } else {
