@@ -10,7 +10,7 @@ use rminer::workhub;
 
 use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 
-use slog::{info, trace};
+use slog::{error, info};
 
 use std::time::{Duration, Instant, SystemTime};
 
@@ -164,7 +164,7 @@ fn main() {
         tokio::spawn_async(dummy_job_generator(job_sender));
 
         // Receive solutions
-        tokio::spawn_async(async move { while let Some(_x) = await!(job_solver.receive_solution()) {} });
+        tokio::spawn_async(async move { while let Some(_x) = await!(job_solution.receive()) {} });
 
         // Wait for shutdown
         let msg = await!(shutdown_rx.next());
