@@ -517,7 +517,7 @@ async fn async_send_work<T>(
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     mut tx_fifo: fifo::HChainFifo,
     mut work_generator: workhub::WorkGenerator,
-    shutdown: crate::hal::ShutdownChanTx,
+    shutdown: crate::hal::ShutdownSender,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -526,9 +526,7 @@ async fn async_send_work<T>(
         let work = await!(work_generator.generate());
         match work {
             None => {
-                shutdown
-                    .unbounded_send("no more work from workhub")
-                    .expect("send failed");
+                shutdown.send("no more work from workhub");
                 break;
             }
             Some(work) => {
@@ -608,7 +606,7 @@ fn spawn_tx_task<T>(
     mining_stats: Arc<Mutex<super::MiningStats>>,
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     work_generator: workhub::WorkGenerator,
-    shutdown: crate::hal::ShutdownChanTx,
+    shutdown: crate::hal::ShutdownSender,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -658,7 +656,7 @@ impl super::HardwareCtl for HChain {
         &self,
         workhub: workhub::WorkHub,
         mining_stats: Arc<Mutex<super::MiningStats>>,
-        shutdown: crate::hal::ShutdownChanTx,
+        shutdown: crate::hal::ShutdownSender,
     ) {
         use super::s9::power::VoltageCtrlBackend;
 

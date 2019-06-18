@@ -149,11 +149,11 @@ fn main() {
         let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
 
         // Create shutdown channel
-        let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded();
+        let (shutdown_sender, mut shutdown_receiver) = hal::Shutdown::new().split();
 
         // Create one chain
         let chain = hal::s9::HChain::new();
-        chain.start_hw(work_hub, mining_stats.clone(), shutdown_tx.clone());
+        chain.start_hw(work_hub, mining_stats.clone(), shutdown_sender);
 
         // Start hashrate-meter task
         tokio::spawn_async(async_hashrate_meter(mining_stats));
@@ -167,14 +167,7 @@ fn main() {
         tokio::spawn_async(async move { while let Some(_x) = await!(job_solution.receive()) {} });
 
         // Wait for shutdown
-        let msg = await!(shutdown_rx.next());
-        match msg {
-            None => {
-                error!(LOGGER, "SHUTDOWN: hchain failed");
-            }
-            Some(reason) => {
-                info!(LOGGER, "SHUTDOWN: {}", reason.expect("reason is error"));
-            }
-        };
+        let shutdown_reason = await!(shutdown_receiver.receive());
+        info!(LOGGER, "SHUTDOWN: {}", shutdown_reason);
     });
 }

@@ -173,7 +173,7 @@ impl WorkGenerator {
         let buffer = &mut [0u8; 64];
 
         buffer[4..36].copy_from_slice(&job.previous_hash().into_inner());
-        buffer[36..64].copy_from_slice(&job.merkle_root().into_inner()[..32-4]);
+        buffer[36..64].copy_from_slice(&job.merkle_root().into_inner()[..32 - 4]);
 
         for version in versions {
             LittleEndian::write_u32(&mut buffer[0..4], version);
