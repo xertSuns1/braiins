@@ -5,6 +5,7 @@ use downcast_rs::{impl_downcast, Downcast};
 use futures::sync::mpsc;
 use futures_locks::Mutex;
 use std::sync::Arc;
+use tokio::prelude::*;
 
 pub mod s9;
 
@@ -126,10 +127,48 @@ impl MiningStats {
     }
 }
 
-/// Channel used for shutdown synchronization
+/// Message used for shutdown synchronization
 pub type ShutdownMsg = &'static str;
-pub type ShutdownChanTx = mpsc::UnboundedSender<ShutdownMsg>;
-pub type ShutdownChanRx = mpsc::UnboundedReceiver<ShutdownMsg>;
+
+/// Sender side of shutdown messanger
+#[derive(Clone)]
+pub struct ShutdownSender(mpsc::UnboundedSender<ShutdownMsg>);
+
+impl ShutdownSender {
+    pub fn send(&self, msg: ShutdownMsg) {
+        self.0.unbounded_send(msg).expect("send failed");
+    }
+}
+
+/// Receiver side of shutdown messanger
+pub struct ShutdownReceiver(mpsc::UnboundedReceiver<ShutdownMsg>);
+
+impl ShutdownReceiver {
+    pub async fn receive(&mut self) -> ShutdownMsg {
+        let reply = await!(self.0.next());
+
+        // TODO: do we have to handle all these cases?
+        let msg = match reply {
+            None => "all hchains died",
+            Some(Err(_)) => "unexpected error when receiving shutdown message",
+            Some(Ok(m)) => m,
+        };
+        msg
+    }
+}
+
+/// Shutdown messanger constructor & splitter
+pub struct Shutdown(ShutdownSender, ShutdownReceiver);
+
+impl Shutdown {
+    pub fn new() -> Self {
+        let (shutdown_tx, shutdown_rx) = mpsc::unbounded();
+        Self(ShutdownSender(shutdown_tx), ShutdownReceiver(shutdown_rx))
+    }
+    pub fn split(self) -> (ShutdownSender, ShutdownReceiver) {
+        (self.0, self.1)
+    }
+}
 
 /// Any hardware mining controller should implement at least these methods
 pub trait HardwareCtl {
@@ -139,6 +178,6 @@ pub trait HardwareCtl {
         &self,
         workhub: workhub::WorkHub,
         a_mining_stats: Arc<Mutex<MiningStats>>,
-        shutdown: ShutdownChanTx,
+        shutdown: ShutdownSender,
     );
 }
