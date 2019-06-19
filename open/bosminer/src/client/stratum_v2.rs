@@ -3,7 +3,7 @@ use crate::workhub;
 
 use futures::future::Future;
 
-use stratum::v2::messages::{NewMiningJob, SetNewPrevhash, SetTarget};
+use stratum::v2::messages::{NewMiningJob, SetNewPrevhash, SetTarget, SubmitShares};
 use stratum::v2::{V2Handler, V2Protocol};
 use wire::Message;
 
@@ -14,8 +14,8 @@ const VERSION_MASK: u32 = 0x1fffe000;
 
 #[derive(Copy, Clone)]
 struct StratumJob {
+    id: u32,
     channel_id: u32,
-    job_id: u32,
     block_height: u32,
     version: u32,
     prev_hash: Hash,
@@ -29,8 +29,8 @@ impl StratumJob {
     pub fn new(job_msg: NewMiningJob, prevhash_msg: SetNewPrevhash) -> Self {
         assert_eq!(job_msg.block_height, prevhash_msg.block_height);
         Self {
+            id: job_msg.job_id,
             channel_id: job_msg.channel_id,
-            job_id: job_msg.job_id,
             block_height: job_msg.block_height,
             version: job_msg.version,
             prev_hash: Hash::from_slice(prevhash_msg.prev_hash.as_ref()).unwrap(),
@@ -83,25 +83,52 @@ impl StratumEventHandler {
 }
 
 impl V2Handler for StratumEventHandler {
-    fn visit_new_mining_job(&mut self, _msg: &Message<V2Protocol>, _payload: &NewMiningJob) {}
+    fn visit_new_mining_job(&mut self, _msg: &Message<V2Protocol>, job_mgs: &NewMiningJob) {}
 
-    fn visit_set_new_prevhash(&mut self, _msg: &Message<V2Protocol>, _payload: &SetNewPrevhash) {}
+    fn visit_set_new_prevhash(
+        &mut self,
+        _msg: &Message<V2Protocol>,
+        prevhash_msg: &SetNewPrevhash,
+    ) {
+    }
 
-    fn visit_set_target(&mut self, _msg: &Message<V2Protocol>, _payload: &SetTarget) {}
+    fn visit_set_target(&mut self, _msg: &Message<V2Protocol>, target_msg: &SetTarget) {}
 }
 
 struct StratumSolutionHandler {
     job_solution: workhub::JobSolutionReceiver,
+    seq_num: u32,
 }
 
 impl StratumSolutionHandler {
     fn new(job_solution: workhub::JobSolutionReceiver) -> Self {
-        Self { job_solution }
+        Self {
+            job_solution,
+            seq_num: 0,
+        }
+    }
+
+    async fn process_solution(&mut self, solution: hal::UniqueMiningWorkSolution) {
+        let job: &StratumJob = solution.job();
+
+        let seq_num = self.seq_num;
+        self.seq_num = self.seq_num.wrapping_add(1);
+
+        let share_msg = SubmitShares {
+            channel_id: job.channel_id,
+            seq_num,
+            job_id: job.id,
+            nonce: solution.nonce(),
+            ntime_offset: solution.time_offset(),
+            version: solution.version(),
+        };
+        // TODO: send solutions back to the stratum server
     }
 
     async fn run(mut self) {
-        // TODO: send solutions via RPC back to the stratum server
-        while let Some(_x) = await!(self.job_solution.receive()) {}
+        while let Some(solution) = await!(self.job_solution.receive()) {
+            await!(self.process_solution(solution));
+        }
     }
 }
 
