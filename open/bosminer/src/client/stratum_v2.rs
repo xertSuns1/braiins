@@ -84,16 +84,32 @@ impl StratumEventHandler {
 
 impl V2Handler for StratumEventHandler {
     fn visit_new_mining_job(&mut self, _msg: &Message<V2Protocol>, _payload: &NewMiningJob) {}
+
     fn visit_set_new_prevhash(&mut self, _msg: &Message<V2Protocol>, _payload: &SetNewPrevhash) {}
+
     fn visit_set_target(&mut self, _msg: &Message<V2Protocol>, _payload: &SetTarget) {}
 }
 
-pub async fn run(stratum_addr: String, job_solver: workhub::JobSolver) {
-    let (job_sender, mut job_solution) = job_solver.split();
+struct StratumSolutionHandler {
+    job_solution: workhub::JobSolutionReceiver,
+}
 
-    // TODO: run event handler in separate task
+impl StratumSolutionHandler {
+    fn new(job_solution: workhub::JobSolutionReceiver) -> Self {
+        Self { job_solution }
+    }
+
+    async fn run(mut self) {
+        // TODO: send solutions via RPC back to the stratum server
+        while let Some(_x) = await!(self.job_solution.receive()) {}
+    }
+}
+
+pub async fn run(stratum_addr: String, job_solver: workhub::JobSolver) {
+    let (job_sender, job_solution) = job_solver.split();
+
+    // TODO: run event handler in a separate task
     let event_handler = StratumEventHandler::new(job_sender);
 
-    // TODO: send solutions via RPC back to stratum server
-    while let Some(_x) = await!(job_solution.receive()) {}
+    await!(StratumSolutionHandler::new(job_solution).run());
 }
