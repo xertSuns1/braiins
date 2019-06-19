@@ -45,16 +45,16 @@ impl WorkHub {
     /// Construct new WorkHub and associated queue to send work through
     /// This is runner/orchestrator/pump-facing function
     pub fn new() -> (Self, JobSolver) {
-        let job_queue = Arc::new(Mutex::new(None));
+        let job_channel = Arc::new(Mutex::new(None));
         let (job_event_tx, job_event_rx) = mpsc::channel(1);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
         (
             Self(
-                WorkGenerator::new(job_event_rx, job_queue.clone()),
+                WorkGenerator::new(job_event_rx, job_channel.clone()),
                 WorkSolutionSender(solution_queue_tx),
             ),
             JobSolver(
-                JobSender::new(job_event_tx, job_queue),
+                JobSender::new(job_event_tx, job_channel),
                 JobSolutionReceiver(solution_queue_rx),
             ),
         )
@@ -63,24 +63,30 @@ impl WorkHub {
 
 pub struct NewJobEvent;
 
-type JobQueue = Arc<Mutex<Option<Arc<dyn BitcoinJob>>>>;
+type JobChannel = Arc<Mutex<Option<Arc<dyn BitcoinJob>>>>;
+
+struct JobQueue {
+    event: mpsc::Receiver<NewJobEvent>,
+    channel: JobChannel,
+    current: Option<Arc<dyn BitcoinJob>>,
+}
 
 pub struct WorkGenerator {
-    // TODO: set number of midstates
-    job_event: mpsc::Receiver<NewJobEvent>,
-    job_queue: JobQueue,
-    job: Option<Arc<dyn BitcoinJob>>,
+    job: JobQueue,
     midstates: usize,
     next_version: u16,
     base_version: u32,
 }
 
 impl WorkGenerator {
-    pub fn new(job_event: mpsc::Receiver<NewJobEvent>, job_queue: JobQueue) -> Self {
+    pub fn new(job_event: mpsc::Receiver<NewJobEvent>, job_channel: JobChannel) -> Self {
+        let job = JobQueue {
+            event: job_event,
+            channel: job_channel,
+            current: None,
+        };
         Self {
-            job_event,
-            job_queue,
-            job: None,
+            job,
             midstates: 1,
             next_version: 0,
             base_version: 0,
@@ -91,16 +97,17 @@ impl WorkGenerator {
     /// When the current job has been replaced with a new one
     /// then it is indicated in the second return value
     async fn get_job(&mut self) -> (Arc<dyn BitcoinJob>, bool) {
-        let mut new_job = self.job.is_none();
+        let mut new_job = self.job.current.is_none();
 
         if new_job {
             // wait for event which signals delivery of a new job
-            await!(self.job_event.next());
+            await!(self.job.event.next());
         }
 
         // the job queue have to now contain a new job
-        let job_queue_top = self
-            .job_queue
+        let job_channel_top = self
+            .job
+            .channel
             .lock()
             .expect("cannot lock queue for receiving new job")
             .as_ref()
@@ -109,14 +116,14 @@ impl WorkGenerator {
 
         if !new_job {
             // check job queue top differs from current job
-            new_job = !Arc::ptr_eq(self.job.as_ref().unwrap(), &job_queue_top);
+            new_job = !Arc::ptr_eq(self.job.current.as_ref().unwrap(), &job_channel_top);
         }
         if new_job {
             // update current job with the latest one
-            self.job = Some(job_queue_top);
+            self.job.current = Some(job_channel_top);
         }
         // return reference to the job and flag with a new job indication
-        (self.job.as_ref().unwrap().clone(), new_job)
+        (self.job.current.as_ref().unwrap().clone(), new_job)
     }
 
     /// Clears the current job when the whole address space is exhausted
@@ -124,12 +131,13 @@ impl WorkGenerator {
     /// the new job is delivered
     fn finish_current_job(&mut self) {
         // atomically remove current job from job queue and local reference
-        let mut job_queue_top = self
-            .job_queue
+        let mut job_channel_top = self
+            .job
+            .channel
             .lock()
             .expect("cannot lock queue for receiving new job");
-        job_queue_top.take();
-        self.job.take();
+        job_channel_top.take();
+        self.job.current.take();
     }
 
     /// Roll new versions for Bitcoin header for all midstates
@@ -222,19 +230,19 @@ impl JobSolver {
 #[derive(Clone)]
 pub struct JobSender {
     job_event: mpsc::Sender<NewJobEvent>,
-    job_queue: JobQueue,
+    job_channel: JobChannel,
 }
 
 impl JobSender {
-    pub fn new(job_event: mpsc::Sender<NewJobEvent>, job_queue: JobQueue) -> Self {
+    pub fn new(job_event: mpsc::Sender<NewJobEvent>, job_channel: JobChannel) -> Self {
         Self {
             job_event,
-            job_queue,
+            job_channel,
         }
     }
     pub fn send(&mut self, job: Arc<dyn hal::BitcoinJob>) {
         let old_job = self
-            .job_queue
+            .job_channel
             .lock()
             .expect("cannot lock queue for sending new job")
             .replace(job);
