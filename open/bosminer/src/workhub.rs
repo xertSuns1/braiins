@@ -1,9 +1,8 @@
-use crate::hal;
-use crate::hal::BitcoinJob;
+use crate::hal::{self, BitcoinJob};
 use bitcoin_hashes::{sha256, Hash, HashEngine};
 use byteorder::{ByteOrder, LittleEndian};
 use futures::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex as StdMutex};
 use tokio::await;
 use tokio::prelude::*;
 
@@ -45,7 +44,7 @@ impl WorkHub {
     /// Construct new WorkHub and associated queue to send work through
     /// This is runner/orchestrator/pump-facing function
     pub fn new() -> (Self, JobSolver) {
-        let job_channel = Arc::new(Mutex::new(None));
+        let job_channel = Arc::new(StdMutex::new(None));
         let (job_event_tx, job_event_rx) = mpsc::channel(1);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
         (
@@ -63,7 +62,7 @@ impl WorkHub {
 
 pub struct NewJobEvent;
 
-type JobChannel = Arc<Mutex<Option<Arc<dyn BitcoinJob>>>>;
+type JobChannel = Arc<StdMutex<Option<Arc<dyn BitcoinJob>>>>;
 
 struct JobQueue {
     event: mpsc::Receiver<NewJobEvent>,
@@ -71,42 +70,28 @@ struct JobQueue {
     current: Option<Arc<dyn BitcoinJob>>,
 }
 
-pub struct WorkGenerator {
-    job: JobQueue,
-    midstates: usize,
-    next_version: u16,
-    base_version: u32,
-}
-
-impl WorkGenerator {
-    pub fn new(job_event: mpsc::Receiver<NewJobEvent>, job_channel: JobChannel) -> Self {
-        let job = JobQueue {
-            event: job_event,
-            channel: job_channel,
-            current: None,
-        };
+impl JobQueue {
+    pub fn new(event: mpsc::Receiver<NewJobEvent>, channel: JobChannel) -> Self {
         Self {
-            job,
-            midstates: 1,
-            next_version: 0,
-            base_version: 0,
+            event,
+            channel,
+            current: None,
         }
     }
 
     /// Returns current job from which the new work is generated
     /// When the current job has been replaced with a new one
     /// then it is indicated in the second return value
-    async fn get_job(&mut self) -> (Arc<dyn BitcoinJob>, bool) {
-        let mut new_job = self.job.current.is_none();
+    pub async fn get_job(&mut self) -> (Arc<dyn BitcoinJob>, bool) {
+        let mut new_job = self.current.is_none();
 
         if new_job {
             // wait for event which signals delivery of a new job
-            await!(self.job.event.next());
+            await!(self.event.next());
         }
 
         // the job queue have to now contain a new job
         let job_channel_top = self
-            .job
             .channel
             .lock()
             .expect("cannot lock queue for receiving new job")
@@ -116,28 +101,45 @@ impl WorkGenerator {
 
         if !new_job {
             // check job queue top differs from current job
-            new_job = !Arc::ptr_eq(self.job.current.as_ref().unwrap(), &job_channel_top);
+            new_job = !Arc::ptr_eq(self.current.as_ref().unwrap(), &job_channel_top);
         }
         if new_job {
             // update current job with the latest one
-            self.job.current = Some(job_channel_top);
+            self.current = Some(job_channel_top);
         }
         // return reference to the job and flag with a new job indication
-        (self.job.current.as_ref().unwrap().clone(), new_job)
+        (self.current.as_ref().unwrap().clone(), new_job)
     }
 
     /// Clears the current job when the whole address space is exhausted
     /// After this method has been called, the get_job starts blocking until
     /// the new job is delivered
-    fn finish_current_job(&mut self) {
+    pub fn finish_current_job(&mut self) {
         // atomically remove current job from job queue and local reference
         let mut job_channel_top = self
-            .job
             .channel
             .lock()
             .expect("cannot lock queue for receiving new job");
         job_channel_top.take();
-        self.job.current.take();
+        self.current.take();
+    }
+}
+
+pub struct WorkGenerator {
+    job_queue: JobQueue,
+    midstates: usize,
+    next_version: u16,
+    base_version: u32,
+}
+
+impl WorkGenerator {
+    pub fn new(job_event: mpsc::Receiver<NewJobEvent>, job_channel: JobChannel) -> Self {
+        Self {
+            job_queue: JobQueue::new(job_event, job_channel),
+            midstates: 1,
+            next_version: 0,
+            base_version: 0,
+        }
     }
 
     /// Roll new versions for Bitcoin header for all midstates
@@ -157,7 +159,7 @@ impl WorkGenerator {
             if let Some(next_version) = self.next_version.checked_add(self.midstates as u16) {
                 self.next_version = next_version;
             } else {
-                self.finish_current_job();
+                self.job_queue.finish_current_job();
                 self.next_version = 0;
             }
         };
@@ -171,7 +173,7 @@ impl WorkGenerator {
 
     /// Returns new work generated from the current job
     pub async fn generate(&mut self) -> Option<hal::MiningWork> {
-        let (job, new_job) = await!(self.get_job());
+        let (job, new_job) = await!(self.job_queue.get_job());
 
         let time = job.time();
         let versions = self.next_versions(&job, new_job);
