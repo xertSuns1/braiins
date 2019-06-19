@@ -36,6 +36,7 @@ tokio-async-await = "0.1.7"
 tokio = { version = "0.1.19", features = ["async-await-preview"] }
 bitcoin_hashes = "0.3.2"
 downcast-rs = "1.0.4"
+wire = { git = "ssh://git@gitlab.bo/x/stratum.git", branch = "lva-actual-server" }
 stratum = { git = "ssh://git@gitlab.bo/x/stratum.git", branch = "lva-actual-server" }
 
 [dependencies.embedded-hal]

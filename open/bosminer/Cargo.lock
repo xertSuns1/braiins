@@ -796,6 +796,7 @@ dependencies = [
  "tokio-async-await 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "uint 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "uio 0.2.0",
+ "wire 0.1.0 (git+ssh://git@gitlab.bo/x/stratum.git?branch=lva-actual-server)",
 ]
 
 [[package]]
