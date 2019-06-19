@@ -66,7 +66,7 @@ impl MiningWork {
         T::read_u32(&bytes[bytes.len() - 4..])
     }
 
-    /// Shorthand for getting current target (nBits)
+    /// Shortcut for getting current target (nBits)
     #[inline]
     pub fn bits(&self) -> u32 {
         self.job.bits()
@@ -93,9 +93,48 @@ pub struct UniqueMiningWorkSolution {
     /// time stamp when it has been fetched from the solution FIFO
     pub timestamp: std::time::SystemTime,
     /// Original mining work associated with this solution
-    pub work: MiningWork,
+    work: MiningWork,
     /// solution of the PoW puzzle
-    pub solution: MiningWorkSolution,
+    solution: MiningWorkSolution,
+}
+
+impl UniqueMiningWorkSolution {
+    pub fn job<T: BitcoinJob>(&self) -> &T {
+        self.work
+            .job
+            .downcast_ref::<T>()
+            .expect("cannot downcast to original job")
+    }
+
+    #[inline]
+    pub fn nonce(&self) -> u32 {
+        self.solution.nonce
+    }
+
+    #[inline]
+    pub fn time(&self) -> u32 {
+        if let Some(time) = self.solution.ntime {
+            time
+        } else {
+            self.work.ntime
+        }
+    }
+
+    #[inline]
+    pub fn time_offset(&self) -> u16 {
+        let job_time = self.work.job.time();
+        let offset = self.time()
+            .checked_sub(job_time)
+            .expect("job time offset overflow");
+        assert!(offset <= u16::max_value().into());
+        offset as u16
+    }
+
+    #[inline]
+    pub fn version(&self) -> u32 {
+        let i = self.solution.midstate_idx;
+        self.work.midstates[i].version
+    }
 }
 
 /// Holds all hardware-related statistics for a hashchain
