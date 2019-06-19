@@ -4,6 +4,7 @@ use lazy_static::lazy_static;
 use slog::{o, Drain, Duplicate, Level, LevelFilter, Logger};
 use slog_async;
 use slog_term;
+use stratum::v2;
 
 lazy_static! {
     /// Build static reference to the logger that will be accessible from all crates
