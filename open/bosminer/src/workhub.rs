@@ -249,9 +249,7 @@ impl JobSender {
         }
     }
 
-    pub fn change_target(&mut self, target: uint::U256) {
-
-    }
+    pub fn change_target(&mut self, target: uint::U256) {}
 
     pub fn send(&mut self, job: Arc<dyn hal::BitcoinJob>) {
         let old_job = self
@@ -271,7 +269,12 @@ pub struct JobSolutionReceiver(mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolu
 
 impl JobSolutionReceiver {
     pub async fn receive(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
-        // TODO: compare with target difficulty
-        await!(self.0.next())
+        while let Some(solution) = await!(self.0.next()) {
+            // TODO: compare with target difficulty
+            if solution.is_valid() {
+                return Some(solution);
+            }
+        }
+        None
     }
 }

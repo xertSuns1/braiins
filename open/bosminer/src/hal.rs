@@ -35,6 +35,8 @@ pub trait BitcoinJob: Downcast + Send + Sync {
     /// Current target in compact format (network difficulty)
     /// https://en.bitcoin.it/wiki/Difficulty
     fn bits(&self) -> u32;
+    /// Checks if job is still valid for mining
+    fn is_valid(&self) -> bool;
 }
 impl_downcast!(BitcoinJob);
 
@@ -140,6 +142,11 @@ impl UniqueMiningWorkSolution {
     pub fn version(&self) -> u32 {
         let i = self.solution.midstate_idx;
         self.work.midstates[i].version
+    }
+
+    pub fn is_valid(&self) -> bool {
+        // TODO: compare with target difficulty
+        self.work.job.is_valid()
     }
 }
 

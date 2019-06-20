@@ -3,6 +3,7 @@ use crate::workhub;
 
 use futures::future::Future;
 
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use stratum::v2::messages::{NewMiningJob, SetNewPrevhash, SetTarget, SubmitShares};
@@ -15,11 +16,12 @@ use std::collections::HashMap;
 // TODO: move it to the stratum crate
 const VERSION_MASK: u32 = 0x1fffe000;
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 struct StratumJob {
     id: u32,
     channel_id: u32,
     block_height: u32,
+    current_block_height: Arc<AtomicU32>,
     version: u32,
     prev_hash: Hash,
     merkle_root: Hash,
@@ -29,12 +31,17 @@ struct StratumJob {
 }
 
 impl StratumJob {
-    pub fn new(job_msg: &NewMiningJob, prevhash_msg: &SetNewPrevhash) -> Self {
+    pub fn new(
+        job_msg: &NewMiningJob,
+        prevhash_msg: &SetNewPrevhash,
+        current_block_height: Arc<AtomicU32>,
+    ) -> Self {
         assert_eq!(job_msg.block_height, prevhash_msg.block_height);
         Self {
             id: job_msg.job_id,
             channel_id: job_msg.channel_id,
             block_height: job_msg.block_height,
+            current_block_height,
             version: job_msg.version,
             prev_hash: Hash::from_slice(prevhash_msg.prev_hash.as_ref()).unwrap(),
             merkle_root: Hash::from_slice(job_msg.merkle_root.as_ref()).unwrap(),
@@ -73,11 +80,16 @@ impl hal::BitcoinJob for StratumJob {
     fn bits(&self) -> u32 {
         self.bits
     }
+
+    fn is_valid(&self) -> bool {
+        self.block_height >= self.current_block_height.load(Ordering::Relaxed)
+    }
 }
 
 struct StratumEventHandler {
     job_sender: workhub::JobSender,
     new_jobs: HashMap<u32, NewMiningJob>,
+    current_block_height: Arc<AtomicU32>,
 }
 
 impl StratumEventHandler {
@@ -85,6 +97,7 @@ impl StratumEventHandler {
         Self {
             job_sender,
             new_jobs: Default::default(),
+            current_block_height: Arc::new(AtomicU32::new(0)),
         }
     }
 }
@@ -102,9 +115,12 @@ impl V2Handler for StratumEventHandler {
         prevhash_msg: &SetNewPrevhash,
     ) {
         let current_block_height = prevhash_msg.block_height;
+        // immediately update current block height which is propagated to currently solved jobs
+        self.current_block_height
+            .store(current_block_height, Ordering::Relaxed);
         // find a job with the same block height as provided in previous hash
         if let Some((_, job_msg)) = self.new_jobs.remove_entry(&current_block_height) {
-            let job = StratumJob::new(&job_msg, prevhash_msg);
+            let job = StratumJob::new(&job_msg, prevhash_msg, self.current_block_height.clone());
             self.job_sender.send(Arc::new(job));
         } else {
             // TODO: close connection when any job with provided block height hasn't been found
