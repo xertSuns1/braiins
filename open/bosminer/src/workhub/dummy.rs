@@ -47,6 +47,10 @@ impl hal::BitcoinJob for DummyJob {
     fn bits(&self) -> u32 {
         0xffff_ffff
     }
+
+    fn is_valid(&self) -> bool {
+        true
+    }
 }
 
 /// * `i` - unique identifier for the generated midstate
