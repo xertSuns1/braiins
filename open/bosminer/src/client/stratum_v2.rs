@@ -117,7 +117,7 @@ impl V2Handler for StratumEventHandler {
     }
 
     fn visit_set_target(&mut self, _msg: &Message<V2Protocol>, target_msg: &SetTarget) {
-        // TODO: use job_sender to update new target
+        self.job_sender.change_target(target_msg.max_target.into());
     }
 }
 

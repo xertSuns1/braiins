@@ -248,6 +248,11 @@ impl JobSender {
             job_channel,
         }
     }
+
+    pub fn change_target(&mut self, target: uint::U256) {
+
+    }
+
     pub fn send(&mut self, job: Arc<dyn hal::BitcoinJob>) {
         let old_job = self
             .job_channel
