@@ -10,6 +10,8 @@ use std::sync::{Arc, Mutex as StdMutex};
 use bitcoin_hashes::{sha256, Hash, HashEngine};
 use byteorder::{ByteOrder, LittleEndian};
 
+pub mod dummy;
+
 /// A registry of solutions
 #[allow(dead_code)]
 struct SolutionRegistry {
@@ -266,23 +268,5 @@ impl JobSolutionReceiver {
     pub async fn receive(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
         // TODO: compare with target difficulty
         await!(self.0.next())
-    }
-}
-
-/// * `i` - unique identifier for the generated midstate
-#[cfg(test)]
-pub fn prepare_test_work(i: u64, job: Arc<dyn BitcoinJob>) -> hal::MiningWork {
-    let time = job.time();
-
-    let mut mid = hal::Midstate {
-        version: 0,
-        state: [0u8; 32],
-    };
-    LittleEndian::write_u64(&mut mid.state, i);
-
-    hal::MiningWork {
-        job,
-        midstates: vec![mid],
-        ntime: time,
     }
 }
