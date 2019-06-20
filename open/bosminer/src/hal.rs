@@ -8,8 +8,8 @@ use futures_locks::Mutex;
 
 use std::sync::Arc;
 
-use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
-use byteorder::ByteOrder;
+use bitcoin_hashes::{sha256d, sha256d::Hash, Hash as HashTrait};
+use byteorder::{ByteOrder, LittleEndian};
 use downcast_rs::{impl_downcast, Downcast};
 
 pub mod s9;
@@ -144,9 +144,24 @@ impl UniqueMiningWorkSolution {
         self.work.midstates[i].version
     }
 
+    pub fn get_block_bytes(&self) -> [u8; 80] {
+        let job = &self.work.job;
+        let buffer = &mut [0u8; 80];
+
+        LittleEndian::write_u32(&mut buffer[0..4], self.version());
+        buffer[4..36].copy_from_slice(&job.previous_hash().into_inner());
+        buffer[36..68].copy_from_slice(&job.merkle_root().into_inner());
+        LittleEndian::write_u32(&mut buffer[68..72], self.time());
+        LittleEndian::write_u32(&mut buffer[72..76], job.bits());
+        LittleEndian::write_u32(&mut buffer[76..80], self.nonce());
+
+        *buffer
+    }
+
     pub fn compute_sha256d(&self) -> Hash {
-        // TODO: implement!
-        Default::default()
+        let block_bytes = self.get_block_bytes();
+        // compute SHA256 double hash
+        sha256d::Hash::hash(&block_bytes[..])
     }
 
     pub fn is_valid(&self, current_target: &uint::U256) -> bool {
