@@ -5,12 +5,17 @@ use tokio::prelude::*;
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
 
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::{Arc, Mutex as StdMutex, RwLock};
 
 use bitcoin_hashes::{sha256, Hash, HashEngine};
 use byteorder::{ByteOrder, LittleEndian};
 
 pub mod dummy;
+
+const DIFFICULTY_1_TARGET_BYTES: [u8; 32] = [
+    0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+];
 
 /// A registry of solutions
 #[allow(dead_code)]
@@ -50,6 +55,9 @@ impl WorkHub {
     /// Construct new WorkHub and associated queue to send work through
     /// This is runner/orchestrator/pump-facing function
     pub fn new() -> (Self, JobSolver) {
+        let current_target = Arc::new(RwLock::new(uint::U256::from_big_endian(
+            &DIFFICULTY_1_TARGET_BYTES,
+        )));
         let job_channel = Arc::new(StdMutex::new(None));
         let (job_event_tx, job_event_rx) = mpsc::channel(1);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
@@ -59,8 +67,8 @@ impl WorkHub {
                 WorkSolutionSender(solution_queue_tx),
             ),
             JobSolver(
-                JobSender::new(job_event_tx, job_channel),
-                JobSolutionReceiver(solution_queue_rx),
+                JobSender::new(job_event_tx, job_channel, current_target.clone()),
+                JobSolutionReceiver::new(solution_queue_rx, current_target),
             ),
         )
     }
@@ -239,17 +247,28 @@ impl JobSolver {
 pub struct JobSender {
     job_event: mpsc::Sender<NewJobEvent>,
     job_channel: JobChannel,
+    current_target: Arc<RwLock<uint::U256>>,
 }
 
 impl JobSender {
-    pub fn new(job_event: mpsc::Sender<NewJobEvent>, job_channel: JobChannel) -> Self {
+    pub fn new(
+        job_event: mpsc::Sender<NewJobEvent>,
+        job_channel: JobChannel,
+        current_target: Arc<RwLock<uint::U256>>,
+    ) -> Self {
         Self {
             job_event,
             job_channel,
+            current_target,
         }
     }
 
-    pub fn change_target(&mut self, target: uint::U256) {}
+    pub fn change_target(&self, target: uint::U256) {
+        *self
+            .current_target
+            .write()
+            .expect("cannot write to shared current target") = target;
+    }
 
     pub fn send(&mut self, job: Arc<dyn hal::BitcoinJob>) {
         let old_job = self
@@ -265,13 +284,29 @@ impl JobSender {
     }
 }
 
-pub struct JobSolutionReceiver(mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>);
+pub struct JobSolutionReceiver {
+    solution_channel: mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
+    current_target: Arc<RwLock<uint::U256>>,
+}
 
 impl JobSolutionReceiver {
+    pub fn new(
+        solution_channel: mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
+        current_target: Arc<RwLock<uint::U256>>,
+    ) -> Self {
+        Self {
+            solution_channel,
+            current_target,
+        }
+    }
+
     pub async fn receive(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
-        while let Some(solution) = await!(self.0.next()) {
-            // TODO: compare with target difficulty
-            if solution.is_valid() {
+        while let Some(solution) = await!(self.solution_channel.next()) {
+            let current_target = &*self
+                .current_target
+                .read()
+                .expect("cannot read from shared current target");
+            if solution.is_valid(current_target) {
                 return Some(solution);
             }
         }

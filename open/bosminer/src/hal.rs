@@ -144,9 +144,23 @@ impl UniqueMiningWorkSolution {
         self.work.midstates[i].version
     }
 
-    pub fn is_valid(&self) -> bool {
-        // TODO: compare with target difficulty
-        self.work.job.is_valid()
+    pub fn compute_sha256d(&self) -> Hash {
+        // TODO: implement!
+        Default::default()
+    }
+
+    pub fn is_valid(&self, current_target: &uint::U256) -> bool {
+        if !self.work.job.is_valid() {
+            // job is obsolete and has to be flushed
+            return false;
+        }
+
+        // compute hash for this solution
+        let double_hash = self.compute_sha256d();
+        // convert it to number suitable for target comparison
+        let double_hash_u256 = uint::U256::from_little_endian(&double_hash.into_inner());
+        // and check it with current target (pool difficulty)
+        double_hash_u256 <= *current_target
     }
 }
 
