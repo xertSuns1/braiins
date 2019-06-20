@@ -8,8 +8,6 @@ use rminer::hal::HardwareCtl;
 use rminer::misc::LOGGER;
 use rminer::workhub;
 
-use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
-
 use slog::info;
 
 use std::time::{Duration, Instant, SystemTime};
@@ -22,53 +20,8 @@ use tokio::await;
 use tokio::timer::Delay;
 use wire::utils::CompatFix;
 
-#[derive(Copy, Clone)]
-struct DummyJob {
-    hash: Hash,
-    time: u32,
-}
-
-impl DummyJob {
-    pub fn new() -> Self {
-        Self {
-            hash: Hash::from_slice(&[0xffu8; 32]).unwrap(),
-            time: 0,
-        }
-    }
-
-    fn next(&mut self) {
-        self.time += 1;
-    }
-}
-
-impl hal::BitcoinJob for DummyJob {
-    fn version(&self) -> u32 {
-        0
-    }
-
-    fn version_mask(&self) -> u32 {
-        0
-    }
-
-    fn previous_hash(&self) -> &Hash {
-        &self.hash
-    }
-
-    fn merkle_root(&self) -> &Hash {
-        &self.hash
-    }
-
-    fn time(&self) -> u32 {
-        self.time
-    }
-
-    fn bits(&self) -> u32 {
-        0xffff_ffff
-    }
-}
-
 async fn dummy_job_generator(mut job_sender: workhub::JobSender) {
-    let mut dummy_job = DummyJob::new();
+    let mut dummy_job = workhub::dummy::DummyJob::new();
     loop {
         job_sender.send(Arc::new(dummy_job));
         await!(Delay::new(Instant::now() + Duration::from_secs(10))).unwrap();
