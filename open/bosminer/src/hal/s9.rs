@@ -3,8 +3,8 @@ use std::mem::size_of;
 use std::sync::Arc;
 use std::thread;
 
-use std::time::Duration;
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
+use tokio::timer::Delay;
 
 use tokio::await;
 use wire::utils::CompatFix;
@@ -461,7 +461,7 @@ where
         self.get_work_id_from_solution_id(solution.solution_id)
     }
 
-    fn get_chip_count(&self) -> usize {
+    pub fn get_chip_count(&self) -> usize {
         self.chip_count
     }
 
@@ -602,6 +602,39 @@ async fn async_recv_solutions<T>(
     }
 }
 
+pub async fn async_hashrate_meter(mining_stats: Arc<Mutex<crate::hal::MiningStats>>) {
+    let hashing_started = SystemTime::now();
+    let mut total_shares: u128 = 0;
+
+    loop {
+        await!(Delay::new(Instant::now() + Duration::from_secs(1))).unwrap();
+        let mut stats = await!(mining_stats.lock()).expect("lock mining stats");
+        {
+            total_shares = total_shares + stats.unique_solutions as u128;
+            // processing solution in the test simply means removing them
+            stats.unique_solutions = 0;
+
+            let total_hashing_time = hashing_started.elapsed().expect("time read ok");
+
+            println!(
+                "Hash rate: {} Gh/s",
+                ((total_shares * (1u128 << 32)) as f32 / (total_hashing_time.as_secs() as f32))
+                    * 1e-9_f32,
+            );
+            println!(
+                "Total_shares: {}, total_time: {} s, total work generated: {}",
+                total_shares,
+                total_hashing_time.as_secs(),
+                stats.work_generated,
+            );
+            println!(
+                "Mismatched nonce count: {}, stale solutions: {}, duplicate solutions: {}",
+                stats.mismatched_solution_nonces, stats.stale_solutions, stats.duplicate_solutions,
+            );
+        }
+    }
+}
+
 fn spawn_tx_task<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
     mining_stats: Arc<Mutex<super::MiningStats>>,
@@ -656,15 +689,19 @@ impl HChain {
     pub fn new() -> Self {
         Self {}
     }
-}
 
-impl super::HardwareCtl for HChain {
-    fn start_hw(
+    pub fn start_h_chain(
         &self,
         workhub: workhub::WorkHub,
         mining_stats: Arc<Mutex<super::MiningStats>>,
         shutdown: crate::hal::ShutdownSender,
-    ) {
+    ) -> Arc<
+        Mutex<
+            super::s9::HChainCtl<
+                power::VoltageCtrlI2cSharedBlockingBackend<power::VoltageCtrlI2cBlockingBackend>,
+            >,
+        >,
+    > {
         use super::s9::power::VoltageCtrlBackend;
 
         let gpio_mgr = gpio::ControlPinManager::new();
@@ -700,6 +737,19 @@ impl super::HardwareCtl for HChain {
             h_chain_ctl.clone(),
             work_solution,
         );
+
+        h_chain_ctl
+    }
+}
+
+impl super::HardwareCtl for HChain {
+    fn start_hw(
+        &self,
+        workhub: workhub::WorkHub,
+        mining_stats: Arc<Mutex<super::MiningStats>>,
+        shutdown: crate::hal::ShutdownSender,
+    ) {
+        self.start_h_chain(workhub, mining_stats, shutdown);
     }
 }
 

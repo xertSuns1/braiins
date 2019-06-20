@@ -14,7 +14,7 @@ pub struct DummyJob {
 }
 
 impl DummyJob {
-    pub fn new() -> Self {
+    pub fn new(time: u32) -> Self {
         Self {
             hash: Hash::from_slice(&[0xffu8; 32]).unwrap(),
             time: 0,
@@ -169,7 +169,7 @@ lazy_static! {
 
 /// * `i` - unique identifier for the generated midstate
 pub fn prepare_test_work(i: u64) -> hal::MiningWork {
-    let job = Arc::new(DummyJob::new());
+    let job = Arc::new(DummyJob::new(0));
     let time = job.time();
 
     let mut mid = hal::Midstate {
