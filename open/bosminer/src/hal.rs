@@ -1,11 +1,16 @@
 use crate::workhub;
+
+use tokio::prelude::*;
+
+use futures::channel::mpsc;
+use futures::stream::StreamExt;
+use futures_locks::Mutex;
+
+use std::sync::Arc;
+
 use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 use byteorder::ByteOrder;
 use downcast_rs::{impl_downcast, Downcast};
-use futures::sync::mpsc;
-use futures_locks::Mutex;
-use std::sync::Arc;
-use tokio::prelude::*;
 
 pub mod s9;
 
@@ -190,8 +195,7 @@ impl ShutdownReceiver {
         // TODO: do we have to handle all these cases?
         let msg = match reply {
             None => "all hchains died",
-            Some(Err(_)) => "unexpected error when receiving shutdown message",
-            Some(Ok(m)) => m,
+            Some(m) => m,
         };
         msg
     }
