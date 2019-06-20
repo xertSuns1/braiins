@@ -10,19 +10,17 @@ use rminer::workhub;
 
 use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 
-use slog::{error, info};
+use slog::info;
 
 use std::time::{Duration, Instant, SystemTime};
 
-use futures::sync::mpsc;
-use futures::Future as OldFuture;
 use futures_locks::Mutex;
-use std::future::Future as NewFuture;
+use std::future::Future;
 use std::sync::Arc;
 
 use tokio::await;
-use tokio::prelude::*;
 use tokio::timer::Delay;
+use wire::utils::CompatFix;
 
 #[derive(Copy, Clone)]
 struct DummyJob {
@@ -111,12 +109,6 @@ async fn async_hashrate_meter(mining_stats: Arc<Mutex<hal::MiningStats>>) {
     }
 }
 
-/// Convert async/await future into old style future
-fn backward<I, E>(f: impl NewFuture<Output = Result<I, E>>) -> impl OldFuture<Item = I, Error = E> {
-    use tokio_async_await::compat::backward;
-    backward::Compat::new(f)
-}
-
 /// Start Tokio runtime
 ///
 /// It is much like tokio::run_async, but instead of waiting for all
@@ -126,17 +118,13 @@ fn backward<I, E>(f: impl NewFuture<Output = Result<I, E>>) -> impl OldFuture<It
 /// Tokio internals.
 fn run_async_main_exits<F>(future: F)
 where
-    F: NewFuture<Output = ()> + Send + 'static,
+    F: Future<Output = ()> + Send + 'static,
 {
     use tokio::runtime::Runtime;
 
     let mut runtime = Runtime::new().expect("failed to start new Runtime");
-    let future = backward(async move {
-        await!(future);
-        Result::<(), std::io::Error>::Ok(())
-    });
     runtime
-        .block_on(future)
+        .block_on(future.compat_fix())
         .expect("main task can't return error");
 }
 
@@ -156,15 +144,17 @@ fn main() {
         chain.start_hw(work_hub, mining_stats.clone(), shutdown_sender);
 
         // Start hashrate-meter task
-        tokio::spawn_async(async_hashrate_meter(mining_stats));
+        tokio::spawn(async_hashrate_meter(mining_stats).compat_fix());
 
         let (job_sender, mut job_solution) = job_solver.split();
 
         // Start dummy job generator task
-        tokio::spawn_async(dummy_job_generator(job_sender));
+        tokio::spawn(dummy_job_generator(job_sender).compat_fix());
 
         // Receive solutions
-        tokio::spawn_async(async move { while let Some(_x) = await!(job_solution.receive()) {} });
+        tokio::spawn(
+            async move { while let Some(_x) = await!(job_solution.receive()) {} }.compat_fix(),
+        );
 
         // Wait for shutdown
         let shutdown_reason = await!(shutdown_receiver.receive());

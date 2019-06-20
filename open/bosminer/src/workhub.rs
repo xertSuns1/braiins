@@ -1,10 +1,14 @@
 use crate::hal::{self, BitcoinJob};
+
+use tokio::prelude::*;
+
+use futures::channel::mpsc;
+use futures::stream::StreamExt;
+
+use std::sync::{Arc, Mutex as StdMutex};
+
 use bitcoin_hashes::{sha256, Hash, HashEngine};
 use byteorder::{ByteOrder, LittleEndian};
-use futures::sync::mpsc;
-use std::sync::{Arc, Mutex as StdMutex};
-use tokio::await;
-use tokio::prelude::*;
 
 /// A registry of solutions
 #[allow(dead_code)]
@@ -261,11 +265,7 @@ pub struct JobSolutionReceiver(mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolu
 impl JobSolutionReceiver {
     pub async fn receive(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
         // TODO: compare with target difficulty
-        if let Some(Ok(solution)) = await!(self.0.next()) {
-            Some(solution)
-        } else {
-            None
-        }
+        await!(self.0.next())
     }
 }
 

@@ -7,6 +7,7 @@ use std::time::Duration;
 use std::time::SystemTime;
 
 use tokio::await;
+use wire::utils::CompatFix;
 
 use slog::{info, trace};
 
@@ -610,17 +611,20 @@ fn spawn_tx_task<T>(
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
-    tokio::spawn_async(async move {
-        let tx_fifo = await!(h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
-        await!(async_send_work(
-            work_registry,
-            mining_stats,
-            h_chain_ctl,
-            tx_fifo,
-            work_generator,
-            shutdown,
-        ));
-    });
+    tokio::spawn(
+        async move {
+            let tx_fifo = await!(h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
+            await!(async_send_work(
+                work_registry,
+                mining_stats,
+                h_chain_ctl,
+                tx_fifo,
+                work_generator,
+                shutdown,
+            ));
+        }
+            .compat_fix(),
+    );
 }
 
 fn spawn_rx_task<T>(
@@ -631,16 +635,19 @@ fn spawn_rx_task<T>(
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
-    tokio::spawn_async(async move {
-        let rx_fifo = await!(h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
-        await!(async_recv_solutions(
-            work_registry,
-            mining_stats,
-            h_chain_ctl,
-            rx_fifo,
-            work_solution,
-        ));
-    });
+    tokio::spawn(
+        async move {
+            let rx_fifo = await!(h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
+            await!(async_recv_solutions(
+                work_registry,
+                mining_stats,
+                h_chain_ctl,
+                rx_fifo,
+                work_solution,
+            ));
+        }
+            .compat_fix(),
+    );
 }
 
 pub struct HChain {}
