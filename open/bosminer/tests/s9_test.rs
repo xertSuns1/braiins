@@ -1,68 +1,83 @@
-extern crate linux_embedded_hal;
-extern crate rminer;
-extern crate s9_io;
-extern crate uint;
+#![feature(await_macro, async_await)]
+
+extern crate futures;
+extern crate tokio;
 
 use rminer::hal;
-use rminer::hal::s9::gpio;
-use rminer::hal::s9::power;
 use rminer::hal::HardwareCtl;
+use rminer::misc::LOGGER;
+use rminer::test_utils;
+use rminer::utils;
+use rminer::workhub;
 
-use linux_embedded_hal::I2cdev;
+use slog::info;
 
-use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime};
+
+use futures_locks::Mutex;
+use std::future::Future;
+use std::sync::Arc;
+
+use futures::channel::mpsc;
+use tokio::await;
+use tokio::timer::Delay;
+use wire::utils::CompatFix;
 
 /*
 /// Prepares sample work with empty midstates
 /// NOTE: this work has 2 valid nonces:
 /// - 0x83ea0372 (solution 0)
 /// - 0x09f86be1 (solution 1)
-fn prepare_test_work() -> hal::MiningWork {
-    hal::MiningWork {
+*/
+pub fn prepare_test_work() -> hal::MiningWork {
+    let time = 0xffffffff;
+    let job = Arc::new(test_utils::DummyJob::new(time));
+
+    let mut mid = hal::Midstate {
         version: 0,
-        extranonce_2: 0,
-        midstates: vec![uint::U256([0, 0, 0, 0])],
-        merkel_root_lsw: 0xffff_ffff,
-        nbits: 0xffff_ffff,
-        ntime: 0xffff_ffff,
+        state: [0u8; 32],
+    };
+
+    hal::MiningWork {
+        job,
+        midstates: vec![mid],
+        ntime: time,
     }
 }
 
-///
-/// * `work_count` - number of work items to generate
-/// * `expected_solution_count` - number of expected solutions that the hash chain should provide
-fn send_and_receive_test_workloads<T>(
-    h_chain_ctl: &mut hal::s9::HChainCtl<T>,
-    work_count: usize,
+/// Count replies (even duplicate ones) and erase counters
+pub async fn check_solution_count(mining_stats: Arc<Mutex<crate::hal::MiningStats>>) -> u64 {
+    let mut stats = await!(mining_stats.lock()).expect("lock mining stats");
+    let total_replies: u64 = stats.unique_solutions + stats.duplicate_solutions;
+    stats.unique_solutions = 0;
+    stats.duplicate_solutions = 0;
+    total_replies
+}
+
+/// Receive workloads and count replies
+async fn send_and_receive_test_workloads<'a>(
+    tx_work: &'a mpsc::UnboundedSender<hal::MiningWork>,
+    mining_stats: Arc<Mutex<crate::hal::MiningStats>>,
+    job_solution: &'a mut workhub::JobSolutionReceiver,
+    n_send: usize,
     expected_solution_count: usize,
-) where
-    T: 'static + Send + Sync + power::VoltageCtrlBackend,
-{
-    use hal::HardwareCtl;
+) {
+    println!(
+        "Sending {} work items and trying to receive {} work items",
+        n_send, expected_solution_count,
+    );
+    // Put in some tasks
+    for i in 0..n_send {
+        tx_work
+            .unbounded_send(prepare_test_work())
+            .expect("send failed");
 
-    let mut solution_count = 0usize;
-
-    for i in 0..work_count {
-        let test_work = prepare_test_work();
-        let work_id = h_chain_ctl.send_work(&test_work).unwrap();
         // wait until the work is physically sent out it takes around 5 ms for the FPGA IP core
         // to send out the work @ 115.2 kBaud
-        thread::sleep(Duration::from_millis(10));
-        while let Some(solution) = h_chain_ctl.recv_solution().unwrap() {
-            println!("Iteration:{}\n{:#010x?}", i, solution);
-            assert_eq!(
-                work_id,
-                h_chain_ctl.get_work_id_from_solution(&solution),
-                "Unexpected work ID detected in returned mining work solution"
-            );
-            solution_count += 1;
-        }
+        await!(Delay::new(Instant::now() + Duration::from_millis(100))).unwrap();
     }
-    assert_eq!(
-        solution_count, expected_solution_count,
-        "Unexpected number of solutions"
-    )
+    let received_solution_count = await!(check_solution_count(mining_stats.clone())) as usize;
+    assert_eq!(expected_solution_count, received_solution_count);
 }
 
 /// Verifies work generation for a hash chain
@@ -75,32 +90,52 @@ fn send_and_receive_test_workloads<T>(
 /// is intended for initial check of correct operation
 #[test]
 fn test_work_generation() {
-    use hal::s9::power::VoltageCtrlBackend;
+    // Create shutdown channel
+    let (shutdown_sender, mut shutdown_receiver) = hal::Shutdown::new().split();
 
-    let gpio_mgr = gpio::ControlPinManager::new();
-    let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
-    let voltage_ctrl_backend =
-        power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
-    let mut h_chain_ctl = hal::s9::HChainCtl::new(
-        &gpio_mgr,
-        voltage_ctrl_backend.clone(),
-        8,
-        &s9_io::hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
-    )
-    .unwrap();
+    utils::run_async_main_exits(async move {
+        // Create workhub
+        let (mut work_hub, job_solver) = workhub::WorkHub::new();
 
-    h_chain_ctl.init().unwrap();
+        // Create queue with which to inject work into miner
+        let (tx_work, rx_work) = mpsc::unbounded();
+        // And put it to work_gen
+        work_hub.set_inject_work_queue(rx_work);
 
-    // the first 3 work loads don't produce any solutions, these are merely to initialize the input
-    // queue of each hashing chip
-    send_and_receive_test_workloads(&mut h_chain_ctl, 3, 0);
-    // submit 2 more work items, since we are intentionally being slow all chips should send a
-    // solution for the submitted work
-    let more_work_count = 2usize;
-    let expected_solution_count = more_work_count * h_chain_ctl.get_chip_count();
-    send_and_receive_test_workloads(&mut h_chain_ctl, more_work_count, expected_solution_count);
+        // Create mining stats
+        let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
+
+        // Create one chain
+        let chain = hal::s9::HChain::new();
+        let h_chain_ctl = chain.start_h_chain(work_hub, mining_stats.clone(), shutdown_sender);
+
+        let (job_sender, mut job_solution) = job_solver.split();
+
+        // the first 3 work loads don't produce any solutions, these are merely to initialize the input
+        // queue of each hashing chip
+        await!(send_and_receive_test_workloads(
+            &tx_work,
+            mining_stats.clone(),
+            &mut job_solution,
+            3,
+            0
+        ));
+
+        // submit 2 more work items, since we are intentionally being slow all chips should send a
+        // solution for the submitted work
+        let more_work_count = 2usize;
+        let h_chain_guard = await!(h_chain_ctl.lock()).expect("locking failed");
+        let expected_solution_count = more_work_count * h_chain_guard.get_chip_count();
+        drop(h_chain_guard);
+        await!(send_and_receive_test_workloads(
+            &tx_work,
+            mining_stats.clone(),
+            &mut job_solution,
+            more_work_count,
+            expected_solution_count,
+        ));
+    });
+    // the shutdown receiver has to survive up to this point to prevent
+    // shutdown sends by dying tasks to fail
+    drop(shutdown_receiver);
 }
-*/
-
-#[test]
-fn test_work_generation() {}

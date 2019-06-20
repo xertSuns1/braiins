@@ -44,6 +44,11 @@ impl WorkHub {
         self.1.send(solution);
     }
 
+    /// For debugging purposes
+    pub fn set_inject_work_queue(&mut self, q: mpsc::UnboundedReceiver<hal::MiningWork>) {
+        self.0.inject_work_queue = Some(q);
+    }
+
     pub fn split(self) -> (WorkGenerator, WorkSolutionSender) {
         (self.0, self.1)
     }
@@ -136,6 +141,7 @@ impl JobQueue {
 }
 
 pub struct WorkGenerator {
+    pub inject_work_queue: Option<mpsc::UnboundedReceiver<hal::MiningWork>>,
     job_queue: JobQueue,
     midstates: usize,
     next_version: u16,
@@ -145,6 +151,7 @@ pub struct WorkGenerator {
 impl WorkGenerator {
     pub fn new(job_event: mpsc::Receiver<NewJobEvent>, job_channel: JobChannel) -> Self {
         Self {
+            inject_work_queue: None,
             job_queue: JobQueue::new(job_event, job_channel),
             midstates: 1,
             next_version: 0,
@@ -209,6 +216,11 @@ impl WorkGenerator {
 
     /// Returns new work generated from the current job
     pub async fn generate(&mut self) -> Option<hal::MiningWork> {
+        // in case work injection queue is present, get work from there
+        // instead of trying to build work from job
+        if let Some(ref mut work_rx) = self.inject_work_queue {
+            return await!(work_rx.next());
+        }
         let (job, new_job) = await!(self.job_queue.get_job());
 
         let versions = self.next_versions(&job, new_job);
@@ -330,6 +342,7 @@ pub mod test {
                 current: None,
             };
             let mut generator = WorkGenerator {
+                inject_work_queue: None,
                 job_queue,
                 midstates: 1,
                 next_version: 0,
