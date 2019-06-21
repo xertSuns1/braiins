@@ -3,8 +3,7 @@
 extern crate futures;
 extern crate tokio;
 
-use rminer::hal;
-use rminer::hal::HardwareCtl;
+use rminer::hal::{self, HardwareCtl};
 use rminer::misc::LOGGER;
 use rminer::workhub;
 
@@ -21,7 +20,7 @@ use tokio::timer::Delay;
 use wire::utils::CompatFix;
 
 async fn dummy_job_generator(mut job_sender: workhub::JobSender) {
-    let mut dummy_job = workhub::dummy::DummyJob::new();
+    let mut dummy_job = rminer::test_utils::DummyJob::new();
     loop {
         job_sender.send(Arc::new(dummy_job));
         await!(Delay::new(Instant::now() + Duration::from_secs(10))).unwrap();
