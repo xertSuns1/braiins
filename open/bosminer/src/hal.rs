@@ -261,3 +261,58 @@ pub trait HardwareCtl {
         shutdown: ShutdownSender,
     );
 }
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+    use crate::test_utils;
+
+    impl From<&test_utils::TestBlock> for MiningWork {
+        fn from(test_block: &test_utils::TestBlock) -> Self {
+            let job = Arc::new(*test_block);
+            let time = job.time();
+
+            let mid = Midstate {
+                version: job.version(),
+                state: [0u8; 32],
+            };
+
+            Self {
+                job,
+                midstates: vec![mid],
+                ntime: time,
+            }
+        }
+    }
+
+    impl From<&test_utils::TestBlock> for MiningWorkSolution {
+        fn from(test_block: &test_utils::TestBlock) -> Self {
+            Self {
+                nonce: test_block.nonce,
+                ntime: None,
+                midstate_idx: 0,
+                solution_id: 0,
+            }
+        }
+    }
+
+    impl From<&test_utils::TestBlock> for UniqueMiningWorkSolution {
+        fn from(test_block: &test_utils::TestBlock) -> Self {
+            Self {
+                timestamp: std::time::SystemTime::UNIX_EPOCH,
+                work: test_block.into(),
+                solution: test_block.into(),
+            }
+        }
+    }
+
+    #[test]
+    fn test_block_double_hash() {
+        for block in test_utils::TEST_BLOCKS.iter() {
+            let solution: UniqueMiningWorkSolution = block.into();
+
+            let hash = solution.compute_sha256d();
+            assert_eq!(block.hash, hash);
+        }
+    }
+}
