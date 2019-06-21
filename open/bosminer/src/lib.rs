@@ -4,5 +4,5 @@ pub mod client;
 pub mod error;
 pub mod hal;
 pub mod misc;
-pub mod workhub;
 pub mod test_utils;
+pub mod workhub;
