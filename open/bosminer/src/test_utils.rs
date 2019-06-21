@@ -3,7 +3,7 @@ use crate::hal::{self, BitcoinJob};
 use lazy_static::lazy_static;
 use std::sync::Arc;
 
-use bitcoin_hashes::{hex::FromHex, sha256d::Hash, Hash as HashTrait};
+use bitcoin_hashes::{hex::FromHex, sha256, sha256d::Hash, Hash as HashTrait};
 use byteorder::{ByteOrder, LittleEndian};
 
 /// DummyJob to be used for tests
@@ -60,6 +60,7 @@ impl hal::BitcoinJob for DummyJob {
 #[derive(Copy, Clone)]
 pub struct TestBlock {
     pub hash: Hash,
+    pub midstate: [u8; 32],
     version: u32,
     prev_hash: Hash,
     merkle_root: Hash,
@@ -71,6 +72,7 @@ pub struct TestBlock {
 impl TestBlock {
     pub fn new(
         hash: &str,
+        midstate: &str,
         version: u32,
         prev_hash: &str,
         merkle_root: &str,
@@ -80,6 +82,9 @@ impl TestBlock {
     ) -> Self {
         Self {
             hash: Hash::from_hex(hash).expect("parse hex"),
+            midstate: sha256::Hash::from_hex(midstate)
+                .expect("parse hex")
+                .into_inner(),
             version,
             prev_hash: Hash::from_hex(prev_hash).expect("parse hex"),
             merkle_root: Hash::from_hex(merkle_root).expect("parse hex"),
@@ -126,6 +131,7 @@ lazy_static! {
         // https://blockchain.info/rawblock/00000000000004b64108a8e4168cfaa890d62b8c061c6b74305b7f6cb2cf9fda
         TestBlock::new(
             "00000000000004b64108a8e4168cfaa890d62b8c061c6b74305b7f6cb2cf9fda",
+            "e48f544a9a3afa71451471134df6c35682b400254bfe0860c99876bf4679ba4e",
             1,
             "0000000000000488d0b6c4c05f24afe4817a122a1e1a5f009dd391fb0cc1aeb3",
             "ce22a72fa0e9f309830fdb3f75d6c95f051f23ef288a137693ab5c03f2bb6e7e",
@@ -138,6 +144,7 @@ lazy_static! {
         // https://blockchain.info/rawblock/00000000000000001e8d6829a8a21adc5d38d0a473b144b6765798e61f98bd1d
         TestBlock::new(
             "00000000000000001e8d6829a8a21adc5d38d0a473b144b6765798e61f98bd1d",
+            "9524c59305c5671316e669ba2d2810a007e86e372f56a9dacd5bce697a78da2d",
             1,
             "00000000000008a3a41b85b8b29ad444def299fee21793cd8b9e567eab02cd81",
             "2b12fcf1b09288fcaff797d71e950e71ae42b91e8bdb2304758dfcffc2b620e3",
@@ -149,6 +156,7 @@ lazy_static! {
         // https://blockchain.info/rawblock/00000000000000000024974128beb85f6f39d009538f4d92c64d4b82da8a2660
         TestBlock::new(
             "00000000000000000024974128beb85f6f39d009538f4d92c64d4b82da8a2660",
+            "9a8378bb5dfc122384cf590facbb1c5af6eca129c32db4a840301c8a60f72b57",
             536870912,
             "000000000000000000262b17185b3c94dff2ab1c4ff6dacb884a80527ec1725d",
             "70ee9e04d1d030770c7c1fda029813067c9327f3b0bde8821666ecf94321ef14",

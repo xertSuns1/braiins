@@ -274,7 +274,7 @@ pub mod test {
 
             let mid = Midstate {
                 version: job.version(),
-                state: [0u8; 32],
+                state: job.midstate,
             };
 
             Self {
