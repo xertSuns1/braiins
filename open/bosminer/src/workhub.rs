@@ -183,12 +183,8 @@ impl WorkGenerator {
         versions
     }
 
-    /// Returns new work generated from the current job
-    pub async fn generate(&mut self) -> Option<hal::MiningWork> {
-        let (job, new_job) = await!(self.job_queue.get_job());
-
+    fn get_work(&mut self, job: Arc<dyn BitcoinJob>, versions: Vec<u32>) -> hal::MiningWork {
         let time = job.time();
-        let versions = self.next_versions(&job, new_job);
         let mut midstates = Vec::with_capacity(versions.len());
 
         let mut engine = sha256::Hash::engine();
@@ -206,11 +202,19 @@ impl WorkGenerator {
             })
         }
 
-        Some(hal::MiningWork {
+        hal::MiningWork {
             job,
             midstates,
             ntime: time,
-        })
+        }
+    }
+
+    /// Returns new work generated from the current job
+    pub async fn generate(&mut self) -> Option<hal::MiningWork> {
+        let (job, new_job) = await!(self.job_queue.get_job());
+
+        let versions = self.next_versions(&job, new_job);
+        Some(self.get_work(job, versions))
     }
 }
 
@@ -309,5 +313,34 @@ impl JobSolutionReceiver {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+    use crate::test_utils;
+
+    #[test]
+    fn test_block_midstate() {
+        for block in test_utils::TEST_BLOCKS.iter() {
+            let version = block.version();
+            let (job_event_tx, job_event_rx) = mpsc::channel(1);
+            let job_queue = JobQueue {
+                event: job_event_rx,
+                channel: Arc::new(StdMutex::new(None)),
+                current: None,
+            };
+            let mut generator = WorkGenerator {
+                job_queue,
+                midstates: 1,
+                next_version: 0,
+                base_version: version,
+            };
+
+            let work = generator.get_work(Arc::new(*block), vec![version]);
+
+            assert_eq!(block.midstate, work.midstates[0].state);
+        }
     }
 }
