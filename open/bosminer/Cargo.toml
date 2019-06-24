@@ -36,8 +36,8 @@ futures-01 = { version = "0.1.27", package = "futures" }
 futures-locks = "0.3.3"
 bitcoin_hashes = "0.3.2"
 downcast-rs = "1.0.4"
-wire = { git = "ssh://git@gitlab.bo/x/stratum.git", branch = "lva-actual-server" }
-stratum = { git = "ssh://git@gitlab.bo/x/stratum.git", branch = "lva-actual-server" }
+wire = { git = "ssh://git@gitlab.bo/x/stratum.git", branch = "devel" }
+stratum = { git = "ssh://git@gitlab.bo/x/stratum.git", branch = "devel" }
 
 [dependencies.embedded-hal]
 version = "0.2.0"

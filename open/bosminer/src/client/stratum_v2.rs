@@ -6,7 +6,7 @@ use futures::future::Future;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use stratum::v2::messages::{NewMiningJob, SetNewPrevhash, SetTarget, SubmitShares};
+use stratum::v2::messages::{NewMiningJob, SetNewPrevHash, SetTarget, SubmitShares};
 use stratum::v2::{V2Handler, V2Protocol};
 use wire::Message;
 
@@ -33,7 +33,7 @@ struct StratumJob {
 impl StratumJob {
     pub fn new(
         job_msg: &NewMiningJob,
-        prevhash_msg: &SetNewPrevhash,
+        prevhash_msg: &SetNewPrevHash,
         current_block_height: Arc<AtomicU32>,
     ) -> Self {
         assert_eq!(job_msg.block_height, prevhash_msg.block_height);
@@ -109,10 +109,10 @@ impl V2Handler for StratumEventHandler {
         // TODO: close connection when maximal capacity of new jobs has been reached
     }
 
-    fn visit_set_new_prevhash(
+    fn visit_set_new_prev_hash(
         &mut self,
         _msg: &Message<V2Protocol>,
-        prevhash_msg: &SetNewPrevhash,
+        prevhash_msg: &SetNewPrevHash,
     ) {
         let current_block_height = prevhash_msg.block_height;
         // immediately update current block height which is propagated to currently solved jobs
