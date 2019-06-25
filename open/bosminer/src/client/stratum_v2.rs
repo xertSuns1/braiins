@@ -1,14 +1,20 @@
 use crate::hal;
 use crate::workhub;
 
+use tokio::prelude::*;
+use tokio::r#await;
+use wire::utils::CompatFix;
+
 use futures::future::Future;
+use std::net::SocketAddr;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
+use stratum::v2::framing::codec::V2Framing;
 use stratum::v2::messages::{NewMiningJob, SetNewPrevHash, SetTarget, SubmitShares};
 use stratum::v2::{V2Handler, V2Protocol};
-use wire::Message;
+use wire::{Connection, ConnectionRx, ConnectionTx, Message};
 
 use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 use std::collections::HashMap;
@@ -138,13 +144,18 @@ impl V2Handler for StratumEventHandler {
 }
 
 struct StratumSolutionHandler {
+    connection_tx: ConnectionTx<V2Framing>,
     job_solution: workhub::JobSolutionReceiver,
     seq_num: u32,
 }
 
 impl StratumSolutionHandler {
-    fn new(job_solution: workhub::JobSolutionReceiver) -> Self {
+    fn new(
+        connection_tx: ConnectionTx<V2Framing>,
+        job_solution: workhub::JobSolutionReceiver,
+    ) -> Self {
         Self {
+            connection_tx,
             job_solution,
             seq_num: 0,
         }
@@ -164,7 +175,10 @@ impl StratumSolutionHandler {
             ntime_offset: solution.time_offset(),
             version: solution.version(),
         };
-        // TODO: send solutions back to the stratum server
+        // send solutions back to the stratum server
+        await!(ConnectionTx::send(&mut self.connection_tx, share_msg))
+            .expect("Cannot send submit to stratum server");
+        // the response is handled in a separate task
     }
 
     async fn run(mut self) {
@@ -174,11 +188,39 @@ impl StratumSolutionHandler {
     }
 }
 
+async fn setup_mining_connectin(connection: &Connection<V2Framing>) -> Result<(), ()> {
+    Err(())
+}
+
+async fn open_channel(connection: &Connection<V2Framing>) -> Result<(), ()> {
+    Err(())
+}
+
+async fn event_handler_task(
+    mut connection_rx: ConnectionRx<V2Framing>,
+    mut event_handler: StratumEventHandler,
+) {
+    while let Some(msg) = await!(connection_rx.next()) {
+        let msg = msg.unwrap();
+        msg.accept(&mut event_handler);
+    }
+}
+
 pub async fn run(stratum_addr: String, job_solver: workhub::JobSolver) {
+    let socket_addr = stratum_addr.parse().expect("Invalid server address");
     let (job_sender, job_solution) = job_solver.split();
 
-    // TODO: run event handler in a separate task
+    let connection = await!(Connection::<V2Framing>::connect(&socket_addr))
+        .expect("Cannot connect to stratum server");
+
+    await!(setup_mining_connectin(&connection)).expect("Cannot setup stratum mining connection");
+    await!(open_channel(&connection)).expect("Cannot open stratum channel");
+
+    let (connection_rx, connection_tx) = connection.split();
     let event_handler = StratumEventHandler::new(job_sender);
 
-    await!(StratumSolutionHandler::new(job_solution).run());
+    // run event handler in a separate task
+    tokio::spawn(event_handler_task(connection_rx, event_handler).compat_fix());
+
+    await!(StratumSolutionHandler::new(connection_tx, job_solution).run());
 }
