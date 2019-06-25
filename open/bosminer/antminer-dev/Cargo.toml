@@ -17,3 +17,4 @@ futures-locks = "0.3.3"
 tokio-file-unix = "0.5.1"
 bitcoin_hashes = "0.3.2"
 wire = { git = "ssh://git@gitlab.ii.zone/x/stratum.git", branch = "devel" }
+clap = "2.33.0"
