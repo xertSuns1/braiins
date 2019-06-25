@@ -287,7 +287,7 @@ async fn event_handler_task(
     }
 }
 
-pub async fn run(stratum_addr: String, user: String, job_solver: workhub::JobSolver) {
+pub async fn run(job_solver: workhub::JobSolver, stratum_addr: String, user: String) {
     let socket_addr = stratum_addr.parse().expect("Invalid server address");
     let (job_sender, job_solution) = job_solver.split();
 
