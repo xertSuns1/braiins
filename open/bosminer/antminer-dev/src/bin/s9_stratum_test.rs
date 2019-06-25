@@ -1,7 +1,6 @@
 #![feature(await_macro, async_await)]
 
-extern crate futures;
-extern crate tokio;
+use clap::{self, Arg};
 
 use rminer::client::stratum_v2;
 use rminer::hal::{self, HardwareCtl};
@@ -49,7 +48,7 @@ async fn async_hashrate_meter(mining_stats: Arc<Mutex<hal::MiningStats>>) {
     }
 }
 
-async fn main_task() {
+async fn main_task(stratum_addr: String, user: String) {
     let (work_hub, job_solver) = workhub::WorkHub::new();
 
     // Create mining stats
@@ -66,13 +65,34 @@ async fn main_task() {
     tokio::spawn(async_hashrate_meter(mining_stats).compat_fix());
 
     // Start stratum V2 client
-    await!(stratum_v2::run(
-        job_solver,
-        "10.33.10.144:3333".to_string(),
-        "braiins.worker0".to_string()
-    ));
+    await!(stratum_v2::run(job_solver, stratum_addr, user));
 }
 
 fn main() {
-    tokio::run(main_task().compat_fix());
+    let args = clap::App::new("s9-stratum-test")
+        .arg(
+            Arg::with_name("pool")
+                .short("p")
+                .long("pool")
+                .value_name("URL")
+                .help("Address the stratum V2 server")
+                .required(true)
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("user")
+                .short("u")
+                .long("user")
+                .value_name("NAME")
+                .help("Specify user and worker name")
+                .required(true)
+                .takes_value(true),
+        )
+        .get_matches();
+
+    // Unwraps should be ok as long as the flags are required
+    let stratum_addr = args.value_of("pool").unwrap();
+    let user = args.value_of("user").unwrap();
+
+    tokio::run(main_task(stratum_addr.to_string(), user.to_string()).compat_fix());
 }
