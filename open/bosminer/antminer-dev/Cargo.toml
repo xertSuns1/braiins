@@ -16,4 +16,4 @@ futures-01 = { version = "0.1.27", package = "futures" }
 futures-locks = "0.3.3"
 tokio-file-unix = "0.5.1"
 bitcoin_hashes = "0.3.2"
-wire = { git = "ssh://git@gitlab.bo/x/stratum.git", branch = "lva-actual-server" }
+wire = { git = "ssh://git@gitlab.ii.zone/x/stratum.git", branch = "devel" }
