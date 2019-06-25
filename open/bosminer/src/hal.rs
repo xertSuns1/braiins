@@ -1,7 +1,5 @@
 use crate::workhub;
 
-use tokio::prelude::*;
-
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
 use futures_locks::Mutex;

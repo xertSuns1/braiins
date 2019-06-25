@@ -1,7 +1,5 @@
 use crate::hal::{self, BitcoinJob};
 
-use tokio::prelude::*;
-
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
 
