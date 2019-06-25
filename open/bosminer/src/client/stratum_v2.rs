@@ -5,16 +5,17 @@ use tokio::prelude::*;
 use tokio::r#await;
 use wire::utils::CompatFix;
 
-use futures::future::Future;
-use std::net::SocketAddr;
-
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use stratum::v2::framing::codec::V2Framing;
-use stratum::v2::messages::{NewMiningJob, SetNewPrevHash, SetTarget, SubmitShares};
+use stratum::v2::messages::{
+    NewMiningJob, OpenChannel, OpenChannelError, OpenChannelSuccess, SetNewPrevHash, SetTarget,
+    SetupMiningConnection, SetupMiningConnectionError, SetupMiningConnectionSuccess, SubmitShares,
+};
+use stratum::v2::types::DeviceInfo;
 use stratum::v2::{V2Handler, V2Protocol};
-use wire::{Connection, ConnectionRx, ConnectionTx, Message};
+use wire::{Connection, ConnectionRx, ConnectionTx, Framing, Message};
 
 use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 use std::collections::HashMap;
@@ -188,12 +189,92 @@ impl StratumSolutionHandler {
     }
 }
 
-async fn setup_mining_connectin(connection: &Connection<V2Framing>) -> Result<(), ()> {
-    Err(())
+struct StratumConnectionHandler(Result<(), ()>);
+
+impl StratumConnectionHandler {
+    fn new() -> Self {
+        Self(Err(()))
+    }
+
+    fn visit(response_msg: <V2Framing as Framing>::Receive) -> Result<(), ()> {
+        let mut handler = Self::new();
+        response_msg.accept(&mut handler);
+        handler.0
+    }
 }
 
-async fn open_channel(connection: &Connection<V2Framing>) -> Result<(), ()> {
-    Err(())
+impl V2Handler for StratumConnectionHandler {
+    fn visit_setup_mining_connection_success(
+        &mut self,
+        _msg: &Message<V2Protocol>,
+        _success_msg: &SetupMiningConnectionSuccess,
+    ) {
+        self.0 = Ok(())
+    }
+
+    fn visit_setup_mining_connection_error(
+        &mut self,
+        _msg: &Message<V2Protocol>,
+        _error_msg: &SetupMiningConnectionError,
+    ) {
+        self.0 = Err(())
+    }
+
+    fn visit_open_channel_success(
+        &mut self,
+        _msg: &Message<V2Protocol>,
+        _success_msg: &OpenChannelSuccess,
+    ) {
+        self.0 = Ok(())
+    }
+
+    fn visit_open_channel_error(
+        &mut self,
+        _msg: &Message<V2Protocol>,
+        _error_msg: &OpenChannelError,
+    ) {
+        self.0 = Err(())
+    }
+}
+
+async fn setup_mining_connection(
+    connection: &mut Connection<V2Framing>,
+    stratum_addr: String,
+) -> Result<(), ()> {
+    let setup_msg = SetupMiningConnection {
+        protocol_version: 0,
+        connection_url: stratum_addr,
+        /// header only mining
+        required_extranonce_size: 0,
+    };
+    await!(connection.send(setup_msg)).expect("Cannot send stratum setup mining connection");
+    let response_msg = await!(connection.next())
+        .expect("Cannot receive response for stratum setup mining connection")
+        .unwrap();
+    StratumConnectionHandler::visit(response_msg)
+}
+
+async fn open_channel(connection: &mut Connection<V2Framing>, user: String) -> Result<(), ()> {
+    let channel_msg = OpenChannel {
+        req_id: 10,
+        user,
+        extended: false,
+        device: DeviceInfo {
+            vendor: "Braiins".to_string(),
+            hw_rev: "1".to_string(),
+            fw_ver: "Braiins OS 2019-06-05".to_string(),
+            dev_id: "xyz".to_string(),
+        },
+        nominal_hashrate: 1e9,
+        // Maximum bitcoin target is 0xffff << 208 (= difficulty 1 share)
+        max_target_nbits: 0x1d00ffff,
+        aggregated_device_count: 1,
+    };
+    await!(connection.send(channel_msg)).expect("Cannot send stratum open channel");
+    let response_msg = await!(connection.next())
+        .expect("Cannot receive response for stratum open channel")
+        .unwrap();
+    StratumConnectionHandler::visit(response_msg)
 }
 
 async fn event_handler_task(
@@ -206,15 +287,16 @@ async fn event_handler_task(
     }
 }
 
-pub async fn run(stratum_addr: String, job_solver: workhub::JobSolver) {
+pub async fn run(stratum_addr: String, user: String, job_solver: workhub::JobSolver) {
     let socket_addr = stratum_addr.parse().expect("Invalid server address");
     let (job_sender, job_solution) = job_solver.split();
 
-    let connection = await!(Connection::<V2Framing>::connect(&socket_addr))
+    let mut connection = await!(Connection::<V2Framing>::connect(&socket_addr))
         .expect("Cannot connect to stratum server");
 
-    await!(setup_mining_connectin(&connection)).expect("Cannot setup stratum mining connection");
-    await!(open_channel(&connection)).expect("Cannot open stratum channel");
+    await!(setup_mining_connection(&mut connection, stratum_addr))
+        .expect("Cannot setup stratum mining connection");
+    await!(open_channel(&mut connection, user)).expect("Cannot open stratum channel");
 
     let (connection_rx, connection_tx) = connection.split();
     let event_handler = StratumEventHandler::new(job_sender);
