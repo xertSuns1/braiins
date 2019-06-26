@@ -31,6 +31,10 @@ pub mod gpio;
 pub mod power;
 pub mod registry;
 
+/// How many jobs use to initialize the chain, use at least MAX_CHIPS_ON_CHAIN jobs
+/// TODO: compare this to bitmain's open_core
+const NUM_JOBS_TO_OPEN_CORE: usize = 80;
+
 /// Timing constants
 const INACTIVATE_FROM_CHAIN_DELAY_MS: u64 = 100;
 /// Base delay quantum during hashboard initialization
@@ -505,6 +509,19 @@ where
     }
 }
 
+async fn send_init_work<T>(tx_fifo: &mut fifo::HChainFifo)
+where
+    T: 'static + Send + Sync + power::VoltageCtrlBackend,
+{
+    // initialize chip by sending test work with correct difficulty (0xffffffff works)
+    // TODO: use fixed job copied from bitmain's cgmminer, prepare_test_work may change
+    for i in 0..NUM_JOBS_TO_OPEN_CORE {
+        let work = &test_utils::prepare_test_work(0);
+        await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
+        super::s9::HChainCtl::<T>::send_work(tx_fifo, &work, i as u32).expect("send work");
+    }
+}
+
 /// Generates enough testing work until the work FIFO becomes full
 /// The work is made unique by specifying a unique midstate.
 ///
@@ -523,6 +540,7 @@ async fn async_send_work<T>(
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
+    await!(send_init_work::<T>(&mut tx_fifo));
     loop {
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
         let work = await!(work_generator.generate());
