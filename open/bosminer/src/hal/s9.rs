@@ -15,6 +15,7 @@ use failure::ResultExt;
 
 use crate::error::{self, ErrorKind};
 use crate::misc::LOGGER;
+use crate::test_utils;
 use crate::workhub;
 use futures_locks::Mutex;
 
@@ -602,6 +603,10 @@ async fn async_recv_solutions<T>(
     }
 }
 
+pub fn shares_to_ghs(shares: u128, diff: u128) -> f32 {
+    (shares * (diff << 32)) as f32 * 1e-9_f32
+}
+
 pub async fn async_hashrate_meter(mining_stats: Arc<Mutex<crate::hal::MiningStats>>) {
     let hashing_started = SystemTime::now();
     let mut total_shares: u128 = 0;
@@ -610,16 +615,18 @@ pub async fn async_hashrate_meter(mining_stats: Arc<Mutex<crate::hal::MiningStat
         await!(Delay::new(Instant::now() + Duration::from_secs(1))).unwrap();
         let mut stats = await!(mining_stats.lock()).expect("lock mining stats");
         {
-            total_shares = total_shares + stats.unique_solutions as u128;
-            // processing solution in the test simply means removing them
+            let unique_solutions = stats.unique_solutions as u128;
             stats.unique_solutions = 0;
+            total_shares = total_shares + unique_solutions;
+            // processing solution in the test simply means removing them
 
             let total_hashing_time = hashing_started.elapsed().expect("time read ok");
 
             println!(
-                "Hash rate: {} Gh/s",
-                ((total_shares * (1u128 << 32)) as f32 / (total_hashing_time.as_secs() as f32))
-                    * 1e-9_f32,
+                "Hash rate: {} Gh/s (immediate {} Gh/s)",
+                shares_to_ghs(total_shares, ASIC_DIFFICULTY as u128)
+                    / total_hashing_time.as_secs() as f32,
+                shares_to_ghs(unique_solutions, ASIC_DIFFICULTY as u128) as f32,
             );
             println!(
                 "Total_shares: {}, total_time: {} s, total work generated: {}",
