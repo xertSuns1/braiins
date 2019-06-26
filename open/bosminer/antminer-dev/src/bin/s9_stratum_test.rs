@@ -47,6 +47,14 @@ fn main() {
                 .takes_value(true),
         )
         .arg(
+            Arg::with_name("test-threads")
+                .short("t")
+                .long("test-threads")
+                .value_name("test threads")
+                .required(false)
+                .takes_value(true),
+        )
+        .arg(
             Arg::with_name("user")
                 .short("u")
                 .long("user")
