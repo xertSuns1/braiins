@@ -19,7 +19,7 @@ use crate::test_utils;
 use crate::workhub;
 use futures_locks::Mutex;
 
-use byteorder::{ByteOrder, LittleEndian};
+use byteorder::{BigEndian, ByteOrder, LittleEndian};
 use packed_struct::{PackedStruct, PackedStructSlice};
 
 use embedded_hal::digital::InputPin;
@@ -501,8 +501,8 @@ where
         tx_fifo.write_to_work_tx_fifo(work.merkel_root_lsw::<LittleEndian>())?;
 
         for mid in work.midstates.iter() {
-            for midstate_word in mid.state.chunks(size_of::<u32>()) {
-                tx_fifo.write_to_work_tx_fifo(LittleEndian::read_u32(midstate_word))?;
+            for midstate_word in mid.state.chunks(size_of::<u32>()).rev() {
+                tx_fifo.write_to_work_tx_fifo(BigEndian::read_u32(midstate_word))?;
             }
         }
         Ok(work_id)
