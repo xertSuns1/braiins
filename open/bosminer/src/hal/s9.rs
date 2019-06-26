@@ -31,9 +31,9 @@ pub mod gpio;
 pub mod power;
 pub mod registry;
 
-/// How many jobs use to initialize the chain, use at least MAX_CHIPS_ON_CHAIN jobs
+/// How many work use to initialize the chain, use at least MAX_CHIPS_ON_CHAIN work
 /// TODO: compare this to bitmain's open_core
-const NUM_JOBS_TO_OPEN_CORE: usize = 80;
+const NUM_WORK_TO_OPEN_CORE: usize = 80;
 
 /// Timing constants
 const INACTIVATE_FROM_CHAIN_DELAY_MS: u64 = 100;
@@ -515,7 +515,12 @@ where
 {
     // initialize chip by sending test work with correct difficulty (0xffffffff works)
     // TODO: use fixed job copied from bitmain's cgmminer, prepare_test_work may change
-    for i in 0..NUM_JOBS_TO_OPEN_CORE {
+    trace!(
+        LOGGER,
+        "Sending out {} pieces of dummy work to initialize chips",
+        NUM_WORK_TO_OPEN_CORE
+    );
+    for i in 0..NUM_WORK_TO_OPEN_CORE {
         let work = &test_utils::prepare_test_work(0);
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
         super::s9::HChainCtl::<T>::send_work(tx_fifo, &work, i as u32).expect("send work");
