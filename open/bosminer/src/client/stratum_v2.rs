@@ -18,6 +18,7 @@ use stratum::v2::messages::{
     SubmitSharesSuccess,
 };
 use stratum::v2::types::DeviceInfo;
+use stratum::v2::types::*;
 use stratum::v2::{V2Handler, V2Protocol};
 use wire::{Connection, ConnectionRx, ConnectionTx, Framing, Message};
 
@@ -98,6 +99,7 @@ impl hal::BitcoinJob for StratumJob {
 }
 
 struct StratumEventHandler {
+    status: Result<(), ()>,
     job_sender: workhub::JobSender,
     all_jobs: HashMap<u32, NewMiningJob>,
     current_block_height: Arc<AtomicU32>,
@@ -107,6 +109,7 @@ struct StratumEventHandler {
 impl StratumEventHandler {
     pub fn new(job_sender: workhub::JobSender) -> Self {
         Self {
+            status: Err(()),
             job_sender,
             all_jobs: Default::default(),
             current_block_height: Arc::new(AtomicU32::new(0)),
@@ -120,6 +123,11 @@ impl StratumEventHandler {
             self.current_block_height.clone(),
         );
         self.job_sender.send(Arc::new(job));
+    }
+
+    pub fn update_target(&mut self, new_target: Uint256Bytes) {
+        trace!(LOGGER, "changing target to {:?}", new_target);
+        self.job_sender.change_target(new_target.into());
     }
 }
 
@@ -178,8 +186,40 @@ impl V2Handler for StratumEventHandler {
     }
 
     fn visit_set_target(&mut self, _msg: &Message<V2Protocol>, target_msg: &SetTarget) {
-        trace!(LOGGER, "changing target to {:?}", target_msg.max_target);
-        self.job_sender.change_target(target_msg.max_target.into());
+        self.update_target(target_msg.max_target);
+    }
+
+    fn visit_setup_mining_connection_success(
+        &mut self,
+        _msg: &Message<V2Protocol>,
+        _success_msg: &SetupMiningConnectionSuccess,
+    ) {
+        self.status = Ok(());
+    }
+
+    fn visit_setup_mining_connection_error(
+        &mut self,
+        _msg: &Message<V2Protocol>,
+        _error_msg: &SetupMiningConnectionError,
+    ) {
+        self.status = Err(());
+    }
+
+    fn visit_open_channel_success(
+        &mut self,
+        _msg: &Message<V2Protocol>,
+        success_msg: &OpenChannelSuccess,
+    ) {
+        self.update_target(success_msg.init_target);
+        self.status = Ok(());
+    }
+
+    fn visit_open_channel_error(
+        &mut self,
+        _msg: &Message<V2Protocol>,
+        _error_msg: &OpenChannelError,
+    ) {
+        self.status = Err(());
     }
 }
 
@@ -228,56 +268,9 @@ impl StratumSolutionHandler {
     }
 }
 
-struct StratumConnectionHandler(Result<(), ()>);
-
-impl StratumConnectionHandler {
-    fn new() -> Self {
-        Self(Err(()))
-    }
-
-    fn visit(response_msg: <V2Framing as Framing>::Receive) -> Result<(), ()> {
-        let mut handler = Self::new();
-        response_msg.accept(&mut handler);
-        handler.0
-    }
-}
-
-impl V2Handler for StratumConnectionHandler {
-    fn visit_setup_mining_connection_success(
-        &mut self,
-        _msg: &Message<V2Protocol>,
-        _success_msg: &SetupMiningConnectionSuccess,
-    ) {
-        self.0 = Ok(())
-    }
-
-    fn visit_setup_mining_connection_error(
-        &mut self,
-        _msg: &Message<V2Protocol>,
-        _error_msg: &SetupMiningConnectionError,
-    ) {
-        self.0 = Err(())
-    }
-
-    fn visit_open_channel_success(
-        &mut self,
-        _msg: &Message<V2Protocol>,
-        _success_msg: &OpenChannelSuccess,
-    ) {
-        self.0 = Ok(())
-    }
-
-    fn visit_open_channel_error(
-        &mut self,
-        _msg: &Message<V2Protocol>,
-        _error_msg: &OpenChannelError,
-    ) {
-        self.0 = Err(())
-    }
-}
-
-async fn setup_mining_connection(
-    connection: &mut Connection<V2Framing>,
+async fn setup_mining_connection<'a>(
+    connection: &'a mut Connection<V2Framing>,
+    event_handler: &'a mut StratumEventHandler,
     stratum_addr: String,
 ) -> Result<(), ()> {
     let setup_msg = SetupMiningConnection {
@@ -290,10 +283,16 @@ async fn setup_mining_connection(
     let response_msg = await!(connection.next())
         .expect("Cannot receive response for stratum setup mining connection")
         .unwrap();
-    StratumConnectionHandler::visit(response_msg)
+    event_handler.status = Err(());
+    response_msg.accept(event_handler);
+    event_handler.status
 }
 
-async fn open_channel(connection: &mut Connection<V2Framing>, user: String) -> Result<(), ()> {
+async fn open_channel<'a>(
+    connection: &'a mut Connection<V2Framing>,
+    event_handler: &'a mut StratumEventHandler,
+    user: String,
+) -> Result<(), ()> {
     let channel_msg = OpenChannel {
         req_id: 10,
         user,
@@ -313,7 +312,9 @@ async fn open_channel(connection: &mut Connection<V2Framing>, user: String) -> R
     let response_msg = await!(connection.next())
         .expect("Cannot receive response for stratum open channel")
         .unwrap();
-    StratumConnectionHandler::visit(response_msg)
+    event_handler.status = Err(());
+    response_msg.accept(event_handler);
+    event_handler.status
 }
 
 pub struct StringifyV2(Option<String>);
@@ -399,16 +400,21 @@ async fn event_handler_task(
 pub async fn run(job_solver: workhub::JobSolver, stratum_addr: String, user: String) {
     let socket_addr = stratum_addr.parse().expect("Invalid server address");
     let (job_sender, job_solution) = job_solver.split();
+    let mut event_handler = StratumEventHandler::new(job_sender);
 
     let mut connection = await!(Connection::<V2Framing>::connect(&socket_addr))
         .expect("Cannot connect to stratum server");
 
-    await!(setup_mining_connection(&mut connection, stratum_addr))
-        .expect("Cannot setup stratum mining connection");
-    await!(open_channel(&mut connection, user)).expect("Cannot open stratum channel");
+    await!(setup_mining_connection(
+        &mut connection,
+        &mut event_handler,
+        stratum_addr
+    ))
+    .expect("Cannot setup stratum mining connection");
+    await!(open_channel(&mut connection, &mut event_handler, user))
+        .expect("Cannot open stratum channel");
 
     let (connection_rx, connection_tx) = connection.split();
-    let event_handler = StratumEventHandler::new(job_sender);
 
     // run event handler in a separate task
     tokio::spawn(event_handler_task(connection_rx, event_handler).compat_fix());
