@@ -97,6 +97,7 @@ struct StratumEventHandler {
     job_sender: workhub::JobSender,
     new_jobs: HashMap<u32, NewMiningJob>,
     current_block_height: Arc<AtomicU32>,
+    current_prevhash_msg: Option<SetNewPrevHash>,
 }
 
 impl StratumEventHandler {
@@ -105,15 +106,34 @@ impl StratumEventHandler {
             job_sender,
             new_jobs: Default::default(),
             current_block_height: Arc::new(AtomicU32::new(0)),
+            current_prevhash_msg: None,
         }
+    }
+    pub fn update_job(&mut self, job_msg: &NewMiningJob) {
+        let job = StratumJob::new(
+            job_msg,
+            self.current_prevhash_msg.as_ref().expect("no prevhash"),
+            self.current_block_height.clone(),
+        );
+        self.job_sender.send(Arc::new(job));
     }
 }
 
 impl V2Handler for StratumEventHandler {
-    fn visit_new_mining_job(&mut self, _msg: &Message<V2Protocol>, job_mgs: &NewMiningJob) {
-        // insert new job or update old one with the same block height
-        self.new_jobs.insert(job_mgs.block_height, job_mgs.clone());
-        // TODO: close connection when maximal capacity of new jobs has been reached
+    fn visit_new_mining_job(&mut self, _msg: &Message<V2Protocol>, job_msg: &NewMiningJob) {
+        // already solving this blockheight?
+        if job_msg.block_height == self.current_block_height.load(Ordering::Relaxed)
+            && self.current_prevhash_msg.is_some()
+        {
+            // yes, switch jobs straight away
+            // also: there's an invariant: current_block_height == current_prevhash_msg.block_height
+            self.update_job(job_msg);
+        } else {
+            // nope, `prev_hash` for this job is yet to come
+            // store it for later
+            self.new_jobs.insert(job_msg.block_height, job_msg.clone());
+            // TODO: close connection when maximal capacity of new jobs has been reached
+        }
     }
 
     fn visit_set_new_prev_hash(
@@ -125,10 +145,10 @@ impl V2Handler for StratumEventHandler {
         // immediately update current block height which is propagated to currently solved jobs
         self.current_block_height
             .store(current_block_height, Ordering::Relaxed);
+        self.current_prevhash_msg.replace(prevhash_msg.clone());
         // find a job with the same block height as provided in previous hash
         if let Some((_, job_msg)) = self.new_jobs.remove_entry(&current_block_height) {
-            let job = StratumJob::new(&job_msg, prevhash_msg, self.current_block_height.clone());
-            self.job_sender.send(Arc::new(job));
+            self.update_job(&job_msg);
         } else {
             // TODO: close connection when any job with provided block height hasn't been found
             panic!("cannot find any job for current block height");
