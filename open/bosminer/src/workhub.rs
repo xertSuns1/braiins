@@ -1,5 +1,8 @@
 use crate::hal::{self, BitcoinJob};
 
+use crate::misc::LOGGER;
+use slog::{info, trace};
+
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
 use tokio::sync::watch;
@@ -319,6 +322,7 @@ impl JobSolutionReceiver {
                 .read()
                 .expect("cannot read from shared current target");
             if solution.is_valid(current_target) {
+                info!(LOGGER, "SHARE BELLOW TARGET");
                 return Some(solution);
             }
         }
