@@ -38,6 +38,7 @@ bitcoin_hashes = "0.3.2"
 downcast-rs = "1.0.4"
 wire = { git = "ssh://git@gitlab.ii.zone/x/stratum.git", branch = "devel" }
 stratum = { git = "ssh://git@gitlab.ii.zone/x/stratum.git", branch = "devel" }
+tokio-async-await = "0.1.7"
 
 [dependencies.embedded-hal]
 version = "0.2.0"
