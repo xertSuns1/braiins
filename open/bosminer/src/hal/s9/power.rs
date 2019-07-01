@@ -260,7 +260,7 @@ where
                     let now = SystemTime::now();
                     voltage_ctrl.send_heart_beat().unwrap();
 
-                    trace!(LOGGER, "Heartbeat for board {}", idx);
+                    //trace!(LOGGER, "Heartbeat for board {}", idx);
                     // evaluate how much time it took to send the heart beat and sleep for the rest
                     // of the heart beat period
                     let elapsed = now
