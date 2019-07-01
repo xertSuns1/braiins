@@ -2,6 +2,8 @@ use crate::hal::{self, BitcoinJob};
 
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
+use tokio::sync::watch;
+use tokio_async_await::stream::StreamExt as StreamExtForWatchBroadcast;
 
 use std::sync::{Arc, Mutex as StdMutex, RwLock};
 
@@ -59,16 +61,15 @@ impl WorkHub {
         let current_target = Arc::new(RwLock::new(uint::U256::from_big_endian(
             &DIFFICULTY_1_TARGET_BYTES,
         )));
-        let job_channel = Arc::new(StdMutex::new(None));
-        let (job_event_tx, job_event_rx) = mpsc::channel(1);
+        let (job_broadcast_tx, job_broadcast_rx) = watch::channel(None);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
         (
             Self(
-                WorkGenerator::new(job_event_rx, job_channel.clone()),
+                WorkGenerator::new(job_broadcast_rx),
                 WorkSolutionSender(solution_queue_tx),
             ),
             JobSolver(
-                JobSender::new(job_event_tx, job_channel, current_target.clone()),
+                JobSender::new(job_broadcast_tx, current_target.clone()),
                 JobSolutionReceiver::new(solution_queue_rx, current_target),
             ),
         )
@@ -77,66 +78,76 @@ impl WorkHub {
 
 pub struct NewJobEvent;
 
-type JobChannel = Arc<StdMutex<Option<Arc<dyn BitcoinJob>>>>;
+type WrappedJob = Option<Arc<dyn BitcoinJob>>;
+type JobChannelReceiver = watch::Receiver<WrappedJob>;
+type JobChannelSender = watch::Sender<WrappedJob>;
 
 struct JobQueue {
-    event: mpsc::Receiver<NewJobEvent>,
-    channel: JobChannel,
-    current: Option<Arc<dyn BitcoinJob>>,
+    job_broadcast_rx: JobChannelReceiver,
+    current_job: Option<Arc<dyn BitcoinJob>>,
+    finished: bool,
 }
 
 impl JobQueue {
-    pub fn new(event: mpsc::Receiver<NewJobEvent>, channel: JobChannel) -> Self {
+    pub fn new(job_broadcast_rx: JobChannelReceiver) -> Self {
         Self {
-            event,
-            channel,
-            current: None,
+            job_broadcast_rx,
+            current_job: None,
+            finished: true,
         }
     }
 
     /// Returns current job from which the new work is generated
     /// When the current job has been replaced with a new one
     /// then it is indicated in the second return value
+    pub async fn determine_current_job(&mut self) -> (Arc<dyn BitcoinJob>, bool) {
+        // look at latest broadcasted job
+        match self.job_broadcast_rx.get_ref().as_ref() {
+            // no job has been broadcasted yet, wait
+            None => (),
+            // check if we are working on anything
+            Some(latest_job) => match self.current_job {
+                // we aren't, so work on the latest job
+                None => return (latest_job.clone(), true),
+                Some(ref current_job) => {
+                    // is our current job different from latest?
+                    if !Arc::ptr_eq(current_job, latest_job) {
+                        // something new has been broadcasted, work on that
+                        return (latest_job.clone(), true);
+                    }
+                    // if we haven't finished it, continue working on it
+                    if !self.finished {
+                        return (current_job.clone(), false);
+                    }
+                    // otherwise just wait for more work
+                }
+            },
+        }
+        // loop until we receive a job
+        loop {
+            let new_job = await!(self.job_broadcast_rx.next())
+                .expect("job reception failed")
+                .expect("job stream ended");
+            if let Some(new_job) = new_job {
+                return (new_job, true);
+            }
+        }
+    }
+
     pub async fn get_job(&mut self) -> (Arc<dyn BitcoinJob>, bool) {
-        let mut new_job = self.current.is_none();
-
-        if new_job {
-            // wait for event which signals delivery of a new job
-            await!(self.event.next());
+        let (job, is_new) = await!(self.determine_current_job());
+        if is_new {
+            self.current_job = Some(job.clone())
         }
-
-        // the job queue have to now contain a new job
-        let job_channel_top = self
-            .channel
-            .lock()
-            .expect("cannot lock queue for receiving new job")
-            .as_ref()
-            .expect("job queue is empty")
-            .clone();
-
-        if !new_job {
-            // check job queue top differs from current job
-            new_job = !Arc::ptr_eq(self.current.as_ref().unwrap(), &job_channel_top);
-        }
-        if new_job {
-            // update current job with the latest one
-            self.current = Some(job_channel_top);
-        }
-        // return reference to the job and flag with a new job indication
-        (self.current.as_ref().unwrap().clone(), new_job)
+        self.finished = false;
+        (job, is_new)
     }
 
     /// Clears the current job when the whole address space is exhausted
     /// After this method has been called, the get_job starts blocking until
     /// the new job is delivered
     pub fn finish_current_job(&mut self) {
-        // atomically remove current job from job queue and local reference
-        let mut job_channel_top = self
-            .channel
-            .lock()
-            .expect("cannot lock queue for receiving new job");
-        job_channel_top.take();
-        self.current.take();
+        self.finished = true;
     }
 }
 
@@ -149,10 +160,10 @@ pub struct WorkGenerator {
 }
 
 impl WorkGenerator {
-    pub fn new(job_event: mpsc::Receiver<NewJobEvent>, job_channel: JobChannel) -> Self {
+    pub fn new(job_channel: JobChannelReceiver) -> Self {
         Self {
             inject_work_queue: None,
-            job_queue: JobQueue::new(job_event, job_channel),
+            job_queue: JobQueue::new(job_channel),
             midstates: 1,
             next_version: 0,
             base_version: 0,
@@ -255,22 +266,18 @@ impl JobSolver {
     }
 }
 
-#[derive(Clone)]
 pub struct JobSender {
-    job_event: mpsc::Sender<NewJobEvent>,
-    job_channel: JobChannel,
+    job_broadcast_tx: JobChannelSender,
     current_target: Arc<RwLock<uint::U256>>,
 }
 
 impl JobSender {
     pub fn new(
-        job_event: mpsc::Sender<NewJobEvent>,
-        job_channel: JobChannel,
+        job_broadcast_tx: JobChannelSender,
         current_target: Arc<RwLock<uint::U256>>,
     ) -> Self {
         Self {
-            job_event,
-            job_channel,
+            job_broadcast_tx,
             current_target,
         }
     }
@@ -283,15 +290,8 @@ impl JobSender {
     }
 
     pub fn send(&mut self, job: Arc<dyn hal::BitcoinJob>) {
-        let old_job = self
-            .job_channel
-            .lock()
-            .expect("cannot lock queue for sending new job")
-            .replace(job);
-        if old_job.is_none() {
-            self.job_event
-                .try_send(NewJobEvent)
-                .expect("cannot notify about new job");
+        if self.job_broadcast_tx.broadcast(Some(job)).is_err() {
+            panic!("job broadcast failed");
         }
     }
 }
