@@ -1,6 +1,9 @@
 use crate::hal;
 use crate::workhub;
 
+use crate::misc::LOGGER;
+use slog::{info, trace};
+
 use tokio::prelude::*;
 use tokio::r#await;
 use wire::utils::CompatFix;
@@ -12,6 +15,7 @@ use stratum::v2::framing::codec::V2Framing;
 use stratum::v2::messages::{
     NewMiningJob, OpenChannel, OpenChannelError, OpenChannelSuccess, SetNewPrevHash, SetTarget,
     SetupMiningConnection, SetupMiningConnectionError, SetupMiningConnectionSuccess, SubmitShares,
+    SubmitSharesSuccess,
 };
 use stratum::v2::types::DeviceInfo;
 use stratum::v2::{V2Handler, V2Protocol};
@@ -160,6 +164,7 @@ impl V2Handler for StratumEventHandler {
     }
 
     fn visit_set_target(&mut self, _msg: &Message<V2Protocol>, target_msg: &SetTarget) {
+        trace!(LOGGER, "changing target to {:?}", target_msg.max_target);
         self.job_sender.change_target(target_msg.max_target.into());
     }
 }
@@ -297,12 +302,82 @@ async fn open_channel(connection: &mut Connection<V2Framing>, user: String) -> R
     StratumConnectionHandler::visit(response_msg)
 }
 
+pub struct StringifyV2(Option<String>);
+
+impl StringifyV2 {
+    fn new() -> Self {
+        Self(None)
+    }
+    fn print(response_msg: &<V2Framing as Framing>::Receive) -> String {
+        let mut handler = Self::new();
+        response_msg.accept(&mut handler);
+        handler.0.unwrap_or_else(|| "?unknown?".to_string())
+    }
+}
+
+impl V2Handler for StringifyV2 {
+    fn visit_setup_mining_connection(
+        &mut self,
+        msg: &wire::Message<V2Protocol>,
+        payload: &SetupMiningConnection,
+    ) {
+        self.0 = Some(format!("{:?}", payload));
+    }
+
+    fn visit_setup_mining_connection_success(
+        &mut self,
+        msg: &wire::Message<V2Protocol>,
+        payload: &SetupMiningConnectionSuccess,
+    ) {
+        self.0 = Some(format!("{:?}", payload));
+    }
+
+    fn visit_open_channel(&mut self, msg: &wire::Message<V2Protocol>, payload: &OpenChannel) {
+        self.0 = Some(format!("{:?}", payload));
+    }
+
+    fn visit_open_channel_success(
+        &mut self,
+        msg: &wire::Message<V2Protocol>,
+        payload: &OpenChannelSuccess,
+    ) {
+        self.0 = Some(format!("{:?}", payload));
+    }
+
+    fn visit_new_mining_job(&mut self, msg: &wire::Message<V2Protocol>, payload: &NewMiningJob) {
+        self.0 = Some(format!("{:?}", payload));
+    }
+
+    fn visit_set_new_prev_hash(
+        &mut self,
+        msg: &wire::Message<V2Protocol>,
+        payload: &SetNewPrevHash,
+    ) {
+        self.0 = Some(format!("{:?}", payload));
+    }
+
+    fn visit_set_target(&mut self, msg: &wire::Message<V2Protocol>, payload: &SetTarget) {
+        self.0 = Some(format!("{:?}", payload));
+    }
+    fn visit_submit_shares(&mut self, msg: &wire::Message<V2Protocol>, payload: &SubmitShares) {
+        self.0 = Some(format!("{:?}", payload));
+    }
+    fn visit_submit_shares_success(
+        &mut self,
+        msg: &wire::Message<V2Protocol>,
+        payload: &SubmitSharesSuccess,
+    ) {
+        self.0 = Some(format!("{:?}", payload));
+    }
+}
+
 async fn event_handler_task(
     mut connection_rx: ConnectionRx<V2Framing>,
     mut event_handler: StratumEventHandler,
 ) {
     while let Some(msg) = await!(connection_rx.next()) {
         let msg = msg.unwrap();
+        trace!(LOGGER, "handling message {}", StringifyV2::print(&msg));
         msg.accept(&mut event_handler);
     }
 }
