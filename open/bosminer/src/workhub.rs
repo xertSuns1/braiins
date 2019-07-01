@@ -150,6 +150,7 @@ impl JobQueue {
     /// After this method has been called, the get_job starts blocking until
     /// the new job is delivered
     pub fn finish_current_job(&mut self) {
+        info!(LOGGER, "--- finishing current job ---");
         self.finished = true;
     }
 }
@@ -293,6 +294,7 @@ impl JobSender {
     }
 
     pub fn send(&mut self, job: Arc<dyn hal::BitcoinJob>) {
+        info!(LOGGER, "--- broadcasting new job ---");
         if self.job_broadcast_tx.broadcast(Some(job)).is_err() {
             panic!("job broadcast failed");
         }
@@ -322,7 +324,7 @@ impl JobSolutionReceiver {
                 .read()
                 .expect("cannot read from shared current target");
             if solution.is_valid(current_target) {
-                info!(LOGGER, "SHARE BELLOW TARGET");
+                info!(LOGGER, "----- SHARE BELLOW TARGET -----");
                 return Some(solution);
             }
         }

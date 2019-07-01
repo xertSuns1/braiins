@@ -1,5 +1,8 @@
 use crate::workhub;
 
+use crate::misc::LOGGER;
+use slog::{info, trace};
+
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
 use futures_locks::Mutex;
@@ -162,6 +165,22 @@ impl UniqueMiningWorkSolution {
         sha256d::Hash::hash(&block_bytes[..])
     }
 
+    pub fn trace_share(&self, hash: uint::U256, target: uint::U256) {
+        let mut xtarget = [0u8; 32];
+        target.to_big_endian(&mut xtarget[..]);
+        let mut xhash = [0u8; 32];
+        hash.to_big_endian(&mut xhash[..]);
+
+        trace!(
+            LOGGER,
+            "nonce={:08x} bytes={}",
+            self.nonce(),
+            hex::encode(&self.get_block_bytes()[..])
+        );
+        trace!(LOGGER, "  hash={}", hex::encode(xhash));
+        trace!(LOGGER, "target={}", hex::encode(xtarget));
+    }
+
     pub fn is_valid(&self, current_target: &uint::U256) -> bool {
         if !self.work.job.is_valid() {
             // job is obsolete and has to be flushed
@@ -173,7 +192,11 @@ impl UniqueMiningWorkSolution {
         // convert it to number suitable for target comparison
         let double_hash_u256 = uint::U256::from_little_endian(&double_hash.into_inner());
         // and check it with current target (pool difficulty)
-        double_hash_u256 <= *current_target
+        let ok = double_hash_u256 <= *current_target;
+        if ok {
+            self.trace_share(double_hash_u256, *current_target)
+        }
+        ok
     }
 }
 

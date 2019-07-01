@@ -645,22 +645,26 @@ pub async fn async_hashrate_meter(mining_stats: Arc<Mutex<crate::hal::MiningStat
 
             let total_hashing_time = hashing_started.elapsed().expect("time read ok");
 
+            /*
             println!(
                 "Hash rate: {} Gh/s (immediate {} Gh/s)",
                 shares_to_ghs(total_shares, ASIC_DIFFICULTY as u128)
                     / total_hashing_time.as_secs() as f32,
                 shares_to_ghs(unique_solutions, ASIC_DIFFICULTY as u128) as f32,
             );
+            */
             println!(
                 "Total_shares: {}, total_time: {} s, total work generated: {}",
                 total_shares,
                 total_hashing_time.as_secs(),
                 stats.work_generated,
             );
+            /*
             println!(
                 "Mismatched nonce count: {}, stale solutions: {}, duplicate solutions: {}",
                 stats.mismatched_solution_nonces, stats.stale_solutions, stats.duplicate_solutions,
             );
+            */
         }
     }
 }
