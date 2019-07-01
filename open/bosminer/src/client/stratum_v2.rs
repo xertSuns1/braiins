@@ -99,7 +99,7 @@ impl hal::BitcoinJob for StratumJob {
 
 struct StratumEventHandler {
     job_sender: workhub::JobSender,
-    new_jobs: HashMap<u32, NewMiningJob>,
+    all_jobs: HashMap<u32, NewMiningJob>,
     current_block_height: Arc<AtomicU32>,
     current_prevhash_msg: Option<SetNewPrevHash>,
 }
@@ -108,7 +108,7 @@ impl StratumEventHandler {
     pub fn new(job_sender: workhub::JobSender) -> Self {
         Self {
             job_sender,
-            new_jobs: Default::default(),
+            all_jobs: Default::default(),
             current_block_height: Arc::new(AtomicU32::new(0)),
             current_prevhash_msg: None,
         }
@@ -124,19 +124,28 @@ impl StratumEventHandler {
 }
 
 impl V2Handler for StratumEventHandler {
+    // The rules for prevhash/mining job pairing are (currently) as follows:
+    //  - when mining job comes
+    //      - store it (by id)
+    //      - start mining it if it's at the same blockheight
+    //  - when prevhash message comes
+    //      - replace it
+    //      - start mining the job it references (by job id)
+    //      - flush all other jobs
+
     fn visit_new_mining_job(&mut self, _msg: &Message<V2Protocol>, job_msg: &NewMiningJob) {
+        // all jobs since last `prevmsg` have to be stored in job table
+        // TODO: use job ID instead of block_height
+        self.all_jobs.insert(job_msg.block_height, job_msg.clone());
+        // TODO: close connection when maximal capacity of `all_jobs` has been reached
+
         // already solving this blockheight?
         if job_msg.block_height == self.current_block_height.load(Ordering::Relaxed)
             && self.current_prevhash_msg.is_some()
         {
-            // yes, switch jobs straight away
+            // ... yes, switch jobs straight away
             // also: there's an invariant: current_block_height == current_prevhash_msg.block_height
             self.update_job(job_msg);
-        } else {
-            // nope, `prev_hash` for this job is yet to come
-            // store it for later
-            self.new_jobs.insert(job_msg.block_height, job_msg.clone());
-            // TODO: close connection when maximal capacity of new jobs has been reached
         }
     }
 
@@ -150,17 +159,22 @@ impl V2Handler for StratumEventHandler {
         self.current_block_height
             .store(current_block_height, Ordering::Relaxed);
         self.current_prevhash_msg.replace(prevhash_msg.clone());
-        // find a job with the same block height as provided in previous hash
-        if let Some((_, job_msg)) = self.new_jobs.remove_entry(&current_block_height) {
-            self.update_job(&job_msg);
-        } else {
-            // TODO: close connection when any job with provided block height hasn't been found
-            panic!("cannot find any job for current block height");
-        }
 
-        // remove all jobs with lower block height
-        self.new_jobs
-            .retain(move |&block_height, _| block_height >= current_block_height);
+        // find a job with ID referenced in prevhash_msg
+        // TODO: really use the job id, not just block_height
+        let (_, job_msg) = self
+            .all_jobs
+            .remove_entry(&current_block_height)
+            .expect("requested jobid not found");
+
+        // remove all other jobs (they are now invalid)
+        self.all_jobs.retain(|_, _| true);
+
+        // reinsert the job
+        self.all_jobs.insert(job_msg.block_height, job_msg.clone());
+
+        // and start immediately solving it
+        self.update_job(&job_msg);
     }
 
     fn visit_set_target(&mut self, _msg: &Message<V2Protocol>, target_msg: &SetTarget) {
