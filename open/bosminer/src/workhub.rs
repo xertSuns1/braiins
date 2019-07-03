@@ -341,11 +341,11 @@ pub mod test {
     fn test_block_midstate() {
         for block in test_utils::TEST_BLOCKS.iter() {
             let version = block.version();
-            let (job_event_tx, job_event_rx) = mpsc::channel(1);
+            let (job_broadcast_tx, job_broadcast_rx) = watch::channel(None);
             let job_queue = JobQueue {
-                event: job_event_rx,
-                channel: Arc::new(StdMutex::new(None)),
-                current: None,
+                job_broadcast_rx,
+                current_job: None,
+                finished: false,
             };
             let mut generator = WorkGenerator {
                 inject_work_queue: None,
