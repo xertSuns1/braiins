@@ -8,12 +8,16 @@ use futures::stream::StreamExt;
 use futures_locks::Mutex;
 
 use std::sync::Arc;
+use std::mem;
 
 use bitcoin_hashes::{sha256d, sha256d::Hash, Hash as HashTrait};
 use byteorder::{ByteOrder, LittleEndian};
 use downcast_rs::{impl_downcast, Downcast};
 
 pub mod s9;
+
+/// A Bitcoin block header is 80 bytes long
+const BITCOIN_BLOCK_HEADER_SIZE: usize = 80;
 
 /// Represents interface for Bitcoin job with access to block header from which the new work will be
 /// generated. The trait is bound to Downcast which enables connect work solution with original job
@@ -71,7 +75,7 @@ impl MiningWork {
     /// Extract least-significant word of merkle root that goes to chunk2 of SHA256
     pub fn merkel_root_lsw<T: ByteOrder>(&self) -> u32 {
         let bytes = &self.job.merkle_root().into_inner();
-        T::read_u32(&bytes[bytes.len() - 4..])
+        T::read_u32(&bytes[bytes.len() - mem::size_of::<u32>()..])
     }
 
     /// Shortcut for getting current target (nBits)
@@ -145,7 +149,7 @@ impl UniqueMiningWorkSolution {
         self.work.midstates[i].version
     }
 
-    pub fn get_block_bytes(&self) -> [u8; 80] {
+    pub fn get_block_bytes(&self) -> [u8; BITCOIN_BLOCK_HEADER_SIZE] {
         let job = &self.work.job;
         let buffer = &mut [0u8; 80];
 
