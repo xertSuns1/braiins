@@ -8,8 +8,10 @@ use futures::channel::mpsc;
 use futures::stream::StreamExt;
 use futures_locks::Mutex;
 
+use std::cell::Cell;
 use std::mem;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 use byteorder::ByteOrder;
@@ -100,15 +102,26 @@ pub struct MiningWorkSolution {
 /// This data structure is used when posting work+solution pairs for further submission upstream.
 #[derive(Clone)]
 pub struct UniqueMiningWorkSolution {
-    /// time stamp when it has been fetched from the solution FIFO
-    pub timestamp: std::time::SystemTime,
+    /// Time stamp when it has been fetched from the solution FIFO
+    pub timestamp: SystemTime,
     /// Original mining work associated with this solution
     work: MiningWork,
-    /// solution of the PoW puzzle
+    /// Solution of the PoW puzzle
     solution: MiningWorkSolution,
+    /// Lazy evaluated double hash of this solution
+    hash: Cell<Option<Hash>>,
 }
 
 impl UniqueMiningWorkSolution {
+    pub fn new(work: MiningWork, solution: MiningWorkSolution) -> Self {
+        Self {
+            timestamp: SystemTime::now(),
+            work,
+            solution,
+            hash: Cell::new(None),
+        }
+    }
+
     pub fn job<T: BitcoinJob>(&self) -> &T {
         self.work
             .job
@@ -147,6 +160,19 @@ impl UniqueMiningWorkSolution {
         self.work.midstates[i].version
     }
 
+    /// Return double hash of this solution
+    pub fn hash(&self) -> Hash {
+        match self.hash.get() {
+            Some(value) => value,
+            None => {
+                // compute hash and store it into cache for later use
+                let value = self.get_block_header().hash();
+                self.hash.set(Some(value));
+                value
+            }
+        }
+    }
+
     /// Converts mining work solution to Bitcoin block header structure which is packable
     pub fn get_block_header(&self) -> btc::BlockHeader {
         let job = &self.work.job;
@@ -159,10 +185,6 @@ impl UniqueMiningWorkSolution {
             bits: job.bits(),
             nonce: self.nonce(),
         }
-    }
-
-    pub fn compute_sha256d(&self) -> Hash {
-        self.get_block_header().hash()
     }
 
     pub fn trace_share(&self, hash: uint::U256, target: uint::U256) {
@@ -188,7 +210,7 @@ impl UniqueMiningWorkSolution {
         }
 
         // compute hash for this solution
-        let double_hash = self.compute_sha256d();
+        let double_hash = self.hash();
         // convert it to number suitable for target comparison
         let double_hash_u256 = uint::U256::from_little_endian(&double_hash.into_inner());
         // and check it with current target (pool difficulty)
@@ -320,9 +342,10 @@ pub mod test {
     impl From<&test_utils::TestBlock> for UniqueMiningWorkSolution {
         fn from(test_block: &test_utils::TestBlock) -> Self {
             Self {
-                timestamp: std::time::SystemTime::UNIX_EPOCH,
+                timestamp: SystemTime::UNIX_EPOCH,
                 work: test_block.into(),
                 solution: test_block.into(),
+                hash: Cell::new(None),
             }
         }
     }
@@ -332,7 +355,12 @@ pub mod test {
         for block in test_utils::TEST_BLOCKS.iter() {
             let solution: UniqueMiningWorkSolution = block.into();
 
-            let hash = solution.compute_sha256d();
+            // test lazy evaluated hash
+            let hash = solution.hash();
+            assert_eq!(block.hash, hash);
+
+            // test if hash is the same when it is called second time
+            let hash = solution.hash();
             assert_eq!(block.hash, hash);
         }
     }
