@@ -115,6 +115,18 @@ The sources for integration tests can be found in ```tests/``` subdirectory. The
 
 ```tests/s9_test.rs``` -> ```s9_test-c86bb9af61985799``` The hash would be different for each build for the current state of the project sources.
 
+## Logging
+
+To enable more verbose logging/tracing, set `RUST_LOG` environment variable:
+
+- enable all tracing: `RUST_LOG=trace ./s9_stratum_test ...`
+- enable hardware tracing: `RUST_LOG=rminer::hal::s9=trace ./s9_stratum_test ...`
+- quiet mode, print just errors: `RUST_LOG=error ./s9...`
+- enable hardware tracing and workhub tracing: `RUST_LOG=rminer::hal::s9=trace,rminer::workhub=trace ./s9_stratum_test ...`
+
+More details about `RUST_LOG` syntax can be found in [envlogger reference](https://docs.rs/slog-envlogger/2.1.0/slog_envlogger/).
+
+
 # TODO
 - logging infrastructure
 - get rid of thread specific components - e.g. sleeps, time delay calculations
