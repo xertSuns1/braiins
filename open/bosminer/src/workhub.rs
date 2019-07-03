@@ -317,6 +317,21 @@ impl JobSolutionReceiver {
         }
     }
 
+    fn trace_share(solution: &hal::UniqueMiningWorkSolution, target: &uint::U256) {
+        // TODO: create specialized structure 'Target' and rewrite it
+        let mut xtarget = [0u8; 32];
+        target.to_big_endian(&mut xtarget[..]);
+
+        trace!(
+            LOGGER,
+            "nonce={:08x} bytes={}",
+            solution.nonce(),
+            hex::encode(&solution.get_block_header().into_bytes()[..])
+        );
+        trace!(LOGGER, "  hash={:x}", solution.hash());
+        trace!(LOGGER, "target={}", hex::encode(xtarget));
+    }
+
     pub async fn receive(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
         while let Some(solution) = await!(self.solution_channel.next()) {
             let current_target = &*self
@@ -325,6 +340,7 @@ impl JobSolutionReceiver {
                 .expect("cannot read from shared current target");
             if solution.is_valid(current_target) {
                 info!(LOGGER, "----- SHARE BELLOW TARGET -----");
+                Self::trace_share(&solution, &current_target);
                 return Some(solution);
             }
         }
