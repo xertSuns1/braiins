@@ -1,23 +1,21 @@
+use crate::btc;
 use crate::workhub;
 
 use crate::misc::LOGGER;
-use slog::{info, trace};
+use slog::trace;
 
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
 use futures_locks::Mutex;
 
-use std::sync::Arc;
 use std::mem;
+use std::sync::Arc;
 
-use bitcoin_hashes::{sha256d, sha256d::Hash, Hash as HashTrait};
-use byteorder::{ByteOrder, LittleEndian};
+use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
+use byteorder::ByteOrder;
 use downcast_rs::{impl_downcast, Downcast};
 
 pub mod s9;
-
-/// A Bitcoin block header is 80 bytes long
-const BITCOIN_BLOCK_HEADER_SIZE: usize = 80;
 
 /// Represents interface for Bitcoin job with access to block header from which the new work will be
 /// generated. The trait is bound to Downcast which enables connect work solution with original job
@@ -149,24 +147,22 @@ impl UniqueMiningWorkSolution {
         self.work.midstates[i].version
     }
 
-    pub fn get_block_bytes(&self) -> [u8; BITCOIN_BLOCK_HEADER_SIZE] {
+    /// Converts mining work solution to Bitcoin block header structure which is packable
+    pub fn get_block_header(&self) -> btc::BlockHeader {
         let job = &self.work.job;
-        let buffer = &mut [0u8; 80];
 
-        LittleEndian::write_u32(&mut buffer[0..4], self.version());
-        buffer[4..36].copy_from_slice(&job.previous_hash().into_inner());
-        buffer[36..68].copy_from_slice(&job.merkle_root().into_inner());
-        LittleEndian::write_u32(&mut buffer[68..72], self.time());
-        LittleEndian::write_u32(&mut buffer[72..76], job.bits());
-        LittleEndian::write_u32(&mut buffer[76..80], self.nonce());
-
-        *buffer
+        btc::BlockHeader {
+            version: self.version(),
+            previous_hash: job.previous_hash().into_inner(),
+            merkle_root: job.merkle_root().into_inner(),
+            time: self.time(),
+            bits: job.bits(),
+            nonce: self.nonce(),
+        }
     }
 
     pub fn compute_sha256d(&self) -> Hash {
-        let block_bytes = self.get_block_bytes();
-        // compute SHA256 double hash
-        sha256d::Hash::hash(&block_bytes[..])
+        self.get_block_header().hash()
     }
 
     pub fn trace_share(&self, hash: uint::U256, target: uint::U256) {
@@ -179,7 +175,7 @@ impl UniqueMiningWorkSolution {
             LOGGER,
             "nonce={:08x} bytes={}",
             self.nonce(),
-            hex::encode(&self.get_block_bytes()[..])
+            hex::encode(&self.get_block_header().into_bytes()[..])
         );
         trace!(LOGGER, "  hash={}", hex::encode(xhash));
         trace!(LOGGER, "target={}", hex::encode(xtarget));
