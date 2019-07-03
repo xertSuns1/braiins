@@ -1,7 +1,5 @@
 use crate::hal;
 
-use std::time::SystemTime;
-
 /// Maximum length of pending work list corresponds with the work ID range supported by the FPGA
 const MAX_WORK_LIST_COUNT: usize = 65536;
 
@@ -47,11 +45,10 @@ impl MiningWorkRegistryItem {
 
         let cloned_work = self.work.clone();
         // report the unique solution via status
-        status.unique_solution = Some(hal::UniqueMiningWorkSolution {
-            timestamp: SystemTime::now(),
-            work: cloned_work,
-            solution: new_solution,
-        });
+        status.unique_solution = Some(hal::UniqueMiningWorkSolution::new(
+            self.work.clone(),
+            new_solution,
+        ));
         status
     }
 }
