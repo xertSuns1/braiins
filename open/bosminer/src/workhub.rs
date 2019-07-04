@@ -14,11 +14,6 @@ use std::sync::{Arc, Mutex as StdMutex, RwLock};
 use bitcoin_hashes::{sha256, Hash, HashEngine};
 use byteorder::{ByteOrder, LittleEndian};
 
-const DIFFICULTY_1_TARGET_BYTES: [u8; btc::SHA256_DIGEST_SIZE] = [
-    0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-];
-
 /// A registry of solutions
 #[allow(dead_code)]
 struct SolutionRegistry {
@@ -66,7 +61,7 @@ impl WorkHub {
     /// This is runner/orchestrator/pump-facing function
     pub fn new() -> (Self, JobSolver) {
         let current_target = Arc::new(RwLock::new(uint::U256::from_big_endian(
-            &DIFFICULTY_1_TARGET_BYTES,
+            &btc::DIFFICULTY_1_TARGET_BYTES,
         )));
         let (job_broadcast_tx, job_broadcast_rx) = watch::channel(None);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
