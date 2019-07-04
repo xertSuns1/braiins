@@ -35,28 +35,31 @@ impl SolutionRegistry {
     }
 }
 
-pub struct WorkHub(WorkGenerator, WorkSolutionSender);
-
-/// This trait represents common API for work solvers to get work and
+/// Represents common API for work solvers to get work and
 /// submit solutions
+pub struct WorkHub {
+    work_generator: WorkGenerator,
+    solution_sender: WorkSolutionSender,
+}
+
 impl WorkHub {
     /// Hardware-facing API
     pub async fn generate_work(&mut self) -> Option<hal::MiningWork> {
-        await!(self.0.generate())
+        await!(self.work_generator.generate())
     }
 
     /// Hardware-facing API
     pub fn send_solution(&self, solution: hal::UniqueMiningWorkSolution) {
-        self.1.send(solution);
+        self.solution_sender.send(solution);
     }
 
     /// For debugging purposes
     pub fn set_inject_work_queue(&mut self, q: mpsc::UnboundedReceiver<hal::MiningWork>) {
-        self.0.inject_work_queue = Some(q);
+        self.work_generator.inject_work_queue = Some(q);
     }
 
     pub fn split(self) -> (WorkGenerator, WorkSolutionSender) {
-        (self.0, self.1)
+        (self.work_generator, self.solution_sender)
     }
 
     /// Construct new WorkHub and associated queue to send work through
@@ -68,14 +71,14 @@ impl WorkHub {
         let (job_broadcast_tx, job_broadcast_rx) = watch::channel(None);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
         (
-            Self(
-                WorkGenerator::new(job_broadcast_rx),
-                WorkSolutionSender(solution_queue_tx),
-            ),
-            JobSolver(
-                JobSender::new(job_broadcast_tx, current_target.clone()),
-                JobSolutionReceiver::new(solution_queue_rx, current_target),
-            ),
+            Self {
+                work_generator: WorkGenerator::new(job_broadcast_rx),
+                solution_sender: WorkSolutionSender(solution_queue_tx),
+            },
+            JobSolver {
+                job_sender: JobSender::new(job_broadcast_tx, current_target.clone()),
+                solution_receiver: JobSolutionReceiver::new(solution_queue_rx, current_target),
+            },
         )
     }
 }
@@ -255,19 +258,22 @@ impl WorkSolutionSender {
     }
 }
 
-pub struct JobSolver(JobSender, JobSolutionReceiver);
+pub struct JobSolver {
+    job_sender: JobSender,
+    solution_receiver: JobSolutionReceiver,
+}
 
 impl JobSolver {
     pub fn send_job(&mut self, job: Arc<dyn hal::BitcoinJob>) {
-        self.0.send(job)
+        self.job_sender.send(job)
     }
 
     pub async fn receive_solution(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
-        await!(self.1.receive())
+        await!(self.solution_receiver.receive())
     }
 
     pub fn split(self) -> (JobSender, JobSolutionReceiver) {
-        (self.0, self.1)
+        (self.job_sender, self.solution_receiver)
     }
 }
 
