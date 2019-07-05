@@ -14,22 +14,6 @@ use std::sync::{Arc, RwLock};
 use bitcoin_hashes::{sha256, Hash, HashEngine};
 use byteorder::{ByteOrder, LittleEndian};
 
-/// A registry of solutions
-#[allow(dead_code)]
-struct SolutionRegistry {
-    /// Unique solutions
-    solutions: std::vec::Vec<hal::UniqueMiningWorkSolution>,
-}
-
-#[allow(dead_code)]
-impl SolutionRegistry {
-    fn new() -> Self {
-        Self {
-            solutions: std::vec::Vec::new(),
-        }
-    }
-}
-
 /// Represents common API for work solvers to get work and
 /// submit solutions
 pub struct WorkHub {
