@@ -1,37 +1,33 @@
 use embedded_hal;
 use sysfs_gpio;
 
-/// Helper struct for output pins that panics in case of a problem
-/// TODO explain motivation for this new type - is it implementation of OutputPin trait?
-pub struct PinOut(pub sysfs_gpio::Pin);
+/// Helper struct for altering output pins which implements OutputPin trait
+pub struct PinOut(sysfs_gpio::Pin);
 
-impl embedded_hal::digital::OutputPin for PinOut {
-    fn set_low(&mut self) {
-        self.0.set_value(0).unwrap()
+impl embedded_hal::digital::v2::OutputPin for PinOut {
+    type Error = sysfs_gpio::Error;
+
+    fn set_low(&mut self) -> Result<(), Self::Error> {
+        self.0.set_value(0)
     }
 
-    fn set_high(&mut self) {
-        self.0.set_value(1).unwrap()
-    }
-}
-
-/// Helper struct for reading input pins that panics in case of a problem
-/// TODO explain motivation for this new type - is it implementation of InputPin trait?
-pub struct PinIn(pub sysfs_gpio::Pin);
-
-impl PinIn {
-    fn get_value(&self) -> u8 {
-        self.0.get_value().unwrap()
+    fn set_high(&mut self) -> Result<(), Self::Error> {
+        self.0.set_value(1)
     }
 }
 
-impl embedded_hal::digital::InputPin for PinIn {
-    fn is_high(&self) -> bool {
-        self.get_value() > 0
+/// Helper struct for reading input pins which implements InputPin trait
+pub struct PinIn(sysfs_gpio::Pin);
+
+impl embedded_hal::digital::v2::InputPin for PinIn {
+    type Error = sysfs_gpio::Error;
+
+    fn is_high(&self) -> Result<bool, Self::Error> {
+        self.0.get_value().map(|value| value > 0)
     }
 
-    fn is_low(&self) -> bool {
-        self.get_value() == 0
+    fn is_low(&self) -> Result<bool, Self::Error> {
+        self.0.get_value().map(|value| value == 0)
     }
 }
 
@@ -103,7 +99,7 @@ impl ControlPinManager {
 #[cfg(test)]
 mod test {
     use super::*;
-    use embedded_hal::digital::InputPin;
+    use embedded_hal::digital::v2::InputPin;
 
     #[test]
     fn test_get_pin_in_check_plug_pin_that_exists() {
@@ -132,7 +128,11 @@ mod test {
         let ctrl_pin_manager = ControlPinManager::new();
         for p in [PinInName::ResetButton, PinInName::IPSelect].iter() {
             if let Ok(pin_in) = ctrl_pin_manager.get_pin_in(*p) {
-                assert_eq!(pin_in.is_high(), true, "Unexpected value for pin: {:?}", p);
+                assert!(
+                    pin_in.is_high().unwrap(),
+                    "Unexpected value for pin: {:?}",
+                    p
+                );
             }
         }
     }
@@ -144,9 +144,8 @@ mod test {
         for i in 1..9 {
             let plug_name = PinInName::Plug(i);
             match ctrl_pin_manager.get_pin_in(plug_name) {
-                Ok(plug_pin) => assert_eq!(
-                    plug_pin.is_high(),
-                    false,
+                Ok(plug_pin) => assert!(
+                    !plug_pin.is_high().unwrap(),
                     "Unexpected value for pin: {:?}",
                     plug_name
                 ),

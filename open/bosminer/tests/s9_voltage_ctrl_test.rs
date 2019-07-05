@@ -5,8 +5,8 @@ extern crate rminer;
 use rminer::hal::s9::gpio;
 use rminer::hal::s9::power;
 
-use embedded_hal::digital::InputPin;
-use embedded_hal::digital::OutputPin;
+use embedded_hal::digital::v2::InputPin;
+use embedded_hal::digital::v2::OutputPin;
 
 /// Helper function that tests voltage controller on a particular hashboard.
 ///
@@ -20,8 +20,8 @@ fn test_voltage_ctrl_on_1_hashboard(idx: usize, ctrl_pin_manager: &gpio::Control
         .unwrap();
 
     // perform reset of the hashboard
-    reset.set_low();
-    reset.set_high();
+    reset.set_low().unwrap();
+    reset.set_high().unwrap();
 
     let backend = power::VoltageCtrlI2cBlockingBackend::new(0);
     let backend = power::VoltageCtrlI2cSharedBlockingBackend::new(backend);
@@ -52,7 +52,7 @@ fn test_voltage_ctrl_all_hashboards() {
             .get_pin_in(gpio::PinInName::Plug(hashboard_idx))
             .unwrap();
 
-        if plug.is_high() {
+        if plug.is_high().unwrap() {
             test_voltage_ctrl_on_1_hashboard(hashboard_idx, &ctrl_pin_manager);
             tested_hashboards += 1;
         }
