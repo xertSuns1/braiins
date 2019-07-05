@@ -3,6 +3,7 @@
 use failure::{Backtrace, Context, Fail};
 use std::fmt::{self, Display};
 use std::io;
+use sysfs_gpio;
 use uio;
 
 #[derive(Debug)]
@@ -47,6 +48,10 @@ pub enum ErrorKind {
     /// Baud rate errors.
     #[fail(display = "Baud rate error: {}", _0)]
     BaudRate(String),
+
+    /// GPIO errors.
+    #[fail(display = "GPIO error: {}", _0)]
+    Gpio(String),
 
     /// I2C errors.
     #[fail(display = "I2C error: {}", _0)]
@@ -129,6 +134,15 @@ impl From<uio::UioError> for Error {
         let msg = uio_error.to_string();
         Self {
             inner: uio_error.context(ErrorKind::Uio(msg)),
+        }
+    }
+}
+
+impl From<sysfs_gpio::Error> for Error {
+    fn from(gpio_error: sysfs_gpio::Error) -> Self {
+        let msg = gpio_error.to_string();
+        Self {
+            inner: gpio_error.context(ErrorKind::Gpio(msg)),
         }
     }
 }

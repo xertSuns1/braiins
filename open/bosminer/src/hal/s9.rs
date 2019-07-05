@@ -22,8 +22,8 @@ use futures_locks::Mutex;
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
 use packed_struct::{PackedStruct, PackedStructSlice};
 
-use embedded_hal::digital::InputPin;
-use embedded_hal::digital::OutputPin;
+use embedded_hal::digital::v2::InputPin;
+use embedded_hal::digital::v2::OutputPin;
 
 mod bm1387;
 pub mod fifo;
@@ -125,7 +125,7 @@ where
                 "failed to initialize plug pin".to_string(),
             ))?;
         // also detect that the board is present
-        if plug_pin.is_low() {
+        if plug_pin.is_low()? {
             Err(ErrorKind::Hashboard(
                 hashboard_idx,
                 "not present".to_string(),
@@ -174,16 +174,18 @@ where
     }
 
     /// Puts the board into reset mode and disables the associated IP core
-    fn enter_reset(&mut self) {
+    fn enter_reset(&mut self) -> error::Result<()> {
         self.fifo.disable_ip_core();
         // perform reset of the hashboard
-        self.rst_pin.set_low();
+        self.rst_pin.set_low()?;
+        Ok(())
     }
 
     /// Leaves reset mode
-    fn exit_reset(&mut self) {
-        self.rst_pin.set_high();
+    fn exit_reset(&mut self) -> error::Result<()> {
+        self.rst_pin.set_high()?;
         self.fifo.enable_ip_core();
+        Ok(())
     }
 
     /// Initializes the complete hashboard including enumerating all chips
@@ -216,7 +218,7 @@ where
         self.voltage_ctrl.set_voltage(6)?;
         self.voltage_ctrl.enable_voltage()?;
         info!(LOGGER, "Resetting hash board");
-        self.enter_reset();
+        self.enter_reset()?;
         // disable voltage
         self.voltage_ctrl.disable_voltage()?;
         thread::sleep(Duration::from_millis(INIT_DELAY_MS));
@@ -224,7 +226,7 @@ where
         thread::sleep(Duration::from_millis(2 * INIT_DELAY_MS));
 
         // TODO consider including a delay
-        self.exit_reset();
+        self.exit_reset()?;
         thread::sleep(Duration::from_millis(INIT_DELAY_MS));
         //        let voltage = self.voltage_ctrl.get_voltage()?;
         //        if voltage != 0 {
