@@ -2,7 +2,7 @@ use crate::hal;
 use crate::workhub;
 
 use crate::misc::LOGGER;
-use slog::{info, trace};
+use slog::trace;
 
 use tokio::prelude::*;
 use tokio::r#await;
@@ -333,7 +333,7 @@ impl StringifyV2 {
 impl V2Handler for StringifyV2 {
     fn visit_setup_mining_connection(
         &mut self,
-        msg: &wire::Message<V2Protocol>,
+        _msg: &wire::Message<V2Protocol>,
         payload: &SetupMiningConnection,
     ) {
         self.0 = Some(format!("{:?}", payload));
@@ -341,45 +341,45 @@ impl V2Handler for StringifyV2 {
 
     fn visit_setup_mining_connection_success(
         &mut self,
-        msg: &wire::Message<V2Protocol>,
+        _msg: &wire::Message<V2Protocol>,
         payload: &SetupMiningConnectionSuccess,
     ) {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_open_channel(&mut self, msg: &wire::Message<V2Protocol>, payload: &OpenChannel) {
+    fn visit_open_channel(&mut self, _msg: &wire::Message<V2Protocol>, payload: &OpenChannel) {
         self.0 = Some(format!("{:?}", payload));
     }
 
     fn visit_open_channel_success(
         &mut self,
-        msg: &wire::Message<V2Protocol>,
+        _msg: &wire::Message<V2Protocol>,
         payload: &OpenChannelSuccess,
     ) {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_new_mining_job(&mut self, msg: &wire::Message<V2Protocol>, payload: &NewMiningJob) {
+    fn visit_new_mining_job(&mut self, _msg: &wire::Message<V2Protocol>, payload: &NewMiningJob) {
         self.0 = Some(format!("{:?}", payload));
     }
 
     fn visit_set_new_prev_hash(
         &mut self,
-        msg: &wire::Message<V2Protocol>,
+        _msg: &wire::Message<V2Protocol>,
         payload: &SetNewPrevHash,
     ) {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_set_target(&mut self, msg: &wire::Message<V2Protocol>, payload: &SetTarget) {
+    fn visit_set_target(&mut self, _msg: &wire::Message<V2Protocol>, payload: &SetTarget) {
         self.0 = Some(format!("{:?}", payload));
     }
-    fn visit_submit_shares(&mut self, msg: &wire::Message<V2Protocol>, payload: &SubmitShares) {
+    fn visit_submit_shares(&mut self, _msg: &wire::Message<V2Protocol>, payload: &SubmitShares) {
         self.0 = Some(format!("{:?}", payload));
     }
     fn visit_submit_shares_success(
         &mut self,
-        msg: &wire::Message<V2Protocol>,
+        _msg: &wire::Message<V2Protocol>,
         payload: &SubmitSharesSuccess,
     ) {
         self.0 = Some(format!("{:?}", payload));

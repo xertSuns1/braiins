@@ -43,7 +43,6 @@ impl MiningWorkRegistryItem {
         // TODO: call the evaluator for the solution
         self.solutions.push(new_solution.clone());
 
-        let cloned_work = self.work.clone();
         // report the unique solution via status
         status.unique_solution = Some(hal::UniqueMiningWorkSolution::new(
             self.work.clone(),

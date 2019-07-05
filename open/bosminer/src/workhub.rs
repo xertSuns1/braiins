@@ -9,7 +9,7 @@ use futures::stream::StreamExt;
 use tokio::sync::watch;
 use tokio_async_await::stream::StreamExt as StreamExtForWatchBroadcast;
 
-use std::sync::{Arc, Mutex as StdMutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 use bitcoin_hashes::{sha256, Hash, HashEngine};
 use byteorder::{ByteOrder, LittleEndian};
@@ -359,7 +359,7 @@ pub mod test {
     fn test_block_midstate() {
         for block in test_utils::TEST_BLOCKS.iter() {
             let version = block.version();
-            let (job_broadcast_tx, job_broadcast_rx) = watch::channel(None);
+            let (_, job_broadcast_rx) = watch::channel(None);
             let job_queue = JobQueue {
                 job_broadcast_rx,
                 current_job: None,

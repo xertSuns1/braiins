@@ -148,8 +148,6 @@ impl HChainFifo {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::fs;
-    use std::io;
 
     /// Try opening UIO device.
     /// This test needs properly configured UIO devices for hash-chain 8 in

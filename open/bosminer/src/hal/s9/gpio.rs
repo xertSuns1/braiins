@@ -123,7 +123,7 @@ mod test {
     fn test_get_pin_in_check_plug_pin_doesnt_exist() {
         let ctrl_pin_manager = ControlPinManager::new();
         for i in [0usize, 10].iter() {
-            let pin_in = ctrl_pin_manager.get_pin_in(PinInName::Plug(*i));
+            let _pin_in = ctrl_pin_manager.get_pin_in(PinInName::Plug(*i));
         }
     }
 

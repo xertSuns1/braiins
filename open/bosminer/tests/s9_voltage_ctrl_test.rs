@@ -7,7 +7,6 @@ use rminer::hal::s9::power;
 
 use embedded_hal::digital::InputPin;
 use embedded_hal::digital::OutputPin;
-use linux_embedded_hal::I2cdev;
 
 /// Helper function that tests voltage controller on a particular hashboard.
 ///

@@ -17,7 +17,7 @@ impl DummyJob {
     pub fn new(time: u32) -> Self {
         Self {
             hash: Hash::from_slice(&[0xffu8; 32]).unwrap(),
-            time: 0,
+            time,
         }
     }
 
