@@ -6,13 +6,10 @@ use rminer::client::stratum_v2;
 use rminer::hal::{self, HardwareCtl};
 use rminer::workhub;
 
-use std::time::{Duration, Instant, SystemTime};
-
 use futures_locks::Mutex;
 use std::sync::Arc;
 
 use tokio::await;
-use tokio::timer::Delay;
 use wire::utils::CompatFix;
 
 async fn main_task(stratum_addr: String, user: String) {

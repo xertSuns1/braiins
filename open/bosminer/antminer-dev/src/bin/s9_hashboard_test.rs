@@ -10,10 +10,9 @@ use rminer::workhub;
 
 use slog::info;
 
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use futures_locks::Mutex;
-use std::future::Future;
 use std::sync::Arc;
 
 use tokio::await;

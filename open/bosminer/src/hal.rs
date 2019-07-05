@@ -1,9 +1,6 @@
 use crate::btc;
 use crate::workhub;
 
-use crate::misc::LOGGER;
-use slog::trace;
-
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
 use futures_locks::Mutex;
