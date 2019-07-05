@@ -47,3 +47,38 @@ impl BlockHeader {
         sha256d::Hash::hash(&block_bytes[..])
     }
 }
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+    use crate::hal::BitcoinJob;
+    use crate::test_utils;
+
+    use bitcoin_hashes::hex::ToHex;
+
+    #[test]
+    fn test_block_header() {
+        for block in test_utils::TEST_BLOCKS.iter() {
+            let block_header = BlockHeader {
+                version: block.version(),
+                previous_hash: block.previous_hash().into_inner(),
+                merkle_root: block.merkle_root().into_inner(),
+                time: block.time(),
+                bits: block.bits(),
+                nonce: block.nonce,
+            };
+
+            // test computation of SHA256 double hash of Bitcoin block header
+            assert_eq!(block.hash, block_header.hash());
+
+            // check expected format of hash in hex string with multiple formaters
+            assert_eq!(block.hash_str, block.hash.to_hex());
+            assert_eq!(block.hash_str, format!("{}", block.hash));
+            assert_eq!(block.hash_str, format!("{:?}", block.hash));
+            assert_eq!(block.hash_str, format!("{:x}", block.hash));
+
+            // check binary representation of Bitcoin block header
+            assert_eq!(&block.header_bytes[..], &block_header.into_bytes()[..]);
+        }
+    }
+}
