@@ -577,7 +577,6 @@ async fn async_send_work<T>(
     }
 }
 
-//solution_registry: Arc<Mutex<SolutionRegistry>>,
 async fn async_recv_solutions<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
     mining_stats: Arc<Mutex<super::MiningStats>>,
