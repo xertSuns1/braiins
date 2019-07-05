@@ -141,8 +141,11 @@ impl JobQueue {
 pub struct WorkGenerator {
     pub inject_work_queue: Option<mpsc::UnboundedReceiver<hal::MiningWork>>,
     job_queue: JobQueue,
+    /// Number of midstates that each generated work covers
     midstates: usize,
+    /// Starting value of the rolled part of the version (before BIP320 shift)
     next_version: u16,
+    /// Base Bitcoin block header version with BIP320 bits cleared
     base_version: u32,
 }
 
@@ -159,11 +162,12 @@ impl WorkGenerator {
 
     /// Roll new versions for Bitcoin header for all midstates
     /// It finishes (clears) the current job if it determines then no new version
-    /// cannot be generated
+    /// can be generated
     fn next_versions(&mut self, job: &Arc<dyn BitcoinJob>, new_job: bool) -> Vec<u32> {
         const MASK: u32 = 0x1fffe000;
         const SHIFT: u32 = 13;
 
+        // Allocate the range for all midstates as per the BIP320 rolled 16 bits
         let version_start;
         if new_job {
             version_start = 0;
@@ -179,6 +183,7 @@ impl WorkGenerator {
             }
         };
 
+        // Convert the allocated range to a list of versions as per BIP320
         let mut versions = Vec::with_capacity(self.midstates);
         for version in version_start..self.next_version {
             versions.push(self.base_version | ((version as u32) << SHIFT));
