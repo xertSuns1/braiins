@@ -14,9 +14,10 @@ use std::sync::{Arc, RwLock};
 use bitcoin_hashes::{sha256, Hash, HashEngine};
 use byteorder::{ByteOrder, LittleEndian};
 
-/// Represents common API for work solvers to get work and
-/// submit solutions
+/// Workhub sources jobs from `job_queue` and uses `work_generator` to convert them to
+/// actual `MiningWork` suitable for processing (solving) by actual mining backend
 pub struct WorkHub {
+    /// Work generator for converting jobs to MiningWork
     work_generator: WorkGenerator,
     solution_sender: WorkSolutionSender,
 }
@@ -138,6 +139,7 @@ impl JobQueue {
     }
 }
 
+/// Generates `MiningWork` by rolling the version field of the block header
 pub struct WorkGenerator {
     pub inject_work_queue: Option<mpsc::UnboundedReceiver<hal::MiningWork>>,
     job_queue: JobQueue,
@@ -160,9 +162,9 @@ impl WorkGenerator {
         }
     }
 
-    /// Roll new versions for Bitcoin header for all midstates
-    /// It finishes (clears) the current job if it determines then no new version
-    /// can be generated
+    /// Roll new versions for the block header for all midstates
+    /// Return None If the rolled version space is exhausted. The version range can be
+    /// reset by specifying `new_job`
     fn next_versions(&mut self, job: &Arc<dyn BitcoinJob>, new_job: bool) -> Vec<u32> {
         const MASK: u32 = 0x1fffe000;
         const SHIFT: u32 = 13;
@@ -191,6 +193,9 @@ impl WorkGenerator {
         versions
     }
 
+    /// Produces `MiningWork` for the specified job. Each job contains a number of midstates as
+    /// that matches the configuration of this `WorkGenerator`.
+    /// `new_job` indicates that version rolling can be reset
     fn get_work(&mut self, job: Arc<dyn BitcoinJob>, versions: Vec<u32>) -> hal::MiningWork {
         let time = job.time();
         let mut midstates = Vec::with_capacity(versions.len());
@@ -231,6 +236,8 @@ impl WorkGenerator {
     }
 }
 
+/// This struct is to be passed to the underlying mining backend. It allows submission of
+/// `UniqueMiningWorkSolution`
 #[derive(Clone)]
 pub struct WorkSolutionSender(mpsc::UnboundedSender<hal::UniqueMiningWorkSolution>);
 
@@ -242,6 +249,8 @@ impl WorkSolutionSender {
     }
 }
 
+/// Compound object for job submission and solution reception intended to be passed to
+/// protocol handler
 pub struct JobSolver {
     job_sender: JobSender,
     solution_receiver: JobSolutionReceiver,
@@ -261,6 +270,8 @@ impl JobSolver {
     }
 }
 
+/// This is the entrypoint for new jobs and updates into processing.
+/// Typically the mining protocol handler will inject new jobs through it
 pub struct JobSender {
     job_broadcast_tx: JobChannelSender,
     current_target: Arc<RwLock<uint::U256>>,
@@ -292,6 +303,8 @@ impl JobSender {
     }
 }
 
+/// Receives `UniqueMiningWorkSolution` via a channel and filters only solutions that meet the
+/// pool specified target
 pub struct JobSolutionReceiver {
     solution_channel: mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
     current_target: Arc<RwLock<uint::U256>>,
