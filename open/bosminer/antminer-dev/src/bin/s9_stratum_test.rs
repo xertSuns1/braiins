@@ -4,7 +4,7 @@ use clap::{self, Arg};
 
 use rminer::client::stratum_v2;
 use rminer::hal::{self, HardwareCtl};
-use rminer::workhub;
+use rminer::work;
 
 use futures_locks::Mutex;
 use std::sync::Arc;
@@ -13,7 +13,7 @@ use tokio::await;
 use wire::utils::CompatFix;
 
 async fn main_task(stratum_addr: String, user: String) {
-    let (work_hub, job_solver) = workhub::WorkHub::new();
+    let (job_solver, work_solver) = work::Hub::new();
 
     // Create mining stats
     let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
@@ -23,7 +23,7 @@ async fn main_task(stratum_addr: String, user: String) {
 
     // Create one chain
     let chain = hal::s9::HChain::new();
-    chain.start_hw(work_hub, mining_stats.clone(), shutdown_sender);
+    chain.start_hw(work_solver, mining_stats.clone(), shutdown_sender);
 
     // Start hashrate-meter task
     tokio::spawn(hal::s9::async_hashrate_meter(mining_stats).compat_fix());

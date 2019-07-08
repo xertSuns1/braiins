@@ -6,7 +6,7 @@ extern crate tokio;
 use rminer::hal::{self, HardwareCtl};
 use rminer::misc::LOGGER;
 use rminer::utils;
-use rminer::workhub;
+use rminer::work;
 
 use slog::info;
 
@@ -19,7 +19,7 @@ use tokio::await;
 use tokio::timer::Delay;
 use wire::utils::CompatFix;
 
-async fn dummy_job_generator(mut job_sender: workhub::JobSender) {
+async fn dummy_job_generator(mut job_sender: work::JobSender) {
     let mut dummy_job = rminer::test_utils::DummyJob::new(0);
     loop {
         job_sender.send(Arc::new(dummy_job));
@@ -31,7 +31,7 @@ async fn dummy_job_generator(mut job_sender: workhub::JobSender) {
 fn main() {
     utils::run_async_main_exits(async move {
         // Create workhub
-        let (work_hub, job_solver) = workhub::WorkHub::new();
+        let (job_solver, work_solver) = work::Hub::new();
 
         // Create mining stats
         let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
@@ -41,7 +41,7 @@ fn main() {
 
         // Create one chain
         let chain = hal::s9::HChain::new();
-        chain.start_hw(work_hub, mining_stats.clone(), shutdown_sender);
+        chain.start_hw(work_solver, mining_stats.clone(), shutdown_sender);
 
         // Start hashrate-meter task
         tokio::spawn(hal::s9::async_hashrate_meter(mining_stats).compat_fix());

@@ -16,7 +16,8 @@ use failure::ResultExt;
 use crate::error::{self, ErrorKind};
 use crate::misc::LOGGER;
 use crate::test_utils;
-use crate::workhub;
+use crate::work;
+
 use futures_locks::Mutex;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
@@ -545,7 +546,7 @@ async fn async_send_work<T>(
     mining_stats: Arc<Mutex<super::MiningStats>>,
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     mut tx_fifo: fifo::HChainFifo,
-    mut work_generator: workhub::WorkGenerator,
+    mut work_generator: work::Generator,
     shutdown: crate::hal::ShutdownSender,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
@@ -582,7 +583,7 @@ async fn async_recv_solutions<T>(
     mining_stats: Arc<Mutex<super::MiningStats>>,
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     mut rx_fifo: fifo::HChainFifo,
-    work_solution: workhub::WorkSolutionSender,
+    work_solution: work::SolutionSender,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -678,7 +679,7 @@ fn spawn_tx_task<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
     mining_stats: Arc<Mutex<super::MiningStats>>,
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
-    work_generator: workhub::WorkGenerator,
+    work_generator: work::Generator,
     shutdown: crate::hal::ShutdownSender,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
@@ -703,7 +704,7 @@ fn spawn_rx_task<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
     mining_stats: Arc<Mutex<super::MiningStats>>,
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
-    work_solution: workhub::WorkSolutionSender,
+    work_solution: work::SolutionSender,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -731,7 +732,7 @@ impl HChain {
 
     pub fn start_h_chain(
         &self,
-        workhub: workhub::WorkHub,
+        work_solver: work::Solver,
         mining_stats: Arc<Mutex<super::MiningStats>>,
         shutdown: crate::hal::ShutdownSender,
     ) -> Arc<
@@ -761,7 +762,7 @@ impl HChain {
 
         let work_registry = Arc::new(Mutex::new(registry::MiningWorkRegistry::new()));
         let h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
-        let (work_generator, work_solution) = workhub.split();
+        let (work_generator, work_solution) = work_solver.split();
 
         spawn_tx_task(
             work_registry.clone(),
@@ -784,11 +785,11 @@ impl HChain {
 impl super::HardwareCtl for HChain {
     fn start_hw(
         &self,
-        workhub: workhub::WorkHub,
+        work_solver: work::Solver,
         mining_stats: Arc<Mutex<super::MiningStats>>,
         shutdown: crate::hal::ShutdownSender,
     ) {
-        self.start_h_chain(workhub, mining_stats, shutdown);
+        self.start_h_chain(work_solver, mining_stats, shutdown);
     }
 }
 
