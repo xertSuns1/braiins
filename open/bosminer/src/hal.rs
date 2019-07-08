@@ -1,5 +1,5 @@
 use crate::btc;
-use crate::workhub;
+use crate::work;
 
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
@@ -276,7 +276,7 @@ pub trait HardwareCtl {
     /// stats in `a_mining_stats`
     fn start_hw(
         &self,
-        workhub: workhub::WorkHub,
+        work_solver: work::Solver,
         a_mining_stats: Arc<Mutex<MiningStats>>,
         shutdown: ShutdownSender,
     );

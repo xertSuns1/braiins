@@ -6,7 +6,7 @@ extern crate tokio;
 use rminer::hal;
 use rminer::test_utils;
 use rminer::utils;
-use rminer::workhub;
+use rminer::work;
 
 use std::time::{Duration, Instant};
 
@@ -88,19 +88,17 @@ fn test_work_generation() {
 
     utils::run_async_main_exits(async move {
         // Create workhub
-        let (mut work_hub, _) = workhub::WorkHub::new();
+        let (_, work_solver) = work::Hub::new();
 
         // Create queue with which to inject work into miner
         let (tx_work, rx_work) = mpsc::unbounded();
-        // And put it to work_gen
-        work_hub.set_inject_work_queue(rx_work);
 
         // Create mining stats
         let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
 
         // Create one chain
         let chain = hal::s9::HChain::new();
-        let h_chain_ctl = chain.start_h_chain(work_hub, mining_stats.clone(), shutdown_sender);
+        let h_chain_ctl = chain.start_h_chain(work_solver, mining_stats.clone(), shutdown_sender);
 
         // the first 3 work loads don't produce any solutions, these are merely to initialize the input
         // queue of each hashing chip
