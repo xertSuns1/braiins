@@ -81,6 +81,17 @@ impl HChainFifo {
         self.hash_chain_io
             .irq_fifo_thr
             .write(|w| unsafe { w.bits(FIFO_WORK_TX_THRESHOLD) });
+        // Reset FIFOs
+        self.hash_chain_io.ctrl_reg.modify(|_, w| {
+            w.rst_cmd_rx_fifo()
+                .set_bit()
+                .rst_cmd_tx_fifo()
+                .set_bit()
+                .rst_work_rx_fifo()
+                .set_bit()
+                .rst_work_tx_fifo()
+                .set_bit()
+        });
         // enable IRQ_WORK_TX interrupt
         self.hash_chain_io
             .ctrl_reg

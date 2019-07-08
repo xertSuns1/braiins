@@ -189,6 +189,12 @@ mod test {
         }
     }
 
+    /// Test that we are able to construct HChainFifo instance
+    #[test]
+    fn test_fifo_construction() {
+        let _fifo = HChainFifo::new(8).expect("fifo construction failed");
+    }
+
     /// Try to map IRQ.
     #[test]
     fn test_map_irq() {
@@ -209,6 +215,12 @@ mod test {
     /// Test it on empty rx queue (IRQ always deasserted).
     #[test]
     fn test_get_irq_timeout() {
+        // first we construct FIFO
+        // HChainFifo initialization will reset all queues
+        let mut fifo = HChainFifo::new(8).expect("fifo construction failed");
+        // throw fifo away
+        drop(fifo);
+        // work rx fifo now shouldn't get any interrupts (it's empty)
         let irq = map_irq(8, "work-rx").unwrap();
         irq.irq_enable().unwrap();
         let res = irq.irq_wait_timeout(FIFO_READ_TIMEOUT);
