@@ -30,36 +30,49 @@ impl VersionRolling {
         }
     }
 
+    #[inline]
     fn get_block_version(&self, version: u16) -> u32 {
         self.base_version | ((version as u32) << VERSION_SHIFT)
+    }
+
+    #[inline]
+    fn has_exhausted_range(&self, version: u16) -> bool {
+        version.checked_add(self.midstates).is_none()
     }
 
     /// Roll new versions for the block header for all midstates
     /// Return None If the rolled version space is exhausted. The version range can be
     /// reset by specifying `new_job`
-    fn next_versions(&mut self) -> Vec<u32> {
+    fn next_versions(&mut self) -> (Vec<u32>, bool) {
         // Allocate the range for all midstates as per the BIP320 rolled 16 bits
-        let version_start = self.curr_version;
-        if let Some(next_version) = self.curr_version.checked_add(self.midstates) {
-            self.curr_version = next_version;
-        } else {
-            return vec![];
+        let curr_version = self.curr_version;
+        let next_version;
+        match self.curr_version.checked_add(self.midstates) {
+            Some(value) => {
+                next_version = value;
+                self.curr_version = next_version;
+            }
+            None => return (vec![], true),
         }
 
         // Convert the allocated range to a list of versions as per BIP320
         let mut versions = Vec::with_capacity(self.midstates as usize);
-        for version in version_start..self.curr_version {
+        for version in curr_version..next_version {
             versions.push(self.get_block_version(version));
         }
-        versions
+        (versions, self.has_exhausted_range(next_version))
     }
 }
 
 impl hal::WorkEngine for VersionRolling {
-    fn next_work(&mut self) -> Option<hal::MiningWork> {
-        let versions = self.next_versions();
+    fn is_exhausted(&self) -> bool {
+        self.has_exhausted_range(self.curr_version)
+    }
+
+    fn next_work(&mut self) -> hal::WorkLoop<hal::MiningWork> {
+        let (versions, last) = self.next_versions();
         if versions.is_empty() {
-            return None;
+            return hal::WorkLoop::Exhausted;
         }
 
         let mut midstates = Vec::with_capacity(versions.len());
@@ -79,11 +92,16 @@ impl hal::WorkEngine for VersionRolling {
             })
         }
 
-        Some(hal::MiningWork {
+        let work = hal::MiningWork {
             job: self.job.clone(),
             midstates,
             ntime: self.job.time(),
-        })
+        };
+        if last {
+            hal::WorkLoop::Break(work)
+        } else {
+            hal::WorkLoop::Continue(work)
+        }
     }
 }
 
@@ -99,7 +117,7 @@ pub mod test {
             let job = Arc::new(*block);
             let mut engine = VersionRolling::new(job, 1);
 
-            let work = engine.next_work().unwrap();
+            let work = engine.next_work().unwrap().unwrap();
             assert_eq!(block.midstate, work.midstates[0].state);
         }
     }
