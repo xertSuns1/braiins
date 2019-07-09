@@ -42,8 +42,29 @@ pub trait BitcoinJob: Downcast + Send + Sync {
 }
 impl_downcast!(BitcoinJob);
 
+pub enum WorkLoop<T> {
+    /// Mining work is exhausted
+    Exhausted,
+    /// Returning latest work (sequential call will return Exhausted)
+    Break(T),
+    /// Mining work generation will continue
+    Continue(T),
+}
+
+impl<T> WorkLoop<T> {
+    pub fn unwrap(self) -> T {
+        match self {
+            WorkLoop::Break(val) => val,
+            WorkLoop::Continue(val) => val,
+            _ => panic!("called `WorkLoop::unwrap()` on a `None` value"),
+        }
+    }
+}
+
 pub trait WorkEngine: Send + Sync {
-    fn next_work(&mut self) -> Option<MiningWork>;
+    fn is_exhausted(&self) -> bool;
+
+    fn next_work(&mut self) -> WorkLoop<MiningWork>;
 }
 
 #[derive(Clone, Debug)]

@@ -66,11 +66,19 @@ impl Generator {
                 .as_mut()
                 .expect("missing work engine")
                 .next_work();
-            if work.is_none() {
-                self.job_queue.finish_current_job();
-            } else {
-                return work;
-            }
+            return Some(match work {
+                // one or more competing work engines are exhausted
+                // try to gen new work engine
+                hal::WorkLoop::Exhausted => continue,
+                // consecutive call of work engine may return new work
+                hal::WorkLoop::Continue(value) => value,
+                // tha last work is returned from work engine (the work is exhausted)
+                hal::WorkLoop::Break(value) => {
+                    // inform the 'WorkHub' for rescheduling a new work
+                    self.job_queue.finish_current_job();
+                    value
+                }
+            });
         }
     }
 }
