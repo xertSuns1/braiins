@@ -42,6 +42,10 @@ pub trait BitcoinJob: Downcast + Send + Sync {
 }
 impl_downcast!(BitcoinJob);
 
+pub trait WorkEngine: Send + Sync {
+    fn next_work(&mut self) -> Option<MiningWork>;
+}
+
 #[derive(Clone, Debug)]
 pub struct Midstate {
     /// Version field used for calculating the midstate
