@@ -6,6 +6,7 @@ use futures::stream::StreamExt;
 use futures_locks::Mutex;
 
 use std::cell::Cell;
+use std::fmt::Debug;
 use std::mem;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -19,7 +20,7 @@ pub mod s9;
 /// Represents interface for Bitcoin job with access to block header from which the new work will be
 /// generated. The trait is bound to Downcast which enables connect work solution with original job
 /// and hide protocol specific details.
-pub trait BitcoinJob: Downcast + Send + Sync {
+pub trait BitcoinJob: Debug + Downcast + Send + Sync {
     /// Original version field that reflects the current network consensus
     fn version(&self) -> u32;
     /// Bit-mask with general purpose bits which can be freely manipulated (specified by BIP320)
@@ -61,10 +62,10 @@ impl<T> WorkLoop<T> {
     }
 }
 
-pub trait WorkEngine: Send + Sync {
+pub trait WorkEngine: Debug + Send + Sync {
     fn is_exhausted(&self) -> bool;
 
-    fn next_work(&mut self) -> WorkLoop<MiningWork>;
+    fn next_work(&self) -> WorkLoop<MiningWork>;
 }
 
 #[derive(Clone, Debug)]

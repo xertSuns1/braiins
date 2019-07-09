@@ -1,6 +1,5 @@
 use super::*;
-use crate::hal::{self, WorkEngine};
-use crate::work::engine;
+use crate::hal;
 
 use futures::channel::mpsc;
 
@@ -42,30 +41,24 @@ impl Solver {
 
 /// Generates `MiningWork` by rolling the version field of the block header
 pub struct Generator {
-    job_queue: JobQueue,
-    engine: Option<engine::VersionRolling>,
+    engine_receiver: EngineReceiver,
 }
 
 impl Generator {
-    pub fn new(job_channel: JobChannelReceiver) -> Self {
-        Self {
-            job_queue: JobQueue::new(job_channel),
-            engine: None,
-        }
+    pub fn new(engine_receiver: EngineReceiver) -> Self {
+        Self { engine_receiver }
     }
 
     /// Returns new work generated from the current job
     pub async fn generate(&mut self) -> Option<hal::MiningWork> {
         loop {
-            let (job, new_job) = await!(self.job_queue.get_job());
-            if new_job {
-                self.engine = Some(engine::VersionRolling::new(job, 1));
+            let work;
+            match await!(self.engine_receiver.get_engine()) {
+                // end of stream
+                None => return None,
+                // try to generate new work from engine
+                Some(engine) => work = engine.next_work(),
             }
-            let work = self
-                .engine
-                .as_mut()
-                .expect("missing work engine")
-                .next_work();
             return Some(match work {
                 // one or more competing work engines are exhausted
                 // try to gen new work engine
@@ -75,7 +68,7 @@ impl Generator {
                 // tha last work is returned from work engine (the work is exhausted)
                 hal::WorkLoop::Break(value) => {
                     // inform the 'WorkHub' for rescheduling a new work
-                    self.job_queue.finish_current_job();
+                    self.engine_receiver.reschedule();
                     value
                 }
             });

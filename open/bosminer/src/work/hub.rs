@@ -18,14 +18,14 @@ impl Hub {
         let current_target = Arc::new(RwLock::new(uint::U256::from_big_endian(
             &btc::DIFFICULTY_1_TARGET_BYTES,
         )));
-        let (job_broadcast_tx, job_broadcast_rx) = watch::channel(None);
+        let (engine_sender, engine_receiver) = engine_channel();
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
         (
             JobSolver {
-                job_sender: hub::JobSender::new(job_broadcast_tx, current_target.clone()),
+                job_sender: hub::JobSender::new(engine_sender, current_target.clone()),
                 solution_receiver: hub::JobSolutionReceiver::new(solution_queue_rx, current_target),
             },
-            work::Solver::new(Generator::new(job_broadcast_rx), solution_queue_tx),
+            work::Solver::new(Generator::new(engine_receiver), solution_queue_tx),
         )
     }
 }
@@ -54,17 +54,14 @@ impl JobSolver {
 /// This is the entrypoint for new jobs and updates into processing.
 /// Typically the mining protocol handler will inject new jobs through it
 pub struct JobSender {
-    job_broadcast_tx: JobChannelSender,
+    engine_sender: EngineSender,
     current_target: Arc<RwLock<uint::U256>>,
 }
 
 impl JobSender {
-    pub fn new(
-        job_broadcast_tx: JobChannelSender,
-        current_target: Arc<RwLock<uint::U256>>,
-    ) -> Self {
+    pub fn new(engine_sender: EngineSender, current_target: Arc<RwLock<uint::U256>>) -> Self {
         Self {
-            job_broadcast_tx,
+            engine_sender,
             current_target,
         }
     }
@@ -78,9 +75,8 @@ impl JobSender {
 
     pub fn send(&mut self, job: Arc<dyn hal::BitcoinJob>) {
         info!(LOGGER, "--- broadcasting new job ---");
-        if self.job_broadcast_tx.broadcast(Some(job)).is_err() {
-            panic!("job broadcast failed");
-        }
+        let engine = Arc::new(engine::VersionRolling::new(job, 1));
+        self.engine_sender.broadcast(engine);
     }
 }
 

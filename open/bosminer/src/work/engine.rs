@@ -1,5 +1,6 @@
 use crate::hal;
 
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 
 use bitcoin_hashes::{sha256, Hash, HashEngine};
@@ -9,12 +10,26 @@ use byteorder::{ByteOrder, LittleEndian};
 const VERSION_MASK: u32 = 0x1fffe000;
 const VERSION_SHIFT: u32 = 13;
 
+#[derive(Debug)]
+pub struct ExhaustedWork;
+
+impl hal::WorkEngine for ExhaustedWork {
+    fn is_exhausted(&self) -> bool {
+        true
+    }
+
+    fn next_work(&self) -> hal::WorkLoop<hal::MiningWork> {
+        hal::WorkLoop::Exhausted
+    }
+}
+
+#[derive(Debug)]
 pub struct VersionRolling {
     job: Arc<dyn hal::BitcoinJob>,
     /// Number of midstates that each generated work covers
     midstates: u16,
     /// Starting value of the rolled part of the version (before BIP320 shift)
-    curr_version: u16,
+    curr_version: AtomicU16,
     /// Base Bitcoin block header version with BIP320 bits cleared
     base_version: u32,
 }
@@ -25,7 +40,7 @@ impl VersionRolling {
         Self {
             job,
             midstates,
-            curr_version: 0,
+            curr_version: AtomicU16::new(0),
             base_version,
         }
     }
@@ -43,14 +58,16 @@ impl VersionRolling {
     /// Roll new versions for the block header for all midstates
     /// Return None If the rolled version space is exhausted. The version range can be
     /// reset by specifying `new_job`
-    fn next_versions(&mut self) -> (Vec<u32>, bool) {
+    fn next_versions(&self) -> (Vec<u32>, bool) {
         // Allocate the range for all midstates as per the BIP320 rolled 16 bits
-        let curr_version = self.curr_version;
+        let curr_version = self.curr_version.load(Ordering::Relaxed);
         let next_version;
-        match self.curr_version.checked_add(self.midstates) {
+
+        match curr_version.checked_add(self.midstates) {
             Some(value) => {
                 next_version = value;
-                self.curr_version = next_version;
+                // TODO: compare_and_swap
+                self.curr_version.store(next_version, Ordering::Relaxed);
             }
             None => return (vec![], true),
         }
@@ -66,10 +83,10 @@ impl VersionRolling {
 
 impl hal::WorkEngine for VersionRolling {
     fn is_exhausted(&self) -> bool {
-        self.has_exhausted_range(self.curr_version)
+        self.has_exhausted_range(self.curr_version.load(Ordering::Relaxed))
     }
 
-    fn next_work(&mut self) -> hal::WorkLoop<hal::MiningWork> {
+    fn next_work(&self) -> hal::WorkLoop<hal::MiningWork> {
         let (versions, last) = self.next_versions();
         if versions.is_empty() {
             return hal::WorkLoop::Exhausted;
@@ -115,9 +132,9 @@ pub mod test {
     fn test_block_midstate() {
         for block in test_utils::TEST_BLOCKS.iter() {
             let job = Arc::new(*block);
-            let mut engine = VersionRolling::new(job, 1);
+            let engine = VersionRolling::new(job, 1);
 
-            let work = engine.next_work().unwrap().unwrap();
+            let work = engine.next_work().unwrap();
             assert_eq!(block.midstate, work.midstates[0].state);
         }
     }

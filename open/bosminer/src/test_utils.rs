@@ -7,7 +7,7 @@ use bitcoin_hashes::{hex::FromHex, sha256, sha256d::Hash, Hash as HashTrait};
 use byteorder::{ByteOrder, LittleEndian};
 
 /// DummyJob to be used for tests
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct DummyJob {
     hash: Hash,
     time: u32,
@@ -97,6 +97,12 @@ impl TestBlock {
             nonce,
             header_bytes,
         }
+    }
+}
+
+impl std::fmt::Debug for TestBlock {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(fmt, "{}", self.hash)
     }
 }
 
