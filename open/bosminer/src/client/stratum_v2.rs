@@ -28,7 +28,7 @@ use std::collections::HashMap;
 // TODO: move it to the stratum crate
 const VERSION_MASK: u32 = 0x1fffe000;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct StratumJob {
     id: u32,
     channel_id: u32,
