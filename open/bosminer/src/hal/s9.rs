@@ -90,7 +90,9 @@ pub struct HChainCtl<VBackend> {
     #[allow(dead_code)]
     last_heartbeat_sent: Option<SystemTime>,
     hashboard_idx: usize,
-    pub fifo: fifo::HChainFifo,
+    pub cmd_fifo: fifo::HChainFifo,
+    pub work_rx_fifo: Option<fifo::HChainFifo>,
+    pub work_tx_fifo: Option<fifo::HChainFifo>,
 }
 
 unsafe impl<VBackend> Send for HChainCtl<VBackend> {}
@@ -145,24 +147,22 @@ where
             rst_pin,
             hashboard_idx,
             last_heartbeat_sent: None,
-            fifo: fifo::HChainFifo::new(hashboard_idx)?,
+            cmd_fifo: fifo::HChainFifo::new(hashboard_idx)?,
+            work_rx_fifo: Some(fifo::HChainFifo::new(hashboard_idx)?),
+            work_tx_fifo: Some(fifo::HChainFifo::new(hashboard_idx)?),
         })
-    }
-
-    pub fn clone_fifo(&self) -> error::Result<fifo::HChainFifo> {
-        fifo::HChainFifo::new(self.hashboard_idx)
     }
 
     /// Helper method that initializes the FPGA IP core
     fn ip_core_init(&self) -> error::Result<()> {
         // Disable ip core
-        self.fifo.disable_ip_core();
-        self.fifo.enable_ip_core();
+        self.cmd_fifo.disable_ip_core();
+        self.cmd_fifo.enable_ip_core();
 
         self.set_ip_core_baud_rate(INIT_CHIP_BAUD_RATE)?;
         // TODO consolidate hardcoded constant - calculate time constant based on PLL settings etc.
-        self.fifo.set_ip_core_work_time(75000);
-        self.fifo
+        self.cmd_fifo.set_ip_core_work_time(75000);
+        self.cmd_fifo
             .set_ip_core_midstate_count(self.midstate_count_bits);
 
         Ok(())
@@ -170,7 +170,7 @@ where
 
     /// Puts the board into reset mode and disables the associated IP core
     fn enter_reset(&mut self) -> error::Result<()> {
-        self.fifo.disable_ip_core();
+        self.cmd_fifo.disable_ip_core();
         // perform reset of the hashboard
         self.rst_pin.set_low()?;
         Ok(())
@@ -179,7 +179,7 @@ where
     /// Leaves reset mode
     fn exit_reset(&mut self) -> error::Result<()> {
         self.rst_pin.set_high()?;
-        self.fifo.enable_ip_core();
+        self.cmd_fifo.enable_ip_core();
         Ok(())
     }
 
@@ -374,7 +374,7 @@ where
             baud_clock_div
         );
 
-        self.fifo.set_baud_clock_div(baud_clock_div as u32);
+        self.cmd_fifo.set_baud_clock_div(baud_clock_div as u32);
         Ok(())
     }
 
@@ -417,12 +417,12 @@ where
         );
         trace!(LOGGER, "Sending Control Command {:x?}", cmd);
         for chunk in cmd.chunks(4) {
-            self.fifo
+            self.cmd_fifo
                 .write_to_cmd_tx_fifo(LittleEndian::read_u32(chunk));
         }
         // TODO busy waiting has to be replaced once asynchronous processing is in place
         if wait {
-            self.fifo.wait_cmd_tx_fifo_empty();
+            self.cmd_fifo.wait_cmd_tx_fifo_empty();
         }
     }
 
@@ -437,12 +437,12 @@ where
 
         // TODO: to be refactored once we have asynchronous handling in place
         // fetch command response from IP core's fifo
-        match self.fifo.read_from_cmd_rx_fifo()? {
+        match self.cmd_fifo.read_from_cmd_rx_fifo()? {
             None => return Ok(None),
             Some(resp_word) => LittleEndian::write_u32(&mut cmd_resp[..4], resp_word),
         }
         // All errors from reading the second word are propagated
-        match self.fifo.read_from_cmd_rx_fifo()? {
+        match self.cmd_fifo.read_from_cmd_rx_fifo()? {
             None => {
                 return Err(ErrorKind::Fifo(
                     error::Fifo::TimedOut,
@@ -632,8 +632,11 @@ fn spawn_tx_task<T>(
 {
     tokio::spawn(
         async move {
-            let tx_fifo = await!(h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
-
+            let mut tx_fifo = await!(h_chain_ctl.lock())
+                .expect("locking failed")
+                .work_tx_fifo
+                .take()
+                .expect("work-tx fifo missing");
             await!(async_send_work(
                 work_registry,
                 mining_stats,
@@ -657,7 +660,11 @@ fn spawn_rx_task<T>(
 {
     tokio::spawn(
         async move {
-            let rx_fifo = await!(h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
+            let mut rx_fifo = await!(h_chain_ctl.lock())
+                .expect("locking failed")
+                .work_rx_fifo
+                .take()
+                .expect("work-rx fifo missing");
             await!(async_recv_solutions(
                 work_registry,
                 mining_stats,
@@ -829,24 +836,24 @@ mod test {
 
         // verify sane register values
         assert_eq!(
-            h_chain_ctl.fifo.hash_chain_io.work_time.read().bits(),
+            h_chain_ctl.cmd_fifo.hash_chain_io.work_time.read().bits(),
             75000,
             "Unexpected work time value"
         );
         assert_eq!(
-            h_chain_ctl.fifo.hash_chain_io.baud_reg.read().bits(),
+            h_chain_ctl.cmd_fifo.hash_chain_io.baud_reg.read().bits(),
             0x1a,
             "Unexpected baud rate register value for {} baud",
             INIT_CHIP_BAUD_RATE
         );
         assert_eq!(
-            h_chain_ctl.fifo.hash_chain_io.stat_reg.read().bits(),
+            h_chain_ctl.cmd_fifo.hash_chain_io.stat_reg.read().bits(),
             0x855,
             "Unexpected status register value"
         );
         assert_eq!(
             h_chain_ctl
-                .fifo
+                .cmd_fifo
                 .hash_chain_io
                 .ctrl_reg
                 .read()
