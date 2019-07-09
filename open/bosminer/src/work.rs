@@ -1,3 +1,4 @@
+pub mod engine;
 pub mod hub;
 pub mod solver;
 
