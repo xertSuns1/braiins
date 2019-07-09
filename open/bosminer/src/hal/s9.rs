@@ -541,7 +541,6 @@ async fn async_send_work<T>(
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     mut tx_fifo: fifo::HChainFifo,
     mut work_generator: work::Generator,
-    shutdown: crate::hal::ShutdownSender,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -550,10 +549,7 @@ async fn async_send_work<T>(
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
         let work = await!(work_generator.generate());
         match work {
-            None => {
-                shutdown.send("no more work from workhub");
-                break;
-            }
+            None => return,
             Some(work) => {
                 let work_id = await!(h_chain_ctl.lock())
                     .expect("h_chain lock")
@@ -637,14 +633,15 @@ fn spawn_tx_task<T>(
     tokio::spawn(
         async move {
             let tx_fifo = await!(h_chain_ctl.lock()).unwrap().clone_fifo().unwrap();
+
             await!(async_send_work(
                 work_registry,
                 mining_stats,
                 h_chain_ctl,
                 tx_fifo,
                 work_generator,
-                shutdown,
             ));
+            shutdown.send("no more work from workhub");
         }
             .compat_fix(),
     );
