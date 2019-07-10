@@ -1,8 +1,5 @@
 #![feature(await_macro, async_await)]
 
-extern crate futures;
-extern crate tokio;
-
 use rminer::hal;
 use rminer::test_utils;
 use rminer::utils;
@@ -29,7 +26,7 @@ pub fn prepare_test_work() -> hal::MiningWork {
 
     let mid = hal::Midstate {
         version: 0,
-        state: [0u8; 32],
+        state: [0u8; 32].into(),
     };
 
     hal::MiningWork {

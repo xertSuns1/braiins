@@ -73,7 +73,7 @@ pub struct Midstate {
     /// Version field used for calculating the midstate
     pub version: u32,
     /// Internal state of SHA256 after processing the first chunk (32 bytes)
-    pub state: [u8; btc::SHA256_DIGEST_SIZE],
+    pub state: btc::Midstate,
 }
 
 /// Describes actual mining work for submission to a hashing hardware.
