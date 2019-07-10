@@ -1,10 +1,10 @@
+use crate::btc;
 use crate::hal;
 
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 
-use bitcoin_hashes::{sha256, Hash, HashEngine};
-use byteorder::{ByteOrder, LittleEndian};
+use bitcoin_hashes::Hash;
 
 // TODO: move to BTC
 const VERSION_MASK: u32 = 0x1fffe000;
@@ -93,19 +93,17 @@ impl hal::WorkEngine for VersionRolling {
         }
 
         let mut midstates = Vec::with_capacity(versions.len());
-
-        let mut engine = sha256::Hash::engine();
-        let buffer = &mut [0u8; 64];
-
-        buffer[4..36].copy_from_slice(&self.job.previous_hash().into_inner());
-        buffer[36..64].copy_from_slice(&self.job.merkle_root().into_inner()[..32 - 4]);
+        let mut block_chunk1 = btc::BlockHeader {
+            previous_hash: self.job.previous_hash().into_inner(),
+            merkle_root: self.job.merkle_root().into_inner(),
+            ..Default::default()
+        };
 
         for version in versions {
-            LittleEndian::write_u32(&mut buffer[0..4], version);
-            engine.input(buffer);
+            block_chunk1.version = version;
             midstates.push(hal::Midstate {
                 version,
-                state: engine.midstate(),
+                state: block_chunk1.midstate(),
             })
         }
 

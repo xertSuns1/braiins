@@ -1,9 +1,10 @@
+use crate::btc;
 use crate::hal::{self, BitcoinJob};
 
 use lazy_static::lazy_static;
 use std::sync::Arc;
 
-use bitcoin_hashes::{hex::FromHex, sha256, sha256d::Hash, Hash as HashTrait};
+use bitcoin_hashes::{hex::FromHex, sha256d::Hash, Hash as HashTrait};
 use byteorder::{ByteOrder, LittleEndian};
 
 /// DummyJob to be used for tests
@@ -61,7 +62,8 @@ impl hal::BitcoinJob for DummyJob {
 pub struct TestBlock {
     pub hash: Hash,
     pub hash_str: &'static str,
-    pub midstate: [u8; 32],
+    pub midstate: btc::Midstate,
+    pub midstate_str: &'static str,
     version: u32,
     prev_hash: Hash,
     merkle_root: Hash,
@@ -74,7 +76,7 @@ pub struct TestBlock {
 impl TestBlock {
     pub fn new(
         hash: &'static str,
-        midstate: &str,
+        midstate: &'static str,
         version: u32,
         prev_hash: &str,
         merkle_root: &str,
@@ -86,9 +88,8 @@ impl TestBlock {
         Self {
             hash: Hash::from_hex(hash).expect("parse hex"),
             hash_str: hash,
-            midstate: sha256::Hash::from_hex(midstate)
-                .expect("parse hex")
-                .into_inner(),
+            midstate: btc::Midstate::from_hex(midstate).expect("parse hex"),
+            midstate_str: midstate,
             version,
             prev_hash: Hash::from_hex(prev_hash).expect("parse hex"),
             merkle_root: Hash::from_hex(merkle_root).expect("parse hex"),
@@ -204,11 +205,13 @@ pub fn prepare_test_work(i: u64) -> hal::MiningWork {
     let job = Arc::new(DummyJob::new(0));
     let time = job.time();
 
-    let mut mid = hal::Midstate {
+    let mut midstate_bytes = [0u8; btc::SHA256_DIGEST_SIZE];
+    LittleEndian::write_u64(&mut midstate_bytes, i);
+
+    let mid = hal::Midstate {
         version: 0,
-        state: [0u8; 32],
+        state: midstate_bytes.into(),
     };
-    LittleEndian::write_u64(&mut mid.state, i);
 
     hal::MiningWork {
         job,

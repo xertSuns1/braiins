@@ -507,7 +507,7 @@ where
         tx_fifo.write_to_work_tx_fifo(work.merkel_root_lsw::<LittleEndian>())?;
 
         for mid in work.midstates.iter() {
-            for midstate_word in mid.state.chunks(size_of::<u32>()).rev() {
+            for midstate_word in mid.state.as_slice().chunks(size_of::<u32>()).rev() {
                 tx_fifo.write_to_work_tx_fifo(BigEndian::read_u32(midstate_word))?;
             }
         }
