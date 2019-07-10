@@ -23,13 +23,13 @@ impl hal::WorkEngine for ExhaustedWork {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VersionRolling {
     job: Arc<dyn hal::BitcoinJob>,
     /// Number of midstates that each generated work covers
     midstates: u16,
     /// Starting value of the rolled part of the version (before BIP320 shift)
-    curr_version: AtomicU16,
+    curr_version: Arc<AtomicU16>,
     /// Base Bitcoin block header version with BIP320 bits cleared
     base_version: u32,
 }
@@ -40,44 +40,43 @@ impl VersionRolling {
         Self {
             job,
             midstates,
-            curr_version: AtomicU16::new(0),
+            curr_version: Arc::new(AtomicU16::new(0)),
             base_version,
         }
     }
 
+    /// Convert the allocated index to a block version as per BIP320
     #[inline]
-    fn get_block_version(&self, version: u16) -> u32 {
-        self.base_version | ((version as u32) << VERSION_SHIFT)
+    fn get_block_version(&self, index: u16) -> u32 {
+        self.base_version | ((index as u32) << VERSION_SHIFT)
     }
 
+    /// Check if given version cannot be used for next range
     #[inline]
     fn has_exhausted_range(&self, version: u16) -> bool {
         version.checked_add(self.midstates).is_none()
     }
 
-    /// Roll new versions for the block header for all midstates
-    /// Return None If the rolled version space is exhausted. The version range can be
-    /// reset by specifying `new_job`
-    fn next_versions(&self) -> (Vec<u32>, bool) {
-        // Allocate the range for all midstates as per the BIP320 rolled 16 bits
-        let curr_version = self.curr_version.load(Ordering::Relaxed);
-        let next_version;
-
-        match curr_version.checked_add(self.midstates) {
-            Some(value) => {
-                next_version = value;
-                // TODO: compare_and_swap
-                self.curr_version.store(next_version, Ordering::Relaxed);
-            }
-            None => return (vec![], true),
+    /// Concurrently determine next range of indexes for rolling version
+    /// Return None If the rolled version space is exhausted.
+    fn next_range(&self) -> Option<(u16, u16)> {
+        loop {
+            let current = self.curr_version.load(Ordering::Relaxed);
+            return match current.checked_add(self.midstates) {
+                None => None,
+                Some(next) => {
+                    if self
+                        .curr_version
+                        .compare_and_swap(current, next, Ordering::Relaxed)
+                        != current
+                    {
+                        // try it again when concurrent task has been faster
+                        continue;
+                    }
+                    Some((current, next))
+                }
+            };
         }
-
-        // Convert the allocated range to a list of versions as per BIP320
-        let mut versions = Vec::with_capacity(self.midstates as usize);
-        for version in curr_version..next_version {
-            versions.push(self.get_block_version(version));
-        }
-        (versions, self.has_exhausted_range(next_version))
     }
 }
 
@@ -87,19 +86,29 @@ impl hal::WorkEngine for VersionRolling {
     }
 
     fn next_work(&self) -> hal::WorkLoop<hal::MiningWork> {
-        let (versions, last) = self.next_versions();
-        if versions.is_empty() {
-            return hal::WorkLoop::Exhausted;
-        }
+        // determine next range of indexes from version space
+        let (current, next) = match self.next_range() {
+            // return immediately when the space is exhausted
+            None => return hal::WorkLoop::Exhausted,
+            // use range of indexes for generation of midstates
+            Some(range) => range,
+        };
 
-        let mut midstates = Vec::with_capacity(versions.len());
+        // check if given range is the same as number of midstates
+        assert_eq!(self.midstates, next - current);
+        let mut midstates = Vec::with_capacity(self.midstates as usize);
+
+        // prepare block chunk1 with all invariants
         let mut block_chunk1 = btc::BlockHeader {
             previous_hash: self.job.previous_hash().into_inner(),
             merkle_root: self.job.merkle_root().into_inner(),
             ..Default::default()
         };
 
-        for version in versions {
+        // generate all midstates from given range of indexes
+        for index in current..next {
+            // use index for generation compatible header version
+            let version = self.get_block_version(index);
             block_chunk1.version = version;
             midstates.push(hal::Midstate {
                 version,
@@ -112,7 +121,9 @@ impl hal::WorkEngine for VersionRolling {
             midstates,
             ntime: self.job.time(),
         };
-        if last {
+        if self.has_exhausted_range(next) {
+            // when the whole version space has been exhausted then mark the generated work as
+            // a last one (the next call of this method will return 'Exhausted')
             hal::WorkLoop::Break(work)
         } else {
             hal::WorkLoop::Continue(work)
