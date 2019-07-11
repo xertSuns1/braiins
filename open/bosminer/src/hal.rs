@@ -1,3 +1,8 @@
+#[cfg(feature = "erupter")]
+pub mod erupter;
+#[cfg(feature = "antminer_s9")]
+pub mod s9;
+
 use crate::btc;
 use crate::work;
 
@@ -14,8 +19,6 @@ use std::time::SystemTime;
 use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 use byteorder::ByteOrder;
 use downcast_rs::{impl_downcast, Downcast};
-
-pub mod s9;
 
 /// Represents interface for Bitcoin job with access to block header from which the new work will be
 /// generated. The trait is bound to Downcast which enables connect work solution with original job
