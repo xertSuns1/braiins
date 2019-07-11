@@ -13,7 +13,7 @@ use tokio::await;
 use wire::utils::CompatFix;
 
 async fn main_task(stratum_addr: String, user: String) {
-    let (job_solver, work_solver) = work::Hub::new();
+    let (job_solver, work_solver) = work::Hub::build_solvers();
 
     // Create mining stats
     let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
