@@ -35,6 +35,7 @@ impl Solver {
 
 /// Generator is responsible for accepting a `WorkEngine` and draining as much
 /// `MiningWork` as possible from it.
+#[derive(Clone)]
 pub struct Generator {
     engine_receiver: EngineReceiver,
 }
