@@ -11,6 +11,8 @@ use futures::stream::StreamExt;
 
 use std::sync::{Arc, RwLock};
 
+/// Top level builder for `JobSolver` and `work::Solver` intended to be used when instantiating
+/// the full miner
 pub struct Hub;
 
 impl Hub {

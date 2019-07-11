@@ -1,3 +1,5 @@
+//! Provides work engines that are capable for converting Jobs to actual work suitable for mining
+//! backend processing
 use crate::btc;
 use crate::hal;
 
@@ -23,6 +25,9 @@ impl hal::WorkEngine for ExhaustedWork {
     }
 }
 
+/// Version rolling implements WorkEngine trait and represents a shared source of work for mining
+/// backends. Each instance takes care of atomically allocating version field ranges until the
+/// range is full exhausted
 #[derive(Debug, Clone)]
 pub struct VersionRolling {
     job: Arc<dyn hal::BitcoinJob>,

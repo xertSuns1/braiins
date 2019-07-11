@@ -1,3 +1,6 @@
+//! Basic components for building WorkEngine broadcasting infrastructure and to send WorkEngines
+//! to the actual work solving (mining) backends
+
 pub mod engine;
 pub mod hub;
 pub mod solver;
@@ -15,13 +18,18 @@ use tokio::sync::watch;
 
 use std::sync::Arc;
 
+/// Shared work engine type
 type DynWorkEngine = Arc<dyn hal::WorkEngine>;
 
+/// Builds a WorkEngine broadcasting channel. The broadcast channel requires an initial value. We
+/// use the empty work engine that signals 'exhausted' state all the time.
 pub fn engine_channel() -> (EngineSender, EngineReceiver) {
     let (sender, receiver) = watch::channel(Arc::new(engine::ExhaustedWork) as DynWorkEngine);
     (EngineSender::new(sender), EngineReceiver::new(receiver))
 }
 
+/// Sender is responsible for broadcasting a new WorkEngine to all mining
+/// backends
 pub struct EngineSender {
     inner: watch::Sender<DynWorkEngine>,
 }
@@ -40,6 +48,7 @@ impl EngineSender {
     }
 }
 
+/// Manages incoming WorkEngines (see get_engine() for details)
 #[derive(Clone)]
 pub struct EngineReceiver {
     inner: watch::Receiver<DynWorkEngine>,
@@ -52,6 +61,8 @@ impl EngineReceiver {
         }
     }
 
+    /// Provides the most recent WorkEngine as long as the engine is able to provide any work.
+    /// Otherwise, it sleeps and waits for a new
     pub async fn get_engine(&mut self) -> Option<DynWorkEngine> {
         let mut engine = self.inner.get_ref().clone();
         loop {

@@ -3,11 +3,12 @@ use crate::hal;
 
 use futures::channel::mpsc;
 
-/// Workhub sources jobs from `job_queue` and uses `work_generator` to convert them to
-/// actual `MiningWork` suitable for processing (solving) by actual mining backend
+/// Compound object that is supposed to be sent down to the mining backend that can in turn solve
+/// any generated work and submit solutions.
 pub struct Solver {
-    /// Work generator for converting jobs to MiningWork
+    /// Work generator for sourcing `MiningWork`
     work_generator: Generator,
+    /// Solution submission channel for the underlying mining backend
     solution_sender: SolutionSender,
 }
 
@@ -39,7 +40,8 @@ impl Solver {
     }
 }
 
-/// Generates `MiningWork` by rolling the version field of the block header
+/// Generator is responsible for accepting a `WorkEngine` and draining as much
+/// `MiningWork` as possible from it.
 pub struct Generator {
     engine_receiver: EngineReceiver,
 }
@@ -49,7 +51,8 @@ impl Generator {
         Self { engine_receiver }
     }
 
-    /// Returns new work generated from the current job
+    /// Loops until new work is available or no more `WorkEngines` are supplied (signals
+    /// Generator shutdown)
     pub async fn generate(&mut self) -> Option<hal::MiningWork> {
         loop {
             let work;
