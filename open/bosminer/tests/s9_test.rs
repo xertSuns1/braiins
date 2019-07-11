@@ -85,7 +85,7 @@ fn test_work_generation() {
 
     utils::run_async_main_exits(async move {
         // Create workhub
-        let (_, work_solver) = work::Hub::new();
+        let (_, work_solver) = work::Hub::build_solvers();
 
         // Create queue with which to inject work into miner
         let (tx_work, rx_work) = mpsc::unbounded();

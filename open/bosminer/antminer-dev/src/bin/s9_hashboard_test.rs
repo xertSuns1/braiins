@@ -31,7 +31,7 @@ async fn dummy_job_generator(mut job_sender: work::JobSender) {
 fn main() {
     utils::run_async_main_exits(async move {
         // Create workhub
-        let (job_solver, work_solver) = work::Hub::new();
+        let (job_solver, work_solver) = work::Hub::build_solvers();
 
         // Create mining stats
         let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));

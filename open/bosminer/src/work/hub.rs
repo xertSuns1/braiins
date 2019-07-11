@@ -16,7 +16,8 @@ use std::sync::{Arc, RwLock};
 pub struct Hub;
 
 impl Hub {
-    pub fn new() -> (JobSolver, work::Solver) {
+    /// Create Solvers for frontend (pool) and backend (HW accelerator)
+    pub fn build_solvers() -> (JobSolver, work::Solver) {
         let current_target = Arc::new(RwLock::new(uint::U256::from_big_endian(
             &btc::DIFFICULTY_1_TARGET_BYTES,
         )));
