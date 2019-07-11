@@ -2,12 +2,12 @@
 //! to the actual work solving (mining) backends
 
 pub mod engine;
-pub mod hub;
-pub mod solver;
+mod hub;
+mod solver;
 
 use crate::hal;
 
-pub use hub::{Hub, JobSender, JobSolutionReceiver};
+pub use hub::{Hub, JobSender, JobSolutionReceiver, JobSolver};
 pub use solver::{Generator, SolutionSender, Solver};
 
 use crate::misc::LOGGER;
