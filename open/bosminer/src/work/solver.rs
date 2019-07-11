@@ -1,6 +1,9 @@
 use super::*;
 use crate::hal;
 
+use crate::misc::LOGGER;
+use slog::warn;
+
 use futures::channel::mpsc;
 
 /// Compound object that is supposed to be sent down to the mining backend that can in turn solve
@@ -13,16 +16,6 @@ pub struct Solver {
 }
 
 impl Solver {
-    /// Hardware-facing API
-    pub async fn generate_work(&mut self) -> Option<hal::MiningWork> {
-        await!(self.work_generator.generate())
-    }
-
-    /// Hardware-facing API
-    pub fn send_solution(&self, solution: hal::UniqueMiningWorkSolution) {
-        self.solution_sender.send(solution);
-    }
-
     pub fn split(self) -> (Generator, SolutionSender) {
         (self.work_generator, self.solution_sender)
     }
@@ -65,11 +58,14 @@ impl Generator {
             return Some(match work {
                 // one or more competing work engines are exhausted
                 // try to gen new work engine
+                // NOTE: this can happen simultaneously for multiple parallel generators because
+                // only one can win the last work and so there should not be included any logging
                 hal::WorkLoop::Exhausted => continue,
                 // consecutive call of work engine may return new work
                 hal::WorkLoop::Continue(value) => value,
                 // tha last work is returned from work engine (the work is exhausted)
                 hal::WorkLoop::Break(value) => {
+                    warn!(LOGGER, "No more work available for current job!");
                     // inform the 'WorkHub' for rescheduling a new work
                     self.engine_receiver.reschedule();
                     value

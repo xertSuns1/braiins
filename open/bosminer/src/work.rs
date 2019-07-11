@@ -10,9 +10,6 @@ use crate::hal;
 pub use hub::{Hub, JobSender, JobSolutionReceiver, JobSolver};
 pub use solver::{Generator, SolutionSender, Solver};
 
-use crate::misc::LOGGER;
-use slog::info;
-
 use tokio::prelude::*;
 use tokio::sync::watch;
 
@@ -81,6 +78,5 @@ impl EngineReceiver {
 
     pub fn reschedule(&self) {
         // TODO: wakeup WorkHub to reschedule new work
-        info!(LOGGER, "--- finishing current job ---");
     }
 }
