@@ -100,14 +100,14 @@ impl hal::BitcoinJob for StratumJob {
 
 struct StratumEventHandler {
     status: Result<(), ()>,
-    job_sender: work::hub::JobSender,
+    job_sender: work::JobSender,
     all_jobs: HashMap<u32, NewMiningJob>,
     current_block_height: Arc<AtomicU32>,
     current_prevhash_msg: Option<SetNewPrevHash>,
 }
 
 impl StratumEventHandler {
-    pub fn new(job_sender: work::hub::JobSender) -> Self {
+    pub fn new(job_sender: work::JobSender) -> Self {
         Self {
             status: Err(()),
             job_sender,
@@ -225,14 +225,14 @@ impl V2Handler for StratumEventHandler {
 
 struct StratumSolutionHandler {
     connection_tx: ConnectionTx<V2Framing>,
-    job_solution: work::hub::JobSolutionReceiver,
+    job_solution: work::JobSolutionReceiver,
     seq_num: u32,
 }
 
 impl StratumSolutionHandler {
     fn new(
         connection_tx: ConnectionTx<V2Framing>,
-        job_solution: work::hub::JobSolutionReceiver,
+        job_solution: work::JobSolutionReceiver,
     ) -> Self {
         Self {
             connection_tx,
@@ -397,7 +397,7 @@ async fn event_handler_task(
     }
 }
 
-pub async fn run(job_solver: work::hub::JobSolver, stratum_addr: String, user: String) {
+pub async fn run(job_solver: work::JobSolver, stratum_addr: String, user: String) {
     let socket_addr = stratum_addr.parse().expect("Invalid server address");
     let (job_sender, job_solution) = job_solver.split();
     let mut event_handler = StratumEventHandler::new(job_sender);
