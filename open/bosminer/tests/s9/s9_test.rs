@@ -1,5 +1,3 @@
-#![feature(await_macro, async_await)]
-
 use rminer::hal;
 use rminer::test_utils;
 use rminer::utils;
@@ -37,7 +35,7 @@ pub fn prepare_test_work() -> hal::MiningWork {
 }
 
 /// Count replies (even duplicate ones) and erase counters
-pub async fn check_solution_count(mining_stats: Arc<Mutex<crate::hal::MiningStats>>) -> u64 {
+pub async fn check_solution_count(mining_stats: Arc<Mutex<hal::MiningStats>>) -> u64 {
     let mut stats = await!(mining_stats.lock()).expect("lock mining stats");
     let total_replies: u64 = stats.unique_solutions + stats.duplicate_solutions;
     stats.unique_solutions = 0;
@@ -48,7 +46,7 @@ pub async fn check_solution_count(mining_stats: Arc<Mutex<crate::hal::MiningStat
 /// Receive workloads and count replies
 async fn send_and_receive_test_workloads<'a>(
     tx_work: &'a mpsc::UnboundedSender<hal::MiningWork>,
-    mining_stats: Arc<Mutex<crate::hal::MiningStats>>,
+    mining_stats: Arc<Mutex<hal::MiningStats>>,
     n_send: usize,
     expected_solution_count: usize,
 ) {

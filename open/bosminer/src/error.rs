@@ -3,7 +3,10 @@
 use failure::{Backtrace, Context, Fail};
 use std::fmt::{self, Display};
 use std::io;
+
+#[cfg(feature = "antminer_s9")]
 use sysfs_gpio;
+#[cfg(feature = "antminer_s9")]
 use uio;
 
 #[derive(Debug)]
@@ -129,6 +132,7 @@ impl From<Context<String>> for Error {
     }
 }
 
+#[cfg(feature = "antminer_s9")]
 impl From<uio::UioError> for Error {
     fn from(uio_error: uio::UioError) -> Self {
         let msg = uio_error.to_string();
@@ -138,6 +142,7 @@ impl From<uio::UioError> for Error {
     }
 }
 
+#[cfg(feature = "antminer_s9")]
 impl From<sysfs_gpio::Error> for Error {
     fn from(gpio_error: sysfs_gpio::Error) -> Self {
         let msg = gpio_error.to_string();
