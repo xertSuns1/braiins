@@ -3,12 +3,16 @@ pub mod erupter;
 #[cfg(feature = "antminer_s9")]
 pub mod s9;
 
+/// Reexport HAL entry point for selected target to unify interface
+#[cfg(feature = "erupter")]
+pub use erupter::run;
+#[cfg(feature = "antminer_s9")]
+pub use s9::run;
+
 use crate::btc;
-use crate::work;
 
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
-use futures_locks::Mutex;
 
 use std::cell::Cell;
 use std::fmt::Debug;
@@ -297,18 +301,6 @@ impl Shutdown {
     pub fn split(self) -> (ShutdownSender, ShutdownReceiver) {
         (self.0, self.1)
     }
-}
-
-/// Any hardware mining controller should implement at least these methods
-pub trait HardwareCtl {
-    /// Starts hardware controller connected to workhub, while storing
-    /// stats in `a_mining_stats`
-    fn start_hw(
-        &self,
-        work_solver: work::Solver,
-        a_mining_stats: Arc<Mutex<MiningStats>>,
-        shutdown: ShutdownSender,
-    );
 }
 
 #[cfg(test)]

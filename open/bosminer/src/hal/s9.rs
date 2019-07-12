@@ -3,8 +3,7 @@ use std::mem::size_of;
 use std::sync::Arc;
 use std::thread;
 
-use std::time::{Duration, Instant, SystemTime};
-use tokio::timer::Delay;
+use std::time::{Duration, SystemTime};
 
 use tokio::await;
 use wire::utils::CompatFix;
@@ -31,9 +30,6 @@ pub mod fifo;
 pub mod gpio;
 pub mod power;
 pub mod registry;
-
-/// Dummy difficulty
-const ASIC_DIFFICULTY: u64 = 1;
 
 /// How many work use to initialize the chain, use at least MAX_CHIPS_ON_CHAIN work
 /// TODO: compare this to bitmain's open_core
@@ -631,50 +627,6 @@ async fn async_recv_solutions<T>(
     }
 }
 
-pub fn shares_to_ghs(shares: u128, diff: u128) -> f32 {
-    (shares * (diff << 32)) as f32 * 1e-9_f32
-}
-
-pub async fn async_hashrate_meter(mining_stats: Arc<Mutex<crate::hal::MiningStats>>) {
-    let hashing_started = SystemTime::now();
-    let mut total_shares: u128 = 0;
-
-    loop {
-        await!(Delay::new(Instant::now() + Duration::from_secs(1))).unwrap();
-        let mut stats = await!(mining_stats.lock()).expect("lock mining stats");
-        {
-            let unique_solutions = stats.unique_solutions as u128;
-            stats.unique_solutions = 0;
-            total_shares = total_shares + unique_solutions;
-            // processing solution in the test simply means removing them
-
-            let total_hashing_time = hashing_started.elapsed().expect("time read ok");
-
-            trace!(
-                LOGGER,
-                "Hash rate: {} Gh/s (immediate {} Gh/s)",
-                shares_to_ghs(total_shares, ASIC_DIFFICULTY as u128)
-                    / total_hashing_time.as_secs() as f32,
-                shares_to_ghs(unique_solutions, ASIC_DIFFICULTY as u128) as f32,
-            );
-            info!(
-                LOGGER,
-                "Total_shares: {}, total_time: {} s, total work generated: {}",
-                total_shares,
-                total_hashing_time.as_secs(),
-                stats.work_generated,
-            );
-            trace!(
-                LOGGER,
-                "Mismatched nonce count: {}, stale solutions: {}, duplicate solutions: {}",
-                stats.mismatched_solution_nonces,
-                stats.stale_solutions,
-                stats.duplicate_solutions,
-            );
-        }
-    }
-}
-
 fn spawn_tx_task<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
     mining_stats: Arc<Mutex<super::MiningStats>>,
@@ -782,15 +734,15 @@ impl HChain {
     }
 }
 
-impl super::HardwareCtl for HChain {
-    fn start_hw(
-        &self,
-        work_solver: work::Solver,
-        mining_stats: Arc<Mutex<super::MiningStats>>,
-        shutdown: crate::hal::ShutdownSender,
-    ) {
-        self.start_h_chain(work_solver, mining_stats, shutdown);
-    }
+/// Entry point for running the hardware backend
+pub fn run(
+    work_solver: work::Solver,
+    mining_stats: Arc<Mutex<super::MiningStats>>,
+    shutdown: crate::hal::ShutdownSender,
+) {
+    // Create one chain
+    let chain = HChain::new();
+    chain.start_h_chain(work_solver, mining_stats, shutdown);
 }
 
 /// Helper method that calculates baud rate clock divisor value for the specified baud rate.
