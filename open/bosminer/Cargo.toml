@@ -27,6 +27,7 @@ slog-async = "2.3"
 failure = "0.1.5"
 uio = { version = "0.2", path = "uio", optional = true }
 tokio = { version = "=0.1.19", features = ["async-await-preview"] }
+tokio-threadpool = "0.1.14"
 futures-preview = { version = "0.3.0-alpha.15", features = ["compat"] }
 futures-01 = { version = "0.1.27", package = "futures" }
 futures-locks = "0.3.3"

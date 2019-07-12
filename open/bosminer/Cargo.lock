@@ -940,6 +940,7 @@ dependencies = [
  "sysfs_gpio 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.1.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-async-await 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-threadpool 0.1.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "uint 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "uio 0.2.0",
  "wire 0.1.0 (git+ssh://git@gitlab.ii.zone/x/stratum.git)",
