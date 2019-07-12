@@ -3,10 +3,11 @@
 extern crate futures;
 extern crate tokio;
 
-use rminer::hal::{self, HardwareCtl};
+use rminer::hal;
 use rminer::misc::LOGGER;
 use rminer::utils;
 use rminer::work;
+use rminer::stats;
 
 use slog::info;
 
@@ -32,25 +33,17 @@ fn main() {
     utils::run_async_main_exits(async move {
         // Create workhub
         let (job_solver, work_solver) = work::Hub::build_solvers();
-
+        let (job_sender, mut job_solution) = job_solver.split();
         // Create mining stats
         let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
-
         // Create shutdown channel
         let (shutdown_sender, mut shutdown_receiver) = hal::Shutdown::new().split();
 
-        // Create one chain
-        let chain = hal::s9::HChain::new();
-        chain.start_hw(work_solver, mining_stats.clone(), shutdown_sender);
-
+        hal::run(work_solver, mining_stats.clone(), shutdown_sender);
         // Start hashrate-meter task
-        tokio::spawn(hal::s9::async_hashrate_meter(mining_stats).compat_fix());
-
-        let (job_sender, mut job_solution) = job_solver.split();
-
+        tokio::spawn(stats::hashrate_meter_task(mining_stats).compat_fix());
         // Start dummy job generator task
         tokio::spawn(dummy_job_generator(job_sender).compat_fix());
-
         // Receive solutions
         tokio::spawn(
             async move { while let Some(_x) = await!(job_solution.receive()) {} }.compat_fix(),
