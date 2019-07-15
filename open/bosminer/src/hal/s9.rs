@@ -354,6 +354,8 @@ where
     /// Loads PLL register with a starting value
     fn set_pll(&self) -> error::Result<()> {
         self.for_all_chips(|addr| {
+            // see {"650",0x068040, 0x0220, 0x680221} in driver-btm-c5
+            // TODO: fix endianity of this register so it matches datasheet
             let cmd = bm1387::SetConfigCmd::new(addr, false, bm1387::PLL_PARAM_REG, 0x21026800);
             self.send_ctl_cmd(&cmd.pack(), false);
             Ok(())
