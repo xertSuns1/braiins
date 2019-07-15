@@ -9,7 +9,11 @@ use futures_locks::Mutex;
 
 use std::sync::Arc;
 
-fn main_task(work_solver: work::Solver) {
+fn main_task(
+    work_solver: work::Solver,
+    _mining_stats: Arc<Mutex<super::MiningStats>>,
+    _shutdown: crate::hal::ShutdownSender,
+) {
     let (mut generator, _solution_sender) = work_solver.split();
 
     use crate::misc::LOGGER;
@@ -23,11 +27,11 @@ fn main_task(work_solver: work::Solver) {
 /// Entry point for running the hardware backend
 pub fn run(
     work_solver: work::Solver,
-    _mining_stats: Arc<Mutex<super::MiningStats>>,
-    _shutdown: crate::hal::ShutdownSender,
+    mining_stats: Arc<Mutex<super::MiningStats>>,
+    shutdown: crate::hal::ShutdownSender,
 ) {
     // wrap the work solver to Option to overcome FnOnce closure inside FnMut
-    let mut work_solver = Some(work_solver);
+    let mut args = Some((work_solver, mining_stats, shutdown));
 
     // spawn future in blocking context which guarantees that the task is run in separate thread
     tokio::spawn(
@@ -36,11 +40,10 @@ pub fn run(
         // `poll_fn` in this case.
         poll_fn(move || {
             blocking(|| {
-                main_task(
-                    work_solver
-                        .take()
-                        .expect("`tokio_threadpool::blocking` called FnOnce more than once"),
-                )
+                let (work_solver, mining_stats, shutdown) = args
+                    .take()
+                    .expect("`tokio_threadpool::blocking` called FnOnce more than once");
+                main_task(work_solver, mining_stats, shutdown);
             })
             .map_err(|_| panic!("the threadpool shut down"))
         }),
