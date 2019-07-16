@@ -5,9 +5,15 @@ pub mod s9;
 
 /// Reexport HAL entry point for selected target to unify interface
 #[cfg(feature = "erupter")]
-pub use erupter::run;
+pub use erupter::{
+    error::{Error, ErrorKind},
+    run,
+};
 #[cfg(feature = "antminer_s9")]
-pub use s9::run;
+pub use s9::{
+    error::{Error, ErrorKind},
+    run,
+};
 
 use crate::btc;
 

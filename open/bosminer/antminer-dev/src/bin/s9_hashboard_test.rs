@@ -5,9 +5,9 @@ extern crate tokio;
 
 use rminer::hal;
 use rminer::misc::LOGGER;
+use rminer::stats;
 use rminer::utils;
 use rminer::work;
-use rminer::stats;
 
 use slog::info;
 

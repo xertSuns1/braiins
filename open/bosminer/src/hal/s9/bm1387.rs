@@ -4,7 +4,7 @@ use packed_struct_codegen::{PrimitiveEnum_u16, PrimitiveEnum_u8};
 
 use std::mem::size_of;
 
-use crate::error::{self, ErrorKind};
+use super::error::{self, ErrorKind};
 
 pub const GET_ADDRESS_REG: u8 = 0x00;
 pub const PLL_PARAM_REG: u8 = 0x0c;

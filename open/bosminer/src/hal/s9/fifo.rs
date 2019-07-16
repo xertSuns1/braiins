@@ -1,18 +1,19 @@
+#[cfg(not(feature = "hctl_polling"))]
+mod fifo_irq;
+#[cfg(feature = "hctl_polling")]
+mod fifo_poll;
+
 /// This module provides thin API to access memory-mapped FPGA registers
 /// and associated interrupts.
 /// Exports FIFO management/send/receive and register access.
-use crate::error::{self, ErrorKind};
-use failure::ResultExt;
 use std::marker::PhantomData;
 use std::ops;
 use std::time::Duration;
 
 use s9_io::hchainio0;
 
-#[cfg(not(feature = "hctl_polling"))]
-mod fifo_irq;
-#[cfg(feature = "hctl_polling")]
-mod fifo_poll;
+use super::error::{self, ErrorKind};
+use failure::ResultExt;
 
 /// How long to wait for RX interrupt
 const FIFO_READ_TIMEOUT: Duration = Duration::from_millis(5);

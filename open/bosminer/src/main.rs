@@ -2,8 +2,8 @@
 
 use rminer::client::stratum_v2;
 use rminer::hal;
-use rminer::work;
 use rminer::stats;
+use rminer::work;
 
 use tokio::await;
 use wire::utils::CompatFix;
