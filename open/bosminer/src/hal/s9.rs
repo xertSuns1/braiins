@@ -501,7 +501,7 @@ where
         tx_fifo.write_to_work_tx_fifo(work_id.to_le())?;
         tx_fifo.write_to_work_tx_fifo(work.bits().to_le())?;
         tx_fifo.write_to_work_tx_fifo(work.ntime.to_le())?;
-        tx_fifo.write_to_work_tx_fifo(work.merkel_root_lsw::<LittleEndian>())?;
+        tx_fifo.write_to_work_tx_fifo(work.merkle_root_tail().to_le())?;
 
         for mid in work.midstates.iter() {
             for midstate_word in mid.state.as_slice().chunks(size_of::<u32>()).rev() {
