@@ -62,6 +62,9 @@ const FPGA_IPCORE_F_CLK_SPEED_HZ: usize = 50_000_000;
 /// Divisor of the base clock. The resulting clock is connected to UART
 const FPGA_IPCORE_F_CLK_BASE_BAUD_DIV: usize = 16;
 
+/// Default PLL frequency for clocking the chips
+const DEFAULT_S9_PLL_FREQUENCY: u64 = 650_000_000;
+
 /// Hash Chain Options is to pass additional information during hash chain
 /// controller initialization.
 #[derive(Clone)]
@@ -100,6 +103,8 @@ pub struct HChainCtl<VBackend> {
     chip_count: usize,
     /// Eliminates the need to query the IP core about the current number of configured midstates
     midstate_count_bits: u8,
+    /// PLL frequency
+    pll_frequency: u64,
     /// Voltage controller on this hashboard
     /// TODO: consider making voltage ctrl a shared instance so that heartbeat and regular
     /// processing can use it. More: the backend should also become shared instance?
@@ -170,6 +175,8 @@ where
             rst_pin,
             hashboard_idx,
             last_heartbeat_sent: None,
+            // TODO: implement setting me
+            pll_frequency: DEFAULT_S9_PLL_FREQUENCY,
             cmd_fifo: fifo::HChainFifo::new(hashboard_idx)?,
             work_rx_fifo: Some(fifo::HChainFifo::new(hashboard_idx)?),
             work_tx_fifo: Some(fifo::HChainFifo::new(hashboard_idx)?),
@@ -183,8 +190,12 @@ where
         self.cmd_fifo.enable_ip_core();
 
         self.set_ip_core_baud_rate(INIT_CHIP_BAUD_RATE)?;
-        // TODO consolidate hardcoded constant - calculate time constant based on PLL settings etc.
-        self.cmd_fifo.set_ip_core_work_time(75000);
+        let work_time = secs_to_fpga_ticks(calculate_work_delay_for_pll(
+            1u64 << self.midstate_count_bits,
+            self.pll_frequency,
+        ));
+        trace!(LOGGER, "Using work time: {}", work_time);
+        self.cmd_fifo.set_ip_core_work_time(work_time);
         self.cmd_fifo
             .set_ip_core_midstate_count(self.midstate_count_bits);
 
@@ -847,6 +858,48 @@ fn calc_baud_clock_div(
     Ok((baud_div, actual_baud_rate))
 }
 
+/// Helper method to calculate time to finish one piece of work
+///
+/// * `n_midstates` - number of midstates
+/// * `pll_frequency` - frequency of chip in Hz
+/// Return a number of seconds.
+///
+/// The formula for work_delay is:
+///
+///   work_delay = space_size_of_one_work / computation_speed; [sec, hashes, hashes_per_sec]
+///
+/// In our case it would be
+///
+///   work_delay = n_midstates * 2^32 / (freq * num_chips * cores_per_chip)
+///
+/// Unfortunately the space is not divided evenly, some nonces get never computed.
+/// The current conjecture is that nonce space is divided by chip/core address,
+/// ie. chip number 0x1a iterates all nonces 0x1axxxxxx. That's 6 bits of chip_address
+/// and 7 bits of core_address. Putting it all together:
+///
+///   work_delay = n_midstates * num_chips * cores_per_chip * 2^(32 - 7 - 6) / (freq * num_chips * cores_per_chip)
+///
+/// Simplify:
+///
+///   work_delay = n_midstates * 2^19 / freq
+///
+/// Last but not least, we apply fudge factor of 0.9 and send work 11% faster to offset
+/// delays when sending out/generating work/chips not getting proper work...:
+///
+///   work_delay = 0.9 * n_midstates * 2^19 / freq
+fn calculate_work_delay_for_pll(n_midstates: u64, pll_frequency: u64) -> f64 {
+    let space_size_per_core: u64 = 1 << 19;
+    0.9 * (n_midstates * space_size_per_core) as f64 / pll_frequency as f64
+}
+
+/// Helper method to convert seconds to FPGA ticks suitable to be written
+/// to `WORK_TIME` FPGA register.
+///
+/// Returns number of ticks.
+fn secs_to_fpga_ticks(secs: f64) -> u32 {
+    (secs * FPGA_IPCORE_F_CLK_SPEED_HZ as f64) as u32
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -901,7 +954,7 @@ mod test {
         // verify sane register values
         assert_eq!(
             h_chain_ctl.cmd_fifo.hash_chain_io.work_time.read().bits(),
-            75000,
+            36296,
             "Unexpected work time value"
         );
         assert_eq!(
@@ -1037,6 +1090,16 @@ mod test {
         assert!(
             result.is_err(),
             "Baud clock divisor unexpectedly calculated!"
+        );
+    }
+
+    /// Test work_time computation
+    #[test]
+    fn test_work_time_computation() {
+        // you need to recalc this if you change asic diff or fpga freq
+        assert_eq!(
+            secs_to_fpga_ticks(calculate_work_delay_for_pll(1, 650_000_000)),
+            36296
         );
     }
 }
