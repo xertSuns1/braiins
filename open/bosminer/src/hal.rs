@@ -21,13 +21,13 @@ use futures::channel::mpsc;
 use futures::stream::StreamExt;
 
 use std::cell::Cell;
+use std::convert::TryInto;
 use std::fmt::Debug;
 use std::mem;
 use std::sync::Arc;
 use std::time::SystemTime;
 
 use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
-use byteorder::ByteOrder;
 use downcast_rs::{impl_downcast, Downcast};
 
 /// Represents interface for Bitcoin job with access to block header from which the new work will be
@@ -53,6 +53,18 @@ pub trait BitcoinJob: Debug + Downcast + Send + Sync {
     fn bits(&self) -> u32;
     /// Checks if job is still valid for mining
     fn is_valid(&self) -> bool;
+
+    /// Extract least-significant word of merkle root that goes to chunk2 of SHA256
+    /// The word is interpreted as a little endian number.
+    #[inline]
+    fn merkle_root_tail(&self) -> u32 {
+        let merkle_root = &self.merkle_root().into_inner()[..];
+        u32::from_le_bytes(
+            merkle_root[merkle_root.len() - mem::size_of::<u32>()..]
+                .try_into()
+                .expect("slice with incorrect length"),
+        )
+    }
 }
 impl_downcast!(BitcoinJob);
 
@@ -90,7 +102,7 @@ pub struct Midstate {
 }
 
 /// Describes actual mining work for submission to a hashing hardware.
-/// Starting with merkel_root_lsw the data goes to chunk2 of SHA256.
+/// Starting with merkle_root_tail the data goes to chunk2 of SHA256.
 ///
 /// NOTE: eventhough, version and extranonce_2 are already included in the midstates, we
 /// need them as part of the MiningWork structure. The reason is stratum submission requirements.
@@ -108,10 +120,9 @@ pub struct MiningWork {
 }
 
 impl MiningWork {
-    /// Extract least-significant word of merkle root that goes to chunk2 of SHA256
-    pub fn merkel_root_lsw<T: ByteOrder>(&self) -> u32 {
-        let bytes = &self.job.merkle_root().into_inner();
-        T::read_u32(&bytes[bytes.len() - mem::size_of::<u32>()..])
+    /// Shortcut for getting merkle root tail
+    pub fn merkle_root_tail(&self) -> u32 {
+        self.job.merkle_root_tail()
     }
 
     /// Shortcut for getting current target (nBits)
