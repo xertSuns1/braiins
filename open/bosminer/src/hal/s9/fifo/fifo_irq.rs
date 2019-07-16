@@ -1,5 +1,4 @@
 use super::*;
-use crate::error;
 
 /// How big is FIFO queue? (in u32 words)
 const FIFO_WORK_TX_SIZE: u32 = 2048;

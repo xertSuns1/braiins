@@ -1,15 +1,14 @@
+use crate::misc::LOGGER;
+use slog::trace;
+
 // TODO remove thread specific code
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, SystemTime};
 
-use slog::trace;
-
+use super::error::{self, ErrorKind};
 use failure::ResultExt;
-
-use crate::error::{self, ErrorKind};
-use crate::misc::LOGGER;
 
 use byteorder::{BigEndian, ByteOrder};
 

@@ -1,3 +1,5 @@
+pub mod error;
+
 use crate::utils::compat_block_on;
 use crate::work;
 

@@ -1,3 +1,10 @@
+mod bm1387;
+pub mod error;
+pub mod fifo;
+pub mod gpio;
+pub mod power;
+pub mod registry;
+
 use std::mem::size_of;
 // TODO: remove thread specific components
 use std::sync::Arc;
@@ -10,9 +17,9 @@ use wire::utils::CompatFix;
 
 use slog::{info, trace};
 
+use error::ErrorKind;
 use failure::ResultExt;
 
-use crate::error::{self, ErrorKind};
 use crate::misc::LOGGER;
 use crate::test_utils;
 use crate::work;
@@ -24,12 +31,6 @@ use packed_struct::{PackedStruct, PackedStructSlice};
 
 use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
-
-mod bm1387;
-pub mod fifo;
-pub mod gpio;
-pub mod power;
-pub mod registry;
 
 /// How many work use to initialize the chain, use at least MAX_CHIPS_ON_CHAIN work
 /// TODO: compare this to bitmain's open_core

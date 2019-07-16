@@ -1,5 +1,4 @@
 use super::*;
-use crate::error;
 use std::thread;
 
 impl HChainFifo {
