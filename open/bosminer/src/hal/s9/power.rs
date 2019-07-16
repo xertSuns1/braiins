@@ -97,7 +97,8 @@ impl VoltageCtrlI2cBlockingBackend {
     /// * `i2c_interface_num` - index of the I2C interface in Linux dev filesystem
     pub fn new(i2c_interface_num: usize) -> Self {
         Self {
-            inner: I2cdev::new(format!("/dev/i2c-{}", i2c_interface_num)).unwrap(),
+            inner: I2cdev::new(format!("/dev/i2c-{}", i2c_interface_num))
+                .expect("i2c instantiation failed"),
         }
     }
 }
@@ -142,11 +143,17 @@ where
 
 impl VoltageCtrlBackend for VoltageCtrlI2cSharedBlockingBackend<VoltageCtrlI2cBlockingBackend> {
     fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()> {
-        self.0.lock().unwrap().write(hashboard_idx, command, data)
+        self.0
+            .lock()
+            .expect("locking failed")
+            .write(hashboard_idx, command, data)
     }
 
     fn read(&mut self, hashboard_idx: usize, command: u8, length: u8) -> error::Result<Vec<u8>> {
-        self.0.lock().unwrap().read(hashboard_idx, command, length)
+        self.0
+            .lock()
+            .expect("locking failed")
+            .read(hashboard_idx, command, length)
     }
 
     /// Custom clone implementation that clones the atomic reference counting instance (Arc) only is
@@ -257,7 +264,9 @@ where
                 let mut voltage_ctrl = Self::new(hb_backend, idx);
                 loop {
                     let now = SystemTime::now();
-                    voltage_ctrl.send_heart_beat().unwrap();
+                    voltage_ctrl
+                        .send_heart_beat()
+                        .expect("send_heart_beat failed");
 
                     //trace!(LOGGER, "Heartbeat for board {}", idx);
                     // evaluate how much time it took to send the heart beat and sleep for the rest
@@ -274,7 +283,7 @@ where
                     }
                 }
             })
-            .unwrap();
+            .expect("thread spawning failed");
         handle
     }
 }
