@@ -38,6 +38,7 @@ stratum = { git = "ssh://git@gitlab.ii.zone/x/stratum.git", branch = "master" }
 tokio-async-await = "0.1.7"
 hex = "0.3.1"
 clap = "2.33.0"
+bytes = "0.4"
 
 [dependencies.embedded-hal]
 version = "0.2.0"
