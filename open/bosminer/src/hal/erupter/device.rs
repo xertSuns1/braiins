@@ -1,6 +1,9 @@
 use super::error::{self, ErrorKind};
 use super::icarus;
 
+use crate::hal;
+use crate::work;
+
 use failure::ResultExt;
 
 const CP210X_TYPE_OUT: u8 = 0x41;
@@ -86,6 +89,45 @@ impl<'a> BlockErupter<'a> {
             .with_context(|_| ErrorKind::Usb("cannot set baud rate"))?;
 
         Ok(())
+    }
+
+    pub fn into_solver(self, work_generator: work::Generator) -> BlockErupterSolver<'a> {
+        BlockErupterSolver::new(self, work_generator)
+    }
+}
+
+/// Wrap the Block Erupter device and work generator to implement iterable object which solves
+/// incoming work and tries to find solution which is returned as an unique mining work solution
+pub struct BlockErupterSolver<'a> {
+    _device: BlockErupter<'a>,
+    _work_generator: work::Generator,
+    stop_reason: error::Result<()>,
+}
+
+impl<'a> BlockErupterSolver<'a> {
+    fn new(_device: BlockErupter<'a>, _work_generator: work::Generator) -> Self {
+        Self {
+            _device,
+            _work_generator,
+            stop_reason: Ok(()),
+        }
+    }
+
+    /// Consume the iterator and return the reason of stream termination
+    pub fn get_stop_reason(self) -> error::Result<()> {
+        self.stop_reason
+    }
+}
+
+impl<'a> Iterator for BlockErupterSolver<'a> {
+    type Item = hal::UniqueMiningWorkSolution;
+
+    /// Waits for new work and send it to the Block Erupter device
+    /// When the solution is found then the result is returned as an unique mining work solution.
+    /// When an error occurs then `None` is returned and the failure reason can be obtained with
+    /// `get_stop_reason` method which consumes the iterator.
+    fn next(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
+        None
     }
 }
 
