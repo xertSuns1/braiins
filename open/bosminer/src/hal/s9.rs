@@ -5,7 +5,6 @@ pub mod gpio;
 pub mod power;
 pub mod registry;
 
-use std::mem::size_of;
 // TODO: remove thread specific components
 use std::sync::Arc;
 use std::thread;
@@ -26,7 +25,7 @@ use crate::work;
 
 use futures_locks::Mutex;
 
-use byteorder::{BigEndian, ByteOrder, LittleEndian};
+use byteorder::{ByteOrder, LittleEndian};
 use packed_struct::{PackedStruct, PackedStructSlice};
 
 use embedded_hal::digital::v2::InputPin;
@@ -504,8 +503,8 @@ where
         tx_fifo.write_to_work_tx_fifo(work.merkle_root_tail().to_le())?;
 
         for mid in work.midstates.iter() {
-            for midstate_word in mid.state.as_slice().chunks(size_of::<u32>()).rev() {
-                tx_fifo.write_to_work_tx_fifo(BigEndian::read_u32(midstate_word))?;
+            for midstate_word in mid.state.words::<u32>().rev() {
+                tx_fifo.write_to_work_tx_fifo(midstate_word.to_be())?;
             }
         }
         Ok(work_id)

@@ -3,6 +3,10 @@ use packed_struct_codegen::PackedStruct;
 
 use bitcoin_hashes::{sha256, sha256d, sha256d::Hash, Hash as HashTrait, HashEngine};
 
+use std::convert::TryInto;
+use std::mem::size_of;
+use std::slice::Chunks;
+
 /// SHA256 digest size used in Bitcoin protocol
 pub const SHA256_DIGEST_SIZE: usize = 32;
 
@@ -73,12 +77,24 @@ impl Midstate {
     pub fn from_hex(s: &str) -> Result<Self, bitcoin_hashes::Error> {
         Ok(Self(bitcoin_hashes::hex::FromHex::from_hex(s)?))
     }
+
+    /// Get iterator for midstate words of specified type treated as a little endian
+    pub fn words<T: FromMidstateWord<T>>(&self) -> MidstateWords<T> {
+        MidstateWords::new(self.as_slice())
+    }
 }
 
 impl From<Sha256Array> for Midstate {
     /// Get midstate from binary representation of SHA256
     fn from(bytes: Sha256Array) -> Self {
         Self(bytes)
+    }
+}
+
+impl From<Midstate> for Sha256Array {
+    /// Get binary representation of SHA256 from midstate
+    fn from(midstate: Midstate) -> Self {
+        midstate.0
     }
 }
 
@@ -101,6 +117,63 @@ macro_rules! hex_fmt_impl(
 hex_fmt_impl!(Debug, Midstate);
 hex_fmt_impl!(Display, Midstate);
 hex_fmt_impl!(LowerHex, Midstate);
+
+/// Helper trait used by `MidstateWords` for reading little endian midstate word from slice created
+/// from original midstate bytes
+pub trait FromMidstateWord<T> {
+    fn from_le_bytes(bytes: &[u8]) -> T;
+}
+
+/// Macro for implementation of `FromMidstateWord` for standard integer types
+macro_rules! from_mistate_word_impl(
+    ($imp:ident) => (
+        impl FromMidstateWord<$imp> for $imp {
+            fn from_le_bytes(bytes: &[u8]) -> $imp {
+                $imp::from_le_bytes(bytes.try_into().expect("slice with incorrect length"))
+            }
+        }
+    )
+);
+
+// add more integer types when needed
+from_mistate_word_impl!(u32);
+from_mistate_word_impl!(u64);
+
+/// Iterator type for midstate words of specified type treated as a little endian
+/// The iterator is returned by `Midstate::words`.
+pub struct MidstateWords<'a, T: FromMidstateWord<T>> {
+    chunks: Chunks<'a, u8>,
+    _marker: std::marker::PhantomData<T>,
+}
+
+impl<'a, T: FromMidstateWord<T>> MidstateWords<'a, T> {
+    pub fn new(bytes: &'a [u8]) -> Self {
+        Self {
+            chunks: bytes.chunks(size_of::<T>()),
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a, T: FromMidstateWord<T>> Iterator for MidstateWords<'a, T> {
+    type Item = T;
+
+    #[inline]
+    fn next(&mut self) -> Option<T> {
+        self.chunks
+            .next()
+            .map(|midstate_word| T::from_le_bytes(midstate_word))
+    }
+}
+
+impl<'a, T: FromMidstateWord<T>> DoubleEndedIterator for MidstateWords<'a, T> {
+    #[inline]
+    fn next_back(&mut self) -> Option<T> {
+        self.chunks
+            .next_back()
+            .map(|midstate_word| T::from_le_bytes(midstate_word))
+    }
+}
 
 #[cfg(test)]
 pub mod test {
@@ -156,6 +229,47 @@ pub mod test {
             assert_eq!(block.midstate_str, format!("{}", block_midstate));
             assert_eq!(block.midstate_str, format!("{:?}", block_midstate));
             assert_eq!(block.midstate_str, format!("{:x}", block_midstate));
+        }
+    }
+
+    #[test]
+    fn test_midstate_words() {
+        use bytes::{BufMut, BytesMut};
+
+        for block in test_utils::TEST_BLOCKS.iter() {
+            // test midstate conversion to words iterator and back to bytes representation
+            // * for u32 words
+            let mut midstate = BytesMut::with_capacity(32);
+
+            for midstate_word in block.midstate.words() {
+                midstate.put_u32_le(midstate_word);
+            }
+            assert_eq!(block.midstate.as_slice(), midstate);
+            // * for u64 words
+            midstate.clear();
+            for midstate_word in block.midstate.words() {
+                midstate.put_u64_le(midstate_word);
+            }
+            assert_eq!(block.midstate.as_slice(), midstate);
+
+            // revert midstate as a reference result
+            let mut midstate_rev: Sha256Array = block.midstate.into();
+            midstate_rev.reverse();
+            let midstate_rev = &midstate_rev[..];
+
+            // test midstate reversion with words iterator
+            // * for u32 words
+            midstate.clear();
+            for midstate_word in block.midstate.words().rev() {
+                midstate.put_u32_be(midstate_word);
+            }
+            assert_eq!(midstate_rev, midstate);
+            // * for u64 words
+            midstate.clear();
+            for midstate_word in block.midstate.words().rev() {
+                midstate.put_u64_be(midstate_word);
+            }
+            assert_eq!(midstate_rev, midstate);
         }
     }
 }
