@@ -1,4 +1,5 @@
 pub mod error;
+pub mod icarus;
 
 use crate::utils::compat_block_on;
 use crate::work;
