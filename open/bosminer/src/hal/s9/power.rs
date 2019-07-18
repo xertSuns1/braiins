@@ -166,6 +166,25 @@ impl VoltageCtrlBackend for VoltageCtrlI2cSharedBlockingBackend<VoltageCtrlI2cBl
     }
 }
 
+/// Convert voltage to voltage controller value in PIC
+/// These are taken from bmminer source: getPICvoltageFromValue, getVolValueFromPICvoltage
+/// Return either `Some` value if conversion was successful, `None` otherwise
+pub fn voltage_to_pic_value(voltage: f32) -> error::Result<u8> {
+    let pic_val = (1608.420446 - 170.423497 * voltage).round();
+    if pic_val >= 0.0 && pic_val <= 255.0 {
+        Ok(pic_val as u8)
+    } else {
+        Err(ErrorKind::Power(
+            "requested voltage out of range".to_string(),
+        ))?
+    }
+}
+
+/// Convert PIC value to voltage
+pub fn pic_value_to_voltage(pic_val: u8) -> f32 {
+    (1608.420446 - pic_val as f32) / 170.423497
+}
+
 /// Represents a voltage controller for a particular hashboard
 pub struct VoltageCtrl<T> {
     // Backend that carries out the operation
@@ -297,5 +316,22 @@ mod test {
         let addr = VoltageCtrlI2cBlockingBackend::get_i2c_address(8);
         let expected_addr = 0x57u8;
         assert_eq!(addr, expected_addr, "Unexpected hashboard I2C address");
+    }
+
+    #[test]
+    fn test_voltage_to_pic() {
+        assert_eq!(voltage_to_pic_value(9.4).unwrap(), 6);
+        assert_eq!(voltage_to_pic_value(8.9).unwrap(), 92);
+        assert_eq!(voltage_to_pic_value(8.1).unwrap(), 228);
+        assert!(voltage_to_pic_value(10.0).is_err());
+    }
+
+    #[test]
+    fn test_pic_to_voltage() {
+        let epsilon = 0.01f32;
+        let difference = pic_value_to_voltage(6) - 9.40;
+        assert!(difference.abs() <= epsilon);
+        let difference = pic_value_to_voltage(92) - 8.9;
+        assert!(difference.abs() <= epsilon);
     }
 }

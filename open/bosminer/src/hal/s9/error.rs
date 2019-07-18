@@ -56,6 +56,10 @@ pub enum ErrorKind {
     /// I2C errors.
     #[fail(display = "I2C: {}", _0)]
     I2c(String),
+
+    /// Power controller errors.
+    #[fail(display = "Power: {}", _0)]
+    Power(String),
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Fail)]
