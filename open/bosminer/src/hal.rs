@@ -214,17 +214,6 @@ impl UniqueMiningWorkSolution {
     }
 
     #[inline]
-    pub fn time_offset(&self) -> u16 {
-        let job_time = self.work.job.time();
-        let offset = self
-            .time()
-            .checked_sub(job_time)
-            .expect("job time offset overflow");
-        assert!(offset <= u16::max_value().into());
-        offset as u16
-    }
-
-    #[inline]
     pub fn version(&self) -> u32 {
         let i = self.solution.midstate_idx;
         self.work.midstates[i].version

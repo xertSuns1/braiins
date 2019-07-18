@@ -252,7 +252,7 @@ impl StratumSolutionHandler {
             seq_num,
             job_id: job.id,
             nonce: solution.nonce(),
-            ntime_offset: solution.time_offset(),
+            ntime: solution.time(),
             version: solution.version(),
         };
         // send solutions back to the stratum server
