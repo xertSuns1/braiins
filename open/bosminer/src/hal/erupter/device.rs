@@ -4,7 +4,11 @@ use super::icarus;
 use crate::hal;
 use crate::work;
 
-use failure::ResultExt;
+use failure::{Fail, ResultExt};
+
+use std::convert::TryInto;
+use std::mem::size_of;
+use std::time::Duration;
 
 const CP210X_TYPE_OUT: u8 = 0x41;
 const CP210X_REQUEST_IFC_ENABLE: u8 = 0x00;
@@ -91,6 +95,44 @@ impl<'a> BlockErupter<'a> {
         Ok(())
     }
 
+    /// Send new work to the device
+    /// All old work is interrupted immediately and the search space is restarted for the new work.  
+    pub fn send_work(&self, work: icarus::WorkPayload) -> error::Result<()> {
+        self.device
+            .write_bulk(icarus::WRITE_ADDR, &work.into_bytes(), icarus::WAIT_TIMEOUT)
+            .with_context(|_| ErrorKind::Usb("cannot send work"))?;
+
+        Ok(())
+    }
+
+    /// Wait for specified amount of time to find the nonce for current work
+    /// The work have to be previously send using `send_work` method.
+    /// More solution may exist so this method must be called multiple times to get all of them.
+    /// When all search space is exhausted then the chip stops finding new nonce. The maximal time
+    /// of searching is constant for this chip and after this time no new solution is found.
+    /// The `None` is returned then timeout occurs and any nonce is found.
+    /// It is possible that during sending new work the nonce for old one can be found and returned
+    /// from this method!
+    pub fn wait_for_nonce(&self, timeout: Duration) -> error::Result<Option<u32>> {
+        let mut nonce = [0u8; size_of::<u32>()];
+        match self
+            .device
+            .read_bulk(icarus::READ_ADDR, &mut nonce, timeout)
+        {
+            Ok(n) => {
+                if n != size_of::<u32>() {
+                    Err(ErrorKind::Usb("read incorrect number of bytes"))?
+                };
+                Ok(u32::from_le_bytes(nonce)
+                    .try_into()
+                    .expect("slice with incorrect length"))
+            }
+            Err(libusb::Error::Timeout) => Ok(None),
+            Err(e) => Err(e.context(ErrorKind::Usb("cannot read nonce")).into()),
+        }
+    }
+
+    /// Converts Block Erupter device into iterator which solving generated work
     pub fn into_solver(self, work_generator: work::Generator) -> BlockErupterSolver<'a> {
         BlockErupterSolver::new(self, work_generator)
     }
@@ -134,13 +176,115 @@ impl<'a> Iterator for BlockErupterSolver<'a> {
 #[cfg(test)]
 pub mod test {
     use super::*;
+    use crate::hal::BitcoinJob;
+    use crate::test_utils;
+
+    use std::ops::{Deref, DerefMut};
+    use std::sync;
+    use std::time::SystemTime;
+
+    use lazy_static::lazy_static;
+
+    lazy_static! {
+        pub static ref USB_CONTEXT_MUTEX: sync::Mutex<()> = sync::Mutex::new(());
+        pub static ref USB_CONTEXT: libusb::Context =
+            libusb::Context::new().expect("cannot create new USB context");
+    }
+
+    struct BlockErupterGuard<'a> {
+        device: BlockErupter<'a>,
+        // context guard have to be dropped after block erupter device
+        // do not change the order of members!
+        _context_guard: sync::MutexGuard<'a, ()>,
+    }
+
+    impl<'a> BlockErupterGuard<'a> {
+        fn new(device: BlockErupter<'a>, _context_guard: sync::MutexGuard<'a, ()>) -> Self {
+            Self {
+                device,
+                _context_guard,
+            }
+        }
+    }
+
+    impl<'a> Deref for BlockErupterGuard<'a> {
+        type Target = BlockErupter<'a>;
+
+        fn deref(&self) -> &Self::Target {
+            &self.device
+        }
+    }
+
+    impl<'a> DerefMut for BlockErupterGuard<'a> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.device
+        }
+    }
+
+    /// Synchronization function to get only one device at one moment to allow parallel tests
+    fn get_block_erupter<'a>() -> BlockErupterGuard<'a> {
+        // lock USB context for mutual exclusion
+        let context_guard = USB_CONTEXT_MUTEX.lock().expect("cannot lock USB context");
+
+        let mut device =
+            BlockErupter::find(&*USB_CONTEXT).expect("cannot find Block Erupter device");
+        // try to initialize Block Erupter
+        device.init().expect("Block Erupter initialization failed");
+
+        // the USB context will be unlocked at the end of a test using this device
+        BlockErupterGuard::new(device, context_guard)
+    }
 
     #[test]
     fn test_block_erupter_init() {
-        // get lib USB context
-        let context = libusb::Context::new().expect("cannot create new USB context");
-        let mut device = BlockErupter::find(&context).expect("cannot find Block Erupter device");
-        // try to initialize Block Erupter
-        device.init().expect("Block Erupter initialization failed");
+        let _device = get_block_erupter();
+    }
+
+    #[test]
+    fn test_block_erupter_io() {
+        let device = get_block_erupter();
+
+        for (i, block) in test_utils::TEST_BLOCKS.iter().enumerate() {
+            let work = icarus::WorkPayload::new(
+                &block.midstate,
+                block.merkle_root_tail(),
+                block.time(),
+                block.bits(),
+            );
+
+            // send new work generated from test block
+            device
+                .send_work(work)
+                .expect("cannot send work to Block Erupter");
+
+            // wait for solution
+            let timeout = icarus::MAX_READ_TIME;
+            let mut timeout_rem = timeout;
+            let mut nonce_found = false;
+
+            let start = SystemTime::now();
+            loop {
+                match device
+                    .wait_for_nonce(timeout_rem)
+                    .expect("cannot read nonce from Block Erupter")
+                {
+                    None => break,
+                    Some(nonce) => {
+                        if block.nonce == nonce {
+                            nonce_found = true;
+                            break;
+                        }
+                    }
+                }
+                let duration = SystemTime::now()
+                    .duration_since(start)
+                    .expect("SystemTime::duration_since failed");
+                timeout_rem = timeout
+                    .checked_sub(duration)
+                    .unwrap_or(Duration::from_millis(1));
+            }
+
+            assert!(nonce_found, "solution for block {} cannot be found", i);
+        }
     }
 }

@@ -15,7 +15,19 @@ pub const DEVICE_CONFIGURATION: u8 = 1;
 pub const WRITE_ADDR: u8 = 0x1;
 pub const READ_ADDR: u8 = 0x81;
 
-pub const WAIT_TIMEOUT: Duration = Duration::from_millis(100);
+const WAIT_TIMEOUT_MS: u64 = 100;
+
+// how many ms below the expected completion time to abort work
+// extra in case the last read is delayed
+const READ_REDUCE_MS: f64 = WAIT_TIMEOUT_MS as f64 * 1.5;
+const HASH_TIME_MS: f64 = 0.0000000029761;
+const FULL_NONCE_TIME_MS: f64 = HASH_TIME_MS * (0xffffffffu64 + 1u64) as f64;
+
+pub const WAIT_TIMEOUT: Duration = Duration::from_millis(WAIT_TIMEOUT_MS);
+// used as a timeout in ms for reading nonce from USB -> UART bridge read
+// initialization has some latency which is reduced from full nonce time
+pub const MAX_READ_TIME: Duration =
+    Duration::from_millis(((FULL_NONCE_TIME_MS * 1000f64) - READ_REDUCE_MS) as u64);
 
 pub const WORK_PAYLOAD_SIZE: usize = 64;
 
@@ -68,7 +80,7 @@ pub mod test {
     #[test]
     fn test_work_payload() {
         for block in test_utils::TEST_BLOCKS.iter() {
-            let work_header = WorkPayload::new(
+            let work = WorkPayload::new(
                 &block.midstate,
                 block.merkle_root_tail(),
                 block.time(),
@@ -76,7 +88,7 @@ pub mod test {
             );
 
             // check binary representation of Icarus work header
-            assert_eq!(&block.icarus_bytes[..], &work_header.into_bytes()[..]);
+            assert_eq!(&block.icarus_bytes[..], &work.into_bytes()[..]);
         }
     }
 }
