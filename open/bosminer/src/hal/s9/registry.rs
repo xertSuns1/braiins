@@ -131,13 +131,13 @@ impl MiningWorkRegistry {
 
 #[cfg(test)]
 mod test {
+    use super::super::null_work;
     use super::*;
-    use crate::test_utils;
 
     #[test]
     fn test_store_work_start() {
         let mut registry = MiningWorkRegistry::new();
-        let work = test_utils::prepare_test_work(0);
+        let work = null_work::prepare(0);
 
         registry.store_work(0, work);
     }
@@ -146,8 +146,8 @@ mod test {
     #[should_panic]
     fn test_store_work_out_of_sequence_work_id() {
         let mut registry = MiningWorkRegistry::new();
-        let work1 = test_utils::prepare_test_work(0);
-        let work2 = test_utils::prepare_test_work(1);
+        let work1 = null_work::prepare(0);
+        let work2 = null_work::prepare(1);
         // store initial work
         registry.store_work(0, work1);
         // this should trigger a panic
@@ -159,7 +159,7 @@ mod test {
         let mut registry = MiningWorkRegistry::new();
         // after exhausting the full work list count, the first half of the slots must be retired
         for id in 0..MAX_WORK_LIST_COUNT {
-            let work = test_utils::prepare_test_work(id as u64);
+            let work = null_work::prepare(id as u64);
             registry.store_work(id, work);
         }
         // verify the first half being empty
@@ -181,7 +181,7 @@ mod test {
 
         // store one more item should retire work at index MAX_WORK_LIST_COUNT/2
         let retire_idx_half = MAX_WORK_LIST_COUNT / 2;
-        registry.store_work(0, test_utils::prepare_test_work(0));
+        registry.store_work(0, null_work::prepare(0));
         assert!(
             registry.pending_work_list[retire_idx_half].is_none(),
             "Work at {} was expected to be retired (after overwriting idx 0)",

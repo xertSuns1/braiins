@@ -16,13 +16,17 @@ use tokio::sync::watch;
 use std::sync::Arc;
 
 /// Shared work engine type
-type DynWorkEngine = Arc<dyn hal::WorkEngine>;
+pub type DynWorkEngine = Arc<dyn hal::WorkEngine>;
+
+fn create_engine_channel(work_engine: DynWorkEngine) -> (EngineSender, EngineReceiver) {
+    let (sender, receiver) = watch::channel(work_engine);
+    (EngineSender::new(sender), EngineReceiver::new(receiver))
+}
 
 /// Builds a WorkEngine broadcasting channel. The broadcast channel requires an initial value. We
 /// use the empty work engine that signals 'exhausted' state all the time.
 pub fn engine_channel() -> (EngineSender, EngineReceiver) {
-    let (sender, receiver) = watch::channel(Arc::new(engine::ExhaustedWork) as DynWorkEngine);
-    (EngineSender::new(sender), EngineReceiver::new(receiver))
+    create_engine_channel(Arc::new(engine::ExhaustedWork))
 }
 
 /// Sender is responsible for broadcasting a new WorkEngine to all mining
@@ -78,5 +82,15 @@ impl EngineReceiver {
 
     pub fn reschedule(&self) {
         // TODO: wakeup WorkHub to reschedule new work
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    pub use super::*;
+
+    /// Reexport function only for testing
+    pub fn create_engine_channel(work_engine: DynWorkEngine) -> (EngineSender, EngineReceiver) {
+        super::create_engine_channel(work_engine)
     }
 }
