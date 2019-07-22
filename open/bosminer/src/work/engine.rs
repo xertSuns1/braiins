@@ -121,11 +121,7 @@ impl hal::WorkEngine for VersionRolling {
             })
         }
 
-        let work = hal::MiningWork {
-            job: self.job.clone(),
-            midstates,
-            ntime: self.job.time(),
-        };
+        let work = hal::MiningWork::new(self.job.clone(), midstates, self.job.time());
         if self.has_exhausted_range(next) {
             // when the whole version space has been exhausted then mark the generated work as
             // a last one (the next call of this method will return 'Exhausted')

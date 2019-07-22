@@ -85,6 +85,17 @@ impl<T> WorkLoop<T> {
             _ => panic!("called `WorkLoop::unwrap()` on a `None` value"),
         }
     }
+
+    #[inline]
+    pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> WorkLoop<U> {
+        use WorkLoop::{Break, Continue, Exhausted};
+
+        match self {
+            Exhausted => Exhausted,
+            Break(x) => Break(f(x)),
+            Continue(x) => Continue(f(x)),
+        }
+    }
 }
 
 pub trait WorkEngine: Debug + Send + Sync {
@@ -112,7 +123,7 @@ pub struct Midstate {
 #[derive(Clone)]
 pub struct MiningWork {
     /// Bitcoin job shared with initial network protocol and work solution
-    pub job: Arc<dyn BitcoinJob>,
+    job: Arc<dyn BitcoinJob>,
     /// Multiple midstates can be generated for each work
     pub midstates: Vec<Midstate>,
     /// Start value for nTime, hardware may roll nTime further.
@@ -120,12 +131,20 @@ pub struct MiningWork {
 }
 
 impl MiningWork {
-    /// Shortcut for getting merkle root tail
+    pub fn new(job: Arc<dyn BitcoinJob>, midstates: Vec<Midstate>, ntime: u32) -> Self {
+        Self {
+            job,
+            midstates,
+            ntime,
+        }
+    }
+
+    /// Return merkle root tail
     pub fn merkle_root_tail(&self) -> u32 {
         self.job.merkle_root_tail()
     }
 
-    /// Shortcut for getting current target (nBits)
+    /// Return current target (nBits)
     #[inline]
     pub fn bits(&self) -> u32 {
         self.job.bits()
@@ -150,7 +169,7 @@ pub struct MiningWorkSolution {
 #[derive(Clone)]
 pub struct UniqueMiningWorkSolution {
     /// Time stamp when it has been fetched from the solution FIFO
-    pub timestamp: SystemTime,
+    timestamp: SystemTime,
     /// Original mining work associated with this solution
     work: MiningWork,
     /// Solution of the PoW puzzle
@@ -160,9 +179,13 @@ pub struct UniqueMiningWorkSolution {
 }
 
 impl UniqueMiningWorkSolution {
-    pub fn new(work: MiningWork, solution: MiningWorkSolution) -> Self {
+    pub fn new(
+        work: MiningWork,
+        solution: MiningWorkSolution,
+        timestamp: Option<SystemTime>,
+    ) -> Self {
         Self {
-            timestamp: SystemTime::now(),
+            timestamp: timestamp.unwrap_or_else(|| SystemTime::now()),
             work,
             solution,
             hash: Cell::new(None),

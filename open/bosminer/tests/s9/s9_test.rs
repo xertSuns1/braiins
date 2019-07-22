@@ -27,11 +27,7 @@ pub fn prepare_test_work() -> hal::MiningWork {
         state: [0u8; 32].into(),
     };
 
-    hal::MiningWork {
-        job,
-        midstates: vec![mid],
-        ntime: time,
-    }
+    hal::MiningWork::new(job, vec![mid], time)
 }
 
 /// Count replies (even duplicate ones) and erase counters

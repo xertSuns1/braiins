@@ -47,6 +47,7 @@ impl MiningWorkRegistryItem {
         status.unique_solution = Some(hal::UniqueMiningWorkSolution::new(
             self.work.clone(),
             new_solution,
+            None,
         ));
         status
     }

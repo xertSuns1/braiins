@@ -234,9 +234,5 @@ pub fn prepare_test_work(i: u64) -> hal::MiningWork {
         state: midstate_bytes.into(),
     };
 
-    hal::MiningWork {
-        job,
-        midstates: vec![mid],
-        ntime: time,
-    }
+    hal::MiningWork::new(job, vec![mid], time)
 }
