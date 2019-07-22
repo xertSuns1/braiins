@@ -181,7 +181,6 @@ pub mod test {
 
     use std::ops::{Deref, DerefMut};
     use std::sync;
-    use std::time::SystemTime;
 
     use lazy_static::lazy_static;
 
@@ -195,15 +194,19 @@ pub mod test {
         device: BlockErupter<'a>,
         // context guard have to be dropped after block erupter device
         // do not change the order of members!
-        _context_guard: sync::MutexGuard<'a, ()>,
+        context_guard: sync::MutexGuard<'a, ()>,
     }
 
     impl<'a> BlockErupterGuard<'a> {
-        fn new(device: BlockErupter<'a>, _context_guard: sync::MutexGuard<'a, ()>) -> Self {
+        fn new(device: BlockErupter<'a>, context_guard: sync::MutexGuard<'a, ()>) -> Self {
             Self {
                 device,
-                _context_guard,
+                context_guard,
             }
+        }
+
+        fn into_device(self) -> (BlockErupter<'a>, sync::MutexGuard<'a, ()>) {
+            (self.device, self.context_guard)
         }
     }
 
@@ -224,15 +227,21 @@ pub mod test {
     /// Synchronization function to get only one device at one moment to allow parallel tests
     fn get_block_erupter<'a>() -> BlockErupterGuard<'a> {
         // lock USB context for mutual exclusion
-        let context_guard = USB_CONTEXT_MUTEX.lock().expect("cannot lock USB context");
+        let mut context_guard = Some(USB_CONTEXT_MUTEX.lock().expect("cannot lock USB context"));
 
-        let mut device =
-            BlockErupter::find(&*USB_CONTEXT).expect("cannot find Block Erupter device");
+        let mut device = BlockErupter::find(&*USB_CONTEXT).unwrap_or_else(|| {
+            // unlock the guard before panicking the thread!
+            context_guard.take();
+            panic!("cannot find Block Erupter device")
+        });
         // try to initialize Block Erupter
-        device.init().expect("Block Erupter initialization failed");
+        device.init().unwrap_or_else(|_| {
+            context_guard.take();
+            panic!("Block Erupter initialization failed")
+        });
 
         // the USB context will be unlocked at the end of a test using this device
-        BlockErupterGuard::new(device, context_guard)
+        BlockErupterGuard::new(device, context_guard.unwrap())
     }
 
     #[test]
