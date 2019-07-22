@@ -1,5 +1,4 @@
-use rminer::hal;
-use rminer::test_utils;
+use rminer::hal::{self, s9::null_work};
 use rminer::utils;
 use rminer::work;
 
@@ -20,7 +19,7 @@ use tokio::timer::Delay;
 */
 pub fn prepare_test_work() -> hal::MiningWork {
     let time = 0xffffffff;
-    let job = Arc::new(test_utils::DummyJob::new(time));
+    let job = Arc::new(null_work::NullJob::new(time));
 
     let mid = hal::Midstate {
         version: 0,

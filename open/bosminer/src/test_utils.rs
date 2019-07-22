@@ -1,61 +1,12 @@
 use crate::btc;
 use crate::hal::{self, BitcoinJob};
+use crate::utils::compat_block_on;
+use crate::work;
 
 use lazy_static::lazy_static;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 
-use bitcoin_hashes::{hex::FromHex, sha256d::Hash, Hash as HashTrait};
-use byteorder::{ByteOrder, LittleEndian};
-
-/// DummyJob to be used for tests
-#[derive(Debug, Copy, Clone)]
-pub struct DummyJob {
-    hash: Hash,
-    time: u32,
-}
-
-impl DummyJob {
-    pub fn new(time: u32) -> Self {
-        Self {
-            hash: Hash::from_slice(&[0xffu8; 32]).unwrap(),
-            time,
-        }
-    }
-
-    pub fn next(&mut self) {
-        self.time += 1;
-    }
-}
-
-impl hal::BitcoinJob for DummyJob {
-    fn version(&self) -> u32 {
-        0
-    }
-
-    fn version_mask(&self) -> u32 {
-        0
-    }
-
-    fn previous_hash(&self) -> &Hash {
-        &self.hash
-    }
-
-    fn merkle_root(&self) -> &Hash {
-        &self.hash
-    }
-
-    fn time(&self) -> u32 {
-        self.time
-    }
-
-    fn bits(&self) -> u32 {
-        0xffff_ffff
-    }
-
-    fn is_valid(&self) -> bool {
-        true
-    }
-}
+use bitcoin_hashes::{hex::FromHex, sha256d::Hash};
 
 /// Real blocks used for tests
 #[derive(Copy, Clone)]
@@ -221,18 +172,117 @@ lazy_static! {
     ];
 }
 
-/// * `i` - unique identifier for the generated midstate
-pub fn prepare_test_work(i: u64) -> hal::MiningWork {
-    let job = Arc::new(DummyJob::new(0));
-    let time = job.time();
+#[derive(Debug)]
+struct TestWorkEngineInner {
+    next_test_block: Option<&'static TestBlock>,
+    test_block_iter: std::slice::Iter<'static, TestBlock>,
+}
 
-    let mut midstate_bytes = [0u8; btc::SHA256_DIGEST_SIZE];
-    LittleEndian::write_u64(&mut midstate_bytes, i);
+impl TestWorkEngineInner {
+    fn is_exhausted(&self) -> bool {
+        self.next_test_block.is_none()
+    }
 
-    let mid = hal::Midstate {
-        version: 0,
-        state: midstate_bytes.into(),
+    fn next_work(&mut self) -> hal::WorkLoop<hal::MiningWork> {
+        if self.is_exhausted() {
+            return hal::WorkLoop::Exhausted;
+        }
+
+        match self.test_block_iter.next() {
+            None => hal::WorkLoop::Break(self.next_test_block.take()),
+            Some(block) => hal::WorkLoop::Continue(self.next_test_block.replace(block)),
+        }
+        .map(|block| block.expect("test block is 'None'").into())
+    }
+}
+
+#[derive(Debug)]
+pub struct TestWorkEngine {
+    inner: StdMutex<TestWorkEngineInner>,
+}
+
+impl TestWorkEngine {
+    pub fn new() -> Self {
+        let mut test_block_iter = TEST_BLOCKS.iter();
+        let next_test_block = test_block_iter.next();
+
+        Self {
+            inner: StdMutex::new(TestWorkEngineInner {
+                next_test_block,
+                test_block_iter,
+            }),
+        }
+    }
+
+    fn lock_inner(&self) -> StdMutexGuard<TestWorkEngineInner> {
+        self.inner.lock().expect("cannot lock test work engine")
+    }
+}
+
+impl hal::WorkEngine for TestWorkEngine {
+    fn is_exhausted(&self) -> bool {
+        self.lock_inner().is_exhausted()
+    }
+
+    fn next_work(&self) -> hal::WorkLoop<hal::MiningWork> {
+        self.lock_inner().next_work()
+    }
+}
+
+pub fn create_test_work_receiver() -> work::EngineReceiver {
+    let work_engine = Arc::new(TestWorkEngine::new());
+    let (_, receiver) = work::test::create_engine_channel(work_engine);
+    receiver
+}
+
+pub fn create_test_work_generator() -> work::Generator {
+    work::Generator::new(create_test_work_receiver())
+}
+
+fn get_engine(work_receiver: &mut work::EngineReceiver) -> Arc<hal::WorkEngine> {
+    compat_block_on(work_receiver.get_engine()).expect("cannot get test work engine")
+}
+
+fn cmp_block_with_work(block: &TestBlock, work: hal::MiningWork) -> hal::MiningWork {
+    assert_eq!(block.midstate, work.midstates[0].state);
+    assert_eq!(block.merkle_root_tail(), work.merkle_root_tail());
+    assert_eq!(block.time(), work.ntime);
+    assert_eq!(block.bits(), work.bits());
+    work
+}
+
+#[test]
+fn test_work_receiver() {
+    let mut work_receiver = create_test_work_receiver();
+    let test_engine = get_engine(&mut work_receiver);
+
+    // test work engine is not exhausted so it should return the same engine
+    assert!(Arc::ptr_eq(&test_engine, &get_engine(&mut work_receiver)));
+
+    let mut work_break = false;
+    for block in TEST_BLOCKS.iter() {
+        match test_engine
+            .next_work()
+            .map(|work| cmp_block_with_work(block, work))
+        {
+            hal::WorkLoop::Exhausted => {
+                panic!("test work generator returned less work then expected")
+            }
+            hal::WorkLoop::Break(_) => {
+                assert!(!work_break, "test work generator returned double break");
+                work_break = true;
+            }
+            hal::WorkLoop::Continue(_) => {
+                assert!(!work_break, "test work generator continues after break")
+            }
+        }
+    }
+    assert!(
+        work_break,
+        "test work generator returned more work then expected"
+    );
+    match test_engine.next_work() {
+        hal::WorkLoop::Exhausted => (),
+        _ => panic!("test work generator continues after returning all work"),
     };
-
-    hal::MiningWork::new(job, vec![mid], time)
 }

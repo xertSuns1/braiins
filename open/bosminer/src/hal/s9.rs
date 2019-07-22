@@ -2,6 +2,7 @@ mod bm1387;
 pub mod error;
 pub mod fifo;
 pub mod gpio;
+pub mod null_work;
 pub mod power;
 pub mod registry;
 
@@ -20,7 +21,6 @@ use error::ErrorKind;
 use failure::ResultExt;
 
 use crate::misc::LOGGER;
-use crate::test_utils;
 use crate::work;
 
 use futures_locks::Mutex;
@@ -523,7 +523,7 @@ where
         NUM_WORK_TO_OPEN_CORE
     );
     for i in 0..NUM_WORK_TO_OPEN_CORE {
-        let work = &test_utils::prepare_test_work(0);
+        let work = &null_work::prepare(0);
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
         super::s9::HChainCtl::<T>::send_work(tx_fifo, &work, i as u32).expect("send work");
     }
@@ -973,5 +973,4 @@ mod test {
             "Baud clock divisor unexpectedly calculated!"
         );
     }
-
 }
