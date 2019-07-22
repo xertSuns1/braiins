@@ -5,6 +5,9 @@ pub mod icarus;
 use crate::utils::compat_block_on;
 use crate::work;
 
+use crate::misc::LOGGER;
+use slog::{error, info};
+
 use tokio_threadpool::blocking;
 
 // use old futures which is compatible with current tokio
@@ -17,15 +20,13 @@ fn main_task(
     work_solver: work::Solver,
     _mining_stats: Arc<Mutex<super::MiningStats>>,
     _shutdown: crate::hal::ShutdownSender,
-) {
+) -> crate::error::Result<()> {
     let (mut generator, _solution_sender) = work_solver.split();
-
-    use crate::misc::LOGGER;
-    use slog::info;
 
     info!(LOGGER, "Erupter: waiting for work...");
     let work = compat_block_on(generator.generate()).unwrap();
     info!(LOGGER, "Erupter: {:?}", work.job);
+    Ok(())
 }
 
 /// Entry point for running the hardware backend
@@ -47,7 +48,9 @@ pub fn run(
                 let (work_solver, mining_stats, shutdown) = args
                     .take()
                     .expect("`tokio_threadpool::blocking` called FnOnce more than once");
-                main_task(work_solver, mining_stats, shutdown);
+                if let Err(e) = main_task(work_solver, mining_stats, shutdown) {
+                    error!(LOGGER, "{}", e);
+                }
             })
             .map_err(|_| panic!("the threadpool shut down"))
         }),
