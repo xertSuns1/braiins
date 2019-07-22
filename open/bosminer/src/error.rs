@@ -106,6 +106,14 @@ impl From<hal::Error> for Error {
     }
 }
 
+impl From<hal::ErrorKind> for Error {
+    fn from(kind: hal::ErrorKind) -> Self {
+        Self {
+            inner: Context::new(ErrorKind::Backend(kind.to_string())),
+        }
+    }
+}
+
 impl From<Context<hal::ErrorKind>> for Error {
     fn from(context: Context<hal::ErrorKind>) -> Self {
         Self {

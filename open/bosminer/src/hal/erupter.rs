@@ -2,8 +2,8 @@ pub mod device;
 pub mod error;
 pub mod icarus;
 
-use crate::utils::compat_block_on;
 use crate::work;
+use error::ErrorKind;
 
 use crate::misc::LOGGER;
 use slog::{error, info};
@@ -11,21 +11,46 @@ use slog::{error, info};
 use tokio_threadpool::blocking;
 
 // use old futures which is compatible with current tokio
-use futures_01::future::poll_fn;
+use futures_01::future::{poll_fn, Future};
 use futures_locks::Mutex;
 
+use failure::ResultExt;
 use std::sync::Arc;
 
 fn main_task(
     work_solver: work::Solver,
-    _mining_stats: Arc<Mutex<super::MiningStats>>,
+    mining_stats: Arc<Mutex<super::MiningStats>>,
     _shutdown: crate::hal::ShutdownSender,
 ) -> crate::error::Result<()> {
-    let (mut generator, _solution_sender) = work_solver.split();
+    info!(LOGGER, "Block Erupter: finding device in USB...");
+    let usb_context =
+        libusb::Context::new().with_context(|_| ErrorKind::Usb("cannot create USB context"))?;
+    let mut device = device::BlockErupter::find(&usb_context)
+        .ok_or_else(|| ErrorKind::Usb("cannot find Block Erupter device"))?;
 
-    info!(LOGGER, "Erupter: waiting for work...");
-    let work = compat_block_on(generator.generate()).unwrap();
-    info!(LOGGER, "Erupter: {:?}", work.job);
+    info!(LOGGER, "Block Erupter: initialization...");
+    device.init()?;
+    info!(
+        LOGGER,
+        "Block Erupter: initialized and ready to solve the work!"
+    );
+
+    let (generator, solution_sender) = work_solver.split();
+    let mut solver = device.into_solver(generator);
+
+    // iterate until there exists any work or the error occurs
+    for solution in &mut solver {
+        solution_sender.send(solution);
+
+        mining_stats
+            .lock()
+            .wait()
+            .expect("cannot lock mining stats")
+            .unique_solutions += 1;
+    }
+
+    // check solver for errors
+    solver.get_stop_reason()?;
     Ok(())
 }
 
