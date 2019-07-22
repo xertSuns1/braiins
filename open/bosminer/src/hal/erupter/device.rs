@@ -2,13 +2,15 @@ use super::error::{self, ErrorKind};
 use super::icarus;
 
 use crate::hal;
+use crate::utils::compat_block_on;
 use crate::work;
 
 use failure::{Fail, ResultExt};
 
+use std::cell::RefCell;
 use std::convert::TryInto;
 use std::mem::size_of;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 const CP210X_TYPE_OUT: u8 = 0x41;
 const CP210X_REQUEST_IFC_ENABLE: u8 = 0x00;
@@ -141,23 +143,90 @@ impl<'a> BlockErupter<'a> {
 /// Wrap the Block Erupter device and work generator to implement iterable object which solves
 /// incoming work and tries to find solution which is returned as an unique mining work solution
 pub struct BlockErupterSolver<'a> {
-    _device: BlockErupter<'a>,
-    _work_generator: work::Generator,
-    stop_reason: error::Result<()>,
+    device: BlockErupter<'a>,
+    work_generator: work::Generator,
+    work_start: SystemTime,
+    curr_work: Option<hal::MiningWork>,
+    next_solution: Option<hal::UniqueMiningWorkSolution>,
+    solution_id: u32,
+    stop_reason: RefCell<error::Result<()>>,
 }
 
 impl<'a> BlockErupterSolver<'a> {
-    fn new(_device: BlockErupter<'a>, _work_generator: work::Generator) -> Self {
+    fn new(device: BlockErupter<'a>, work_generator: work::Generator) -> Self {
         Self {
-            _device,
-            _work_generator,
-            stop_reason: Ok(()),
+            device,
+            work_generator,
+            work_start: SystemTime::UNIX_EPOCH,
+            curr_work: None,
+            next_solution: None,
+            solution_id: 0,
+            stop_reason: RefCell::new(Ok(())),
         }
     }
 
     /// Consume the iterator and return the reason of stream termination
     pub fn get_stop_reason(self) -> error::Result<()> {
-        self.stop_reason
+        // the object is consumed so replacing with `Ok` is fine
+        self.stop_reason.replace(Ok(()))
+    }
+
+    fn send_work(&mut self, work: &hal::MiningWork) {
+        let work_payload = icarus::WorkPayload::new(
+            &work.midstates[0].state,
+            work.merkle_root_tail(),
+            work.ntime,
+            work.bits(),
+        );
+        self.work_start = SystemTime::now();
+        self.device.send_work(work_payload).unwrap_or_else(|e| {
+            *self.stop_reason.get_mut() = Err(e);
+        });
+    }
+
+    fn wait_for_nonce(&self) -> Option<(u32, SystemTime)> {
+        let duration = match SystemTime::now().duration_since(self.work_start) {
+            Ok(value) => value,
+            Err(e) => {
+                *self.stop_reason.borrow_mut() = Err(e
+                    .context(ErrorKind::Timer(
+                        "cannot measure elapsed time of work solution",
+                    ))
+                    .into());
+                return None;
+            }
+        };
+        let timeout_rem = icarus::MAX_READ_TIME
+            .checked_sub(duration)
+            .unwrap_or(icarus::WAIT_TIMEOUT);
+
+        self.device
+            .wait_for_nonce(timeout_rem)
+            .unwrap_or_else(|e| {
+                // return `None` to indicate that nonce wasn't found and store error to the object
+                // the stop reason can be later obtained with `get_stop_reason`
+                *self.stop_reason.borrow_mut() = Err(e);
+                None
+            })
+            .map(|nonce| (nonce, SystemTime::now()))
+    }
+
+    fn create_unique_solution(
+        work: hal::MiningWork,
+        nonce: u32,
+        timestamp: SystemTime,
+        solution_id: u32,
+    ) -> hal::UniqueMiningWorkSolution {
+        hal::UniqueMiningWorkSolution::new(
+            work,
+            hal::MiningWorkSolution {
+                nonce,
+                ntime: None,
+                midstate_idx: 0,
+                solution_id,
+            },
+            Some(timestamp),
+        )
     }
 }
 
@@ -168,7 +237,61 @@ impl<'a> Iterator for BlockErupterSolver<'a> {
     /// When the solution is found then the result is returned as an unique mining work solution.
     /// When an error occurs then `None` is returned and the failure reason can be obtained with
     /// `get_stop_reason` method which consumes the iterator.
-    fn next(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(solution) = self.next_solution.take() {
+            // return solution for new work
+            // this solves the issue when the solution is found for old work during sending new one
+            // the work validation determines if the nonce is solution for old work or new one
+            return Some(solution);
+        }
+        let mut prev_work = None;
+        while self.stop_reason.borrow().is_ok() {
+            if let Some(work) = &self.curr_work {
+                // waiting for solution for maximal remaining time
+                if let Some((nonce, timestamp)) = self.wait_for_nonce() {
+                    // found solution!
+                    let solution = Self::create_unique_solution(
+                        work.clone(),
+                        nonce,
+                        timestamp,
+                        self.solution_id,
+                    );
+                    // increment counter for next solution id
+                    self.solution_id = self.solution_id.checked_add(1).expect("too much solutions");
+                    return Some(match prev_work.take() {
+                        None => solution,
+                        // when solution has been found very quickly then it is possible that the
+                        // nonce corresponds to previous work
+                        Some((prev_work, prev_solution_id)) => {
+                            self.next_solution = Some(solution);
+                            Self::create_unique_solution(
+                                prev_work,
+                                nonce,
+                                timestamp,
+                                prev_solution_id,
+                            )
+                        }
+                    });
+                }
+                if self.stop_reason.borrow().is_err() {
+                    // some error occurs during waiting for solution
+                    break;
+                }
+            }
+
+            prev_work = self.curr_work.take().map(|work| (work, self.solution_id));
+            match compat_block_on(self.work_generator.generate()) {
+                // end of stream
+                None => break,
+                // send new work and wait for result in the next iteration when no error occurs
+                Some(work) => {
+                    self.send_work(&work);
+                    self.curr_work = Some(work);
+                    self.solution_id = 0;
+                }
+            };
+        }
+        // some error occurs or stream from work generator is closed
         None
     }
 }
@@ -295,5 +418,35 @@ pub mod test {
 
             assert!(nonce_found, "solution for block {} cannot be found", i);
         }
+    }
+
+    #[test]
+    fn test_block_erupter_solver() {
+        let work_generator = test_utils::create_test_work_generator();
+        let (device, _device_guard) = get_block_erupter().into_device();
+
+        // convert Block Erupter device to work solver
+        // the work is generated from test work generator
+        let mut solver = device.into_solver(work_generator);
+
+        let mut blocks_iter = test_utils::TEST_BLOCKS.iter();
+        let mut block = blocks_iter.next().expect("there is no test block");
+
+        for solution in &mut solver {
+            if block.hash == solution.hash() {
+                // when solution has been found for current block then
+                // move to the next one and wait for its solution
+                block = match blocks_iter.next() {
+                    // stop finding solution when all test blocks are solved
+                    None => break,
+                    Some(value) => value,
+                };
+            }
+        }
+        solver.get_stop_reason().expect("solver failed");
+        assert!(
+            blocks_iter.next().is_none(),
+            "Block Erupter solver does not solve all test blocks"
+        );
     }
 }
