@@ -12,6 +12,9 @@ pub enum ErrorKind {
     /// Lib USB error.
     #[fail(display = "USB: {}", _0)]
     Usb(&'static str),
+    /// Error related to time measurement.
+    #[fail(display = "Timer: {}", _0)]
+    Timer(&'static str),
 }
 
 /// Implement Fail trait instead of use Derive to get more control over custom type.
