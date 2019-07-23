@@ -53,10 +53,35 @@ eval $(./bb.py toolchain 2>/dev/null)
 
 ```shell
 cd to/rurminer
-cargo build
+cargo build --target <TARGET> --features <BACKEND>
 ```
 
-The resulting binary is in: ```target/arm-unknown-linux-musleabi/debug/rminer```. Currently, all musl targets are being statically linked - see here for details: https://github.com/japaric/rust-cross
+The resulting binary is in: ```target/<TARGET>/debug/rminer```. Currently, all musl targets are being statically linked - see here for details: https://github.com/japaric/rust-cross
+
+### Backend and Target Selection
+
+The correct backend and target platform must be selected for building miner. The following backends are supported:
+
+- _erupter_: Block Erupter
+- _antminer_s9_: Antminer S9 (_arm-unknown-linux-musleabi_)
+
+```shell
+# build for Bitmain's Antminer S9
+cargo build --target "arm-unknown-linux-musleabi" --features "antminer_s9"
+
+# build for Block Erupter USB miner compatible with host target
+cargo build --features "erupter"
+```
+
+#### Override Target Default Configuration
+
+Cargo can also be configured through environment variables and it is possible to set target and then use only `cargo build` without additional parameters.
+
+```shell
+export CARGO_BUILD_TARGET=arm-unknown-linux-musleabi
+
+cargo build --features "antminer_s9"
+```
 
 # Implementation Notes
 
@@ -93,7 +118,7 @@ NOTE: for the time being, the key MUST NOT have a passphrase. Therefore, only
 temporary development key should be used.
 
 ```shell
-cargo test -- --hostname <HOSTNAME>
+cargo test --target <TARGET> --features <BACKEND> -- --hostname <HOSTNAME>
 ```
 
 This runs all tests on remote machine specified by argument *--hostname*. It is possible to omit this additional parameter
@@ -111,9 +136,22 @@ cargo test
 ```
 
 ## Integration tests
+
 The sources for integration tests can be found in ```tests/``` subdirectory. The command ```cargo test``` also results in building all integration tests. Since each test is a separate crate, there are separate binaries for each test. The resulting test binaries can be found in ```target/arm-unknown-linux-musleabi/debug/```, too. The binary file starts with the prefix that corresponds with the integration test source name. E.g:
 
 ```tests/s9_test.rs``` -> ```s9_test-c86bb9af61985799``` The hash would be different for each build for the current state of the project sources.
+
+## Running Miner
+
+The miner can be run on host target or on remote one depending on backend and supported targets.
+
+```shell
+# run miner on host target (without runner)
+cargo run --target <TARGET> --features <BACKEND> -- --pool <POOLV2PROXY> --user <POOLUSER>
+
+# run miner on remote target (using runner written in python)
+cargo run --target <TARGET> --features <BACKEND> -- [--hostname <HOSTNAME>] -- --pool <POOLV2PROXY> --user <POOLUSER>
+```
 
 ## Logging
 
