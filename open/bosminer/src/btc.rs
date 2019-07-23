@@ -16,6 +16,13 @@ pub const DIFFICULTY_1_TARGET_BYTES: [u8; SHA256_DIGEST_SIZE] = [
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
 
+/// https://github.com/bitcoin/bips/blob/master/bip-0320.mediawiki
+/// Sixteen bits from the block header nVersion field, starting from 13 and ending at 28 inclusive,
+/// are reserved for general use.
+/// This specification does not reserve specific bits for specific purposes.
+pub const BIP320_VERSION_MASK: u32 = 0x1fffe000;
+pub const BIP320_VERSION_SHIFT: u32 = 13;
+
 /// A Bitcoin block header is 80 bytes long
 pub const BLOCK_HEADER_SIZE: usize = 80;
 

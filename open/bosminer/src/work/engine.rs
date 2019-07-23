@@ -8,10 +8,6 @@ use std::sync::Arc;
 
 use bitcoin_hashes::Hash;
 
-// TODO: move to BTC
-const VERSION_MASK: u32 = 0x1fffe000;
-const VERSION_SHIFT: u32 = 13;
-
 #[derive(Debug)]
 pub struct ExhaustedWork;
 
@@ -41,7 +37,7 @@ pub struct VersionRolling {
 
 impl VersionRolling {
     pub fn new(job: Arc<dyn hal::BitcoinJob>, midstates: u16) -> Self {
-        let base_version = job.version() & !VERSION_MASK;
+        let base_version = job.version() & !btc::BIP320_VERSION_MASK;
         Self {
             job,
             midstates,
@@ -53,7 +49,7 @@ impl VersionRolling {
     /// Convert the allocated index to a block version as per BIP320
     #[inline]
     fn get_block_version(&self, index: u16) -> u32 {
-        self.base_version | ((index as u32) << VERSION_SHIFT)
+        self.base_version | ((index as u32) << btc::BIP320_VERSION_SHIFT)
     }
 
     /// Check if given version cannot be used for next range
