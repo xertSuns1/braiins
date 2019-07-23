@@ -1,7 +1,5 @@
 //! The rurminer errors
 
-use crate::hal;
-
 use failure::{Backtrace, Context, Fail};
 use std::fmt::{self, Debug, Display};
 
@@ -97,27 +95,33 @@ impl From<Context<String>> for Error {
     }
 }
 
-impl From<hal::Error> for Error {
-    fn from(hal_error: hal::Error) -> Self {
-        let msg = hal_error.to_string();
-        Self {
-            inner: hal_error.context(ErrorKind::Backend(msg)),
+#[cfg(feature = "backend_selected")]
+pub mod backend {
+    use super::*;
+    use crate::hal;
+
+    impl From<hal::Error> for Error {
+        fn from(hal_error: hal::Error) -> Self {
+            let msg = hal_error.to_string();
+            Self {
+                inner: hal_error.context(ErrorKind::Backend(msg)),
+            }
         }
     }
-}
 
-impl From<hal::ErrorKind> for Error {
-    fn from(kind: hal::ErrorKind) -> Self {
-        Self {
-            inner: Context::new(ErrorKind::Backend(kind.to_string())),
+    impl From<hal::ErrorKind> for Error {
+        fn from(kind: hal::ErrorKind) -> Self {
+            Self {
+                inner: Context::new(ErrorKind::Backend(kind.to_string())),
+            }
         }
     }
-}
 
-impl From<Context<hal::ErrorKind>> for Error {
-    fn from(context: Context<hal::ErrorKind>) -> Self {
-        Self {
-            inner: context.map(|info| ErrorKind::Backend(info.to_string())),
+    impl From<Context<hal::ErrorKind>> for Error {
+        fn from(context: Context<hal::ErrorKind>) -> Self {
+            Self {
+                inner: context.map(|info| ErrorKind::Backend(info.to_string())),
+            }
         }
     }
 }
