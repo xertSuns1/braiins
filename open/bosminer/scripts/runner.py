@@ -4,6 +4,7 @@ import os
 import sys
 import argparse
 import toml
+import string
 
 from fabric import Connection
 
@@ -16,6 +17,12 @@ CONFIG_PATHS = ['.', '..']
 
 class RunnerError(Exception):
     pass
+
+
+def is_test_harness(path):
+    # each test ends with 16 chars long hexadecimal number
+    suffix = (path.rsplit('-', 1) + [None])[0:2][1]
+    return suffix and len(suffix) == 16 and set(suffix).issubset(string.hexdigits)
 
 
 def main(argv):
@@ -59,7 +66,7 @@ def main(argv):
     test_name = os.path.basename(test)
 
     # disable parallelism in tests
-    remote_argv = ['--test-threads', '1']
+    remote_argv = ['--test-threads', '1'] if is_test_harness(test) else []
     remote_argv += extra_args
 
     try:
