@@ -134,7 +134,7 @@ pub trait FromMidstateWord<T> {
 }
 
 /// Macro for implementation of `FromMidstateWord` for standard integer types
-macro_rules! from_mistate_word_impl(
+macro_rules! from_midstate_word_impl (
     ($imp:ident) => (
         impl FromMidstateWord<$imp> for $imp {
             fn from_le_bytes(bytes: &[u8]) -> $imp {
@@ -145,8 +145,8 @@ macro_rules! from_mistate_word_impl(
 );
 
 // add more integer types when needed
-from_mistate_word_impl!(u32);
-from_mistate_word_impl!(u64);
+from_midstate_word_impl!(u32);
+from_midstate_word_impl!(u64);
 
 /// Iterator type for midstate words of specified type treated as a little endian
 /// The iterator is returned by `Midstate::words`.
@@ -235,7 +235,7 @@ pub mod test {
             let block_midstate = block_header.midstate();
             assert_eq!(block.midstate, block_midstate);
 
-            // check expected format of midstate in hex string with multiple formaters
+            // check expected format of midstate in hex string with multiple formatters
             assert_eq!(block.midstate_str, block_midstate.to_hex());
             assert_eq!(block.midstate_str, format!("{}", block_midstate));
             assert_eq!(block.midstate_str, format!("{:?}", block_midstate));
