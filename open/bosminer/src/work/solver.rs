@@ -20,14 +20,13 @@ impl Solver {
         (self.work_generator, self.solution_sender)
     }
 
-    /// Construct new WorkHub and associated queue to send work through
-    /// This is runner/orchestrator/pump-facing function
+    /// Construct new work solver from engine receiver and associated channel to send the results
     pub fn new(
-        work_generator: Generator,
+        engine_receiver: EngineReceiver,
         solution_queue_tx: mpsc::UnboundedSender<hal::UniqueMiningWorkSolution>,
     ) -> Self {
         Self {
-            work_generator,
+            work_generator: Generator::new(engine_receiver),
             solution_sender: SolutionSender(solution_queue_tx),
         }
     }
