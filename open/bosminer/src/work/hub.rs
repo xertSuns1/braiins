@@ -115,7 +115,7 @@ impl JobSolutionReceiver {
     fn trace_share(solution: &hal::UniqueMiningWorkSolution, target: &uint::U256) {
         // TODO: create specialized structure 'Target' and rewrite it
         let mut xtarget = [0u8; 32];
-        target.to_big_endian(&mut xtarget[..]);
+        target.to_big_endian(&mut xtarget);
 
         trace!(
             LOGGER,

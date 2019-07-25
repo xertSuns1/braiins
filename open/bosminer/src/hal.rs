@@ -58,7 +58,7 @@ pub trait BitcoinJob: Debug + Downcast + Send + Sync {
     /// The word is interpreted as a little endian number.
     #[inline]
     fn merkle_root_tail(&self) -> u32 {
-        let merkle_root = &self.merkle_root().into_inner()[..];
+        let merkle_root = &self.merkle_root().into_inner();
         u32::from_le_bytes(
             merkle_root[merkle_root.len() - mem::size_of::<u32>()..]
                 .try_into()
