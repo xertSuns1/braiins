@@ -35,15 +35,21 @@ pub const WORK_PAYLOAD_SIZE: usize = 64;
 #[derive(PackedStruct, Debug, Clone, Copy, Default)]
 #[packed_struct(endian = "lsb")]
 pub struct WorkPayload {
+    /// Internal state of SHA256 after processing the first chunk (32 bytes)
     midstate: [u32; 8],
+    /// The following fields are used by some variants of the chip and are not documented
     check: u8,
     data: u8,
     cmd: u8,
     prefix: u8,
     unused: [u8; 15],
     id: u8,
+    /// Current target in compact format (network difficulty)
+    /// https://en.bitcoin.it/wiki/Difficulty
     pub bits: u32,
+    /// Current block timestamp as seconds since 1970-01-01T00:00 UTC
     pub time: u32,
+    /// Least-significant word of merkle root that goes to chunk2 of SHA256
     pub merkle_tail: u32,
 }
 

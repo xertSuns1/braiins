@@ -60,7 +60,7 @@ pub fn run(
     mining_stats: Arc<Mutex<super::MiningStats>>,
     shutdown: crate::hal::ShutdownSender,
 ) {
-    // wrap the work solver to Option to overcome FnOnce closure inside FnMut
+    // wrap `main_task` parameters to Option to overcome FnOnce closure inside FnMut
     let mut args = Some((work_solver, mining_stats, shutdown));
 
     // spawn future in blocking context which guarantees that the task is run in separate thread
