@@ -58,7 +58,7 @@ impl BlockHeader {
     /// Compute SHA256 double hash
     pub fn hash(&self) -> Hash {
         let block_bytes = self.into_bytes();
-        sha256d::Hash::hash(&block_bytes[..])
+        sha256d::Hash::hash(&block_bytes)
     }
 
     /// Compute SHA256 midstate from first chunk of block header
@@ -77,10 +77,6 @@ type Sha256Array = [u8; SHA256_DIGEST_SIZE];
 pub struct Midstate(Sha256Array);
 
 impl Midstate {
-    pub fn as_slice(&self) -> &[u8] {
-        &self.0[..]
-    }
-
     pub fn from_hex(s: &str) -> Result<Self, bitcoin_hashes::Error> {
         // bitcoin crate implements `FromHex` trait for byte arrays with macro `impl_fromhex_array!`
         // this conversion is compatible with `Sha256Array` which is alias to array
@@ -89,7 +85,7 @@ impl Midstate {
 
     /// Get iterator for midstate words of specified type treated as a little endian
     pub fn words<T: FromMidstateWord<T>>(&self) -> MidstateWords<T> {
-        MidstateWords::new(self.as_slice())
+        MidstateWords::new(self.as_ref())
     }
 }
 
@@ -117,7 +113,7 @@ macro_rules! hex_fmt_impl(
     ($imp:ident, $ty:ident) => (
         impl ::std::fmt::$imp for $ty {
             fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                ::bitcoin_hashes::hex::format_hex(self.as_slice(), fmt)
+                ::bitcoin_hashes::hex::format_hex(self.as_ref(), fmt)
             }
         }
     )
@@ -217,7 +213,7 @@ pub mod test {
             assert_eq!(block.hash_str, format!("{:x}", block_hash));
 
             // check binary representation of Bitcoin block header
-            assert_eq!(&block.header_bytes[..], &block_header.into_bytes()[..]);
+            assert_eq!(block.header_bytes[..], block_header.into_bytes()[..]);
         }
     }
 
@@ -255,18 +251,17 @@ pub mod test {
             for midstate_word in block.midstate.words() {
                 midstate.put_u32_le(midstate_word);
             }
-            assert_eq!(block.midstate.as_slice(), midstate);
+            assert_eq!(block.midstate.as_ref()[..], midstate);
             // * for u64 words
             midstate.clear();
             for midstate_word in block.midstate.words() {
                 midstate.put_u64_le(midstate_word);
             }
-            assert_eq!(block.midstate.as_slice(), midstate);
+            assert_eq!(block.midstate.as_ref()[..], midstate);
 
             // revert midstate as a reference result
             let mut midstate_rev: Sha256Array = block.midstate.into();
             midstate_rev.reverse();
-            let midstate_rev = &midstate_rev[..];
 
             // test midstate reversion with words iterator
             // * for u32 words
@@ -274,13 +269,13 @@ pub mod test {
             for midstate_word in block.midstate.words().rev() {
                 midstate.put_u32_be(midstate_word);
             }
-            assert_eq!(midstate_rev, midstate);
+            assert_eq!(midstate_rev[..], midstate);
             // * for u64 words
             midstate.clear();
             for midstate_word in block.midstate.words().rev() {
                 midstate.put_u64_be(midstate_word);
             }
-            assert_eq!(midstate_rev, midstate);
+            assert_eq!(midstate_rev[..], midstate);
         }
     }
 }

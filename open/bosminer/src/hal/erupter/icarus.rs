@@ -94,7 +94,7 @@ pub mod test {
             );
 
             // check binary representation of Icarus work header
-            assert_eq!(&block.icarus_bytes[..], &work.into_bytes()[..]);
+            assert_eq!(block.icarus_bytes[..], work.into_bytes()[..]);
         }
     }
 }
