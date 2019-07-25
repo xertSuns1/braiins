@@ -32,6 +32,7 @@ impl<'a> BlockErupter<'a> {
     }
 
     /// Try to find Block Erupter connected to USB
+    /// Only first device is returned when multiple Block Erupters are connected.
     pub fn find(context: &'a libusb::Context) -> Option<Self> {
         context
             .open_device_with_vid_pid(icarus::ID_VENDOR, icarus::ID_PRODUCT)
@@ -39,6 +40,9 @@ impl<'a> BlockErupter<'a> {
     }
 
     /// Initialize Block Erupter device to accept work to solution
+    /// The USB device using a standard `CP210x` chip, which results in loading standard driver into
+    /// the kernel for handling USB to UART bridge. This initialization tries to detach this driver
+    /// from the kernel and provide its own implementation implemented by the `libusb` library.
     pub fn init(&mut self) -> error::Result<()> {
         self.device
             .reset()

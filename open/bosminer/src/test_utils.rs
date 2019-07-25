@@ -22,6 +22,9 @@ pub struct TestBlock {
     bits: u32,
     pub nonce: u32,
     pub header_bytes: [u8; 80],
+    /// The following fields are used for HW specific tests
+    /// There are placed here to ensure relation between job and expected result
+    /// It mitigate consistency issues when job is removed or new one is added
     pub icarus_bytes: [u8; 64],
 }
 
@@ -198,6 +201,8 @@ impl TestWorkEngineInner {
 
 #[derive(Debug)]
 pub struct TestWorkEngine {
+    // standard Mutex allows create `TestWorkEngineInner` with mutable self reference in `next_work`
+    // and it also satisfy `hal::WorkEngine` requirement for `Send + Sync`
     inner: StdMutex<TestWorkEngineInner>,
 }
 

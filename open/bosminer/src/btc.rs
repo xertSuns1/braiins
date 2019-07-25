@@ -82,6 +82,8 @@ impl Midstate {
     }
 
     pub fn from_hex(s: &str) -> Result<Self, bitcoin_hashes::Error> {
+        // bitcoin crate implements `FromHex` trait for byte arrays with macro `impl_fromhex_array!`
+        // this conversion is compatible with `Sha256Array` which is alias to array
         Ok(Self(bitcoin_hashes::hex::FromHex::from_hex(s)?))
     }
 
@@ -150,6 +152,8 @@ from_mistate_word_impl!(u64);
 /// The iterator is returned by `Midstate::words`.
 pub struct MidstateWords<'a, T: FromMidstateWord<T>> {
     chunks: Chunks<'a, u8>,
+    // the marker is needed because `T` is not used in this structure
+    // but it is required in constructor for creating chunks of size specified by this type
     _marker: std::marker::PhantomData<T>,
 }
 
