@@ -3,7 +3,7 @@
 use crate::btc;
 use crate::hal;
 
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use bitcoin_hashes::Hash;
@@ -21,53 +21,64 @@ impl hal::WorkEngine for ExhaustedWork {
     }
 }
 
-/// Version rolling implements WorkEngine trait and represents a shared source of work for mining
-/// backends. Each instance takes care of atomically allocating version field ranges until the
-/// range is full exhausted
+/// BIP320 specifies sixteen bits in block header nVersion field
+/// The maximal index represent the range which is excluded so it must be incremented by 1.
+const BIP320_MAX_INDEX: u32 = btc::BIP320_VERSION_MAX + 1;
+
+/// Primitive for atomic range counter
+/// This structure can be freely shared among parallel processes and each range is returned only to
+/// one competing process. The structure returns ranges until maximal allowed index is reached.
 #[derive(Debug, Clone)]
-pub struct VersionRolling {
-    job: Arc<dyn hal::BitcoinJob>,
-    /// Number of midstates that each generated work covers
-    midstates: u16,
-    /// Starting value of the rolled part of the version (before BIP320 shift)
-    curr_version: Arc<AtomicU16>,
-    /// Base Bitcoin block header version with BIP320 bits cleared
-    base_version: u32,
+struct AtomicRange {
+    /// Maximal index value which cannot be exceeded
+    max_index: u32,
+    /// Size of step between each range
+    step_size: u32,
+    /// Current index used as a starting index for next range
+    curr_index: Arc<AtomicU32>,
 }
 
-impl VersionRolling {
-    pub fn new(job: Arc<dyn hal::BitcoinJob>, midstates: u16) -> Self {
-        let base_version = job.version() & !btc::BIP320_VERSION_MASK;
+impl AtomicRange {
+    /// Construct atomic range iterator with following parameters:
+    /// `step_size` - size of step for each range
+    /// `start_index` - starting index returned in the first range
+    /// <start_index, start_index + step_size)
+    /// `max_index` - maximal index returned in the last range
+    /// <max_index - step_size, max_index)
+    pub fn new(start_index: u32, max_index: u32, step_size: u32) -> Self {
+        assert!(start_index <= max_index);
+        assert!(step_size > 0);
         Self {
-            job,
-            midstates,
-            curr_version: Arc::new(AtomicU16::new(0)),
-            base_version,
+            max_index,
+            step_size,
+            curr_index: Arc::new(AtomicU32::new(start_index)),
         }
     }
 
-    /// Convert the allocated index to a block version as per BIP320
-    #[inline]
-    fn get_block_version(&self, index: u16) -> u32 {
-        self.base_version | ((index as u32) << btc::BIP320_VERSION_SHIFT)
+    /// Try to add some `count` to `current` value with check that the result does not exceed
+    /// maximal index
+    fn checked_add(&self, current: u32, count: u32) -> Option<u32> {
+        current
+            .checked_add(count)
+            .filter(|value| *value <= self.max_index)
     }
 
-    /// Check if given version cannot be used for next range
-    #[inline]
-    fn has_exhausted_range(&self, version: u16) -> bool {
-        version.checked_add(self.midstates).is_none()
+    /// Atomically get current index which will be used for next returned range
+    fn get_current(&self) -> u32 {
+        self.curr_index.load(Ordering::Relaxed)
     }
 
-    /// Concurrently determine next range of indexes for rolling version
-    /// Return None If the rolled version space is exhausted.
-    fn next_range(&self) -> Option<(u16, u16)> {
+    /// Concurrently determine next range of indexes
+    /// Return `None` if the available space is exhausted.
+    /// The starting index is included and ending one is excluded: <a, b).
+    pub fn next(&self) -> Option<(u32, u32)> {
         loop {
-            let current = self.curr_version.load(Ordering::Relaxed);
-            return match current.checked_add(self.midstates) {
+            let current = self.get_current();
+            return match self.checked_add(current, self.step_size) {
                 None => None,
                 Some(next) => {
                     if self
-                        .curr_version
+                        .curr_index
                         .compare_and_swap(current, next, Ordering::Relaxed)
                         != current
                     {
@@ -79,16 +90,55 @@ impl VersionRolling {
             };
         }
     }
+
+    /// Check if given version cannot be used for next range
+    pub fn is_exhausted<T: Into<Option<u32>>>(&self, current: T) -> bool {
+        let current = current.into().unwrap_or_else(|| self.get_current());
+        self.checked_add(current, self.step_size).is_none()
+    }
+}
+
+/// Version rolling implements WorkEngine trait and represents a shared source of work for mining
+/// backends. Each instance takes care of atomically allocating version field ranges until the
+/// range is full exhausted
+#[derive(Debug, Clone)]
+pub struct VersionRolling {
+    job: Arc<dyn hal::BitcoinJob>,
+    /// Number of midstates that each generated work covers
+    midstates: u16,
+    /// Current range of the rolled part of the version (before BIP320 shift)
+    curr_range: AtomicRange,
+    /// Base Bitcoin block header version with BIP320 bits cleared
+    base_version: u32,
+}
+
+impl VersionRolling {
+    pub fn new(job: Arc<dyn hal::BitcoinJob>, midstates: u16) -> Self {
+        let base_version = job.version() & !btc::BIP320_VERSION_MASK;
+        Self {
+            job,
+            midstates,
+            curr_range: AtomicRange::new(0, BIP320_MAX_INDEX, midstates as u32),
+            base_version,
+        }
+    }
+
+    /// Convert the allocated index to a block version as per BIP320
+    #[inline]
+    fn get_block_version(&self, index: u32) -> u32 {
+        assert!(index <= btc::BIP320_VERSION_MAX);
+        self.base_version | (index << btc::BIP320_VERSION_SHIFT)
+    }
 }
 
 impl hal::WorkEngine for VersionRolling {
     fn is_exhausted(&self) -> bool {
-        self.has_exhausted_range(self.curr_version.load(Ordering::Relaxed))
+        self.curr_range.is_exhausted(None)
     }
 
     fn next_work(&self) -> hal::WorkLoop<hal::MiningWork> {
         // determine next range of indexes from version space
-        let (current, next) = match self.next_range() {
+        let (current, next) = match self.curr_range.next() {
             // return immediately when the space is exhausted
             None => return hal::WorkLoop::Exhausted,
             // use range of indexes for generation of midstates
@@ -96,7 +146,7 @@ impl hal::WorkEngine for VersionRolling {
         };
 
         // check if given range is the same as number of midstates
-        assert_eq!(self.midstates, next - current);
+        assert_eq!(self.midstates, (next - current) as u16);
         let mut midstates = Vec::with_capacity(self.midstates as usize);
 
         // prepare block chunk1 with all invariants
@@ -118,7 +168,7 @@ impl hal::WorkEngine for VersionRolling {
         }
 
         let work = hal::MiningWork::new(self.job.clone(), midstates, self.job.time());
-        if self.has_exhausted_range(next) {
+        if self.curr_range.is_exhausted(next) {
             // when the whole version space has been exhausted then mark the generated work as
             // a last one (the next call of this method will return 'Exhausted')
             hal::WorkLoop::Break(work)
@@ -131,8 +181,45 @@ impl hal::WorkEngine for VersionRolling {
 #[cfg(test)]
 pub mod test {
     use super::*;
+    use crate::hal::BitcoinJob;
     use crate::hal::WorkEngine;
     use crate::test_utils;
+
+    fn compare_range(start: u32, stop: u32, step: u32) {
+        let range = AtomicRange::new(start, stop, step);
+        for i in (start..stop - (step - 1)).step_by(step as usize) {
+            assert_eq!(range.next(), Some((i, i + step)));
+        }
+        assert_eq!(range.next(), None);
+    }
+
+    #[test]
+    fn test_atomic_range() {
+        compare_range(0, 1, 1);
+        compare_range(btc::BIP320_VERSION_MAX - 1, btc::BIP320_VERSION_MAX, 1);
+        compare_range(std::u32::MAX - 1, std::u32::MAX, 1);
+
+        compare_range(0, 2, 1);
+        compare_range(1, 2, 1);
+
+        compare_range(0, 2, 2);
+        compare_range(0, 3, 2);
+        compare_range(0, 4, 2);
+        compare_range(1, 4, 2);
+        compare_range(2, 4, 2);
+
+        compare_range(0, 4, 4);
+        compare_range(0, 5, 4);
+        compare_range(0, 6, 4);
+        compare_range(0, 7, 4);
+        compare_range(0, 8, 4);
+        compare_range(0, 9, 4);
+        compare_range(1, 9, 4);
+        compare_range(2, 9, 4);
+        compare_range(3, 9, 4);
+        compare_range(4, 9, 4);
+        compare_range(5, 9, 4);
+    }
 
     #[test]
     fn test_block_midstate() {
@@ -143,5 +230,49 @@ pub mod test {
             let work = engine.next_work().unwrap();
             assert_eq!(block.midstate, work.midstates[0].state);
         }
+    }
+
+    fn get_block_version(job: &Arc<test_utils::TestBlock>, index: u32) -> u32 {
+        job.version() | (index << btc::BIP320_VERSION_SHIFT)
+    }
+
+    #[test]
+    fn test_exhausted_work() {
+        // use first test block for job
+        let job = Arc::new(test_utils::TEST_BLOCKS[0]);
+        let engine = VersionRolling::new(job.clone(), 1);
+
+        // modify current version counter to decrease the search space
+        // adn test only boundary values
+        const START_INDEX: u32 = btc::BIP320_VERSION_MAX - 1;
+        engine
+            .curr_range
+            .curr_index
+            .store(START_INDEX, Ordering::Relaxed);
+        assert!(!engine.is_exhausted());
+
+        match engine.next_work() {
+            hal::WorkLoop::Continue(work) => assert_eq!(
+                get_block_version(&job, START_INDEX),
+                work.midstates[0].version
+            ),
+            _ => panic!("expected 'hal::WorkLoop::Continue'"),
+        }
+        assert!(!engine.is_exhausted());
+
+        match engine.next_work() {
+            hal::WorkLoop::Break(work) => assert_eq!(
+                get_block_version(&job, btc::BIP320_VERSION_MAX),
+                work.midstates[0].version
+            ),
+            _ => panic!("expected 'hal::WorkLoop::Break'"),
+        }
+        assert!(engine.is_exhausted());
+
+        match engine.next_work() {
+            hal::WorkLoop::Exhausted => {}
+            _ => panic!("expected 'hal::WorkLoop::Exhausted'"),
+        }
+        assert!(engine.is_exhausted());
     }
 }
