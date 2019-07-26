@@ -22,6 +22,7 @@ pub const DIFFICULTY_1_TARGET_BYTES: [u8; SHA256_DIGEST_SIZE] = [
 /// This specification does not reserve specific bits for specific purposes.
 pub const BIP320_VERSION_MASK: u32 = 0x1fffe000;
 pub const BIP320_VERSION_SHIFT: u32 = 13;
+pub const BIP320_VERSION_MAX: u32 = std::u16::MAX as u32;
 
 /// A Bitcoin block header is 80 bytes long
 pub const BLOCK_HEADER_SIZE: usize = 80;
