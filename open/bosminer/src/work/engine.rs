@@ -1,12 +1,10 @@
 //! Provides work engines that are capable for converting Jobs to actual work suitable for mining
 //! backend processing
-use crate::btc;
+use crate::btc::{self, HashTrait};
 use crate::hal;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
-
-use bitcoin_hashes::Hash;
 
 #[derive(Debug)]
 pub struct ExhaustedWork;

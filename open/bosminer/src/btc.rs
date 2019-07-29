@@ -1,7 +1,9 @@
 use packed_struct::prelude::*;
 use packed_struct_codegen::PackedStruct;
 
-use bitcoin_hashes::{sha256, sha256d, sha256d::Hash, Hash as HashTrait, HashEngine};
+use bitcoin_hashes::{sha256, HashEngine};
+// reexport Bitcoin hash to remove dependency on bitcoin_hashes in other modules
+pub use bitcoin_hashes::{hex::FromHex, sha256d::Hash, Hash as HashTrait};
 
 use std::convert::TryInto;
 use std::mem::size_of;
@@ -59,7 +61,7 @@ impl BlockHeader {
     /// Compute SHA256 double hash
     pub fn hash(&self) -> Hash {
         let block_bytes = self.into_bytes();
-        sha256d::Hash::hash(&block_bytes)
+        Hash::hash(&block_bytes)
     }
 
     /// Compute SHA256 midstate from first chunk of block header
