@@ -201,8 +201,8 @@ impl TestWorkEngineInner {
 
 #[derive(Debug)]
 pub struct TestWorkEngine {
-    // standard Mutex allows create `TestWorkEngineInner` with mutable self reference in `next_work`
-    // and it also satisfy `hal::WorkEngine` requirement for `Send + Sync`
+    /// Standard Mutex allows create `TestWorkEngineInner` with mutable self reference in
+    /// `next_work` and it also satisfies `hal::WorkEngine` requirement for `Send + Sync`
     inner: StdMutex<TestWorkEngineInner>,
 }
 

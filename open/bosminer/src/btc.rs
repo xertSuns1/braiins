@@ -149,8 +149,8 @@ from_midstate_word_impl!(u64);
 /// The iterator is returned by `Midstate::words`.
 pub struct MidstateWords<'a, T: FromMidstateWord<T>> {
     chunks: Chunks<'a, u8>,
-    // the marker is needed because `T` is not used in this structure
-    // but it is required in constructor for creating chunks of size specified by this type
+    /// Marker to silient the compiler because `T` is not used in this structure
+    /// but it is required in constructor for creating chunks of size specified by this type
     _marker: std::marker::PhantomData<T>,
 }
 
