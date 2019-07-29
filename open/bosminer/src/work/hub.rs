@@ -52,14 +52,6 @@ impl JobSolver {
         }
     }
 
-    pub fn send_job(&mut self, job: Arc<dyn hal::BitcoinJob>) {
-        self.job_sender.send(job)
-    }
-
-    pub async fn receive_solution(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
-        await!(self.solution_receiver.receive())
-    }
-
     pub fn split(self) -> (JobSender, JobSolutionReceiver) {
         (self.job_sender, self.solution_receiver)
     }
