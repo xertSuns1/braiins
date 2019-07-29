@@ -1,22 +1,21 @@
-use crate::btc;
+use crate::btc::{self, HashTrait};
 use crate::hal::{self, BitcoinJob};
 
 use std::sync::Arc;
 
-use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 use byteorder::{ByteOrder, LittleEndian};
 
 /// NullJob to be used for chip initialization and tests
 #[derive(Debug, Copy, Clone)]
 pub struct NullJob {
-    hash: Hash,
+    hash: btc::Hash,
     time: u32,
 }
 
 impl NullJob {
     pub fn new(time: u32) -> Self {
         Self {
-            hash: Hash::from_slice(&[0xffu8; 32]).unwrap(),
+            hash: btc::Hash::from_slice(&[0xffu8; 32]).unwrap(),
             time,
         }
     }
@@ -35,11 +34,11 @@ impl hal::BitcoinJob for NullJob {
         0
     }
 
-    fn previous_hash(&self) -> &Hash {
+    fn previous_hash(&self) -> &btc::Hash {
         &self.hash
     }
 
-    fn merkle_root(&self) -> &Hash {
+    fn merkle_root(&self) -> &btc::Hash {
         &self.hash
     }
 

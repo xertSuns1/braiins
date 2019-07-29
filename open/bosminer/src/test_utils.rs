@@ -1,4 +1,4 @@
-use crate::btc;
+use crate::btc::{self, FromHex};
 use crate::hal::{self, BitcoinJob};
 use crate::utils::compat_block_on;
 use crate::work;
@@ -6,18 +6,16 @@ use crate::work;
 use lazy_static::lazy_static;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 
-use bitcoin_hashes::{hex::FromHex, sha256d::Hash};
-
 /// Real blocks used for tests
 #[derive(Copy, Clone)]
 pub struct TestBlock {
-    pub hash: Hash,
+    pub hash: btc::Hash,
     pub hash_str: &'static str,
     pub midstate: btc::Midstate,
     pub midstate_str: &'static str,
     version: u32,
-    prev_hash: Hash,
-    merkle_root: Hash,
+    prev_hash: btc::Hash,
+    merkle_root: btc::Hash,
     time: u32,
     bits: u32,
     pub nonce: u32,
@@ -42,13 +40,13 @@ impl TestBlock {
         icarus_bytes: [u8; 64],
     ) -> Self {
         Self {
-            hash: Hash::from_hex(hash).expect("parse hex"),
+            hash: btc::Hash::from_hex(hash).expect("parse hex"),
             hash_str: hash,
             midstate: btc::Midstate::from_hex(midstate).expect("parse hex"),
             midstate_str: midstate,
             version,
-            prev_hash: Hash::from_hex(prev_hash).expect("parse hex"),
-            merkle_root: Hash::from_hex(merkle_root).expect("parse hex"),
+            prev_hash: btc::Hash::from_hex(prev_hash).expect("parse hex"),
+            merkle_root: btc::Hash::from_hex(merkle_root).expect("parse hex"),
             time,
             bits,
             nonce,
@@ -73,11 +71,11 @@ impl hal::BitcoinJob for TestBlock {
         0
     }
 
-    fn previous_hash(&self) -> &Hash {
+    fn previous_hash(&self) -> &btc::Hash {
         &self.prev_hash
     }
 
-    fn merkle_root(&self) -> &Hash {
+    fn merkle_root(&self) -> &btc::Hash {
         &self.merkle_root
     }
 

@@ -15,7 +15,7 @@ pub use s9::{
     run,
 };
 
-use crate::btc;
+use crate::btc::{self, HashTrait};
 
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
@@ -27,7 +27,6 @@ use std::mem;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 use downcast_rs::{impl_downcast, Downcast};
 
 /// Represents interface for Bitcoin job with access to block header from which the new work will be
@@ -39,9 +38,9 @@ pub trait BitcoinJob: Debug + Downcast + Send + Sync {
     /// Bit-mask with general purpose bits which can be freely manipulated (specified by BIP320)
     fn version_mask(&self) -> u32;
     /// Double SHA256 hash of the previous block header
-    fn previous_hash(&self) -> &Hash;
+    fn previous_hash(&self) -> &btc::Hash;
     /// Double SHA256 hash based on all of the transactions in the block
-    fn merkle_root(&self) -> &Hash;
+    fn merkle_root(&self) -> &btc::Hash;
     /// Current block timestamp as seconds since 1970-01-01T00:00 UTC
     fn time(&self) -> u32;
     /// Maximal timestamp for current block as seconds since 1970-01-01T00:00 UTC
@@ -175,7 +174,7 @@ pub struct UniqueMiningWorkSolution {
     /// Solution of the PoW puzzle
     solution: MiningWorkSolution,
     /// Lazy evaluated double hash of this solution
-    hash: Cell<Option<Hash>>,
+    hash: Cell<Option<btc::Hash>>,
 }
 
 impl UniqueMiningWorkSolution {
@@ -220,7 +219,7 @@ impl UniqueMiningWorkSolution {
     }
 
     /// Return double hash of this solution
-    pub fn hash(&self) -> Hash {
+    pub fn hash(&self) -> btc::Hash {
         match self.hash.get() {
             Some(value) => value,
             None => {

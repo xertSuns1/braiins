@@ -1,5 +1,6 @@
 use crate::hal;
 use crate::work;
+use crate::btc::{self, HashTrait};
 
 use crate::misc::LOGGER;
 use slog::trace;
@@ -22,7 +23,6 @@ use stratum::v2::types::*;
 use stratum::v2::{V2Handler, V2Protocol};
 use wire::{Connection, ConnectionRx, ConnectionTx, Framing, Message};
 
-use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 use std::collections::HashMap;
 
 // TODO: move it to the stratum crate
@@ -35,8 +35,8 @@ struct StratumJob {
     block_height: u32,
     current_block_height: Arc<AtomicU32>,
     version: u32,
-    prev_hash: Hash,
-    merkle_root: Hash,
+    prev_hash: btc::Hash,
+    merkle_root: btc::Hash,
     time: u32,
     max_time: u32,
     bits: u32,
@@ -55,8 +55,8 @@ impl StratumJob {
             block_height: job_msg.block_height,
             current_block_height,
             version: job_msg.version,
-            prev_hash: Hash::from_slice(prevhash_msg.prev_hash.as_ref()).unwrap(),
-            merkle_root: Hash::from_slice(job_msg.merkle_root.as_ref()).unwrap(),
+            prev_hash: btc::Hash::from_slice(prevhash_msg.prev_hash.as_ref()).unwrap(),
+            merkle_root: btc::Hash::from_slice(job_msg.merkle_root.as_ref()).unwrap(),
             time: prevhash_msg.min_ntime,
             max_time: prevhash_msg.min_ntime + prevhash_msg.max_ntime_offset as u32,
             bits: prevhash_msg.nbits,
@@ -73,11 +73,11 @@ impl hal::BitcoinJob for StratumJob {
         VERSION_MASK
     }
 
-    fn previous_hash(&self) -> &Hash {
+    fn previous_hash(&self) -> &btc::Hash {
         &self.prev_hash
     }
 
-    fn merkle_root(&self) -> &Hash {
+    fn merkle_root(&self) -> &btc::Hash {
         &self.merkle_root
     }
 

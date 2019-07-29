@@ -138,10 +138,9 @@ impl JobSolutionReceiver {
 #[cfg(test)]
 pub mod test {
     use super::*;
+    use crate::btc::{self, HashTrait};
     use crate::test_utils;
     use crate::utils::compat_block_on;
-
-    use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
 
     #[test]
     fn test_solvers_connection() {
@@ -178,7 +177,7 @@ pub mod test {
         assert!(compat_block_on(work_generator.generate()).is_some());
     }
 
-    fn double_hash_cmp(a: &Hash, b: &Hash) -> std::cmp::Ordering {
+    fn double_hash_cmp(a: &btc::Hash, b: &btc::Hash) -> std::cmp::Ordering {
         let a_u256 = uint::U256::from_little_endian(&a.into_inner());
         let b_u256 = uint::U256::from_little_endian(&b.into_inner());
         a_u256.cmp(&b_u256)
