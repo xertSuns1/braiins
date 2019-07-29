@@ -113,19 +113,14 @@ pub struct Midstate {
 
 /// Describes actual mining work for submission to a hashing hardware.
 /// Starting with merkle_root_tail the data goes to chunk2 of SHA256.
-///
-/// NOTE: eventhough, version and extranonce_2 are already included in the midstates, we
-/// need them as part of the MiningWork structure. The reason is stratum submission requirements.
-/// This may need further refactoring.
-/// # TODO
-/// Add ntime limit for supporting hardware that can do nTime rolling on its own
+/// TODO: add ntime limit for supporting hardware that can do nTime rolling on its own
 #[derive(Clone)]
 pub struct MiningWork {
     /// Bitcoin job shared with initial network protocol and work solution
     job: Arc<dyn BitcoinJob>,
     /// Multiple midstates can be generated for each work
     pub midstates: Vec<Midstate>,
-    /// Start value for nTime, hardware may roll nTime further.
+    /// Start value for nTime, hardware may roll nTime further
     pub ntime: u32,
 }
 
