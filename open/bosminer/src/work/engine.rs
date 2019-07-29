@@ -105,7 +105,7 @@ impl AtomicRange {
 pub struct VersionRolling {
     job: Arc<dyn hal::BitcoinJob>,
     /// Number of midstates that each generated work covers
-    midstates: u16,
+    midstate_count: usize,
     /// Current range of the rolled part of the version (before BIP320 shift)
     curr_range: AtomicRange,
     /// Base Bitcoin block header version with BIP320 bits cleared
@@ -113,12 +113,12 @@ pub struct VersionRolling {
 }
 
 impl VersionRolling {
-    pub fn new(job: Arc<dyn hal::BitcoinJob>, midstates: u16) -> Self {
+    pub fn new(job: Arc<dyn hal::BitcoinJob>, midstate_count: usize) -> Self {
         let base_version = job.version() & !btc::BIP320_VERSION_MASK;
         Self {
             job,
-            midstates,
-            curr_range: AtomicRange::new(0, BIP320_MAX_INDEX, midstates as u32),
+            midstate_count,
+            curr_range: AtomicRange::new(0, BIP320_MAX_INDEX, midstate_count as u32),
             base_version,
         }
     }
@@ -146,8 +146,8 @@ impl hal::WorkEngine for VersionRolling {
         };
 
         // check if given range is the same as number of midstates
-        assert_eq!(self.midstates, (next - current) as u16);
-        let mut midstates = Vec::with_capacity(self.midstates as usize);
+        assert_eq!(self.midstate_count, (next - current) as usize);
+        let mut midstates = Vec::with_capacity(self.midstate_count);
 
         // prepare block chunk1 with all invariants
         let mut block_chunk1 = btc::BlockHeader {
