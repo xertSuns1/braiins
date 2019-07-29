@@ -41,18 +41,17 @@ fn test_hash_to_uint256() {
     // the hex string represents the double SHA256 digest which is written in reverse order
     let hash_str = "00000000b86d6d17e45da42d09ddaf6a76041b703d09c566422ec53110874afb";
 
-    // convert target string to vector for later conversion to `uint::U256`
-    let target = hex::decode(target_str).expect("parse hex");
-    // convert double SHA256 to `Hash` structure
+    // convert double SHA256 target to `Hash` structure. sha256d unlike sha256 module converts the
+    // string as actual hexadecimal number
+    let target = sha256d::Hash::from_hex(target_str).expect("parse hex");
     let hash = sha256d::Hash::from_hex(hash_str).expect("parse hex");
 
     // the inner representation of bytes is reverted back to its original binary digest
+    let target_bytes = target.into_inner();
     let hash_bytes = hash.into_inner();
 
-    // the direct conversion from hex representation to `uint::U256` must be done as Big Endian
-    let target_uint256 = uint::U256::from_big_endian(&target);
-    // the hash string has been reverted and must be treated as Little Endian number to get original
-    // value
+    // internal representation is always little endian
+    let target_uint256 = uint::U256::from_little_endian(&target_bytes);
     let hash_uint256 = uint::U256::from_little_endian(&hash_bytes);
 
     assert_eq!(&target.to_hex(), &target_str);
