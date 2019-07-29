@@ -134,3 +134,99 @@ impl JobSolutionReceiver {
         None
     }
 }
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+    use crate::test_utils;
+    use crate::utils::compat_block_on;
+
+    use bitcoin_hashes::{sha256d::Hash, Hash as HashTrait};
+
+    #[test]
+    fn test_solvers_connection() {
+        let (job_solver, work_solver) = work::Hub::build_solvers();
+
+        let (mut job_sender, mut solution_receiver) = job_solver.split();
+        let (mut work_generator, solution_sender) = work_solver.split();
+
+        // default target is be set to difficulty 1 so all solution should pass
+        for block in test_utils::TEST_BLOCKS.iter() {
+            let job = Arc::new(*block);
+
+            // send prepared testing block to job solver
+            job_sender.send(job);
+            // work generator receives this job and prepares work from it
+            let work = compat_block_on(work_generator.generate()).unwrap();
+            // initial value for version rolling is 0 so midstate should match with expected one
+            assert_eq!(block.midstate, work.midstates[0].state);
+            // test block has automatic conversion into work solution
+            solution_sender.send(block.into());
+            // this solution should pass through job solver
+            let solution = compat_block_on(solution_receiver.receive()).unwrap();
+            // check if the solution is equal to expected one
+            assert_eq!(block.nonce, solution.nonce());
+            let original_job: &test_utils::TestBlock = solution.job();
+            // the job should also match with original one
+            // job solver does not returns Arc so the comparison is done by its hashes
+            assert_eq!(block.hash, original_job.hash);
+        }
+
+        // work generator still works even if all job solvers are dropped
+        drop(job_sender);
+        drop(solution_receiver);
+        assert!(compat_block_on(work_generator.generate()).is_some());
+    }
+
+    fn double_hash_cmp(a: &Hash, b: &Hash) -> std::cmp::Ordering {
+        let a_u256 = uint::U256::from_little_endian(&a.into_inner());
+        let b_u256 = uint::U256::from_little_endian(&b.into_inner());
+        a_u256.cmp(&b_u256)
+    }
+
+    #[test]
+    fn test_job_solver_target() {
+        let (engine_sender, _) = engine_channel();
+        let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
+
+        let (job_sender, mut solution_receiver) =
+            JobSolver::new(engine_sender, solution_queue_rx).split();
+
+        // default target is be set to difficulty 1 so all solution should pass
+        for block in test_utils::TEST_BLOCKS.iter() {
+            // test block has automatic conversion into work solution
+            solution_queue_tx.unbounded_send(block.into()).unwrap();
+            // this solution should pass through job solver
+            let solution = compat_block_on(solution_receiver.receive()).unwrap();
+            // check if the solution is equal to expected one
+            assert_eq!(block.nonce, solution.nonce());
+        }
+
+        // find test block with lowest hash which will be set as a target
+        let target_block = test_utils::TEST_BLOCKS
+            .iter()
+            .min_by(|a, b| double_hash_cmp(&a.hash, &b.hash))
+            .unwrap();
+
+        // change the target to return from solution receiver only this block
+        let target = uint::U256::from_little_endian(&target_block.hash.into_inner());
+        job_sender.change_target(target);
+
+        // send all solutions to the queue not to block on receiver
+        for block in test_utils::TEST_BLOCKS.iter() {
+            // test block has automatic conversion into work solution
+            solution_queue_tx.unbounded_send(block.into()).unwrap();
+        }
+
+        // send target block again to get two results and ensures that all blocks has been processed
+        solution_queue_tx
+            .unbounded_send(target_block.into())
+            .unwrap();
+
+        // check if the solutions is equal to expected ones
+        let solution = compat_block_on(solution_receiver.receive()).unwrap();
+        assert_eq!(target_block.nonce, solution.nonce());
+        let solution = compat_block_on(solution_receiver.receive()).unwrap();
+        assert_eq!(target_block.nonce, solution.nonce());
+    }
+}
