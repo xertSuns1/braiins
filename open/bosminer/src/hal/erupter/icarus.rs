@@ -1,34 +1,18 @@
+//! Provides Icarus hashing chip driver
+
 use crate::btc;
 
 use packed_struct::prelude::*;
 use packed_struct_codegen::PackedStruct;
 
 use std::mem::size_of;
-use std::time::Duration;
 
-pub const ID_VENDOR: u16 = 0x10c4;
-pub const ID_PRODUCT: u16 = 0xea60;
+// time for computation one double hash and target comparison in seconds
+const HASH_TIME_S: f64 = 0.0000000029761;
 
-pub const DEVICE_IFACE: u8 = 0;
-pub const DEVICE_CONFIGURATION: u8 = 1;
-
-pub const WRITE_ADDR: u8 = 0x1;
-pub const READ_ADDR: u8 = 0x81;
-
-const WAIT_TIMEOUT_MS: u64 = 100;
-
-// how many ms below the expected completion time to abort work
-// extra in case the last read is delayed
-const READ_REDUCE_MS: f64 = WAIT_TIMEOUT_MS as f64 * 1.5;
-const HASH_TIME_MS: f64 = 0.0000000029761;
-const FULL_NONCE_TIME_MS: f64 = HASH_TIME_MS * (0xffffffffu64 + 1u64) as f64;
-
-pub const WAIT_TIMEOUT: Duration = Duration::from_millis(WAIT_TIMEOUT_MS);
-// used as a timeout in ms for reading nonce from USB -> UART bridge read
-// initialization has some latency which is reduced from full nonce time
-pub const MAX_READ_TIME: Duration =
-    Duration::from_millis(((FULL_NONCE_TIME_MS * 1000f64) - READ_REDUCE_MS) as u64);
-
+/// Time needed for iteration of the whole search space in milliseconds
+pub const FULL_NONCE_TIME_MS: f64 = (HASH_TIME_S * (0xffffffffu64 + 1u64) as f64) * 1000f64;
+/// Size of work structure required by the chip
 pub const WORK_PAYLOAD_SIZE: usize = 64;
 
 /// Icarus work payload containing all information for finding Bitcoin block header nonce
