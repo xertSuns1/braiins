@@ -142,6 +142,9 @@ pub mod test {
     use crate::test_utils;
     use crate::utils::compat_block_on;
 
+    /// This test verifies the whole lifecycle of a mining job, its transformation into work
+    /// and also collection of the solution via solution receiver. No actual mining takes place
+    /// in the test
     #[test]
     fn test_solvers_connection() {
         let (job_solver, work_solver) = work::Hub::build_solvers();
@@ -183,6 +186,8 @@ pub mod test {
         a_u256.cmp(&b_u256)
     }
 
+    /// This test verifies that after changing mining target, the job solver filters the provided
+    /// solutions and yields only those that meet the target.
     #[test]
     fn test_job_solver_target() {
         let (engine_sender, _) = engine_channel();
