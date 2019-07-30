@@ -36,6 +36,7 @@ impl Solver {
 /// `MiningWork` as possible from it.
 #[derive(Clone)]
 pub struct Generator {
+    /// Source of trait objects that implement `WorkEngine` interface
     engine_receiver: EngineReceiver,
 }
 
