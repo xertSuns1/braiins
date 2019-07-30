@@ -37,12 +37,12 @@ const READ_ADDR: u8 = 0x81;
 const WAIT_TIMEOUT_MS: u64 = 100;
 const WAIT_TIMEOUT: Duration = Duration::from_millis(WAIT_TIMEOUT_MS);
 
-// how many ms below the expected completion time to abort work
-// extra in case the last read is delayed
+/// How many ms below the expected completion time to abort work
+/// extra in case the last read is delayed
 const READ_REDUCE_MS: f64 = WAIT_TIMEOUT_MS as f64 * 1.5;
 
-// timeout in ms for reading nonce from USB -> UART bridge read
-// initialization has some latency which is reduced from full nonce time
+/// Timeout in ms for reading nonce from USB -> UART bridge read
+/// initialization has some latency which is reduced from full nonce time
 const MAX_READ_TIME: Duration =
     Duration::from_millis((icarus::FULL_NONCE_TIME_MS - READ_REDUCE_MS) as u64);
 
