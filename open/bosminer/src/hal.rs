@@ -15,7 +15,7 @@ pub use s9::{
     run,
 };
 
-use crate::btc::{self, HashTrait};
+use crate::btc::{self, BelowTarget, HashTrait};
 
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
@@ -240,18 +240,14 @@ impl UniqueMiningWorkSolution {
         }
     }
 
-    pub fn is_valid(&self, current_target: &uint::U256) -> bool {
+    pub fn is_valid(&self, current_target: &btc::Target) -> bool {
         if !self.work.job.is_valid() {
             // job is obsolete and has to be flushed
             return false;
         }
 
-        // compute hash for this solution
-        let double_hash = self.hash();
-        // convert it to number suitable for target comparison
-        let double_hash_u256 = uint::U256::from_little_endian(&double_hash.into_inner());
-        // and check it with current target (pool difficulty)
-        double_hash_u256 <= *current_target
+        // compute hash for this solution and compare it with target
+        self.hash().is_below(current_target)
     }
 }
 

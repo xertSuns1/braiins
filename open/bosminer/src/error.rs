@@ -70,6 +70,12 @@ impl From<Context<ErrorKind>> for Error {
     }
 }
 
+impl From<String> for Error {
+    fn from(msg: String) -> Self {
+        ErrorKind::General(msg).into()
+    }
+}
+
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
         let msg = e.to_string();

@@ -127,7 +127,8 @@ impl StratumEventHandler {
 
     pub fn update_target(&mut self, new_target: Uint256Bytes) {
         trace!(LOGGER, "changing target to {:?}", new_target);
-        self.job_sender.change_target(new_target.into());
+        let new_target_u256: uint::U256 = new_target.into();
+        self.job_sender.change_target(new_target_u256.into());
     }
 }
 
