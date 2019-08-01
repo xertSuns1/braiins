@@ -93,8 +93,6 @@ pub struct HChainCtl<VBackend> {
     pub fifo: fifo::HChainFifo,
 }
 
-//unsafe impl Send for MyBox {}
-//unsafe impl Sync for MyBox {}
 unsafe impl<VBackend> Send for HChainCtl<VBackend> {}
 unsafe impl<VBackend> Sync for HChainCtl<VBackend> {}
 
