@@ -70,7 +70,7 @@ impl_downcast!(BitcoinJob);
 pub enum WorkLoop<T> {
     /// Mining work is exhausted
     Exhausted,
-    /// Returning latest work (sequential call will return Exhausted)
+    /// Returning latest work (subsequent call will return Exhausted)
     Break(T),
     /// Mining work generation will continue
     Continue(T),
