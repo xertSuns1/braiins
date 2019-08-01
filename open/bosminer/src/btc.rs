@@ -1,3 +1,5 @@
+use crate::error;
+
 use packed_struct::prelude::*;
 use packed_struct_codegen::PackedStruct;
 
@@ -12,8 +14,8 @@ use std::slice::Chunks;
 /// SHA256 digest size used in Bitcoin protocol
 pub const SHA256_DIGEST_SIZE: usize = 32;
 
-/// Binary representation of target for difficulty 1
-pub const DIFFICULTY_1_TARGET_BYTES: [u8; SHA256_DIGEST_SIZE] = [
+/// Binary representation of target for difficulty 1 coded in big endian
+const DIFFICULTY_1_TARGET_BYTES: [u8; SHA256_DIGEST_SIZE] = [
     0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
@@ -83,7 +85,7 @@ impl Midstate {
     pub fn from_hex(s: &str) -> Result<Self, bitcoin_hashes::Error> {
         // bitcoin crate implements `FromHex` trait for byte arrays with macro `impl_fromhex_array!`
         // this conversion is compatible with `Sha256Array` which is alias to array
-        Ok(Self(bitcoin_hashes::hex::FromHex::from_hex(s)?))
+        Ok(Self(FromHex::from_hex(s)?))
     }
 
     /// Get iterator for midstate words of specified type treated as a little endian
@@ -112,9 +114,9 @@ impl AsRef<Sha256Array> for Midstate {
     }
 }
 
-macro_rules! hex_fmt_impl(
-    ($imp:ident, $ty:ident) => (
-        impl ::std::fmt::$imp for $ty {
+macro_rules! midstate_hex_fmt_impl(
+    ($imp:ident) => (
+        impl ::std::fmt::$imp for Midstate {
             fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                 ::bitcoin_hashes::hex::format_hex(self.as_ref(), fmt)
             }
@@ -122,9 +124,9 @@ macro_rules! hex_fmt_impl(
     )
 );
 
-hex_fmt_impl!(Debug, Midstate);
-hex_fmt_impl!(Display, Midstate);
-hex_fmt_impl!(LowerHex, Midstate);
+midstate_hex_fmt_impl!(Debug);
+midstate_hex_fmt_impl!(Display);
+midstate_hex_fmt_impl!(LowerHex);
 
 /// Helper trait used by `MidstateWords` for reading little endian midstate word from slice created
 /// from original midstate bytes
@@ -182,6 +184,160 @@ impl<'a, T: FromMidstateWord<T>> DoubleEndedIterator for MidstateWords<'a, T> {
         self.chunks
             .next_back()
             .map(|midstate_word| T::from_le_bytes(midstate_word))
+    }
+}
+
+/// Bitcoin target represents the network/pool difficulty as a 256bit number
+/// The structure provides various conversion functions and formaters for uniform displaying the
+/// target as a hexadecimal string similar to Bitcoin double hash which is SHA256 double hash
+/// printed in reverse order.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Target(uint::U256);
+
+impl Target {
+    fn difficulty_1_target() -> uint::U256 {
+        uint::U256::from_big_endian(&DIFFICULTY_1_TARGET_BYTES)
+    }
+
+    /// Create target from hexadecimal string which has the same representation as Bitcoin SHA256
+    /// double hash (the hash is written in reverse order because the hash is treated as 256bit
+    /// little endian number)
+    pub fn from_hex(s: &str) -> Result<Self, bitcoin_hashes::Error> {
+        // bitcoin crate implements `FromHex` trait for byte arrays with macro `impl_fromhex_array!`
+        let bytes: Sha256Array = FromHex::from_hex(s)?;
+        // the target is treated the same as Bitcoin's double hash
+        // the hexadecimal string is already reversed so load it as a big endian
+        Ok(Self(uint::U256::from_big_endian(&bytes)))
+    }
+
+    /// Create target from difficulty used by pools
+    /// This implementation can produce different results then targets for network difficulty.
+    pub fn from_pool_difficulty(difficulty: usize) -> Self {
+        // TODO: use floating point division to get the same result expected by pool
+        Self(Self::difficulty_1_target() / difficulty)
+    }
+
+    /// Create target from its compact representation used by Bitcoin protocol
+    pub fn from_compact(bits: u32) -> error::Result<Self> {
+        // this code is inspired by `rust-bitcoin` crate implementation
+        // original comment:
+        //
+        // This is a floating-point "compact" encoding originally used by
+        // OpenSSL, which satoshi put into consensus code, so we're stuck
+        // with it. The exponent needs to have 3 subtracted from it, hence
+        // this goofy decoding code:
+        // TODO: use packed structure
+        let mantissa = bits & 0xffffff;
+        let exponent = bits >> 24;
+
+        // the mantissa is signed but may not be negative
+        if mantissa > 0x7fffff {
+            Err(format!(
+                "largest legal value for mantissa has been exceeded"
+            ))?
+        }
+
+        Ok(if exponent <= 3 {
+            Into::<uint::U256>::into(mantissa >> (8 * (3 - exponent)))
+        } else {
+            Into::<uint::U256>::into(mantissa) << (8 * (exponent - 3))
+        }
+        .into())
+    }
+
+    /// Convert target to its compact representation used by Bitcoin protocol
+    pub fn into_compact(self) -> u32 {
+        // this code is inspired by `rust-bitcoin` crate implementation
+        let mut exponent = (self.0.bits() + 7) / 8;
+        let mut mantissa = if exponent <= 3 {
+            (self.0.low_u64() << (8 * (3 - exponent))) as u32
+        } else {
+            (self.0 >> (8 * (exponent - 3))).low_u32()
+        };
+
+        if (mantissa & 0x00800000) != 0 {
+            mantissa >>= 8;
+            exponent += 1;
+        }
+
+        // TODO: use packed structure
+        mantissa | (exponent << 24) as u32
+    }
+
+    /// Auxiliary function to check if the target is greater or equal to some 256bit number
+    #[inline]
+    fn is_above(&self, value: &uint::U256) -> bool {
+        self.0 >= *value
+    }
+}
+
+impl Default for Target {
+    /// The default target represents value with difficulty 1
+    fn default() -> Self {
+        Self(Self::difficulty_1_target())
+    }
+}
+
+impl From<uint::U256> for Target {
+    /// Get target from 256bit integer
+    fn from(value: uint::U256) -> Self {
+        Self(value)
+    }
+}
+
+impl From<Target> for uint::U256 {
+    /// Get 256bit integer from target
+    fn from(target: Target) -> Self {
+        target.0
+    }
+}
+
+impl From<Target> for Sha256Array {
+    /// Get binary representation of SHA256 from target
+    /// The target has the same binary representation as Bitcoin SHA256 double hash.
+    fn from(target: Target) -> Self {
+        let mut bytes = [0u8; SHA256_DIGEST_SIZE];
+        target.0.to_little_endian(&mut bytes);
+        bytes
+    }
+}
+
+impl AsRef<uint::U256> for Target {
+    fn as_ref(&self) -> &uint::U256 {
+        &self.0
+    }
+}
+
+macro_rules! target_hex_fmt_impl(
+    ($imp:ident) => (
+        impl ::std::fmt::$imp for Target {
+            fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                let bytes: Sha256Array = (*self).into();
+                ::bitcoin_hashes::hex::format_hex_reverse(&bytes, fmt)
+            }
+        }
+    )
+);
+
+target_hex_fmt_impl!(Debug);
+target_hex_fmt_impl!(Display);
+target_hex_fmt_impl!(LowerHex);
+
+/// Auxiliary trait for adding target comparison with various types compatible with the `Target`
+pub trait BelowTarget {
+    /// Check if the type is less or equal to the target
+    /// In other words, the type (usually hash computed from some block) would be accepted as
+    /// a valid by the remote server/pool.
+    fn is_below(&self, target: &Target) -> bool;
+}
+
+/// Extend SHA256 double hash with ability to validate that it is below target
+impl BelowTarget for Hash {
+    fn is_below(&self, target: &Target) -> bool {
+        // convert it to number suitable for target comparison
+        let double_hash_u256 = uint::U256::from_little_endian(&self.into_inner());
+        // and check it with current target (pool difficulty)
+        target.is_above(&double_hash_u256)
     }
 }
 
@@ -280,5 +436,70 @@ pub mod test {
             }
             assert_eq!(midstate_rev[..], midstate);
         }
+    }
+
+    #[test]
+    fn test_target_difficulty_1() {
+        const TARGET_1_STR: &str =
+            "00000000ffff0000000000000000000000000000000000000000000000000000";
+        const TARGET_1_BITS: u32 = 0x1d00ffff;
+
+        // the default target is equal to target with difficulty 1
+        assert_eq!(
+            Into::<uint::U256>::into(Target::default()),
+            uint::U256::from_big_endian(&DIFFICULTY_1_TARGET_BYTES)
+        );
+
+        // the target is stored into byte array as a 256bit little endian integer
+        // the `DIFFICULTY_1_TARGET_BYTES` is stored as a big endian array to represent the value
+        // in the same order as a hexadecimal string
+        assert_eq!(
+            Into::<Sha256Array>::into(Target::default())[..],
+            DIFFICULTY_1_TARGET_BYTES
+                .iter()
+                .cloned()
+                .rev()
+                .collect::<Vec<_>>()[..]
+        );
+
+        // reference value of target with difficulty 1
+        let difficulty_1_target: Target =
+            uint::U256::from_big_endian(&DIFFICULTY_1_TARGET_BYTES).into();
+
+        // check conversion from difficulty
+        assert_eq!(difficulty_1_target, Target::from_pool_difficulty(1));
+
+        // check conversion from hexadecimal string
+        assert_eq!(difficulty_1_target, Target::from_hex(TARGET_1_STR).unwrap());
+
+        // check conversion from compact representation of target with difficulty 1
+        assert_eq!(
+            difficulty_1_target,
+            Target::from_compact(TARGET_1_BITS).unwrap()
+        );
+        // and conversion back to compact representation
+        assert_eq!(difficulty_1_target.into_compact(), TARGET_1_BITS);
+
+        // check expected format of midstate in hex string with multiple formatters
+        assert_eq!(TARGET_1_STR, difficulty_1_target.to_hex());
+        assert_eq!(TARGET_1_STR, format!("{}", difficulty_1_target));
+        assert_eq!(TARGET_1_STR, format!("{:?}", difficulty_1_target));
+        assert_eq!(TARGET_1_STR, format!("{:x}", difficulty_1_target));
+    }
+
+    #[test]
+    fn test_target_compact() {
+        for block in test_utils::TEST_BLOCKS.iter() {
+            let bits = block.bits();
+
+            // check conversion from compact representation of target to full one and back
+            assert_eq!(bits, Target::from_compact(bits).unwrap().into_compact());
+        }
+    }
+
+    /// Check detection of invalid representation of target in compact format
+    #[test]
+    fn test_corrupted_compact() {
+        assert!(Target::from_compact(0xfffffff).is_err())
     }
 }

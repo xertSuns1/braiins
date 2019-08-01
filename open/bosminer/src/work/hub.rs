@@ -28,8 +28,8 @@ impl Hub {
 }
 
 /// Helper function for creating target difficulty suitable for sharing
-pub fn create_shared_target(value: uint::U256) -> Arc<RwLock<uint::U256>> {
-    Arc::new(RwLock::new(value))
+pub fn create_shared_target(target: btc::Target) -> Arc<RwLock<btc::Target>> {
+    Arc::new(RwLock::new(target))
 }
 
 /// Compound object for job submission and solution reception intended to be passed to
@@ -44,8 +44,7 @@ impl JobSolver {
         engine_sender: EngineSender,
         solution_queue_rx: mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
     ) -> Self {
-        let current_target =
-            create_shared_target(uint::U256::from_big_endian(&btc::DIFFICULTY_1_TARGET_BYTES));
+        let current_target = create_shared_target(Default::default());
         Self {
             job_sender: hub::JobSender::new(engine_sender, current_target.clone()),
             solution_receiver: hub::JobSolutionReceiver::new(solution_queue_rx, current_target),
@@ -61,18 +60,18 @@ impl JobSolver {
 /// Typically the mining protocol handler will inject new jobs through it
 pub struct JobSender {
     engine_sender: EngineSender,
-    current_target: Arc<RwLock<uint::U256>>,
+    current_target: Arc<RwLock<btc::Target>>,
 }
 
 impl JobSender {
-    pub fn new(engine_sender: EngineSender, current_target: Arc<RwLock<uint::U256>>) -> Self {
+    pub fn new(engine_sender: EngineSender, current_target: Arc<RwLock<btc::Target>>) -> Self {
         Self {
             engine_sender,
             current_target,
         }
     }
 
-    pub fn change_target(&self, target: uint::U256) {
+    pub fn change_target(&self, target: btc::Target) {
         *self
             .current_target
             .write()
@@ -90,13 +89,13 @@ impl JobSender {
 /// pool specified target
 pub struct JobSolutionReceiver {
     solution_channel: mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
-    current_target: Arc<RwLock<uint::U256>>,
+    current_target: Arc<RwLock<btc::Target>>,
 }
 
 impl JobSolutionReceiver {
     pub fn new(
         solution_channel: mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
-        current_target: Arc<RwLock<uint::U256>>,
+        current_target: Arc<RwLock<btc::Target>>,
     ) -> Self {
         Self {
             solution_channel,
@@ -104,11 +103,7 @@ impl JobSolutionReceiver {
         }
     }
 
-    fn trace_share(solution: &hal::UniqueMiningWorkSolution, target: &uint::U256) {
-        // TODO: create specialized structure 'Target' and rewrite it
-        let mut xtarget = [0u8; 32];
-        target.to_big_endian(&mut xtarget);
-
+    fn trace_share(solution: &hal::UniqueMiningWorkSolution, target: &btc::Target) {
         trace!(
             LOGGER,
             "nonce={:08x} bytes={}",
@@ -116,7 +111,7 @@ impl JobSolutionReceiver {
             hex::encode(&solution.get_block_header().into_bytes()[..])
         );
         trace!(LOGGER, "  hash={:x}", solution.hash());
-        trace!(LOGGER, "target={}", hex::encode(xtarget));
+        trace!(LOGGER, "target={:x}", target);
     }
 
     pub async fn receive(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
@@ -214,7 +209,7 @@ pub mod test {
 
         // change the target to return from solution receiver only this block
         let target = uint::U256::from_little_endian(&target_block.hash.into_inner());
-        job_sender.change_target(target);
+        job_sender.change_target(target.into());
 
         // send all solutions to the queue not to block on receiver
         for block in test_utils::TEST_BLOCKS.iter() {
