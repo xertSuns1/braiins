@@ -121,7 +121,7 @@ impl JobSolutionReceiver {
                 .read()
                 .expect("cannot read from shared current target");
             if solution.is_valid(current_target) {
-                info!(LOGGER, "----- SHARE BELLOW TARGET -----");
+                info!(LOGGER, "----- SHARE BELOW TARGET -----");
                 Self::trace_share(&solution, &current_target);
                 return Some(solution);
             }

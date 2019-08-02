@@ -49,7 +49,7 @@ pub struct BlockHeader {
     pub time: u32,
     /// Current target in compact format (network difficulty)
     pub bits: u32,
-    /// The nonce used to generate this block witch is bellow pool/network target
+    /// The nonce used to generate this block witch is below pool/network target
     pub nonce: u32,
 }
 
@@ -188,7 +188,7 @@ impl<'a, T: FromMidstateWord<T>> DoubleEndedIterator for MidstateWords<'a, T> {
 }
 
 /// Bitcoin target represents the network/pool difficulty as a 256bit number
-/// The structure provides various conversion functions and formaters for uniform displaying the
+/// The structure provides various conversion functions and formatters for uniform display of the
 /// target as a hexadecimal string similar to Bitcoin double hash which is SHA256 double hash
 /// printed in reverse order.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
