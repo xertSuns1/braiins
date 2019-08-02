@@ -1,6 +1,6 @@
+use crate::btc::{self, HashTrait};
 use crate::hal;
 use crate::work;
-use crate::btc::{self, HashTrait};
 
 use crate::misc::LOGGER;
 use slog::trace;

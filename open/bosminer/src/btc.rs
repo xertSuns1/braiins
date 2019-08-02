@@ -3,7 +3,7 @@ use crate::error;
 use packed_struct::prelude::*;
 use packed_struct_codegen::PackedStruct;
 
-use bitcoin_hashes::{sha256, HashEngine};
+use bitcoin_hashes::{sha256, sha256d, HashEngine};
 // reexport Bitcoin hash to remove dependency on bitcoin_hashes in other modules
 pub use bitcoin_hashes::{hex::FromHex, sha256d::Hash, Hash as HashTrait};
 
@@ -203,11 +203,10 @@ impl Target {
     /// double hash (the hash is written in reverse order because the hash is treated as 256bit
     /// little endian number)
     pub fn from_hex(s: &str) -> Result<Self, bitcoin_hashes::Error> {
-        // bitcoin crate implements `FromHex` trait for byte arrays with macro `impl_fromhex_array!`
-        let bytes: Sha256Array = FromHex::from_hex(s)?;
         // the target is treated the same as Bitcoin's double hash
         // the hexadecimal string is already reversed so load it as a big endian
-        Ok(Self(uint::U256::from_big_endian(&bytes)))
+        let target_dhash = sha256d::Hash::from_hex(s)?;
+        Ok(target_dhash.into_inner().into())
     }
 
     /// Create target from difficulty used by pools
@@ -264,10 +263,15 @@ impl Target {
         mantissa | (exponent << 24) as u32
     }
 
+    /// Yields the U256 number that represents the target
+    pub fn into_inner(self) -> uint::U256 {
+        self.0
+    }
+
     /// Auxiliary function to check if the target is greater or equal to some 256bit number
     #[inline]
-    fn is_above(&self, value: &uint::U256) -> bool {
-        self.0 >= *value
+    fn is_greater_or_equal(&self, other: &Target) -> bool {
+        self.0 >= other.0
     }
 }
 
@@ -302,6 +306,21 @@ impl From<Target> for Sha256Array {
     }
 }
 
+impl From<Sha256Array> for Target {
+    /// Get target from binary representation of SHA256
+    /// The target has the same binary representation as Bitcoin SHA256 double hash.
+    fn from(bytes: Sha256Array) -> Self {
+        Self(uint::U256::from_little_endian(&bytes))
+    }
+}
+
+impl From<sha256d::Hash> for Target {
+    /// Convenience conversion directly from Sha256d into Target
+    fn from(dhash: sha256d::Hash) -> Self {
+        dhash.into_inner().into()
+    }
+}
+
 impl AsRef<uint::U256> for Target {
     fn as_ref(&self) -> &uint::U256 {
         &self.0
@@ -324,20 +343,20 @@ target_hex_fmt_impl!(Display);
 target_hex_fmt_impl!(LowerHex);
 
 /// Auxiliary trait for adding target comparison with various types compatible with the `Target`
-pub trait BelowTarget {
+pub trait MeetsTarget {
     /// Check if the type is less or equal to the target
     /// In other words, the type (usually hash computed from some block) would be accepted as
     /// a valid by the remote server/pool.
-    fn is_below(&self, target: &Target) -> bool;
+    fn meets(&self, target: &Target) -> bool;
 }
 
 /// Extend SHA256 double hash with ability to validate that it is below target
-impl BelowTarget for Hash {
-    fn is_below(&self, target: &Target) -> bool {
+impl MeetsTarget for Hash {
+    fn meets(&self, target: &Target) -> bool {
         // convert it to number suitable for target comparison
-        let double_hash_u256 = uint::U256::from_little_endian(&self.into_inner());
+        let double_hash_u256 = Target::from(self.into_inner());
         // and check it with current target (pool difficulty)
-        target.is_above(&double_hash_u256)
+        target.is_greater_or_equal(&double_hash_u256)
     }
 }
 

@@ -133,7 +133,7 @@ impl JobSolutionReceiver {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::btc::{self, HashTrait};
+    use crate::btc;
     use crate::test_utils;
     use crate::utils::compat_block_on;
 
@@ -175,10 +175,11 @@ pub mod test {
         assert!(compat_block_on(work_generator.generate()).is_some());
     }
 
+    /// Helper function that compares 2 hashes while interpreting them as targets
     fn double_hash_cmp(a: &btc::Hash, b: &btc::Hash) -> std::cmp::Ordering {
-        let a_u256 = uint::U256::from_little_endian(&a.into_inner());
-        let b_u256 = uint::U256::from_little_endian(&b.into_inner());
-        a_u256.cmp(&b_u256)
+        let a_target: btc::Target = (*a).into();
+        let b_target: btc::Target = (*b).into();
+        a_target.cmp(&b_target)
     }
 
     /// This test verifies that after changing mining target, the job solver filters the provided
@@ -208,8 +209,8 @@ pub mod test {
             .unwrap();
 
         // change the target to return from solution receiver only this block
-        let target = uint::U256::from_little_endian(&target_block.hash.into_inner());
-        job_sender.change_target(target.into());
+        let target: btc::Target = target_block.hash.into();
+        job_sender.change_target(target);
 
         // send all solutions to the queue not to block on receiver
         for block in test_utils::TEST_BLOCKS.iter() {
