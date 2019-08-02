@@ -15,7 +15,7 @@ pub use s9::{
     run,
 };
 
-use crate::btc::{self, BelowTarget, HashTrait};
+use crate::btc::{self, HashTrait, MeetsTarget};
 
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
@@ -247,7 +247,7 @@ impl UniqueMiningWorkSolution {
         }
 
         // compute hash for this solution and compare it with target
-        self.hash().is_below(current_target)
+        self.hash().meets(current_target)
     }
 }
 
