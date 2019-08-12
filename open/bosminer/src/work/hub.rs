@@ -176,7 +176,7 @@ pub mod test {
     }
 
     /// Helper function that compares 2 hashes while interpreting them as targets
-    fn double_hash_cmp(a: &btc::Hash, b: &btc::Hash) -> std::cmp::Ordering {
+    fn double_hash_cmp(a: &btc::DHash, b: &btc::DHash) -> std::cmp::Ordering {
         let a_target: btc::Target = (*a).into();
         let b_target: btc::Target = (*b).into();
         a_target.cmp(&b_target)

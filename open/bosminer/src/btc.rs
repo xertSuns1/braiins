@@ -3,9 +3,9 @@ use crate::error;
 use packed_struct::prelude::*;
 use packed_struct_codegen::PackedStruct;
 
-use bitcoin_hashes::{sha256, sha256d, HashEngine};
+use bitcoin_hashes::{sha256, HashEngine};
 // reexport Bitcoin hash to remove dependency on bitcoin_hashes in other modules
-pub use bitcoin_hashes::{hex::FromHex, sha256d::Hash, Hash as HashTrait};
+pub use bitcoin_hashes::{hex::FromHex, sha256d::Hash as DHash, Hash as HashTrait};
 
 use std::convert::TryInto;
 use std::mem::size_of;
@@ -61,9 +61,9 @@ impl BlockHeader {
     }
 
     /// Compute SHA256 double hash
-    pub fn hash(&self) -> Hash {
+    pub fn hash(&self) -> DHash {
         let block_bytes = self.into_bytes();
-        Hash::hash(&block_bytes)
+        DHash::hash(&block_bytes)
     }
 
     /// Compute SHA256 midstate from first chunk of block header
@@ -205,7 +205,7 @@ impl Target {
     pub fn from_hex(s: &str) -> Result<Self, bitcoin_hashes::Error> {
         // the target is treated the same as Bitcoin's double hash
         // the hexadecimal string is already reversed so load it as a big endian
-        let target_dhash = sha256d::Hash::from_hex(s)?;
+        let target_dhash = DHash::from_hex(s)?;
         Ok(target_dhash.into_inner().into())
     }
 
@@ -314,9 +314,9 @@ impl From<Sha256Array> for Target {
     }
 }
 
-impl From<sha256d::Hash> for Target {
+impl From<DHash> for Target {
     /// Convenience conversion directly from Sha256d into Target
-    fn from(dhash: sha256d::Hash) -> Self {
+    fn from(dhash: DHash) -> Self {
         dhash.into_inner().into()
     }
 }
@@ -351,7 +351,7 @@ pub trait MeetsTarget {
 }
 
 /// Extend SHA256 double hash with ability to validate that it is below target
-impl MeetsTarget for Hash {
+impl MeetsTarget for DHash {
     fn meets(&self, target: &Target) -> bool {
         // convert it to number suitable for target comparison
         let double_hash_u256 = Target::from(self.into_inner());
