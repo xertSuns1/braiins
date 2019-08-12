@@ -9,13 +9,13 @@ use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 /// Real blocks used for tests
 #[derive(Copy, Clone)]
 pub struct TestBlock {
-    pub hash: btc::Hash,
+    pub hash: btc::DHash,
     pub hash_str: &'static str,
     pub midstate: btc::Midstate,
     pub midstate_str: &'static str,
     version: u32,
-    prev_hash: btc::Hash,
-    merkle_root: btc::Hash,
+    prev_hash: btc::DHash,
+    merkle_root: btc::DHash,
     time: u32,
     bits: u32,
     pub nonce: u32,
@@ -40,13 +40,13 @@ impl TestBlock {
         icarus_bytes: [u8; 64],
     ) -> Self {
         Self {
-            hash: btc::Hash::from_hex(hash).expect("parse hex"),
+            hash: btc::DHash::from_hex(hash).expect("parse hex"),
             hash_str: hash,
             midstate: btc::Midstate::from_hex(midstate).expect("parse hex"),
             midstate_str: midstate,
             version,
-            prev_hash: btc::Hash::from_hex(prev_hash).expect("parse hex"),
-            merkle_root: btc::Hash::from_hex(merkle_root).expect("parse hex"),
+            prev_hash: btc::DHash::from_hex(prev_hash).expect("parse hex"),
+            merkle_root: btc::DHash::from_hex(merkle_root).expect("parse hex"),
             time,
             bits,
             nonce,
@@ -71,11 +71,11 @@ impl hal::BitcoinJob for TestBlock {
         0
     }
 
-    fn previous_hash(&self) -> &btc::Hash {
+    fn previous_hash(&self) -> &btc::DHash {
         &self.prev_hash
     }
 
-    fn merkle_root(&self) -> &btc::Hash {
+    fn merkle_root(&self) -> &btc::DHash {
         &self.merkle_root
     }
 

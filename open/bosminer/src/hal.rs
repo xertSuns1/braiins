@@ -38,9 +38,9 @@ pub trait BitcoinJob: Debug + Downcast + Send + Sync {
     /// Bit-mask with general purpose bits which can be freely manipulated (specified by BIP320)
     fn version_mask(&self) -> u32;
     /// Double SHA256 hash of the previous block header
-    fn previous_hash(&self) -> &btc::Hash;
+    fn previous_hash(&self) -> &btc::DHash;
     /// Double SHA256 hash based on all of the transactions in the block
-    fn merkle_root(&self) -> &btc::Hash;
+    fn merkle_root(&self) -> &btc::DHash;
     /// Current block timestamp as seconds since 1970-01-01T00:00 UTC
     fn time(&self) -> u32;
     /// Maximal timestamp for current block as seconds since 1970-01-01T00:00 UTC
@@ -169,7 +169,7 @@ pub struct UniqueMiningWorkSolution {
     /// Solution of the PoW puzzle
     solution: MiningWorkSolution,
     /// Lazy evaluated double hash of this solution
-    hash: Cell<Option<btc::Hash>>,
+    hash: Cell<Option<btc::DHash>>,
 }
 
 impl UniqueMiningWorkSolution {
@@ -214,7 +214,7 @@ impl UniqueMiningWorkSolution {
     }
 
     /// Return double hash of this solution
-    pub fn hash(&self) -> btc::Hash {
+    pub fn hash(&self) -> btc::DHash {
         match self.hash.get() {
             Some(value) => value,
             None => {

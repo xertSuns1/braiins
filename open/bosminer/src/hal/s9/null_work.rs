@@ -8,14 +8,14 @@ use byteorder::{ByteOrder, LittleEndian};
 /// NullJob to be used for chip initialization and tests
 #[derive(Debug, Copy, Clone)]
 pub struct NullJob {
-    hash: btc::Hash,
+    hash: btc::DHash,
     time: u32,
 }
 
 impl NullJob {
     pub fn new(time: u32) -> Self {
         Self {
-            hash: btc::Hash::from_slice(&[0xffu8; 32]).unwrap(),
+            hash: btc::DHash::from_slice(&[0xffu8; 32]).unwrap(),
             time,
         }
     }
@@ -34,11 +34,11 @@ impl hal::BitcoinJob for NullJob {
         0
     }
 
-    fn previous_hash(&self) -> &btc::Hash {
+    fn previous_hash(&self) -> &btc::DHash {
         &self.hash
     }
 
-    fn merkle_root(&self) -> &btc::Hash {
+    fn merkle_root(&self) -> &btc::DHash {
         &self.hash
     }
 
