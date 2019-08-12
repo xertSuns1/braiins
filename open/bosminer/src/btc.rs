@@ -521,4 +521,30 @@ pub mod test {
     fn test_corrupted_compact() {
         assert!(Target::from_compact(0xfffffff).is_err())
     }
+
+    #[test]
+    fn test_meets_target() {
+        for block in test_utils::TEST_BLOCKS.iter() {
+            // convert network difficulty to target
+            let target = Target::from_compact(block.bits()).unwrap();
+
+            // check if test block meets the target
+            assert!(block.hash.meets(&target));
+        }
+    }
+
+    #[test]
+    fn test_target_bytes() {
+        for block in test_utils::TEST_BLOCKS.iter() {
+            // convert hash of block to target
+            let target: Target = block.hash.into();
+
+            // check if conversion to bytes returns the same result as a inner representation of
+            // the block hash
+            let target_bytes: Sha256Array = target.into();
+            let hash_bytes = block.hash.into_inner();
+
+            assert_eq!(target_bytes, hash_bytes);
+        }
+    }
 }
