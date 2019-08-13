@@ -10,13 +10,18 @@ use byteorder::{ByteOrder, LittleEndian};
 pub struct NullJob {
     hash: btc::DHash,
     time: u32,
+    bits: u32,
+    version: u32,
 }
 
 impl NullJob {
-    pub fn new(time: u32) -> Self {
+    /// XXX: maybe create a structure with named members to pass to this constructor, otherwise it's confusing.
+    pub fn new(time: u32, bits: u32, version: u32) -> Self {
         Self {
             hash: btc::DHash::from_slice(&[0xffu8; 32]).unwrap(),
             time,
+            bits,
+            version,
         }
     }
 
@@ -27,7 +32,7 @@ impl NullJob {
 
 impl hal::BitcoinJob for NullJob {
     fn version(&self) -> u32 {
-        0
+        self.version
     }
 
     fn version_mask(&self) -> u32 {
@@ -47,7 +52,7 @@ impl hal::BitcoinJob for NullJob {
     }
 
     fn bits(&self) -> u32 {
-        0xffff_ffff
+        self.bits
     }
 
     fn is_valid(&self) -> bool {
@@ -57,7 +62,7 @@ impl hal::BitcoinJob for NullJob {
 
 /// * `i` - unique identifier for the generated midstate
 pub fn prepare(i: u64) -> hal::MiningWork {
-    let job = Arc::new(NullJob::new(0));
+    let job = Arc::new(NullJob::new(0, 0xffff_ffff, 0));
     let time = job.time();
 
     let mut midstate_bytes = [0u8; btc::SHA256_DIGEST_SIZE];
@@ -66,6 +71,19 @@ pub fn prepare(i: u64) -> hal::MiningWork {
     let mid = hal::Midstate {
         version: 0,
         state: midstate_bytes.into(),
+    };
+
+    hal::MiningWork::new(job, vec![mid], time)
+}
+
+pub fn prepare_opencore(enable_core: bool) -> hal::MiningWork {
+    let bits = if enable_core { 0xffff_ffff } else { 0 };
+    let job = Arc::new(NullJob::new(0, bits, 0));
+    let time = job.time();
+
+    let mid = hal::Midstate {
+        version: 0,
+        state: [0u8; btc::SHA256_DIGEST_SIZE].into(),
     };
 
     hal::MiningWork::new(job, vec![mid], time)
