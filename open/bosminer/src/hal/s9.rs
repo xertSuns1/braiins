@@ -69,12 +69,14 @@ pub struct HChainOptions {
     // This affects if initialization sends opencore-like jobs to init the chips.
     // Obviously unless you test opencore, this has to be enabled.
     pub send_init_work: bool,
+    pub filter_duplicate_solutions: bool,
 }
 
 impl Default for HChainOptions {
     fn default() -> Self {
         Self {
             send_init_work: true,
+            filter_duplicate_solutions: true,
         }
     }
 }
@@ -595,7 +597,7 @@ async fn async_recv_solutions<T>(
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     mut rx_fifo: fifo::HChainFifo,
     work_solution: work::SolutionSender,
-    _opts: HChainOptions,
+    opts: HChainOptions,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -624,10 +626,15 @@ async fn async_recv_solutions<T>(
 
                 // work item detected a new unique solution, we will push it for further processing
                 if let Some(unique_solution) = status.unique_solution {
-                    stats.unique_solutions += 1;
-                    work_solution.send(unique_solution);
+                    if !status.duplicate || !opts.filter_duplicate_solutions {
+                        work_solution.send(unique_solution);
+                    }
                 }
-                stats.duplicate_solutions += status.duplicate as u64;
+                if status.duplicate {
+                    stats.duplicate_solutions += 1;
+                } else {
+                    stats.unique_solutions += 1;
+                }
                 stats.mismatched_solution_nonces += status.mismatched_nonce as u64;
             }
             None => {
