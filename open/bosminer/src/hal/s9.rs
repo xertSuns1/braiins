@@ -32,9 +32,9 @@ use packed_struct::{PackedStruct, PackedStructSlice};
 use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
 
-/// How many work use to initialize the chain, use at least MAX_CHIPS_ON_CHAIN work
-/// TODO: compare this to bitmain's open_core
-const NUM_WORK_TO_OPEN_CORE: usize = 80;
+/// How many cores are there on chip
+/// Each core should receive it's own open-work
+const NUM_CORES_ON_CHIP: usize = 114;
 
 /// Timing constants
 const INACTIVATE_FROM_CHAIN_DELAY_MS: u64 = 100;
@@ -585,16 +585,16 @@ async fn send_init_work<T>(tx_fifo: &mut fifo::HChainFifo)
 where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
-    // initialize chip by sending test work with correct difficulty (0xffffffff works)
-    // TODO: use fixed job copied from bitmain's cgmminer, prepare_test_work may change
+    // initialize chip by sending test work with correct nbits
     trace!(
         LOGGER,
         "Sending out {} pieces of dummy work to initialize chips",
-        NUM_WORK_TO_OPEN_CORE
+        NUM_CORES_ON_CHIP
     );
-    for i in 0..NUM_WORK_TO_OPEN_CORE {
-        let work = &null_work::prepare(0);
+    for i in 0..NUM_CORES_ON_CHIP {
+        let work = &null_work::prepare_opencore(true);
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
+        // TODO: remember work_id assignment in registry
         super::s9::HChainCtl::<T>::send_work(tx_fifo, &work, i as u32).expect("send work");
     }
 }

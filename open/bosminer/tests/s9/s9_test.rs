@@ -16,15 +16,13 @@ use futures::channel::mpsc;
 use tokio::await;
 use tokio::timer::Delay;
 
-/*
 /// Prepares sample work with empty midstates
 /// NOTE: this work has 2 valid nonces:
 /// - 0x83ea0372 (solution 0)
 /// - 0x09f86be1 (solution 1)
-*/
 pub fn prepare_test_work() -> hal::MiningWork {
     let time = 0xffffffff;
-    let job = Arc::new(null_work::NullJob::new(time));
+    let job = Arc::new(null_work::NullJob::new(time, 0xffff_ffff, 0));
 
     let mid = hal::Midstate {
         version: 0,
