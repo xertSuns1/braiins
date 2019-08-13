@@ -30,18 +30,20 @@ impl MiningWorkRegistryItem {
             unique_solution: None,
         };
         // scan the current solutions and detect a duplicate
-        for solution in self.solutions.iter() {
-            if solution.nonce == new_solution.nonce {
-                status.duplicate = true;
-                return status;
-            }
+        let matching_solution = self
+            .solutions
+            .iter()
+            .find(|solution| solution.nonce == new_solution.nonce);
+        if matching_solution.is_none() {
+            // At this point, we know such solution has not been received yet. If it is valid (no
+            // hardware error detected == meets the target), it can be appended to the solution list
+            // for this work item
+            // TODO: call the evaluator for the solution
+            self.solutions.push(new_solution.clone());
+        } else {
+            // now we now it's a duplicate, but we return it anyway
+            status.duplicate = true;
         }
-
-        // At this point, we know such solution has not been received yet. If it is valid (no
-        // hardware error detected == meets the target), it can be appended to the solution list
-        // for this work item
-        // TODO: call the evaluator for the solution
-        self.solutions.push(new_solution.clone());
 
         // report the unique solution via status
         status.unique_solution = Some(hal::UniqueMiningWorkSolution::new(
@@ -54,12 +56,14 @@ impl MiningWorkRegistryItem {
 }
 
 /// Helper container for the status after inserting the solution
+#[derive(Clone)]
 pub struct InsertSolutionStatus {
     /// Nonce of the solution at a given index doesn't match the existing nonce
     pub mismatched_nonce: bool,
     /// Solution is duplicate (given MiningWorkRegistryItem) already has it
     pub duplicate: bool,
     /// actual solution (defined if the above 2 are false)
+    /// TODO: rename `unique_solution` to solution
     pub unique_solution: Option<hal::UniqueMiningWorkSolution>,
 }
 
