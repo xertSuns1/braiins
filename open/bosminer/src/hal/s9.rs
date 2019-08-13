@@ -7,6 +7,7 @@ pub mod power;
 pub mod registry;
 
 // TODO: remove thread specific components
+use std::default::Default;
 use std::sync::Arc;
 use std::thread;
 
@@ -60,6 +61,23 @@ const TARGET_CHIP_BAUD_RATE: usize = 1562500;
 const FPGA_IPCORE_F_CLK_SPEED_HZ: usize = 50_000_000;
 /// Divisor of the base clock. The resulting clock is connected to UART
 const FPGA_IPCORE_F_CLK_BASE_BAUD_DIV: usize = 16;
+
+/// Hash Chain Options is to pass additional information during hash chain
+/// controller initialization.
+#[derive(Clone)]
+pub struct HChainOptions {
+    // This affects if initialization sends opencore-like jobs to init the chips.
+    // Obviously unless you test opencore, this has to be enabled.
+    pub send_init_work: bool,
+}
+
+impl Default for HChainOptions {
+    fn default() -> Self {
+        Self {
+            send_init_work: true,
+        }
+    }
+}
 
 /// Hash Chain Controller provides abstraction of the FPGA interface for operating hashing boards.
 /// It is the user-space driver for the IP Core
@@ -541,10 +559,13 @@ async fn async_send_work<T>(
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     mut tx_fifo: fifo::HChainFifo,
     mut work_generator: work::Generator,
+    opts: HChainOptions,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
-    await!(send_init_work::<T>(&mut tx_fifo));
+    if opts.send_init_work {
+        await!(send_init_work::<T>(&mut tx_fifo));
+    }
     loop {
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
         let work = await!(work_generator.generate());
@@ -574,6 +595,7 @@ async fn async_recv_solutions<T>(
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     mut rx_fifo: fifo::HChainFifo,
     work_solution: work::SolutionSender,
+    _opts: HChainOptions,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -627,6 +649,7 @@ fn spawn_tx_task<T>(
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     work_generator: work::Generator,
     shutdown: crate::hal::ShutdownSender,
+    opts: HChainOptions,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -643,6 +666,7 @@ fn spawn_tx_task<T>(
                 h_chain_ctl,
                 tx_fifo,
                 work_generator,
+                opts,
             ));
             shutdown.send("no more work from workhub");
         }
@@ -655,6 +679,7 @@ fn spawn_rx_task<T>(
     mining_stats: Arc<Mutex<super::MiningStats>>,
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     work_solution: work::SolutionSender,
+    opts: HChainOptions,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -671,17 +696,20 @@ fn spawn_rx_task<T>(
                 h_chain_ctl,
                 rx_fifo,
                 work_solution,
+                opts,
             ));
         }
             .compat_fix(),
     );
 }
 
-pub struct HChain {}
+pub struct HChain {
+    opts: HChainOptions,
+}
 
 impl HChain {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(opts: HChainOptions) -> Self {
+        Self { opts }
     }
 
     pub fn start_h_chain(
@@ -724,12 +752,14 @@ impl HChain {
             h_chain_ctl.clone(),
             work_generator,
             shutdown.clone(),
+            self.opts.clone(),
         );
         spawn_rx_task(
             work_registry.clone(),
             mining_stats.clone(),
             h_chain_ctl.clone(),
             work_solution,
+            self.opts.clone(),
         );
 
         h_chain_ctl
@@ -743,7 +773,7 @@ pub fn run(
     shutdown: crate::hal::ShutdownSender,
 ) {
     // Create one chain
-    let chain = HChain::new();
+    let chain = HChain::new(Default::default());
     chain.start_h_chain(work_solver, mining_stats, shutdown);
 }
 

@@ -2,6 +2,7 @@ use rminer::hal::{self, s9::null_work};
 use rminer::utils;
 use rminer::work;
 
+use std::default::Default;
 use std::time::{Duration, Instant};
 
 use futures_locks::Mutex;
@@ -81,13 +82,17 @@ fn test_work_generation() {
         let (_, work_solver) = work::Hub::build_solvers();
 
         // Create queue with which to inject work into miner
-        let (tx_work, rx_work) = mpsc::unbounded();
+        let (tx_work, _rx_work) = mpsc::unbounded();
 
         // Create mining stats
         let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
 
         // Create one chain
-        let chain = hal::s9::HChain::new();
+        let opts = hal::s9::HChainOptions {
+            send_init_work: false,
+            ..Default::default()
+        };
+        let chain = hal::s9::HChain::new(opts);
         let h_chain_ctl = chain.start_h_chain(work_solver, mining_stats.clone(), shutdown_sender);
 
         // the first 3 work loads don't produce any solutions, these are merely to initialize the input
