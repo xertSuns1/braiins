@@ -114,7 +114,7 @@ pub struct Midstate {
 /// Describes actual mining work for submission to a hashing hardware.
 /// Starting with merkle_root_tail the data goes to chunk2 of SHA256.
 /// TODO: add ntime limit for supporting hardware that can do nTime rolling on its own
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MiningWork {
     /// Bitcoin job shared with initial network protocol and work solution
     job: Arc<dyn BitcoinJob>,
@@ -322,8 +322,7 @@ impl Shutdown {
     }
 }
 
-#[cfg(test)]
-pub mod test {
+pub mod test_utils {
     use super::*;
     use crate::test_utils;
 
@@ -366,10 +365,15 @@ pub mod test {
             }
         }
     }
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
 
     #[test]
     fn test_block_double_hash() {
-        for block in test_utils::TEST_BLOCKS.iter() {
+        for block in crate::test_utils::TEST_BLOCKS.iter() {
             let solution: UniqueMiningWorkSolution = block.into();
 
             // test lazy evaluated hash

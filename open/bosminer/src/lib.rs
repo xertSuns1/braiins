@@ -9,7 +9,6 @@ pub mod stats;
 pub mod utils;
 pub mod work;
 
-#[cfg(test)]
 pub mod test_utils;
 
 #[cfg(not(feature = "backend_selected"))]

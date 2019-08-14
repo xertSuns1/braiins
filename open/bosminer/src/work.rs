@@ -85,7 +85,6 @@ impl EngineReceiver {
     }
 }
 
-#[cfg(test)]
 pub mod test {
     pub use super::*;
 

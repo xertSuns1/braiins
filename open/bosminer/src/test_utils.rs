@@ -1,6 +1,5 @@
 use crate::btc::{self, FromHex};
-use crate::hal::{self, BitcoinJob};
-use crate::utils::compat_block_on;
+use crate::hal;
 use crate::work;
 
 use lazy_static::lazy_static;
@@ -173,6 +172,55 @@ lazy_static! {
     ];
 }
 
+/// WorkEngine for testing purposes that carries exactly one piece of `MiningWork`
+#[derive(Debug)]
+struct OneWorkEngineInner {
+    work: Option<hal::MiningWork>,
+}
+
+impl OneWorkEngineInner {
+    fn is_exhausted(&self) -> bool {
+        self.work.is_none()
+    }
+
+    fn next_work(&mut self) -> hal::WorkLoop<hal::MiningWork> {
+        match self.work.take() {
+            Some(work) => hal::WorkLoop::Break(work),
+            None => hal::WorkLoop::Exhausted,
+        }
+    }
+}
+
+/// Wrapper for `OneWorkEngineInner` to allow shared access.
+#[derive(Debug)]
+pub struct OneWorkEngine {
+    /// Standard Mutex allows create `TestWorkEngineInner` with mutable self reference in
+    /// `next_work` and it also satisfies `hal::WorkEngine` requirement for `Send + Sync`
+    inner: StdMutex<OneWorkEngineInner>,
+}
+
+impl OneWorkEngine {
+    pub fn new(work: hal::MiningWork) -> Self {
+        Self {
+            inner: StdMutex::new(OneWorkEngineInner { work: Some(work) }),
+        }
+    }
+
+    fn lock_inner(&self) -> StdMutexGuard<OneWorkEngineInner> {
+        self.inner.lock().expect("cannot lock test work engine")
+    }
+}
+
+impl hal::WorkEngine for OneWorkEngine {
+    fn is_exhausted(&self) -> bool {
+        self.lock_inner().is_exhausted()
+    }
+
+    fn next_work(&self) -> hal::WorkLoop<hal::MiningWork> {
+        self.lock_inner().next_work()
+    }
+}
+
 #[derive(Debug)]
 struct TestWorkEngineInner {
     next_test_block: Option<&'static TestBlock>,
@@ -242,50 +290,57 @@ pub fn create_test_work_generator() -> work::Generator {
     work::Generator::new(create_test_work_receiver())
 }
 
-fn get_engine(work_receiver: &mut work::EngineReceiver) -> Arc<hal::WorkEngine> {
-    compat_block_on(work_receiver.get_engine()).expect("cannot get test work engine")
-}
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::hal::BitcoinJob;
+    use crate::utils::compat_block_on;
 
-fn cmp_block_with_work(block: &TestBlock, work: hal::MiningWork) -> hal::MiningWork {
-    assert_eq!(block.midstate, work.midstates[0].state);
-    assert_eq!(block.merkle_root_tail(), work.merkle_root_tail());
-    assert_eq!(block.time(), work.ntime);
-    assert_eq!(block.bits(), work.bits());
-    work
-}
+    fn get_engine(work_receiver: &mut work::EngineReceiver) -> Arc<hal::WorkEngine> {
+        compat_block_on(work_receiver.get_engine()).expect("cannot get test work engine")
+    }
 
-#[test]
-fn test_work_receiver() {
-    let mut work_receiver = create_test_work_receiver();
-    let test_engine = get_engine(&mut work_receiver);
+    fn cmp_block_with_work(block: &TestBlock, work: hal::MiningWork) -> hal::MiningWork {
+        assert_eq!(block.midstate, work.midstates[0].state);
+        assert_eq!(block.merkle_root_tail(), work.merkle_root_tail());
+        assert_eq!(block.time(), work.ntime);
+        assert_eq!(block.bits(), work.bits());
+        work
+    }
 
-    // test work engine is not exhausted so it should return the same engine
-    assert!(Arc::ptr_eq(&test_engine, &get_engine(&mut work_receiver)));
+    #[test]
+    fn test_work_receiver() {
+        let mut work_receiver = create_test_work_receiver();
+        let test_engine = get_engine(&mut work_receiver);
 
-    let mut work_break = false;
-    for block in TEST_BLOCKS.iter() {
-        match test_engine
-            .next_work()
-            .map(|work| cmp_block_with_work(block, work))
-        {
-            hal::WorkLoop::Exhausted => {
-                panic!("test work generator returned less work then expected")
-            }
-            hal::WorkLoop::Break(_) => {
-                assert!(!work_break, "test work generator returned double break");
-                work_break = true;
-            }
-            hal::WorkLoop::Continue(_) => {
-                assert!(!work_break, "test work generator continues after break")
+        // test work engine is not exhausted so it should return the same engine
+        assert!(Arc::ptr_eq(&test_engine, &get_engine(&mut work_receiver)));
+
+        let mut work_break = false;
+        for block in TEST_BLOCKS.iter() {
+            match test_engine
+                .next_work()
+                .map(|work| cmp_block_with_work(block, work))
+            {
+                hal::WorkLoop::Exhausted => {
+                    panic!("test work generator returned less work than expected")
+                }
+                hal::WorkLoop::Break(_) => {
+                    assert!(!work_break, "test work generator returned double break");
+                    work_break = true;
+                }
+                hal::WorkLoop::Continue(_) => {
+                    assert!(!work_break, "test work generator continues after break")
+                }
             }
         }
+        assert!(
+            work_break,
+            "test work generator returned more work than expected"
+        );
+        match test_engine.next_work() {
+            hal::WorkLoop::Exhausted => (),
+            _ => panic!("test work generator continues after returning all work"),
+        };
     }
-    assert!(
-        work_break,
-        "test work generator returned more work then expected"
-    );
-    match test_engine.next_work() {
-        hal::WorkLoop::Exhausted => (),
-        _ => panic!("test work generator continues after returning all work"),
-    };
 }
