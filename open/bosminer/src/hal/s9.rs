@@ -622,13 +622,9 @@ async fn async_send_work<T>(
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     mut tx_fifo: fifo::HChainFifo,
     mut work_generator: work::Generator,
-    opts: HChainOptions,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
-    if opts.send_init_work {
-        await!(send_init_work::<T>(&mut tx_fifo));
-    }
     loop {
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
         let work = await!(work_generator.generate());
@@ -723,18 +719,21 @@ fn spawn_tx_task<T>(
 {
     tokio::spawn(
         async move {
-            let tx_fifo = await!(h_chain_ctl.lock())
+            let mut tx_fifo = await!(h_chain_ctl.lock())
                 .expect("locking failed")
                 .work_tx_fifo
                 .take()
                 .expect("work-tx fifo missing");
+
+            if opts.send_init_work {
+                await!(send_init_work::<T>(&mut tx_fifo));
+            }
             await!(async_send_work(
                 work_registry,
                 mining_stats,
                 h_chain_ctl,
                 tx_fifo,
                 work_generator,
-                opts,
             ));
             shutdown.send("no more work from workhub");
         }
