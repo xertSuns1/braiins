@@ -150,6 +150,9 @@ impl HChainFifo {
 mod test {
     use super::*;
 
+    /// Index of chain for testing (must exist and be defined in DTS)
+    const TEST_CHAIN_INDEX: usize = 8;
+
     /// Try opening UIO device.
     /// This test needs properly configured UIO devices for hash-chain 8 in
     /// device-tree so that we have something to open.
@@ -174,7 +177,7 @@ mod test {
     #[test]
     fn test_map_uio() {
         unsafe {
-            let _m: Mmap<u8> = Mmap::new(8).unwrap();
+            let _m: Mmap<u8> = Mmap::new(TEST_CHAIN_INDEX).unwrap();
         }
     }
 
@@ -184,28 +187,28 @@ mod test {
     #[test]
     fn test_map_uio_twice_checklock() {
         unsafe {
-            let _m: Mmap<u8> = Mmap::new(8).unwrap();
-            let _m: Mmap<u8> = Mmap::new(8).unwrap();
+            let _m: Mmap<u8> = Mmap::new(TEST_CHAIN_INDEX).unwrap();
+            let _m: Mmap<u8> = Mmap::new(TEST_CHAIN_INDEX).unwrap();
         }
     }
 
     /// Test that we are able to construct HChainFifo instance
     #[test]
     fn test_fifo_construction() {
-        let _fifo = HChainFifo::new(8).expect("fifo construction failed");
+        let _fifo = HChainFifo::new(TEST_CHAIN_INDEX).expect("fifo construction failed");
     }
 
     /// Try to map IRQ.
     #[test]
     fn test_map_irq() {
-        map_irq(8, "cmd-rx").unwrap();
+        map_irq(TEST_CHAIN_INDEX, "cmd-rx").unwrap();
     }
 
     /// Test that we get IRQ.
     /// Test it on empty tx queue (IRQ always asserted).
     #[test]
     fn test_get_irq() {
-        let irq = map_irq(8, "work-tx").unwrap();
+        let irq = map_irq(TEST_CHAIN_INDEX, "work-tx").unwrap();
         irq.irq_enable().unwrap();
         let res = irq.irq_wait_timeout(FIFO_READ_TIMEOUT);
         assert!(res.unwrap().is_some(), "expected interrupt");
@@ -217,11 +220,11 @@ mod test {
     fn test_get_irq_timeout() {
         // first we construct FIFO
         // HChainFifo initialization will reset all queues
-        let mut fifo = HChainFifo::new(8).expect("fifo construction failed");
+        let mut fifo = HChainFifo::new(TEST_CHAIN_INDEX).expect("fifo construction failed");
         // throw fifo away
         drop(fifo);
         // work rx fifo now shouldn't get any interrupts (it's empty)
-        let irq = map_irq(8, "work-rx").unwrap();
+        let irq = map_irq(TEST_CHAIN_INDEX, "work-rx").unwrap();
         irq.irq_enable().unwrap();
         let res = irq.irq_wait_timeout(FIFO_READ_TIMEOUT);
         assert!(res.unwrap().is_none(), "expected timeout");
