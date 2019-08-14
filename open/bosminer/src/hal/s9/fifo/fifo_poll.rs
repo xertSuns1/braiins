@@ -48,6 +48,8 @@ impl HChainFifo {
         Ok(Some(self.hash_chain_io.cmd_rx_fifo.read().bits()))
     }
 
+    pub fn init(&mut self) {}
+
     pub fn new(hashboard_idx: usize) -> error::Result<Self> {
         let hash_chain_io = unsafe { Mmap::new(hashboard_idx)? };
 

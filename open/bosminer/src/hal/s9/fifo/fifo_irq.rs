@@ -75,7 +75,7 @@ impl HChainFifo {
         Ok(())
     }
 
-    fn init_irqs(&mut self) {
+    pub fn init(&mut self) {
         // Set threshold for work TX so that there's space for
         // at least one job.
         self.hash_chain_io
@@ -109,13 +109,12 @@ impl HChainFifo {
     pub fn new(hashboard_idx: usize) -> error::Result<Self> {
         let hash_chain_io = unsafe { Mmap::new(hashboard_idx)? };
 
-        let mut fifo = Self {
+        let fifo = Self {
             hash_chain_io,
             work_tx_irq: map_irq(hashboard_idx, "work-tx")?,
             work_rx_irq: map_irq(hashboard_idx, "work-rx")?,
             cmd_rx_irq: map_irq(hashboard_idx, "cmd-rx")?,
         };
-        fifo.init_irqs();
         Ok(fifo)
     }
 }

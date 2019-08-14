@@ -117,6 +117,7 @@ pub struct HChainCtl<VBackend> {
     /// When the heartbeat was last sent
     #[allow(dead_code)]
     last_heartbeat_sent: Option<SystemTime>,
+    #[allow(dead_code)]
     hashboard_idx: usize,
     pub cmd_fifo: fifo::HChainFifo,
     pub work_rx_fifo: Option<fifo::HChainFifo>,
@@ -166,6 +167,14 @@ where
             ))?;
 
         let midstate_count_bits = midstate_count._bits();
+        let mut cmd_fifo = fifo::HChainFifo::new(hashboard_idx)?;
+        let mut work_rx_fifo = fifo::HChainFifo::new(hashboard_idx)?;
+        let mut work_tx_fifo = fifo::HChainFifo::new(hashboard_idx)?;
+
+        cmd_fifo.init();
+        work_rx_fifo.init();
+        work_tx_fifo.init();
+
         Ok(Self {
             work_id: 0,
             chip_count: 0,
@@ -177,9 +186,9 @@ where
             last_heartbeat_sent: None,
             // TODO: implement setting me
             pll_frequency: DEFAULT_S9_PLL_FREQUENCY,
-            cmd_fifo: fifo::HChainFifo::new(hashboard_idx)?,
-            work_rx_fifo: Some(fifo::HChainFifo::new(hashboard_idx)?),
-            work_tx_fifo: Some(fifo::HChainFifo::new(hashboard_idx)?),
+            cmd_fifo: cmd_fifo,
+            work_rx_fifo: Some(work_rx_fifo),
+            work_tx_fifo: Some(work_tx_fifo),
         })
     }
 
@@ -714,7 +723,7 @@ fn spawn_tx_task<T>(
 {
     tokio::spawn(
         async move {
-            let mut tx_fifo = await!(h_chain_ctl.lock())
+            let tx_fifo = await!(h_chain_ctl.lock())
                 .expect("locking failed")
                 .work_tx_fifo
                 .take()
@@ -744,7 +753,7 @@ fn spawn_rx_task<T>(
 {
     tokio::spawn(
         async move {
-            let mut rx_fifo = await!(h_chain_ctl.lock())
+            let rx_fifo = await!(h_chain_ctl.lock())
                 .expect("locking failed")
                 .work_rx_fifo
                 .take()
