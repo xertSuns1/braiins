@@ -189,6 +189,17 @@ where
         1 << self.midstate_count_bits
     }
 
+    /// Calculate work_time for this instance of HChain
+    ///
+    /// Returns number of ticks (suitable to be written to `WORK_TIME` register)
+    #[inline]
+    fn calculate_work_time(&self) -> u32 {
+        secs_to_fpga_ticks(calculate_work_delay_for_pll(
+            self.midstate_count() as u64,
+            self.pll_frequency,
+        ))
+    }
+
     /// Helper method that initializes the FPGA IP core
     fn ip_core_init(&self) -> error::Result<()> {
         // Disable ip core
@@ -196,10 +207,7 @@ where
         self.cmd_fifo.enable_ip_core();
 
         self.set_ip_core_baud_rate(INIT_CHIP_BAUD_RATE)?;
-        let work_time = secs_to_fpga_ticks(calculate_work_delay_for_pll(
-            self.midstate_count() as u64,
-            self.pll_frequency,
-        ));
+        let work_time = self.calculate_work_time();
         trace!(LOGGER, "Using work time: {}", work_time);
         self.cmd_fifo.set_ip_core_work_time(work_time);
         self.cmd_fifo
