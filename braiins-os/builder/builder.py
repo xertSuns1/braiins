@@ -90,6 +90,7 @@ class Builder:
     UBOOT = 'u-boot'
     LINUX = 'linux'
     CGMINER = 'cgminer'
+    BOSMINER = 'bosminer'
     FEEDS_CONF = 'feeds.conf'
     FEEDS_DIR = 'feeds'
     CONFIG_NAME = '.config'
@@ -181,6 +182,9 @@ class Builder:
         LEDE_MKENVIMAGE: os.path.join('build_dir', 'host', 'u-boot-2014.10', 'tools', 'mkenvimage'),
         LEDE_USIGN: os.path.join('staging_dir', 'host', 'bin', 'usign')
     }
+
+    # root directory with all packages stored in this monorepo
+    MONOREPO_PATH = os.path.abspath(os.path.join('..', 'open'))
 
     # configuration file constants
     CONFIG_DEVICES = ['nand', 'recovery', 'sd', 'upgrade']
@@ -333,6 +337,25 @@ class Builder:
         logging.debug("Set external {} tree to '{}'".format(name, external_dir))
         stream.write('{}="{}"\n'.format(config, external_dir))
 
+    def _write_monorepo_path(self, stream, config, project_name: str, name: str):
+        """
+        Write absolute path to external directory of corespondent directory from monorepo
+
+        :param stream:
+            Opened stream for writing configuration.
+        :param config:
+            Configuration name prefix.
+        :param project_name:
+            Name of project in monorepo.
+        :param name:
+            Descriptive name of project.
+        :return:
+            Absolute path to external directory.
+        """
+        external_dir = os.path.join(self.MONOREPO_PATH, project_name)
+        logging.debug("Set external {} tree to '{}'".format(name, external_dir))
+        stream.write('{}="{}"\n'.format(config, external_dir))
+
     GENERATED_CONFIGS = [
         ('CONFIG_TARGET_', _write_target_config),
         ('CONFIG_SYSUPGRADE_WITH_', _write_sysupgrade),
@@ -342,6 +365,7 @@ class Builder:
         ('CONFIG_EXTERNAL_KERNEL_TREE', partial(_write_external_path, repo_name=LINUX, name='kernel')),
         ('CONFIG_EXTERNAL_CGMINER_TREE', partial(_write_external_path, repo_name=CGMINER, name='CGMiner')),
         ('CONFIG_EXTERNAL_UBOOT_TREE', partial(_write_external_path, repo_name=UBOOT, name='U-Boot')),
+        ('CONFIG_EXTERNAL_BOSMINER_TREE', partial(_write_monorepo_path, project_name=BOSMINER, name='bOSminer')),
         # remove all commented CONFIG_TARGET_
         ('# CONFIG_TARGET_', None)
     ]
