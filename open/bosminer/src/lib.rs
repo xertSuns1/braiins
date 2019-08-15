@@ -1,4 +1,4 @@
-#![feature(await_macro, async_await)]
+#![feature(await_macro, async_await, duration_float)]
 
 pub mod btc;
 pub mod client;

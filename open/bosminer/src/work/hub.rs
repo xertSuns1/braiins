@@ -1,6 +1,7 @@
 use super::*;
 use crate::btc;
 use crate::hal;
+use crate::stats;
 use crate::work;
 
 use crate::misc::LOGGER;
@@ -121,6 +122,7 @@ impl JobSolutionReceiver {
                 .read()
                 .expect("cannot read from shared current target");
             if solution.is_valid(current_target) {
+                stats::account_solution(&current_target);
                 info!(LOGGER, "----- SHARE BELOW TARGET -----");
                 Self::trace_share(&solution, &current_target);
                 return Some(solution);

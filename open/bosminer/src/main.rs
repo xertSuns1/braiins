@@ -25,7 +25,8 @@ async fn main_task(stratum_addr: String, user: String) {
     // start HW backend for selected target
     hal::run(work_solver, mining_stats.clone(), shutdown_sender);
     // start hashrate-meter task
-    tokio::spawn(stats::hashrate_meter_task(mining_stats).compat_fix());
+    tokio::spawn(stats::hashrate_meter_task_hashchain(mining_stats).compat_fix());
+    tokio::spawn(stats::hashrate_meter_task().compat_fix());
     // start stratum V2 client
     await!(stratum_v2::run(job_solver, stratum_addr, user));
 }

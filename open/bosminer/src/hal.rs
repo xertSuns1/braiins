@@ -266,6 +266,10 @@ pub struct MiningStats {
     pub mismatched_solution_nonces: u64,
     /// Counter of unique solutions
     pub unique_solutions: u64,
+    /// Amount of computed work in shares (for example one work computed at difficulty 64 is 64 shares)
+    pub unique_solutions_shares: u64,
+    /// Flag to signal that some error counter has increased since last check
+    pub error_counter_incremented: bool,
 }
 
 impl MiningStats {
@@ -276,6 +280,8 @@ impl MiningStats {
             duplicate_solutions: 0,
             mismatched_solution_nonces: 0,
             unique_solutions: 0,
+            unique_solutions_shares: 0,
+            error_counter_incremented: false,
         }
     }
 }

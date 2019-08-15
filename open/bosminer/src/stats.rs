@@ -1,7 +1,10 @@
+use std::time::{Duration, Instant};
+
+use crate::btc;
 use crate::hal;
 
 use crate::misc::LOGGER;
-use slog::{info, trace};
+use slog::{info, warn};
 
 use tokio::await;
 use tokio::timer::Delay;
@@ -9,51 +12,84 @@ use tokio::timer::Delay;
 use futures_locks::Mutex;
 
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime};
 
-/// Dummy difficulty
-const ASIC_DIFFICULTY: u64 = 1;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-fn shares_to_ghs(shares: u128, diff: u128) -> f32 {
-    (shares * (diff << 32)) as f32 * 1e-9_f32
+/// Share=1 represents a space of 2^32 calculated hashes for Bitcoin
+/// mainnet (exactly 2^256/(0xffff<<208), where 0xffff<<208 is defined
+/// as target @ difficulty 1 for Bitcoin mainet).
+/// TODO: This algorithm needs be adjusted for other coins/test environments in the future
+/// Shares at dificulty X takes X times more hashes to compute.
+fn shares_to_giga_hashes(shares: u128) -> f64 {
+    (shares << 32) as f64 * 1e-9
 }
 
-pub async fn hashrate_meter_task(mining_stats: Arc<Mutex<hal::MiningStats>>) {
-    let hashing_started = SystemTime::now();
-    let mut total_shares: u128 = 0;
+pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<hal::MiningStats>>) {
+    let mut last_stat_time = Instant::now();
 
     loop {
-        await!(Delay::new(Instant::now() + Duration::from_secs(1))).unwrap();
+        await!(Delay::new(Instant::now() + Duration::from_secs(1)))
+            .expect("stats delay wait failed");
+
         let mut stats = await!(mining_stats.lock()).expect("lock mining stats");
-        {
-            let unique_solutions = stats.unique_solutions as u128;
-            stats.unique_solutions = 0;
-            total_shares = total_shares + unique_solutions;
-            // processing solution in the test simply means removing them
+        let solved_shares = stats.unique_solutions_shares;
+        stats.unique_solutions_shares = 0;
+        let work_generated = stats.work_generated;
+        stats.work_generated = 0;
+        let unique_solutions = stats.unique_solutions;
+        stats.unique_solutions = 0;
 
-            let total_hashing_time = hashing_started.elapsed().expect("time read ok");
+        let hashing_time = last_stat_time.elapsed().as_secs_f64();
 
-            trace!(
-                LOGGER,
-                "Hash rate: {} Gh/s (immediate {} Gh/s)",
-                shares_to_ghs(total_shares, ASIC_DIFFICULTY as u128)
-                    / total_hashing_time.as_secs() as f32,
-                shares_to_ghs(unique_solutions, ASIC_DIFFICULTY as u128) as f32,
-            );
+        info!(
+            LOGGER,
+            "Hashchain hash rate: generated {:.2} Gh/s, computed {:.2} Gh/s",
+            shares_to_giga_hashes(work_generated as u128) / hashing_time,
+            shares_to_giga_hashes(solved_shares as u128) / hashing_time,
+        );
+
+        if work_generated == 0 {
+            warn!(LOGGER, "No work is being generated!");
+        }
+        if unique_solutions == 0 {
+            warn!(LOGGER, "No work is being solved!");
+        }
+
+        if stats.error_counter_incremented {
             info!(
-                LOGGER,
-                "Total_shares: {}, total_time: {} s, total work generated: {}",
-                total_shares,
-                total_hashing_time.as_secs(),
-                stats.work_generated,
-            );
-            trace!(
                 LOGGER,
                 "Mismatched nonce count: {}, stale solutions: {}, duplicate solutions: {}",
                 stats.mismatched_solution_nonces,
                 stats.stale_solutions,
                 stats.duplicate_solutions,
             );
+            stats.error_counter_incremented = false;
         }
+
+        last_stat_time = Instant::now();
+    }
+}
+
+static SUBMITTED_SHARE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+pub fn account_solution(target: &btc::Target) {
+    let difficulty = target.get_difficulty() as u64;
+    SUBMITTED_SHARE_COUNTER.fetch_add(difficulty, Ordering::SeqCst);
+}
+
+pub async fn hashrate_meter_task() {
+    let hashing_started = Instant::now();
+    let mut total_shares: u128 = 0;
+
+    loop {
+        await!(Delay::new(Instant::now() + Duration::from_secs(1)))
+            .expect("stats delay wait failed");
+        total_shares += SUBMITTED_SHARE_COUNTER.swap(0, Ordering::SeqCst) as u128;
+        let total_hashing_time = hashing_started.elapsed();
+        info!(
+            LOGGER,
+            "Hash rate from submitted shares: {:.2} Gh/s",
+            shares_to_giga_hashes(total_shares) / total_hashing_time.as_secs_f64(),
+        );
     }
 }
