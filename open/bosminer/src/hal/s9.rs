@@ -686,10 +686,15 @@ async fn async_recv_solutions<T>(
                 }
                 if status.duplicate {
                     stats.duplicate_solutions += 1;
+                    stats.error_counter_incremented = true;
                 } else {
                     stats.unique_solutions += 1;
+                    stats.unique_solutions_shares += ASIC_DIFFICULTY as u64;
                 }
-                stats.mismatched_solution_nonces += status.mismatched_nonce as u64;
+                if status.mismatched_nonce {
+                    stats.error_counter_incremented = true;
+                    stats.mismatched_solution_nonces += 1;
+                }
             }
             None => {
                 trace!(
@@ -699,6 +704,7 @@ async fn async_recv_solutions<T>(
                     solution
                 );
                 stats.stale_solutions += 1;
+                stats.error_counter_incremented = true;
             }
         }
     }

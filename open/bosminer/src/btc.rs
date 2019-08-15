@@ -210,7 +210,7 @@ impl Target {
     }
 
     /// Create target from difficulty used by pools
-    /// This implementation can produce different results then targets for network difficulty.
+    /// This implementation can produce different results than targets for network difficulty.
     pub fn from_pool_difficulty(difficulty: usize) -> Self {
         // TODO: use floating point division to get the same result expected by pool
         Self(Self::difficulty_1_target() / difficulty)
@@ -242,6 +242,11 @@ impl Target {
             Into::<uint::U256>::into(mantissa) << (8 * (exponent - 3))
         }
         .into())
+    }
+
+    /// Convert target to pool difficulty
+    pub fn get_difficulty(&self) -> usize {
+        (Self::difficulty_1_target() / self.0).low_u64() as usize
     }
 
     /// Convert target to its compact representation used by Bitcoin protocol
