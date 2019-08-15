@@ -32,10 +32,6 @@ use packed_struct::{PackedStruct, PackedStructSlice};
 use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
 
-/// How many cores are there on chip
-/// Each core should receive it's own open-work
-const NUM_CORES_ON_CHIP: usize = 114;
-
 /// Timing constants
 const INACTIVATE_FROM_CHAIN_DELAY_MS: u64 = 100;
 /// Base delay quantum during hashboard initialization
@@ -590,17 +586,19 @@ where
     }
 }
 
+/// Initialize cores by sending open-core work with correct nbits to each core
 async fn send_init_work<T>(tx_fifo: &mut fifo::HChainFifo)
 where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
-    // initialize chip by sending test work with correct nbits
+    // Each core gets one work
+    const NUM_WORK: usize = bm1387::NUM_CORES_ON_CHIP;
     trace!(
         LOGGER,
         "Sending out {} pieces of dummy work to initialize chips",
-        NUM_CORES_ON_CHIP
+        NUM_WORK
     );
-    for i in 0..NUM_CORES_ON_CHIP {
+    for i in 0..NUM_WORK {
         let work = &null_work::prepare_opencore(true);
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
         // TODO: remember work_id assignment in registry
