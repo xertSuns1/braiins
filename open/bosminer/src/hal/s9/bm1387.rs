@@ -269,8 +269,8 @@ mod test {
     /// 0x21026800 that corresponds to
     /// and verifies correct serialization
     fn build_set_config_cmd() {
-        let cmd = SetConfigCmd::new(0x00, false, PLL_PARAM_REG, 0x21026800);
-        let expected_cmd_with_padding = [0x48u8, 0x09, 0x00, PLL_PARAM_REG, 0x00, 0x68, 0x02, 0x21];
+        let cmd = SetConfigCmd::new(0x24, false, PLL_PARAM_REG, 0x21026800);
+        let expected_cmd_with_padding = [0x48u8, 0x09, 0x24, PLL_PARAM_REG, 0x00, 0x68, 0x02, 0x21];
         //        let expected_cmd_with_padding = u8_as_fpga_slice(&expected_cmd_with_padding);
         let cmd_bytes = cmd.pack();
         assert_eq!(
