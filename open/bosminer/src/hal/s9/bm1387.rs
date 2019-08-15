@@ -20,6 +20,9 @@ const MAX_BAUD_CLOCK_DIV: usize = 26;
 /// Basic divisor of the clock speed when calculating the value for the baud register
 pub const CHIP_OSC_CLK_BASE_BAUD_DIV: usize = 8;
 
+/// How many cores are on the chip
+pub const NUM_CORES_ON_CHIP: usize = 114;
+
 /// Control or work command layout
 #[derive(PackedStruct, Debug)]
 #[packed_struct(size_bytes = "1", bit_numbering = "lsb0")]
