@@ -183,6 +183,12 @@ where
         })
     }
 
+    /// Return number of midstates
+    #[inline]
+    fn midstate_count(&self) -> u16 {
+        1 << self.midstate_count_bits
+    }
+
     /// Helper method that initializes the FPGA IP core
     fn ip_core_init(&self) -> error::Result<()> {
         // Disable ip core
@@ -191,7 +197,7 @@ where
 
         self.set_ip_core_baud_rate(INIT_CHIP_BAUD_RATE)?;
         let work_time = secs_to_fpga_ticks(calculate_work_delay_for_pll(
-            1u64 << self.midstate_count_bits,
+            self.midstate_count() as u64,
             self.pll_frequency,
         ));
         trace!(LOGGER, "Using work time: {}", work_time);
@@ -441,7 +447,7 @@ where
     pub fn next_work_id(&mut self) -> u32 {
         let retval = self.work_id as u32;
         // compiler has to know that work ID rolls over regularly
-        self.work_id = self.work_id.wrapping_add(1 << self.midstate_count_bits);
+        self.work_id = self.work_id.wrapping_add(self.midstate_count());
         retval
     }
 
