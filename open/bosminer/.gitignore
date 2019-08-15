@@ -2,3 +2,11 @@
 **/*.rs.bk
 s9-io/src
 Test.toml
+
+# LEDE/OpenWrt build system
+.built
+.configured_*
+.prepared
+.quilt_checked
+.source_dir
+ipkg-*

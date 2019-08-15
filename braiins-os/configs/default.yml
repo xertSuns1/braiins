@@ -84,7 +84,7 @@ remote:
   # default location for remote repositories
   location: bos
   # default branch for repositories
-  branch: 'bos-rurminer'
+  branch: '{meta_branch}'
   # list of remote repositories
   repos:
     lede:

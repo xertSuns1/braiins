@@ -1,6 +1,7 @@
 # common lists
 core:
   list:
+    - bosminer
     - ca-bundle
     - ca-certificates
     - gdbserver
