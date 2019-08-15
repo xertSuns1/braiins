@@ -81,6 +81,9 @@ impl Default for HChainOptions {
     }
 }
 
+/// Default ASIC difficulty
+const ASIC_DIFFICULTY: u32 = 64;
+
 /// Hash Chain Controller provides abstraction of the FPGA interface for operating hashing boards.
 /// It is the user-space driver for the IP Core
 ///
@@ -203,6 +206,27 @@ where
         Ok(())
     }
 
+    /// Configures difficulty globally on all chips within the hashchain
+    fn set_asic_diff(&self) -> error::Result<()> {
+        let tm_reg = bm1387::TicketMaskReg::new(ASIC_DIFFICULTY)?;
+        trace!(
+            LOGGER,
+            "Setting ticket mask register for difficulty {}, value {:#010x?}",
+            ASIC_DIFFICULTY,
+            tm_reg
+        );
+        let cmd = bm1387::SetConfigCmd::new(0, true, bm1387::TICKET_MASK_REG, tm_reg.into());
+        // wait until all commands have been sent
+        self.send_ctl_cmd(&cmd.pack(), true);
+
+        // Verify we were able to set the difficulty on all chips correctly
+        let get_tm_cmd = bm1387::GetStatusCmd::new(0, true, bm1387::TICKET_MASK_REG).pack();
+        self.send_ctl_cmd(&get_tm_cmd, true);
+        // TODO: verify reply equals to value we set
+        // TODO: implement async mechanism to send/wait for commands
+        Ok(())
+    }
+
     /// Initializes the complete hashboard including enumerating all chips
     pub fn init(&mut self) -> error::Result<()> {
         self.ip_core_init()?;
@@ -260,6 +284,7 @@ where
         self.configure_hash_chain(TARGET_CHIP_BAUD_RATE, false, true)?;
         self.set_ip_core_baud_rate(TARGET_CHIP_BAUD_RATE)?;
 
+        self.set_asic_diff()?;
         Ok(())
     }
 

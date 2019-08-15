@@ -11,7 +11,7 @@ pub const PLL_PARAM_REG: u8 = 0x0c;
 #[allow(dead_code)]
 pub const HASH_COUNTING_REG: u8 = 0x14;
 #[allow(dead_code)]
-pub const TICKET_MASK_REG: u8 = 0x14;
+pub const TICKET_MASK_REG: u8 = 0x18;
 pub const MISC_CONTROL_REG: u8 = 0x1c;
 
 /// Maximum supported baud rate clock divisor
@@ -171,16 +171,47 @@ pub struct GetAddressReg {
     _reserved2: [u8; 2],
 }
 
+/// Describes recognized chip revisions
 #[derive(PrimitiveEnum_u16, Clone, Copy, Debug, PartialEq)]
-/// Command types
 pub enum ChipRev {
-    /// Control command for the chip
     Bm1387 = 0x1387,
 }
 
 impl Default for ChipRev {
     fn default() -> ChipRev {
         ChipRev::Bm1387
+    }
+}
+
+/// This register represents ASIC difficulty
+///
+/// The chip will provide only solutions that are <= target based on this difficulty
+#[derive(PackedStruct, Debug)]
+#[packed_struct(size_bytes = "4", endian = "lsb")]
+pub struct TicketMaskReg {
+    /// stores difficulty - 1
+    diff: u32,
+}
+
+impl TicketMaskReg {
+    /// Builds ticket mask register instance and verifies the specified difficulty is correct
+    pub fn new(diff: u32) -> error::Result<Self> {
+        if diff == 0 {
+            Err(ErrorKind::General(format!(
+                "Asic difficulty must be at least 1!",
+            )))?
+        }
+        Ok(Self { diff: diff - 1 })
+    }
+}
+
+/// Converts the register value into a word accepted by the FPGA
+impl Into<u32> for TicketMaskReg {
+    fn into(self) -> u32 {
+        let reg_bytes = self.pack();
+        // packed struct already took care of endianess conversion, we just need the canonical
+        // value as u32
+        u32::from_be_bytes(reg_bytes)
     }
 }
 
@@ -279,6 +310,16 @@ mod test {
              {:#04x?}",
             cmd, cmd_bytes, expected_cmd_with_padding
         );
+    }
+
+    #[test]
+    // Verify serialization of SetConfig(TICKET_MASK(0x3f)) command
+    fn build_set_config_ticket_mask() {
+        let reg = TicketMaskReg::new(64).expect("Cannot build difficulty register");
+        let cmd = SetConfigCmd::new(0x00, true, TICKET_MASK_REG, reg.into());
+        let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x18, 0x00, 0x00, 0x00, 0x3f];
+        let cmd_bytes = cmd.pack();
+        assert_eq!(cmd_bytes, expected_cmd_with_padding);
     }
 
     #[test]
@@ -395,4 +436,24 @@ mod test {
             reg_value, expected_reg_value
         );
     }
+
+    #[test]
+    fn test_invalid_ticket_mask_reg() {
+        let res = TicketMaskReg::new(0);
+        assert_eq!(res.is_ok(), false, "Diff 0 should be reported as error!");
+    }
+
+    #[test]
+    fn test_ticket_mask_reg_to_u32() {
+        let reg = TicketMaskReg::new(64).expect("Cannot build difficulty register");
+
+        let expected_reg_value = 0x3f00_0000u32;
+        let reg_value: u32 = reg.into();
+        assert_eq!(
+            reg_value, expected_reg_value,
+            "Ticket mask register 32-bit value  doesn't match: V:{:#010x} E:{:#010x}",
+            reg_value, expected_reg_value
+        );
+    }
+
 }
