@@ -282,7 +282,8 @@ impl hal::WorkEngine for TestWorkEngine {
 
 pub fn create_test_work_receiver() -> work::EngineReceiver {
     let work_engine = Arc::new(TestWorkEngine::new());
-    let (_, receiver) = work::test::create_engine_channel(work_engine);
+    let (mut sender, receiver) = work::engine_channel();
+    sender.broadcast(work_engine);
     receiver
 }
 
