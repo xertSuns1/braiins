@@ -1,4 +1,5 @@
 mod bm1387;
+pub mod config;
 pub mod error;
 pub mod fifo;
 pub mod gpio;
@@ -32,6 +33,8 @@ use packed_struct::{PackedStruct, PackedStructSlice};
 use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
 
+use s9_io::hchainio0::ctrl_reg::MIDSTATE_CNT_A;
+
 /// Timing constants
 const INACTIVATE_FROM_CHAIN_DELAY_MS: u64 = 100;
 /// Base delay quantum during hashboard initialization
@@ -60,6 +63,20 @@ const FPGA_IPCORE_F_CLK_BASE_BAUD_DIV: usize = 16;
 
 /// Default PLL frequency for clocking the chips
 const DEFAULT_S9_PLL_FREQUENCY: u64 = 650_000_000;
+
+/// Convert number of midstates to register value
+/// We cannot use `Into` because the structure is foreign to our crate
+pub fn midstate_count_to_register(midstate_count: usize) -> MIDSTATE_CNT_A {
+    match midstate_count {
+        1 => MIDSTATE_CNT_A::ONE,
+        2 => MIDSTATE_CNT_A::TWO,
+        4 => MIDSTATE_CNT_A::FOUR,
+        _ => panic!(
+            "Midstate count of {} not supported on platform S9",
+            midstate_count
+        ),
+    }
+}
 
 /// Hash Chain Options is to pass additional information during hash chain
 /// controller initialization.
@@ -800,11 +817,12 @@ impl HChain {
         let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
         let voltage_ctrl_backend =
             power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
+        let midstate_count_log2 = midstate_count_to_register(config::MIDSTATE_COUNT);
         let mut h_chain_ctl = super::s9::HChainCtl::new(
             &gpio_mgr,
             voltage_ctrl_backend.clone(),
-            8,
-            s9_io::hchainio0::ctrl_reg::MIDSTATE_CNT_A::ONE,
+            config::S9_HASHBOARD_INDEX,
+            midstate_count_log2,
         )
         .unwrap();
 
@@ -950,7 +968,7 @@ mod test {
         let h_chain_ctl = HChainCtl::new(
             &gpio_mgr,
             voltage_ctrl_backend,
-            8,
+            config::S9_HASHBOARD_INDEX,
             hchainio0::ctrl_reg::MIDSTATE_CNT_A::ONE,
         );
         match h_chain_ctl {
@@ -966,7 +984,7 @@ mod test {
         let h_chain_ctl = HChainCtl::new(
             &gpio_mgr,
             voltage_ctrl_backend,
-            8,
+            config::S9_HASHBOARD_INDEX,
             hchainio0::ctrl_reg::MIDSTATE_CNT_A::ONE,
         )
         .expect("Failed to create hash board instance");
@@ -1052,7 +1070,7 @@ mod test {
             let h_chain_ctl = HChainCtl::new(
                 &gpio_mgr,
                 voltage_ctrl_backend,
-                8,
+                config::S9_HASHBOARD_INDEX,
                 expected_solution_data.midstate_count_log2,
             )
             .unwrap();
