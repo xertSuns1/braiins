@@ -6,11 +6,13 @@ pub mod s9;
 /// Reexport HAL entry point for selected target to unify interface
 #[cfg(feature = "erupter")]
 pub use erupter::{
+    config,
     error::{Error, ErrorKind},
     run,
 };
 #[cfg(feature = "antminer_s9")]
 pub use s9::{
+    config,
     error::{Error, ErrorKind},
     run,
 };
