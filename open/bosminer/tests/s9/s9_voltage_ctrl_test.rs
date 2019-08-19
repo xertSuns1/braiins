@@ -1,9 +1,5 @@
-extern crate embedded_hal;
-extern crate linux_embedded_hal;
-extern crate rminer;
-
-use rminer::hal::s9::gpio;
-use rminer::hal::s9::power;
+use bosminer::hal::s9::gpio;
+use bosminer::hal::s9::power;
 
 use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;

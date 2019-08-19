@@ -1,9 +1,9 @@
 #![feature(await_macro, async_await)]
 
-use rminer::client::stratum_v2;
-use rminer::hal;
-use rminer::stats;
-use rminer::work;
+use bosminer::client::stratum_v2;
+use bosminer::hal;
+use bosminer::stats;
+use bosminer::work;
 
 use tokio::await;
 use wire::utils::CompatFix;
@@ -31,7 +31,7 @@ async fn main_task(stratum_addr: String, user: String) {
 }
 
 fn main() {
-    let args = clap::App::new("rurminer")
+    let args = clap::App::new("bosminer")
         .arg(
             Arg::with_name("pool")
                 .short("p")

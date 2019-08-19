@@ -36,7 +36,7 @@ rustup component add rustfmt-preview
 Install target toolchain for the project:
 
 ```shell
-cd to/rurminer
+cd to/bosminer
 rustup target add arm-unknown-linux-musleabi
 ```
 
@@ -52,11 +52,11 @@ eval $(./bb.py toolchain 2>/dev/null)
 - build:
 
 ```shell
-cd to/rurminer
+cd to/bosminer
 cargo build --target <TARGET> --features <BACKEND>
 ```
 
-The resulting binary is in: ```target/<TARGET>/debug/rminer```. Currently, all musl targets are being statically linked - see here for details: https://github.com/japaric/rust-cross
+The resulting binary is in: ```target/<TARGET>/debug/bosminer```. Currently, all musl targets are being statically linked - see here for details: https://github.com/japaric/rust-cross
 
 ### Backend and Target Selection
 
@@ -158,9 +158,9 @@ cargo run --target <TARGET> --features <BACKEND> -- [--hostname <HOSTNAME>] -- -
 To enable more verbose logging/tracing, set `RUST_LOG` environment variable:
 
 - enable all tracing: `RUST_LOG=trace ./s9_stratum_test ...`
-- enable hardware tracing: `RUST_LOG=rminer::hal::s9=trace ./s9_stratum_test ...`
+- enable hardware tracing: `RUST_LOG=bosminer::hal::s9=trace ./s9_stratum_test ...`
 - quiet mode, print just errors: `RUST_LOG=error ./s9...`
-- enable hardware tracing and workhub tracing: `RUST_LOG=rminer::hal::s9=trace,rminer::workhub=trace ./s9_stratum_test ...`
+- enable hardware tracing and workhub tracing: `RUST_LOG=bosminer::hal::s9=trace,bosminer::work::hub=trace ./s9_stratum_test ...`
 
 More details about `RUST_LOG` syntax can be found in [envlogger reference](https://docs.rs/slog-envlogger/2.1.0/slog_envlogger/).
 
