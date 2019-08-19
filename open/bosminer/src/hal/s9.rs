@@ -830,7 +830,9 @@ impl HChain {
         h_chain_ctl.init().unwrap();
         info!(LOGGER, "Hash chain controller initialized");
 
-        let work_registry = Arc::new(Mutex::new(registry::MiningWorkRegistry::new()));
+        let work_registry = Arc::new(Mutex::new(registry::MiningWorkRegistry::new(
+            config::MIDSTATE_COUNT,
+        )));
         let h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
         let (work_generator, work_solution) = work_solver.split();
 

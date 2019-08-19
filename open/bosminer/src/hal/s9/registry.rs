@@ -76,13 +76,16 @@ pub struct MiningWorkRegistry {
     pending_work_list: std::vec::Vec<Option<MiningWorkRegistryItem>>,
     /// Keeps track of the ID, so that we can identify stale solutions
     last_work_id: Option<usize>,
+    /// Number of midstates by which the `last_work_id` increments
+    midstate_count: usize,
 }
 
 impl MiningWorkRegistry {
-    pub fn new() -> Self {
+    pub fn new(midstate_count: usize) -> Self {
         Self {
             pending_work_list: vec![None; MAX_WORK_LIST_COUNT],
             last_work_id: None,
+            midstate_count,
         }
     }
 
@@ -108,7 +111,7 @@ impl MiningWorkRegistry {
         if let Some(last_work_id) = self.last_work_id {
             assert_eq!(
                 Self::index_sub(id, last_work_id),
-                1,
+                self.midstate_count,
                 "Work id is out of sequence {}",
                 id
             )
@@ -140,7 +143,7 @@ mod test {
 
     #[test]
     fn test_store_work_start() {
-        let mut registry = MiningWorkRegistry::new();
+        let mut registry = MiningWorkRegistry::new(1);
         let work = null_work::prepare(0);
 
         registry.store_work(0, work);
@@ -149,7 +152,7 @@ mod test {
     #[test]
     #[should_panic]
     fn test_store_work_out_of_sequence_work_id() {
-        let mut registry = MiningWorkRegistry::new();
+        let mut registry = MiningWorkRegistry::new(1);
         let work1 = null_work::prepare(0);
         let work2 = null_work::prepare(1);
         // store initial work
@@ -159,8 +162,19 @@ mod test {
     }
 
     #[test]
+    fn test_store_work_id_two_midstates() {
+        let mut registry = MiningWorkRegistry::new(2);
+        let work1 = null_work::prepare(0);
+        let work2 = null_work::prepare(1);
+        // store initial work
+        registry.store_work(0, work1);
+        // should not panic, we increment by # of midstates
+        registry.store_work(2, work2);
+    }
+
+    #[test]
     fn test_store_work_retiring() {
-        let mut registry = MiningWorkRegistry::new();
+        let mut registry = MiningWorkRegistry::new(1);
         // after exhausting the full work list count, the first half of the slots must be retired
         for id in 0..MAX_WORK_LIST_COUNT {
             let work = null_work::prepare(id as u64);
