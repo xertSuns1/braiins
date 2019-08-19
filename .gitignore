@@ -1,8 +1,7 @@
-/.env/
-.idea/
-/build/
-/output/
+# Byte-compiled / optimized / DLL files
 __pycache__/
-/.local.yml
+*.py[cod]
+*$py.class
+
+# Unit test / coverage reports
 .cache
-/.pybuildenv/
