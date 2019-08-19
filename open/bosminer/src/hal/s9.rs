@@ -97,9 +97,6 @@ impl Default for HChainOptions {
     }
 }
 
-/// Default ASIC difficulty
-const ASIC_DIFFICULTY: u32 = 64;
-
 /// Hash Chain Controller provides abstraction of the FPGA interface for operating hashing boards.
 /// It is the user-space driver for the IP Core
 ///
@@ -260,11 +257,11 @@ where
 
     /// Configures difficulty globally on all chips within the hashchain
     fn set_asic_diff(&self) -> error::Result<()> {
-        let tm_reg = bm1387::TicketMaskReg::new(ASIC_DIFFICULTY)?;
+        let tm_reg = bm1387::TicketMaskReg::new(config::ASIC_DIFFICULTY as u32)?;
         trace!(
             LOGGER,
             "Setting ticket mask register for difficulty {}, value {:#010x?}",
-            ASIC_DIFFICULTY,
+            config::ASIC_DIFFICULTY,
             tm_reg
         );
         let cmd = bm1387::SetConfigCmd::new(0, true, bm1387::TICKET_MASK_REG, tm_reg.into());
@@ -712,7 +709,7 @@ async fn async_recv_solutions<T>(
                     stats.error_counter_incremented = true;
                 } else {
                     stats.unique_solutions += 1;
-                    stats.unique_solutions_shares += ASIC_DIFFICULTY as u64;
+                    stats.unique_solutions_shares += config::ASIC_DIFFICULTY as u64;
                 }
                 if status.mismatched_nonce {
                     stats.error_counter_incremented = true;
