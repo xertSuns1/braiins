@@ -210,6 +210,12 @@ where
         1 << self.midstate_count_log2 as u8
     }
 
+    /// Return midstate bits mask
+    #[inline]
+    fn midstate_mask(&self) -> u32 {
+        (1 << self.midstate_count_log2 as u8) - 1
+    }
+
     /// Calculate work_time for this instance of HChain
     ///
     /// Returns number of ticks (suitable to be written to `WORK_TIME` register)
@@ -483,13 +489,13 @@ where
     /// Helper function that extracts work ID from the solution ID
     #[inline]
     pub fn get_work_id_from_solution_id(&self, solution_id: u32) -> u32 {
-        ((solution_id >> WORK_ID_OFFSET) >> self.midstate_count_log2 as u8)
+        ((solution_id >> WORK_ID_OFFSET) & !self.midstate_mask())
     }
 
     /// Extracts midstate index from the solution ID
     #[inline]
     fn get_midstate_idx_from_solution_id(&self, solution_id: u32) -> usize {
-        ((solution_id >> WORK_ID_OFFSET) & ((1u32 << self.midstate_count_log2 as u8) - 1)) as usize
+        ((solution_id >> WORK_ID_OFFSET) & self.midstate_mask()) as usize
     }
 
     /// Extracts solution index from the solution ID
@@ -1046,13 +1052,13 @@ mod test {
                 midstate_count_log2: hchainio0::ctrl_reg::MIDSTATE_CNT_A::ONE,
             },
             ExpectedSolutionData {
-                work_id: 0x1235 >> 1,
+                work_id: 0x1234,
                 midstate_idx: 1,
                 solution_idx: 2,
                 midstate_count_log2: hchainio0::ctrl_reg::MIDSTATE_CNT_A::TWO,
             },
             ExpectedSolutionData {
-                work_id: 0x1235 >> 2,
+                work_id: 0x1234,
                 midstate_idx: 1,
                 solution_idx: 2,
                 midstate_count_log2: hchainio0::ctrl_reg::MIDSTATE_CNT_A::FOUR,
