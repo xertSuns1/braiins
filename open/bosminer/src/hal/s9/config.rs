@@ -5,3 +5,6 @@ pub const MIDSTATE_COUNT: usize = 4;
 
 /// Index of hashboard that is to be instantiated
 pub const S9_HASHBOARD_INDEX: usize = 8;
+
+/// Default ASIC difficulty
+pub const ASIC_DIFFICULTY: usize = 64;
