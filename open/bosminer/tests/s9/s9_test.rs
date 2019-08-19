@@ -1,9 +1,9 @@
-use rminer::hal::{self, s9::null_work};
-use rminer::test_utils;
-use rminer::utils;
-use rminer::work;
+use bosminer::hal::{self, s9::null_work};
+use bosminer::test_utils;
+use bosminer::utils;
+use bosminer::work;
 
-use rminer::misc::LOGGER;
+use bosminer::misc::LOGGER;
 use slog::info;
 
 use std::default::Default;

@@ -30,7 +30,7 @@ lazy_static! {
                 .write(true)
                 .append(true)
                 .truncate(false)
-                .open("/tmp/rurminer.log")
+                .open("/tmp/bosminer.log")
                 .unwrap();
 
         let file_decorator = slog_term::PlainDecorator::new(file);

@@ -1,4 +1,4 @@
-//! The rurminer errors
+//! The bosminer errors
 
 use failure::{Backtrace, Context, Fail};
 use std::fmt::{self, Debug, Display};

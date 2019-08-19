@@ -1,10 +1,10 @@
 #![feature(await_macro, async_await)]
 
-use rminer::hal;
-use rminer::misc::LOGGER;
-use rminer::stats;
-use rminer::utils;
-use rminer::work;
+use bosminer::hal;
+use bosminer::misc::LOGGER;
+use bosminer::stats;
+use bosminer::utils;
+use bosminer::work;
 
 use slog::info;
 
