@@ -720,11 +720,9 @@ async fn async_recv_solutions<T>(
                 }
             }
             None => {
-                trace!(
+                info!(
                     LOGGER,
-                    "No work present for solution, ID:{:#x} {:#010x?}",
-                    work_id,
-                    solution
+                    "No work present for solution, ID:{:#x} {:#010x?}", work_id, solution
                 );
                 stats.stale_solutions += 1;
                 stats.error_counter_incremented = true;
