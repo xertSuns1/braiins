@@ -661,7 +661,7 @@ async fn async_send_work<T>(
                     .expect("locking ok")
                     .store_work(work_id as usize, work);
                 let mut stats = await!(mining_stats.lock()).expect("minig stats lock");
-                stats.work_generated += 1;
+                stats.work_generated += config::MIDSTATE_COUNT;
                 drop(stats);
             }
         }
