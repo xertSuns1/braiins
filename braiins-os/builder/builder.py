@@ -372,13 +372,13 @@ class Builder:
                 :param builder:
                     The builder object for expanding tags for current configuration.
                 """
-                repo_meta = git.Repo()
+                repo_meta = git.Repo(search_parent_directories=True)
                 repo_url = repo_meta.remotes.origin.url
 
                 platform = config.bos.platform
                 split_platform = builder._split_platform(platform)
                 self._format_tags = {
-                    'working_dir': repo_meta.working_dir,
+                    'working_dir': os.getcwd(),
                     'meta_repo': repo_url.rsplit('/', 1)[0],
                     'platform': platform,
                     'target': split_platform[0],
@@ -499,7 +499,7 @@ class Builder:
         :return:
             String with firmware version without 'firmware_' prefix.
         """
-        repo = git.Repo()
+        repo = git.Repo(search_parent_directories=True)
 
         # get commit time in RFC 3339 format
         if local_time:
@@ -2346,7 +2346,7 @@ class Builder:
         :param push:
             Push all changes to upstream.
         """
-        repo_meta = git.Repo()
+        repo_meta = git.Repo(search_parent_directories=True)
 
         if repo_meta.head.is_detached:
             logging.error("Meta repository is detached!")
