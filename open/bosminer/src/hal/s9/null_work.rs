@@ -76,15 +76,15 @@ pub fn prepare(i: u64) -> hal::MiningWork {
     hal::MiningWork::new(job, vec![mid], time)
 }
 
-pub fn prepare_opencore(enable_core: bool) -> hal::MiningWork {
+pub fn prepare_opencore(enable_core: bool, midstate_count: usize) -> hal::MiningWork {
     let bits = if enable_core { 0xffff_ffff } else { 0 };
     let job = Arc::new(NullJob::new(0, bits, 0));
     let time = job.time();
 
-    let mid = hal::Midstate {
+    let one_midstate = hal::Midstate {
         version: 0,
         state: [0u8; btc::SHA256_DIGEST_SIZE].into(),
     };
 
-    hal::MiningWork::new(job, vec![mid], time)
+    hal::MiningWork::new(job, vec![one_midstate; midstate_count], time)
 }
