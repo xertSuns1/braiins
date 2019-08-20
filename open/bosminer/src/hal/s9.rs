@@ -591,6 +591,14 @@ where
         work: &crate::hal::MiningWork,
         work_id: u32,
     ) -> Result<u32, failure::Error> {
+        assert_eq!(
+            work.midstates.len(),
+            config::MIDSTATE_COUNT,
+            "Work contains {} midstates, but S9 wants {} midstates!",
+            work.midstates.len(),
+            config::MIDSTATE_COUNT
+        );
+
         tx_fifo.write_to_work_tx_fifo(work_id.to_le())?;
         tx_fifo.write_to_work_tx_fifo(work.bits().to_le())?;
         tx_fifo.write_to_work_tx_fifo(work.ntime.to_le())?;
@@ -606,8 +614,10 @@ where
 }
 
 /// Initialize cores by sending open-core work with correct nbits to each core
-async fn send_init_work<T>(tx_fifo: &mut fifo::HChainFifo)
-where
+async fn send_init_work<T>(
+    h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
+    tx_fifo: &mut fifo::HChainFifo,
+) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
     // Each core gets one work
@@ -617,11 +627,14 @@ where
         "Sending out {} pieces of dummy work to initialize chips",
         NUM_WORK
     );
-    for i in 0..NUM_WORK {
-        let work = &null_work::prepare_opencore(true);
+    for _ in 0..NUM_WORK {
+        let work = &null_work::prepare_opencore(true, config::MIDSTATE_COUNT);
+        let work_id = await!(h_chain_ctl.lock())
+            .expect("h_chain lock")
+            .next_work_id();
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
         // TODO: remember work_id assignment in registry
-        super::s9::HChainCtl::<T>::send_work(tx_fifo, &work, i as u32).expect("send work");
+        super::s9::HChainCtl::<T>::send_work(tx_fifo, &work, work_id).expect("send work");
     }
 }
 
@@ -747,7 +760,7 @@ fn spawn_tx_task<T>(
                 .expect("work-tx fifo missing");
 
             if opts.send_init_work {
-                await!(send_init_work::<T>(&mut tx_fifo));
+                await!(send_init_work::<T>(h_chain_ctl.clone(), &mut tx_fifo));
             }
             await!(async_send_work(
                 work_registry,
