@@ -20,7 +20,7 @@ pub struct Hub;
 impl Hub {
     /// Create Solvers for frontend (pool) and backend (HW accelerator)
     pub fn build_solvers() -> (JobSolver, work::Solver) {
-        let (engine_sender, engine_receiver) = engine_channel();
+        let (engine_sender, engine_receiver) = engine_channel(None);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
         (
             JobSolver::new(engine_sender, solution_queue_rx),
@@ -189,7 +189,7 @@ pub mod test {
     /// solutions and yields only those that meet the target.
     #[test]
     fn test_job_solver_target() {
-        let (engine_sender, _) = engine_channel();
+        let (engine_sender, _) = engine_channel(None);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
 
         let (job_sender, mut solution_receiver) =
