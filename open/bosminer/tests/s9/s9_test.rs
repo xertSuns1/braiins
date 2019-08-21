@@ -72,7 +72,7 @@ fn build_solvers() -> (
     mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
     work::Solver,
 ) {
-    let (engine_sender, engine_receiver) = work::engine_channel();
+    let (engine_sender, engine_receiver) = work::engine_channel(None);
     let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
     (
         engine_sender,
