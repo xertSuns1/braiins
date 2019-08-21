@@ -12,7 +12,7 @@ use wire::utils::CompatFix;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use stratum::v2::framing::codec::V2Framing;
+use stratum::v2::framing::codec::Framing;
 use stratum::v2::messages::{
     NewMiningJob, OpenChannel, OpenChannelError, OpenChannelSuccess, SetNewPrevHash, SetTarget,
     SetupMiningConnection, SetupMiningConnectionError, SetupMiningConnectionSuccess, SubmitShares,
@@ -20,8 +20,8 @@ use stratum::v2::messages::{
 };
 use stratum::v2::types::DeviceInfo;
 use stratum::v2::types::*;
-use stratum::v2::{V2Handler, V2Protocol};
-use wire::{Connection, ConnectionRx, ConnectionTx, Framing, Message};
+use stratum::v2::{Handler, Protocol};
+use wire::{Connection, ConnectionRx, ConnectionTx, Message};
 
 use std::collections::HashMap;
 
@@ -132,7 +132,7 @@ impl StratumEventHandler {
     }
 }
 
-impl V2Handler for StratumEventHandler {
+impl Handler for StratumEventHandler {
     // The rules for prevhash/mining job pairing are (currently) as follows:
     //  - when mining job comes
     //      - store it (by id)
@@ -142,7 +142,7 @@ impl V2Handler for StratumEventHandler {
     //      - start mining the job it references (by job id)
     //      - flush all other jobs
 
-    fn visit_new_mining_job(&mut self, _msg: &Message<V2Protocol>, job_msg: &NewMiningJob) {
+    fn visit_new_mining_job(&mut self, _msg: &Message<Protocol>, job_msg: &NewMiningJob) {
         // all jobs since last `prevmsg` have to be stored in job table
         // TODO: use job ID instead of block_height
         self.all_jobs.insert(job_msg.block_height, job_msg.clone());
@@ -158,11 +158,7 @@ impl V2Handler for StratumEventHandler {
         }
     }
 
-    fn visit_set_new_prev_hash(
-        &mut self,
-        _msg: &Message<V2Protocol>,
-        prevhash_msg: &SetNewPrevHash,
-    ) {
+    fn visit_set_new_prev_hash(&mut self, _msg: &Message<Protocol>, prevhash_msg: &SetNewPrevHash) {
         let current_block_height = prevhash_msg.block_height;
         // immediately update current block height which is propagated to currently solved jobs
         self.current_block_height
@@ -186,13 +182,13 @@ impl V2Handler for StratumEventHandler {
         self.update_job(&job_msg);
     }
 
-    fn visit_set_target(&mut self, _msg: &Message<V2Protocol>, target_msg: &SetTarget) {
+    fn visit_set_target(&mut self, _msg: &Message<Protocol>, target_msg: &SetTarget) {
         self.update_target(target_msg.max_target);
     }
 
     fn visit_setup_mining_connection_success(
         &mut self,
-        _msg: &Message<V2Protocol>,
+        _msg: &Message<Protocol>,
         _success_msg: &SetupMiningConnectionSuccess,
     ) {
         self.status = Ok(());
@@ -200,7 +196,7 @@ impl V2Handler for StratumEventHandler {
 
     fn visit_setup_mining_connection_error(
         &mut self,
-        _msg: &Message<V2Protocol>,
+        _msg: &Message<Protocol>,
         _error_msg: &SetupMiningConnectionError,
     ) {
         self.status = Err(());
@@ -208,7 +204,7 @@ impl V2Handler for StratumEventHandler {
 
     fn visit_open_channel_success(
         &mut self,
-        _msg: &Message<V2Protocol>,
+        _msg: &Message<Protocol>,
         success_msg: &OpenChannelSuccess,
     ) {
         self.update_target(success_msg.init_target);
@@ -217,7 +213,7 @@ impl V2Handler for StratumEventHandler {
 
     fn visit_open_channel_error(
         &mut self,
-        _msg: &Message<V2Protocol>,
+        _msg: &Message<Protocol>,
         _error_msg: &OpenChannelError,
     ) {
         self.status = Err(());
@@ -225,16 +221,13 @@ impl V2Handler for StratumEventHandler {
 }
 
 struct StratumSolutionHandler {
-    connection_tx: ConnectionTx<V2Framing>,
+    connection_tx: ConnectionTx<Framing>,
     job_solution: work::JobSolutionReceiver,
     seq_num: u32,
 }
 
 impl StratumSolutionHandler {
-    fn new(
-        connection_tx: ConnectionTx<V2Framing>,
-        job_solution: work::JobSolutionReceiver,
-    ) -> Self {
+    fn new(connection_tx: ConnectionTx<Framing>, job_solution: work::JobSolutionReceiver) -> Self {
         Self {
             connection_tx,
             job_solution,
@@ -270,7 +263,7 @@ impl StratumSolutionHandler {
 }
 
 async fn setup_mining_connection<'a>(
-    connection: &'a mut Connection<V2Framing>,
+    connection: &'a mut Connection<Framing>,
     event_handler: &'a mut StratumEventHandler,
     stratum_addr: String,
 ) -> Result<(), ()> {
@@ -290,7 +283,7 @@ async fn setup_mining_connection<'a>(
 }
 
 async fn open_channel<'a>(
-    connection: &'a mut Connection<V2Framing>,
+    connection: &'a mut Connection<Framing>,
     event_handler: &'a mut StratumEventHandler,
     user: String,
 ) -> Result<(), ()> {
@@ -324,17 +317,17 @@ impl StringifyV2 {
     fn new() -> Self {
         Self(None)
     }
-    fn print(response_msg: &<V2Framing as Framing>::Receive) -> String {
+    fn print(response_msg: &<Framing as wire::Framing>::Rx) -> String {
         let mut handler = Self::new();
         response_msg.accept(&mut handler);
         handler.0.unwrap_or_else(|| "?unknown?".to_string())
     }
 }
 
-impl V2Handler for StringifyV2 {
+impl Handler for StringifyV2 {
     fn visit_setup_mining_connection(
         &mut self,
-        _msg: &wire::Message<V2Protocol>,
+        _msg: &wire::Message<Protocol>,
         payload: &SetupMiningConnection,
     ) {
         self.0 = Some(format!("{:?}", payload));
@@ -342,45 +335,45 @@ impl V2Handler for StringifyV2 {
 
     fn visit_setup_mining_connection_success(
         &mut self,
-        _msg: &wire::Message<V2Protocol>,
+        _msg: &wire::Message<Protocol>,
         payload: &SetupMiningConnectionSuccess,
     ) {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_open_channel(&mut self, _msg: &wire::Message<V2Protocol>, payload: &OpenChannel) {
+    fn visit_open_channel(&mut self, _msg: &wire::Message<Protocol>, payload: &OpenChannel) {
         self.0 = Some(format!("{:?}", payload));
     }
 
     fn visit_open_channel_success(
         &mut self,
-        _msg: &wire::Message<V2Protocol>,
+        _msg: &wire::Message<Protocol>,
         payload: &OpenChannelSuccess,
     ) {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_new_mining_job(&mut self, _msg: &wire::Message<V2Protocol>, payload: &NewMiningJob) {
+    fn visit_new_mining_job(&mut self, _msg: &wire::Message<Protocol>, payload: &NewMiningJob) {
         self.0 = Some(format!("{:?}", payload));
     }
 
     fn visit_set_new_prev_hash(
         &mut self,
-        _msg: &wire::Message<V2Protocol>,
+        _msg: &wire::Message<Protocol>,
         payload: &SetNewPrevHash,
     ) {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_set_target(&mut self, _msg: &wire::Message<V2Protocol>, payload: &SetTarget) {
+    fn visit_set_target(&mut self, _msg: &wire::Message<Protocol>, payload: &SetTarget) {
         self.0 = Some(format!("{:?}", payload));
     }
-    fn visit_submit_shares(&mut self, _msg: &wire::Message<V2Protocol>, payload: &SubmitShares) {
+    fn visit_submit_shares(&mut self, _msg: &wire::Message<Protocol>, payload: &SubmitShares) {
         self.0 = Some(format!("{:?}", payload));
     }
     fn visit_submit_shares_success(
         &mut self,
-        _msg: &wire::Message<V2Protocol>,
+        _msg: &wire::Message<Protocol>,
         payload: &SubmitSharesSuccess,
     ) {
         self.0 = Some(format!("{:?}", payload));
@@ -388,7 +381,7 @@ impl V2Handler for StringifyV2 {
 }
 
 async fn event_handler_task(
-    mut connection_rx: ConnectionRx<V2Framing>,
+    mut connection_rx: ConnectionRx<Framing>,
     mut event_handler: StratumEventHandler,
 ) {
     while let Some(msg) = await!(connection_rx.next()) {
@@ -403,7 +396,7 @@ pub async fn run(job_solver: work::JobSolver, stratum_addr: String, user: String
     let (job_sender, job_solution) = job_solver.split();
     let mut event_handler = StratumEventHandler::new(job_sender);
 
-    let mut connection = await!(Connection::<V2Framing>::connect(&socket_addr))
+    let mut connection = await!(Connection::<Framing>::connect(&socket_addr))
         .expect("Cannot connect to stratum server");
 
     await!(setup_mining_connection(

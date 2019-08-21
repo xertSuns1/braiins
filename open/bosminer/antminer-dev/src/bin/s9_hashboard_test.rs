@@ -18,7 +18,7 @@ use tokio::timer::Delay;
 use wire::utils::CompatFix;
 
 async fn dummy_job_generator(mut job_sender: work::JobSender) {
-    let mut dummy_job = hal::s9::null_work::NullJob::new(0);
+    let mut dummy_job = hal::s9::null_work::NullJob::new(0, 0, 0);
     loop {
         job_sender.send(Arc::new(dummy_job));
         await!(Delay::new(Instant::now() + Duration::from_secs(10))).unwrap();
