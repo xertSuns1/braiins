@@ -220,7 +220,7 @@ mod test {
     fn test_get_irq_timeout() {
         let mut fifo = HChainFifo::new(TEST_CHAIN_INDEX).expect("fifo construction failed");
         // fifo initialization flushes all received responses
-        fifo.init();
+        fifo.init().expect("fifo initialization failed");
         drop(fifo);
         // work rx fifo now shouldn't get any interrupts (it's empty)
         let irq = map_irq(TEST_CHAIN_INDEX, "work-rx").unwrap();
