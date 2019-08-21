@@ -54,7 +54,7 @@
 
       <addressBlock>
         <offset>0</offset>
-        <size>0x34</size>
+        <size>0x40</size>
         <usage>registers</usage>
       </addressBlock>
 
@@ -351,6 +351,24 @@
           <description>Counter of dropped frames from ASIC's (CRC mismatch,
             etc)</description>
           <addressOffset>0x30</addressOffset>
+          <size>32</size>
+          <access>read-only</access>
+          <resetValue>0x00000000</resetValue>
+          <resetMask>0xffffffff</resetMask>
+        </register>
+        <register>
+          <name>LAST_WORK_ID</name>
+          <description>ID of last work</description>
+          <addressOffset>0x34</addressOffset>
+          <size>32</size>
+          <access>read-only</access>
+          <resetValue>0x00000000</resetValue>
+          <resetMask>0xffffffff</resetMask>
+        </register>
+        <register>
+          <name>BUILD_ID</name>
+          <description>When was this bitstream generated as unix timestamp</description>
+          <addressOffset>0x3c</addressOffset>
           <size>32</size>
           <access>read-only</access>
           <resetValue>0x00000000</resetValue>

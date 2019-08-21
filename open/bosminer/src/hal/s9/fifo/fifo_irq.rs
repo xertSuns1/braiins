@@ -7,8 +7,22 @@ const FIFO_WORK_MAX_SIZE: u32 = 200;
 /// Threshold for number of entries in FIFO queue under which we recon we could
 /// fit one more work.
 const FIFO_WORK_TX_THRESHOLD: u32 = FIFO_WORK_TX_SIZE - FIFO_WORK_MAX_SIZE;
+/// What bitstream version do we expect
+const EXPECTED_BITSTREAM_BUILD_ID: u32 = 0x5D5E7158;
 
 impl HChainFifo {
+    /// Return the value of last work ID send to ASICs
+    #[inline]
+    pub fn get_last_work_id(&mut self) -> u32 {
+        self.hash_chain_io.last_work_id.read().bits()
+    }
+
+    /// Return build id (unix timestamp) of s9-io FPGA bitstream
+    #[inline]
+    pub fn get_build_id(&mut self) -> u32 {
+        self.hash_chain_io.build_id.read().bits()
+    }
+
     /// Try to write work item to work TX FIFO.
     /// Performs blocking write without timeout. Uses IRQ.
     /// The idea is that you don't call this function until you are sure you
@@ -75,7 +89,21 @@ impl HChainFifo {
         Ok(())
     }
 
-    pub fn init(&mut self) {
+    fn check_build_id(&mut self) -> error::Result<()> {
+        let build_id = self.get_build_id();
+        if build_id != EXPECTED_BITSTREAM_BUILD_ID {
+            Err(ErrorKind::UnexpectedVersion(
+                "s9-io bitstream".to_string(),
+                format!("0x{:08x}", build_id),
+                format!("0x{:08x}", EXPECTED_BITSTREAM_BUILD_ID),
+            ))?
+        }
+        Ok(())
+    }
+    pub fn init(&mut self) -> error::Result<()> {
+        // Check if we run the right version of bitstream
+        self.check_build_id()?;
+
         // Set threshold for work TX so that there's space for
         // at least one job.
         self.hash_chain_io
@@ -104,6 +132,8 @@ impl HChainFifo {
         self.hash_chain_io
             .ctrl_reg
             .modify(|_, w| w.irq_en_cmd_rx().set_bit());
+
+        Ok(())
     }
 
     pub fn new(hashboard_idx: usize) -> error::Result<Self> {

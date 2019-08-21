@@ -180,9 +180,9 @@ where
         let mut work_rx_fifo = fifo::HChainFifo::new(hashboard_idx)?;
         let mut work_tx_fifo = fifo::HChainFifo::new(hashboard_idx)?;
 
-        cmd_fifo.init();
-        work_rx_fifo.init();
-        work_tx_fifo.init();
+        cmd_fifo.init()?;
+        work_rx_fifo.init()?;
+        work_tx_fifo.init()?;
 
         Ok(Self {
             work_id: 0,
