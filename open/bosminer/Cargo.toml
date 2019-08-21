@@ -33,8 +33,8 @@ futures-01 = { version = "0.1.27", package = "futures" }
 futures-locks = "0.3.3"
 bitcoin_hashes = "0.3.2"
 downcast-rs = "1.0.4"
-wire = { git = "ssh://git@gitlab.ii.zone/x/stratum.git", branch = "master" }
-stratum = { git = "ssh://git@gitlab.ii.zone/x/stratum.git", branch = "master" }
+wire = { path = "../protocols/wire" }
+stratum = { path = "../protocols/stratum" }
 tokio-async-await = "0.1.7"
 hex = "0.3.1"
 clap = "2.33.0"
