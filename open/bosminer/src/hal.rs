@@ -297,7 +297,7 @@ pub struct ShutdownSender(mpsc::UnboundedSender<ShutdownMsg>);
 
 impl ShutdownSender {
     pub fn send(&self, msg: ShutdownMsg) {
-        self.0.unbounded_send(msg).expect("send failed");
+        self.0.unbounded_send(msg).expect("shutdown send failed");
     }
 }
 
