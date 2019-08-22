@@ -2,10 +2,10 @@ use futures::compat::Future01CompatExt;
 use futures::{FutureExt, TryFutureExt};
 use futures_01::future::Either;
 use futures_01::Future as OldFuture;
+use ii_wire::utils::CompatFix;
 use std::future::Future as StdFuture;
 use std::time::{Duration, Instant};
 use tokio::timer::Delay;
-use wire::utils::CompatFix;
 
 /// Start Tokio runtime
 ///
