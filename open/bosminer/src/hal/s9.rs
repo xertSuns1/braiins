@@ -13,8 +13,8 @@ use std::thread;
 
 use std::time::{Duration, SystemTime};
 
+use ii_wire::utils::CompatFix;
 use tokio::await;
-use wire::utils::CompatFix;
 
 use slog::{info, trace};
 

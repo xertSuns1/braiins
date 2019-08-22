@@ -5,23 +5,23 @@ use crate::work;
 use crate::misc::LOGGER;
 use slog::trace;
 
+use ii_wire::utils::CompatFix;
 use tokio::prelude::*;
 use tokio::r#await;
-use wire::utils::CompatFix;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use stratum::v2::framing::codec::Framing;
-use stratum::v2::messages::{
+use ii_stratum::v2::framing::codec::Framing;
+use ii_stratum::v2::messages::{
     NewMiningJob, OpenChannel, OpenChannelError, OpenChannelSuccess, SetNewPrevHash, SetTarget,
     SetupMiningConnection, SetupMiningConnectionError, SetupMiningConnectionSuccess, SubmitShares,
     SubmitSharesSuccess,
 };
-use stratum::v2::types::DeviceInfo;
-use stratum::v2::types::*;
-use stratum::v2::{Handler, Protocol};
-use wire::{Connection, ConnectionRx, ConnectionTx, Message};
+use ii_stratum::v2::types::DeviceInfo;
+use ii_stratum::v2::types::*;
+use ii_stratum::v2::{Handler, Protocol};
+use ii_wire::{Connection, ConnectionRx, ConnectionTx, Message};
 
 use std::collections::HashMap;
 
@@ -317,7 +317,7 @@ impl StringifyV2 {
     fn new() -> Self {
         Self(None)
     }
-    fn print(response_msg: &<Framing as wire::Framing>::Rx) -> String {
+    fn print(response_msg: &<Framing as ii_wire::Framing>::Rx) -> String {
         let mut handler = Self::new();
         response_msg.accept(&mut handler);
         handler.0.unwrap_or_else(|| "?unknown?".to_string())
@@ -327,7 +327,7 @@ impl StringifyV2 {
 impl Handler for StringifyV2 {
     fn visit_setup_mining_connection(
         &mut self,
-        _msg: &wire::Message<Protocol>,
+        _msg: &ii_wire::Message<Protocol>,
         payload: &SetupMiningConnection,
     ) {
         self.0 = Some(format!("{:?}", payload));
@@ -335,45 +335,45 @@ impl Handler for StringifyV2 {
 
     fn visit_setup_mining_connection_success(
         &mut self,
-        _msg: &wire::Message<Protocol>,
+        _msg: &ii_wire::Message<Protocol>,
         payload: &SetupMiningConnectionSuccess,
     ) {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_open_channel(&mut self, _msg: &wire::Message<Protocol>, payload: &OpenChannel) {
+    fn visit_open_channel(&mut self, _msg: &ii_wire::Message<Protocol>, payload: &OpenChannel) {
         self.0 = Some(format!("{:?}", payload));
     }
 
     fn visit_open_channel_success(
         &mut self,
-        _msg: &wire::Message<Protocol>,
+        _msg: &ii_wire::Message<Protocol>,
         payload: &OpenChannelSuccess,
     ) {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_new_mining_job(&mut self, _msg: &wire::Message<Protocol>, payload: &NewMiningJob) {
+    fn visit_new_mining_job(&mut self, _msg: &ii_wire::Message<Protocol>, payload: &NewMiningJob) {
         self.0 = Some(format!("{:?}", payload));
     }
 
     fn visit_set_new_prev_hash(
         &mut self,
-        _msg: &wire::Message<Protocol>,
+        _msg: &ii_wire::Message<Protocol>,
         payload: &SetNewPrevHash,
     ) {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_set_target(&mut self, _msg: &wire::Message<Protocol>, payload: &SetTarget) {
+    fn visit_set_target(&mut self, _msg: &ii_wire::Message<Protocol>, payload: &SetTarget) {
         self.0 = Some(format!("{:?}", payload));
     }
-    fn visit_submit_shares(&mut self, _msg: &wire::Message<Protocol>, payload: &SubmitShares) {
+    fn visit_submit_shares(&mut self, _msg: &ii_wire::Message<Protocol>, payload: &SubmitShares) {
         self.0 = Some(format!("{:?}", payload));
     }
     fn visit_submit_shares_success(
         &mut self,
-        _msg: &wire::Message<Protocol>,
+        _msg: &ii_wire::Message<Protocol>,
         payload: &SubmitSharesSuccess,
     ) {
         self.0 = Some(format!("{:?}", payload));

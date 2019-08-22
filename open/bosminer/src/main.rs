@@ -5,8 +5,8 @@ use bosminer::hal;
 use bosminer::stats;
 use bosminer::work;
 
+use ii_wire::utils::CompatFix;
 use tokio::await;
-use wire::utils::CompatFix;
 
 use futures_locks::Mutex;
 

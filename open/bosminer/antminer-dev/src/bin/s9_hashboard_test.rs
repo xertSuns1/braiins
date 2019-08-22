@@ -13,9 +13,9 @@ use std::time::{Duration, Instant};
 use futures_locks::Mutex;
 use std::sync::Arc;
 
+use ii_wire::utils::CompatFix;
 use tokio::await;
 use tokio::timer::Delay;
-use wire::utils::CompatFix;
 
 async fn dummy_job_generator(mut job_sender: work::JobSender) {
     let mut dummy_job = hal::s9::null_work::NullJob::new(0, 0, 0);
