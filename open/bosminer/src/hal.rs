@@ -24,7 +24,7 @@ use futures::stream::StreamExt;
 
 use std::cell::Cell;
 use std::convert::TryInto;
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 use std::mem;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -250,6 +250,18 @@ impl UniqueMiningWorkSolution {
 
         // compute hash for this solution and compare it with target
         self.hash().meets(current_target)
+    }
+}
+
+impl Debug for UniqueMiningWorkSolution {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{:?} (nonce {:08x}, midstate {})",
+            self.hash(),
+            self.solution.nonce,
+            self.solution.midstate_idx
+        )
     }
 }
 
