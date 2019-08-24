@@ -153,6 +153,7 @@ module s9io_v0_1_tb();
         tc_work_id_2();
         tc_work_id_3();
         tc_work_id_4();
+        tc_work_id_5();
 
         // Testcase 7 - test of IP core reset by enable flag
         tc_ip_core_reset_1();
@@ -928,10 +929,61 @@ module s9io_v0_1_tb();
         // reference Rx FIFO data
         static logic[31:0] fifo_data2[$] = {32'h083c0648, 32'h9011c000};
 
-        $display("Testcase 6c: work ID, response with higher ID then last work");
+        $display("Testcase 6d: work ID, response with higher ID then last work");
 
         // set 1 midstate mode
         axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+
+        fifo_write_work(fifo_data1);
+        uart_read_and_compare(uart_data1);
+
+        // send work response
+        uart_send_data(uart_data2);
+        fifo_read_and_compare_work(fifo_data2);
+    endtask
+
+
+    // ---------------------------------------------------------------------------------------------
+    // 4-midstates work with response with higher work ID (non-zero LSBs)
+    task tc_work_id_5();
+        // Tx FIFO data
+        static logic[31:0] fifo_data1[$] = {
+            32'h000001c8, 32'h1723792c, 32'h5d17465b, 32'h4333e7e0, 32'hd4bc85da, 32'h7863cc7f,
+            32'h23f45071, 32'hf19935b9, 32'h0cbad1ee, 32'h34ddb024, 32'hf7cb2156, 32'h7cf30c02,
+            32'h727b2484, 32'h2dbb3bfe, 32'h0bfe2494, 32'h1768bc7c, 32'h152c83c0, 32'hc815bc0e,
+            32'had9fe9b6, 32'hcf2b40de, 32'hbad64745, 32'hf8d5f8b5, 32'hbfc7b016, 32'h24de8d40,
+            32'hcef2fedb, 32'h71b9e01c, 32'hbbee9e79, 32'hfa07537f, 32'h319c9437, 32'he267d889,
+            32'h8a4c93f0, 32'h0d4cb8d1, 32'h32357b3b, 32'h0842afd9, 32'h5483e2d9, 32'h3f751430
+        };
+
+        // reference data send out through UART
+        static logic[7:0] uart_data1[$] = {
+            8'h21, 8'h96, 8'h48, 8'h04, 8'h00, 8'h00, 8'h00, 8'h00, 8'h2c, 8'h79, 8'h23, 8'h17,
+            8'h5b, 8'h46, 8'h17, 8'h5d, 8'he0, 8'he7, 8'h33, 8'h43, 8'hd4, 8'hbc, 8'h85, 8'hda,
+            8'h78, 8'h63, 8'hcc, 8'h7f, 8'h23, 8'hf4, 8'h50, 8'h71, 8'hf1, 8'h99, 8'h35, 8'hb9,
+            8'h0c, 8'hba, 8'hd1, 8'hee, 8'h34, 8'hdd, 8'hb0, 8'h24, 8'hf7, 8'hcb, 8'h21, 8'h56,
+            8'h7c, 8'hf3, 8'h0c, 8'h02, 8'h72, 8'h7b, 8'h24, 8'h84, 8'h2d, 8'hbb, 8'h3b, 8'hfe,
+            8'h0b, 8'hfe, 8'h24, 8'h94, 8'h17, 8'h68, 8'hbc, 8'h7c, 8'h15, 8'h2c, 8'h83, 8'hc0,
+            8'hc8, 8'h15, 8'hbc, 8'h0e, 8'had, 8'h9f, 8'he9, 8'hb6, 8'hcf, 8'h2b, 8'h40, 8'hde,
+            8'hba, 8'hd6, 8'h47, 8'h45, 8'hf8, 8'hd5, 8'hf8, 8'hb5, 8'hbf, 8'hc7, 8'hb0, 8'h16,
+            8'h24, 8'hde, 8'h8d, 8'h40, 8'hce, 8'hf2, 8'hfe, 8'hdb, 8'h71, 8'hb9, 8'he0, 8'h1c,
+            8'hbb, 8'hee, 8'h9e, 8'h79, 8'hfa, 8'h07, 8'h53, 8'h7f, 8'h31, 8'h9c, 8'h94, 8'h37,
+            8'he2, 8'h67, 8'hd8, 8'h89, 8'h8a, 8'h4c, 8'h93, 8'hf0, 8'h0d, 8'h4c, 8'hb8, 8'hd1,
+            8'h32, 8'h35, 8'h7b, 8'h3b, 8'h08, 8'h42, 8'haf, 8'hd9, 8'h54, 8'h83, 8'he2, 8'hd9,
+            8'h3f, 8'h75, 8'h14, 8'h30, 8'h9b, 8'hc2
+        };
+
+
+        // response send through UART
+        static logic[7:0] uart_data2[$] = {8'h20, 8'haa, 8'hd8, 8'he0, 8'h3f, 8'h49 , 8'h90};
+
+        // reference Rx FIFO data
+        static logic[31:0] fifo_data2[$] = {32'he0d8aa20, 32'h9001c93f};
+
+        $display("Testcase 6e: work ID, 4-midstates work, response with non-zero work ID LSBs");
+
+        // set 1 midstate mode
+        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_4);
 
         fifo_write_work(fifo_data1);
         uart_read_and_compare(uart_data1);
