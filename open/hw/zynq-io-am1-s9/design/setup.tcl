@@ -108,7 +108,7 @@ source "system_init.tcl"
 source "system_build.tcl"
 
 # Run simulation & verification
-source "src/s9io_0.1/fve/sim.tcl"
+source "src/s9io_0.2/fve/sim.tcl"
 
 ####################################################################################################
 # Exit Vivado

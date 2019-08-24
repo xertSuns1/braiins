@@ -32,7 +32,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity s9io_v0_1 is
+entity s9io_v0_2 is
     generic (
         -- Users to add parameters here
 
@@ -42,7 +42,7 @@ entity s9io_v0_1 is
 
         -- Parameters of Axi Slave Bus Interface S00_AXI
         C_S00_AXI_DATA_WIDTH : integer := 32;
-        C_S00_AXI_ADDR_WIDTH : integer := 6
+        C_S00_AXI_ADDR_WIDTH : integer := 14
     );
     port (
         -- Users to add ports here
@@ -83,12 +83,12 @@ entity s9io_v0_1 is
         s00_axi_rvalid   : out std_logic;
         s00_axi_rready   : in std_logic
     );
-end s9io_v0_1;
+end s9io_v0_2;
 
-architecture arch_imp of s9io_v0_1 is
+architecture arch_imp of s9io_v0_2 is
 
     -- component declaration
-    component s9io_v0_1_S00_AXI is
+    component s9io_v0_2_S00_AXI is
         generic (
         C_S_AXI_DATA_WIDTH    : integer    := 32;
         C_S_AXI_ADDR_WIDTH    : integer    := 6
@@ -125,12 +125,12 @@ architecture arch_imp of s9io_v0_1 is
         S_AXI_RVALID   : out std_logic;
         S_AXI_RREADY   : in std_logic
         );
-    end component s9io_v0_1_S00_AXI;
+    end component s9io_v0_2_S00_AXI;
 
 begin
 
 -- Instantiation of Axi Bus Interface S00_AXI
-s9io_v0_1_S00_AXI_inst : s9io_v0_1_S00_AXI
+s9io_v0_2_S00_AXI_inst : s9io_v0_2_S00_AXI
     generic map (
         C_S_AXI_DATA_WIDTH => C_S00_AXI_DATA_WIDTH,
         C_S_AXI_ADDR_WIDTH => C_S00_AXI_ADDR_WIDTH

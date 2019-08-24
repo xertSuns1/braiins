@@ -25,14 +25,14 @@
 -- Description:    AXI Interface of S9 Board IP core
 --
 -- Engineer:       Marian Pristach
--- Revision:       1.0.0 (18.08.2018)
+-- Revision:       1.1.0 (22.07.2019)
 -- Comments:
 ----------------------------------------------------------------------------------------------------
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity s9io_v0_1_S00_AXI is
+entity s9io_v0_2_S00_AXI is
     generic (
         -- Users to add parameters here
 
@@ -120,9 +120,9 @@ entity s9io_v0_1_S00_AXI is
         -- accept the read data and response information.
         S_AXI_RREADY    : in std_logic
     );
-end s9io_v0_1_S00_AXI;
+end s9io_v0_2_S00_AXI;
 
-architecture arch_imp of s9io_v0_1_S00_AXI is
+architecture arch_imp of s9io_v0_2_S00_AXI is
 
     -- AXI4LITE signals
     signal axi_awaddr    : std_logic_vector(C_S_AXI_ADDR_WIDTH-1 downto 0);
@@ -143,39 +143,61 @@ architecture arch_imp of s9io_v0_1_S00_AXI is
     -- ADDR_LSB = 2 for 32 bits (n downto 2)
     -- ADDR_LSB = 3 for 64 bits (n downto 3)
     constant ADDR_LSB  : integer := (C_S_AXI_DATA_WIDTH/32)+ 1;
-    constant OPT_MEM_ADDR_BITS : integer := 3;
+    constant OPT_MEM_ADDR_BITS : integer := 11;
     ------------------------------------------------
     ---- Signals for user logic register space example
     --------------------------------------------------
-    ---- Number of Slave Registers 16
-    signal slv_reg0     :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-    signal slv_reg1     :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-    signal slv_reg2     :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-    signal slv_reg3     :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-    signal slv_reg4     :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-    signal slv_reg5     :std_logic_vector(12 downto 0);
-    signal slv_reg6     :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-    signal slv_reg7     :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-    signal slv_reg8     :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
---     signal slv_reg9    :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
---     signal slv_reg10   :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
---     signal slv_reg11   :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-    signal slv_reg12    :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-    signal slv_reg13    :std_logic_vector(15 downto 0);
---     signal slv_reg14   :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-    signal slv_reg15    :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-    signal slv_reg_rden : std_logic;
-    signal slv_reg_wren : std_logic;
-    signal reg_data_out :std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
-    signal byte_index   : integer;
-    signal aw_en        : std_logic;
+    signal slv_cmd_rx_fifo      : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+    signal slv_cmd_tx_fifo      : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+    signal slv_work_rx_fifo     : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+    signal slv_work_tx_fifo     : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+    signal slv_ctrl_reg         : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+    signal slv_cmd_ctrl_reg     : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+    signal slv_work_rx_ctrl_reg : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+    signal slv_work_tx_ctrl_reg : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+    signal slv_cmd_stat_reg     : std_logic_vector(4 downto 0);
+    signal slv_work_rx_stat_reg : std_logic_vector(4 downto 0);
+    signal slv_work_tx_stat_reg : std_logic_vector(4 downto 0);
+    signal slv_baud_reg         : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+    signal slv_work_time        : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+    signal slv_work_tx_irq_thr  : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+    signal slv_err_counter      : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+    signal slv_work_tx_last_id  : std_logic_vector(15 downto 0);
+    signal slv_build_id         : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+
+    signal slv_reg_rden         : std_logic;
+    signal slv_reg_wren         : std_logic;
+    signal reg_data_out         : std_logic_vector(C_S_AXI_DATA_WIDTH-1 downto 0);
+    signal byte_index           : integer;
+    signal aw_en                : std_logic;
 
     -- user signals
-    signal work_time_ack : std_logic;
-    signal cmd_rx_fifo_rd : std_logic;
-    signal cmd_tx_fifo_wr : std_logic;
-    signal work_rx_fifo_rd : std_logic;
-    signal work_tx_fifo_wr : std_logic;
+    signal work_time_ack        : std_logic;
+    signal cmd_rx_fifo_rd       : std_logic;
+    signal cmd_tx_fifo_wr       : std_logic;
+    signal work_rx_fifo_rd      : std_logic;
+    signal work_tx_fifo_wr      : std_logic;
+
+    -- Register mapping
+    constant VERSION            : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"000";  -- IP Core Version Register
+    constant BUILD_ID           : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"001";  -- Build ID Register
+    constant CTRL_REG           : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"002";  -- Control Register
+    constant STAT_REG           : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"003";  -- Status Register - reserved
+    constant BAUD_REG           : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"004";  -- Baudrate Divisor Register
+    constant WORK_TIME          : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"005";  -- Work Time Delay Register
+    constant ERR_COUNTER        : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"006";  -- Error Counter Register
+    constant CMD_RX_FIFO        : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"400";  -- Command Receive Interface FIFO
+    constant CMD_TX_FIFO        : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"401";  -- Command Transmit Interface FIFO
+    constant CMD_CTRL_REG       : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"402";  -- Command Control Register
+    constant CMD_STAT_REG       : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"403";  -- Command Status Register
+    constant WORK_RX_FIFO       : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"800";  -- Work Receive Interface FIFO
+    constant WORK_RX_CTRL_REG   : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"802";  -- Work Receive Control Register
+    constant WORK_RX_STAT_REG   : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"803";  -- Work Receive Status Register
+    constant WORK_TX_FIFO       : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"C01";  -- Work Transmit Interface FIFO
+    constant WORK_TX_CTRL_REG   : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"C02";  -- Work Transmit Control Register
+    constant WORK_TX_STAT_REG   : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"C03";  -- Work Transmit Status Register
+    constant WORK_TX_IRQ_THR    : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"C04";  -- Work Transmit IRQ Threshold
+    constant WORK_TX_LAST_ID    : std_logic_vector(OPT_MEM_ADDR_BITS downto 0) := X"C05";  -- Work Transmit Last Work ID
 
 begin
     -- I/O Connections assignments
@@ -274,30 +296,30 @@ begin
     begin
       cmd_tx_fifo_wr <= '0';
       work_tx_fifo_wr <= '0';
-      slv_reg1 <= (others => '0');
-      slv_reg3 <= (others => '0');
+      slv_cmd_tx_fifo <= (others => '0');
+      slv_work_tx_fifo <= (others => '0');
 
       loc_addr := axi_awaddr(ADDR_LSB + OPT_MEM_ADDR_BITS downto ADDR_LSB);
       if (slv_reg_wren = '1') then
         case loc_addr is
-          -- Command Interface Transmit FIFO
-          when b"0001" =>
+          -- Command Transmit Interface FIFO
+          when CMD_TX_FIFO =>
             cmd_tx_fifo_wr <= '1';
             for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
               if ( S_AXI_WSTRB(byte_index) = '1' ) then
                 -- Respective byte enables are asserted as per write strobes
                 -- slave registor 1
-                slv_reg1(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
+                slv_cmd_tx_fifo(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
               end if;
             end loop;
-          -- Work Interface Transmit FIFO
-          when b"0011" =>
+          -- Work Transmit Interface FIFO
+          when WORK_TX_FIFO =>
             work_tx_fifo_wr <= '1';
             for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
               if ( S_AXI_WSTRB(byte_index) = '1' ) then
                 -- Respective byte enables are asserted as per write strobes
                 -- slave registor 3
-                slv_reg3(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
+                slv_work_tx_fifo(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
               end if;
             end loop;
           when others =>
@@ -305,64 +327,95 @@ begin
       end if;
     end process;
 
-
     -- Registers
     process (S_AXI_ACLK)
     variable loc_addr :std_logic_vector(OPT_MEM_ADDR_BITS downto 0);
     begin
       if rising_edge(S_AXI_ACLK) then
         if S_AXI_ARESETN = '0' then
-          slv_reg4 <= (others => '0');
-          slv_reg6 <= (others => '0');
-          slv_reg7 <= X"00000001";
-          slv_reg8 <= (others => '0');
+          slv_ctrl_reg <= (others => '0');
+          slv_cmd_ctrl_reg <= (others => '0');
+          slv_work_rx_ctrl_reg <= (others => '0');
+          slv_work_tx_ctrl_reg <= (others => '0');
+          slv_baud_reg <= (others => '0');
+          slv_work_time <= X"00000001";
+          slv_work_tx_irq_thr <= (others => '0');
         else
 
           -- clear error counter reset request
-          slv_reg4(4) <= '0';
+          slv_ctrl_reg(0) <= '0';
 
           -- clear reset requests
           if (work_time_ack = '1') then
-            slv_reg4(3 downto 0) <= (others => '0');
+            slv_cmd_ctrl_reg(1 downto 0) <= (others => '0');
+            slv_work_rx_ctrl_reg(1 downto 0) <= (others => '0');
+            slv_work_tx_ctrl_reg(1 downto 0) <= (others => '0');
           end if;
 
           loc_addr := axi_awaddr(ADDR_LSB + OPT_MEM_ADDR_BITS downto ADDR_LSB);
           if (slv_reg_wren = '1') then
             case loc_addr is
               -- Control Register
-              when b"0100" =>
+              when CTRL_REG =>
                 for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
                   if ( S_AXI_WSTRB(byte_index) = '1' ) then
                     -- Respective byte enables are asserted as per write strobes
                     -- slave registor 4
-                    slv_reg4(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
+                    slv_ctrl_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
                   end if;
                 end loop;
-              -- Baudrate divisor
-              when b"0110" =>
+              -- Command Control Register
+              when CMD_CTRL_REG =>
+                for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
+                  if ( S_AXI_WSTRB(byte_index) = '1' ) then
+                    -- Respective byte enables are asserted as per write strobes
+                    -- slave registor 4
+                    slv_cmd_ctrl_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
+                  end if;
+                end loop;
+              -- Work Receive Control Register
+              when WORK_RX_CTRL_REG =>
+                for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
+                  if ( S_AXI_WSTRB(byte_index) = '1' ) then
+                    -- Respective byte enables are asserted as per write strobes
+                    -- slave registor 4
+                    slv_work_rx_ctrl_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
+                  end if;
+                end loop;
+              -- Work Transmit Control Register
+              when WORK_TX_CTRL_REG =>
+                for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
+                  if ( S_AXI_WSTRB(byte_index) = '1' ) then
+                    -- Respective byte enables are asserted as per write strobes
+                    -- slave registor 4
+                    slv_work_tx_ctrl_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
+                  end if;
+                end loop;
+              -- Baudrate Divisor Register
+              when BAUD_REG =>
                 for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
                   if ( S_AXI_WSTRB(byte_index) = '1' ) then
                     -- Respective byte enables are asserted as per write strobes
                     -- slave registor 6
-                    slv_reg6(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
+                    slv_baud_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
                   end if;
                 end loop;
-              -- Work Time delay
-              when b"0111" =>
+              -- Work Time Delay Register
+              when WORK_TIME =>
                 for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
                   if ( S_AXI_WSTRB(byte_index) = '1' ) then
                     -- Respective byte enables are asserted as per write strobes
                     -- slave registor 7
-                    slv_reg7(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
+                    slv_work_time(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
                   end if;
                 end loop;
-              -- Threshold for Work Transmit FIFO IRQ (32b words)
-              when b"1000" =>
+              -- Work Transmit IRQ Threshold
+              when WORK_TX_IRQ_THR =>
                 for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
                   if ( S_AXI_WSTRB(byte_index) = '1' ) then
                     -- Respective byte enables are asserted as per write strobes
                     -- slave registor 8
-                    slv_reg8(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
+                    slv_work_tx_irq_thr(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
                   end if;
                 end loop;
               when others =>
@@ -453,8 +506,8 @@ begin
     -- and the slave is ready to accept the read address.
     slv_reg_rden <= axi_arready and S_AXI_ARVALID and (not axi_rvalid) ;
 
-    process (slv_reg4, slv_reg5, slv_reg6, slv_reg7, slv_reg8, slv_reg12, slv_reg13, slv_reg15, axi_araddr, slv_reg_rden)
-    variable loc_addr :std_logic_vector(OPT_MEM_ADDR_BITS downto 0);
+    process (slv_ctrl_reg, slv_cmd_ctrl_reg, slv_work_rx_ctrl_reg, slv_work_tx_ctrl_reg, slv_cmd_stat_reg, slv_work_rx_stat_reg, slv_work_tx_stat_reg, slv_baud_reg, slv_work_time, slv_work_tx_irq_thr, slv_err_counter, slv_work_tx_last_id, slv_build_id, axi_araddr, slv_reg_rden)
+        variable loc_addr :std_logic_vector(OPT_MEM_ADDR_BITS downto 0);
     begin
         cmd_rx_fifo_rd <= '0';
         work_rx_fifo_rd <= '0';
@@ -462,42 +515,74 @@ begin
         -- Address decoding for reading registers
         loc_addr := axi_araddr(ADDR_LSB + OPT_MEM_ADDR_BITS downto ADDR_LSB);
         case loc_addr is
-          -- Command Interface Receive FIFO
-          when b"0000" =>
-            cmd_rx_fifo_rd <= slv_reg_rden;
-            reg_data_out <= (others => '0');
-          -- Work Interface Receive FIFO
-          when b"0010" =>
-            work_rx_fifo_rd <= slv_reg_rden;
-            reg_data_out <= (others => '0');
-          -- Control Register
-          when b"0100" =>
-            reg_data_out <= slv_reg4;
-          -- Status Register
-          when b"0101" =>
-            reg_data_out <= std_logic_vector(resize(unsigned(slv_reg5), 32));
-          -- Baudrate divisor
-          when b"0110" =>
-            reg_data_out <= slv_reg6;
-          -- Work Time delay
-          when b"0111" =>
-            reg_data_out <= slv_reg7;
-          -- Threshold for Work Transmit FIFO IRQ (32b words)
-          when b"1000" =>
-            reg_data_out <= slv_reg8;
-          -- Counter of dropped frames (CRC mismatch, ...)
-          when b"1100" =>
-            reg_data_out <= slv_reg12;
-          -- Last Work ID send to ASICs
-          when b"1101" =>
-            reg_data_out <= std_logic_vector(resize(unsigned(slv_reg13), 32));
-          -- Build ID
-          when b"1111" =>
-            reg_data_out <= slv_reg15;
-          when others =>
-            reg_data_out  <= (others => '0');
+            -- IP Core Version Register
+            when VERSION =>
+                reg_data_out <= X"00090002";
+            -- Build ID Register
+            when BUILD_ID =>
+                reg_data_out <= slv_build_id;
+            -- Control Register
+            when CTRL_REG =>
+                reg_data_out <= slv_ctrl_reg;
+            -- Status Register - reserved
+            when STAT_REG =>
+                reg_data_out <= (others => '0');
+            -- Baudrate Divisor Register
+            when BAUD_REG =>
+                reg_data_out <= slv_baud_reg;
+            -- Work Time Delay Register
+            when WORK_TIME =>
+                reg_data_out <= slv_work_time;
+            -- Error Counter Register
+            when ERR_COUNTER =>
+                reg_data_out <= slv_err_counter;
+
+            -- Command Receive Interface FIFO
+            when CMD_RX_FIFO =>
+                cmd_rx_fifo_rd <= slv_reg_rden;
+                reg_data_out <= (others => '0');
+            -- Command Transmit Interface FIFO
+            when CMD_TX_FIFO =>
+                reg_data_out <= (others => '0');
+            -- Command Control Register
+            when CMD_CTRL_REG =>
+                reg_data_out <= slv_cmd_ctrl_reg;
+            -- Command Status Register
+            when CMD_STAT_REG =>
+                reg_data_out <= std_logic_vector(resize(unsigned(slv_cmd_stat_reg), 32));
+
+            -- Work Receive Interface FIFO
+            when WORK_RX_FIFO =>
+                work_rx_fifo_rd <= slv_reg_rden;
+                reg_data_out <= (others => '0');
+            -- Work Receive Control Register
+            when WORK_RX_CTRL_REG =>
+                reg_data_out <= slv_work_rx_ctrl_reg;
+            -- Work Receive Status Register
+            when WORK_RX_STAT_REG =>
+                reg_data_out <= std_logic_vector(resize(unsigned(slv_work_rx_stat_reg), 32));
+
+            -- Work Transmit Interface FIFO
+            when WORK_TX_FIFO =>
+                reg_data_out <= (others => '0');
+            -- Work Transmit Control Register
+            when WORK_TX_CTRL_REG =>
+                reg_data_out <= slv_work_tx_ctrl_reg;
+            -- Work Transmit Status Register
+            when WORK_TX_STAT_REG =>
+                reg_data_out <= std_logic_vector(resize(unsigned(slv_work_tx_stat_reg), 32));
+            -- Work Transmit IRQ Threshold
+            when WORK_TX_IRQ_THR =>
+                reg_data_out <= slv_work_tx_irq_thr;
+            -- Work Transmit Last Work ID
+            when WORK_TX_LAST_ID =>
+                reg_data_out <= std_logic_vector(resize(unsigned(slv_work_tx_last_id), 32));
+
+            when others =>
+                reg_data_out <= (others => '0');
         end case;
     end process;
+
 
     -- Output register or memory read data
     process( S_AXI_ACLK ) is
@@ -520,8 +605,8 @@ begin
 
     -- mux for register data and data from synchronous FIFO
     axi_rdata <=
-      slv_reg0 when (axi_araddr(ADDR_LSB + OPT_MEM_ADDR_BITS downto ADDR_LSB) = "0000") else
-      slv_reg2 when (axi_araddr(ADDR_LSB + OPT_MEM_ADDR_BITS downto ADDR_LSB) = "0010") else
+      slv_cmd_rx_fifo when (axi_araddr(ADDR_LSB + OPT_MEM_ADDR_BITS downto ADDR_LSB) = CMD_RX_FIFO) else
+      slv_work_rx_fifo when (axi_araddr(ADDR_LSB + OPT_MEM_ADDR_BITS downto ADDR_LSB) = WORK_RX_FIFO) else
       axi_rdata_tmp;
 
     ------------------------------------------------------------------------------------------------
@@ -548,40 +633,45 @@ begin
 
         -- Command FIFO read port
         cmd_rx_fifo_rd    => cmd_rx_fifo_rd,
-        cmd_rx_fifo_data  => slv_reg0,
+        cmd_rx_fifo_data  => slv_cmd_rx_fifo,
 
         -- Command FIFO write port
         cmd_tx_fifo_wr    => cmd_tx_fifo_wr,
-        cmd_tx_fifo_data  => slv_reg1,
+        cmd_tx_fifo_data  => slv_cmd_tx_fifo,
 
         -- Work FIFO read port
         work_rx_fifo_rd   => work_rx_fifo_rd,
-        work_rx_fifo_data => slv_reg2,
+        work_rx_fifo_data => slv_work_rx_fifo,
 
         -- Work FIFO write port
         work_tx_fifo_wr   => work_tx_fifo_wr,
-        work_tx_fifo_data => slv_reg3,
+        work_tx_fifo_data => slv_work_tx_fifo,
 
         -- Control Register
-        reg_ctrl          => slv_reg4(15 downto 0),
+        reg_ctrl           => slv_ctrl_reg(3 downto 0),
+        reg_ctrl_cmd       => slv_cmd_ctrl_reg(2 downto 0),
+        reg_ctrl_work_rx   => slv_work_rx_ctrl_reg(2 downto 0),
+        reg_ctrl_work_tx   => slv_work_tx_ctrl_reg(2 downto 0),
 
-        -- Status Register
-        reg_status        => slv_reg5(12 downto 0),
+        -- Status Registers
+        reg_status_cmd     => slv_cmd_stat_reg,
+        reg_status_work_rx => slv_work_rx_stat_reg,
+        reg_status_work_tx => slv_work_tx_stat_reg,
 
         -- UART baudrate divisor Register
-        reg_uart_divisor  => slv_reg6(11 downto 0),
+        reg_uart_divisor  => slv_baud_reg(11 downto 0),
 
         -- Work time delay Register
-        reg_work_time     => slv_reg7(23 downto 0),
+        reg_work_time     => slv_work_time(23 downto 0),
 
         -- Threshold for Work Transmit FIFO IRQ
-        reg_irq_fifo_thr  => slv_reg8(10 downto 0),
+        reg_irq_fifo_thr  => slv_work_tx_irq_thr(10 downto 0),
 
         -- Error counter (output)
-        reg_err_counter   => slv_reg12,
+        reg_err_counter   => slv_err_counter,
 
         -- Last Work ID sent to ASICs (output)
-        reg_last_work_id  => slv_reg13
+        reg_last_work_id  => slv_work_tx_last_id
 
     );
 
@@ -589,7 +679,7 @@ begin
     -- instance of s9io core version
     i_s9io_version: entity work.s9io_version
     port map (
-        timestamp => slv_reg15
+        timestamp => slv_build_id
     );
 
     ------------------------------------------------------------------------------------------------

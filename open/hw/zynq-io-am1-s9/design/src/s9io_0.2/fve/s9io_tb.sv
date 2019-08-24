@@ -25,7 +25,7 @@
  * Description:    Testbench for s9io IP core
  *
  * Engineer:       Marian Pristach
- * Revision:       1.0.1 (04.01.2019)
+ * Revision:       1.1.0 (22.07.2019)
  *
  * Comments:
  **************************************************************************************************/
@@ -36,7 +36,7 @@ import axi_vip_pkg::*;
 import s9io_pkg::*;
 import s9io_bfm_master_0_0_pkg::*;
 
-module s9io_v0_1_tb();
+module s9io_v0_2_tb();
 
     // Simulation parameters
     parameter VERBOSE_LEVEL = 0;
@@ -100,7 +100,6 @@ module s9io_v0_1_tb();
     // ---------------------------------------------------------------------------------------------
     initial begin
         automatic int rdata = 0;
-        automatic int tmp = 0;
 
         // wait for reset is finished
         @(posedge reset);
@@ -120,13 +119,23 @@ module s9io_v0_1_tb();
 
         // checking status
         axi_read(STAT_REG, rdata);
-        tmp = STAT_WORK_TX_EMPTY | STAT_WORK_RX_EMPTY | STAT_CMD_TX_EMPTY | STAT_CMD_RX_EMPTY |
-            STAT_IRQ_PEND_WORK_TX;
-        compare_data(tmp, rdata, "STAT_REG");
+        compare_data(32'h0, rdata, "STAT_REG");
+
+        axi_read(CMD_STAT_REG, rdata);
+        compare_data(STAT_TX_EMPTY | STAT_RX_EMPTY, rdata, "CMD_STAT_REG");
+
+        axi_read(WORK_RX_STAT_REG, rdata);
+        compare_data(STAT_RX_EMPTY, rdata, "WORK_RX_STAT_REG");
+
+        axi_read(WORK_TX_STAT_REG, rdata);
+        compare_data(STAT_TX_EMPTY | STAT_IRQ_PEND, rdata, "WORK_TX_STAT_REG");
 
         $display("############################################################");
 
         // -----------------------------------------------------------------------------------------
+        // testcase 0 - read version register
+        tc_read_version();
+
         // testcase 1 - test of send commands (5 and 9 bytes)
         tc_send_cmd5();
         tc_send_cmd9();
@@ -199,6 +208,19 @@ module s9io_v0_1_tb();
     // *********************************************************************************************
     //                                     TESTCASES
     // *********************************************************************************************
+
+    // ---------------------------------------------------------------------------------------------
+    // Testcase 0: Read version register
+    // ---------------------------------------------------------------------------------------------
+    task tc_read_version();
+        automatic int rdata = 0;
+
+        $display("Testcase 0a: read version register");
+
+        axi_read(VERSION, rdata);
+        compare_data(32'h00090002, rdata, "VERSION");
+    endtask
+
 
     // ---------------------------------------------------------------------------------------------
     // Testcase 1: Test of send commands
@@ -557,22 +579,22 @@ module s9io_v0_1_tb();
         $display("Testcase 4a: FIFO reset/flags, command RX FIFO");
 
         // check if FIFO is empty
-        check_status(STAT_CMD_RX_EMPTY, 1'b1, "FIFO is not empty");
+        check_status(CMD_STAT_REG, STAT_RX_EMPTY, 1'b1, "FIFO is not empty");
 
         // send data
         uart_send_data(uart_data1);
 
         // check if FIFO is not empty
-        check_status(STAT_CMD_RX_EMPTY, 1'b0, "FIFO is empty after write");
+        check_status(CMD_STAT_REG, STAT_RX_EMPTY, 1'b0, "FIFO is empty after write");
 
         // reset of FIFO
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_RST_CMD_RX_FIFO);
+        axi_write(CMD_CTRL_REG, CTRL_RST_RX_FIFO);
 
         // wait for work time
         #1us;
 
         // check if FIFO is empty
-        check_status(STAT_CMD_RX_EMPTY, 1'b1, "FIFO is not empty after reset");
+        check_status(CMD_STAT_REG, STAT_RX_EMPTY, 1'b1, "FIFO is not empty after reset");
 
         // check IRQ flags
         check_irq_flags(3'b001, "FIFO reset");
@@ -591,7 +613,7 @@ module s9io_v0_1_tb();
         $display("Testcase 4b: FIFO reset/flags, command TX FIFO");
 
         // check if FIFO is empty
-        check_status(STAT_CMD_TX_EMPTY, 1'b1, "FIFO is not empty");
+        check_status(CMD_STAT_REG, STAT_TX_EMPTY, 1'b1, "FIFO is not empty");
 
         // send data
         fifo_write_cmd(fifo_data1);
@@ -601,16 +623,16 @@ module s9io_v0_1_tb();
         #1us;
 
         // check if FIFO is not empty
-        check_status(STAT_CMD_TX_EMPTY, 1'b0, "FIFO is empty after write");
+        check_status(CMD_STAT_REG, STAT_TX_EMPTY, 1'b0, "FIFO is empty after write");
 
         // reset of FIFO
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_RST_CMD_TX_FIFO);
+        axi_write(CMD_CTRL_REG, CTRL_RST_TX_FIFO);
 
         // wait for work time
         #1us;
 
         // check if FIFO is empty
-        check_status(STAT_CMD_TX_EMPTY, 1'b1, "FIFO is not empty after reset");
+        check_status(CMD_STAT_REG, STAT_TX_EMPTY, 1'b1, "FIFO is not empty after reset");
 
         // check IRQ flags
         check_irq_flags(3'b001, "FIFO reset");
@@ -629,22 +651,22 @@ module s9io_v0_1_tb();
         $display("Testcase 4c: FIFO reset/flags, work RX FIFO");
 
         // check if FIFO is empty
-        check_status(STAT_WORK_RX_EMPTY, 1'b1, "FIFO is not empty");
+        check_status(WORK_RX_STAT_REG, STAT_RX_EMPTY, 1'b1, "FIFO is not empty");
 
         // send data
         uart_send_data(uart_data1);
 
         // check if FIFO is not empty
-        check_status(STAT_WORK_RX_EMPTY, 1'b0, "FIFO is empty after write");
+        check_status(WORK_RX_STAT_REG, STAT_RX_EMPTY, 1'b0, "FIFO is empty after write");
 
         // reset of FIFO
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_RST_WORK_RX_FIFO);
+        axi_write(WORK_RX_CTRL_REG, CTRL_RST_RX_FIFO);
 
         // wait for work time
         #1us;
 
         // check if FIFO is empty
-        check_status(STAT_WORK_RX_EMPTY, 1'b1, "FIFO is not empty after reset");
+        check_status(WORK_RX_STAT_REG, STAT_RX_EMPTY, 1'b1, "FIFO is not empty after reset");
 
         // check IRQ flags
         check_irq_flags(3'b001, "FIFO reset");
@@ -661,7 +683,7 @@ module s9io_v0_1_tb();
         $display("Testcase 4d: FIFO reset/flags, work TX FIFO");
 
         // check if FIFO is empty
-        check_status(STAT_WORK_TX_EMPTY, 1'b1, "FIFO is not empty");
+        check_status(WORK_TX_STAT_REG, STAT_TX_EMPTY, 1'b1, "FIFO is not empty");
 
         // set 1 midstate mode
         axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
@@ -670,16 +692,16 @@ module s9io_v0_1_tb();
         fifo_write_work(fifo_data1);
 
         // check if FIFO is not empty
-        check_status(STAT_WORK_TX_EMPTY, 1'b0, "FIFO is empty after write");
+        check_status(WORK_TX_STAT_REG, STAT_TX_EMPTY, 1'b0, "FIFO is empty after write");
 
         // reset of FIFO
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_RST_WORK_TX_FIFO);
+        axi_write(WORK_TX_CTRL_REG, CTRL_RST_TX_FIFO);
 
         // wait for work time
         #1us;
 
         // check if FIFO is empty
-        check_status(STAT_WORK_TX_EMPTY, 1'b1, "FIFO is not empty after reset");
+        check_status(WORK_TX_STAT_REG, STAT_TX_EMPTY, 1'b1, "FIFO is not empty after reset");
 
         // check IRQ flags
         check_irq_flags(3'b001, "FIFO reset");
@@ -711,7 +733,7 @@ module s9io_v0_1_tb();
         fifo_read_and_compare_cmd(fifo_data1);
 
         // enable IRQ
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_IRQ_EN_CMD_RX);
+        axi_write(CMD_CTRL_REG, CTRL_IRQ_EN);
 
          // check IRQ ports and flags
         check_irq(3'b000, 3'b001, "no data has been send yet");
@@ -755,7 +777,7 @@ module s9io_v0_1_tb();
         fifo_read_and_compare_work(fifo_data1);
 
         // enable IRQ
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_IRQ_EN_WORK_RX);
+        axi_write(WORK_RX_CTRL_REG, CTRL_IRQ_EN);
 
          // check IRQ ports
         check_irq(3'b000, 3'b001, "no data has been send yet");
@@ -800,9 +822,10 @@ module s9io_v0_1_tb();
         check_irq(3'b000, 3'b001, "initial state");
 
         // set 1 midstate mode, IRQ enabled
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1 | CTRL_IRQ_EN_WORK_TX);
+        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+        axi_write(WORK_TX_CTRL_REG, CTRL_IRQ_EN);
         // set IRQ threshold in words
-        axi_write(IRQ_FIFO_THR, 6);
+        axi_write(WORK_TX_IRQ_THR, 6);
 
         // check IRQ ports
         check_irq(3'b001, 3'b001, "IRQ enabled");
@@ -983,7 +1006,6 @@ module s9io_v0_1_tb();
         fifo_read_and_compare_work(fifo_data2);
     endtask
 
-
     // ---------------------------------------------------------------------------------------------
     // 4-midstates work with response with higher work ID (non-zero LSBs)
     task tc_work_id_5();
@@ -1053,20 +1075,20 @@ module s9io_v0_1_tb();
         $display("Testcase 7a: IP core reset, command RX FIFO");
 
         // check if FIFO is empty
-        check_status(STAT_CMD_RX_EMPTY, 1'b1, "FIFO is not empty");
+        check_status(CMD_STAT_REG, STAT_RX_EMPTY, 1'b1, "FIFO is not empty");
 
         // send data
         uart_send_data(uart_data1);
 
         // check if FIFO is still empty
-        check_status(STAT_CMD_RX_EMPTY, 1'b1, "FIFO is not empty after partial write");
+        check_status(CMD_STAT_REG, STAT_RX_EMPTY, 1'b1, "FIFO is not empty after partial write");
 
         // reset of IP core
         axi_write(CTRL_REG, 32'h0);
         axi_write(CTRL_REG, CTRL_ENABLE);
 
         // check if FIFO is empty
-        check_status(STAT_CMD_RX_EMPTY, 1'b1, "FIFO is not empty after IP core reset");
+        check_status(CMD_STAT_REG, STAT_RX_EMPTY, 1'b1, "FIFO is not empty after IP core reset");
 
         // check IRQ flags
         check_irq_flags(3'b001, "IP core reset");
@@ -1096,20 +1118,20 @@ module s9io_v0_1_tb();
         $display("Testcase 7b: IP core reset, command TX FIFO");
 
         // check if FIFO is empty
-        check_status(STAT_CMD_TX_EMPTY, 1'b1, "FIFO is not empty");
+        check_status(CMD_STAT_REG, STAT_TX_EMPTY, 1'b1, "FIFO is not empty");
 
         // send data
         fifo_write_cmd(fifo_data1);
 
         // check if FIFO is still empty
-        check_status(STAT_CMD_TX_EMPTY, 1'b0, "FIFO is empty after partial write");
+        check_status(CMD_STAT_REG, STAT_TX_EMPTY, 1'b0, "FIFO is empty after partial write");
 
         // reset of IP core
         axi_write(CTRL_REG, 32'h0);
         axi_write(CTRL_REG, CTRL_ENABLE);
 
         // check if FIFO is empty
-        check_status(STAT_CMD_TX_EMPTY, 1'b1, "FIFO is not empty after IP core reset");
+        check_status(CMD_STAT_REG, STAT_TX_EMPTY, 1'b1, "FIFO is not empty after IP core reset");
 
         // check IRQ flags
         check_irq_flags(3'b001, "IP core reset");
@@ -1142,20 +1164,20 @@ module s9io_v0_1_tb();
         init_work_id();
 
         // check if FIFO is empty
-        check_status(STAT_WORK_RX_EMPTY, 1'b1, "FIFO is not empty");
+        check_status(WORK_RX_STAT_REG, STAT_RX_EMPTY, 1'b1, "FIFO is not empty");
 
         // send data
         uart_send_data(uart_data1);
 
         // check if FIFO is still empty
-        check_status(STAT_WORK_RX_EMPTY, 1'b1, "FIFO is empty after partial write");
+        check_status(WORK_RX_STAT_REG, STAT_RX_EMPTY, 1'b1, "FIFO is empty after partial write");
 
         // reset of IP core
         axi_write(CTRL_REG, 32'h0);
         axi_write(CTRL_REG, CTRL_ENABLE);
 
         // check if FIFO is empty
-        check_status(STAT_WORK_RX_EMPTY, 1'b1, "FIFO is not empty after reset");
+        check_status(WORK_RX_STAT_REG, STAT_RX_EMPTY, 1'b1, "FIFO is not empty after reset");
 
         // check IRQ flags
         check_irq_flags(3'b001, "IP core reset");
@@ -1197,7 +1219,7 @@ module s9io_v0_1_tb();
         $display("Testcase 7d: IP core reset, work TX FIFO");
 
         // check if FIFO is empty
-        check_status(STAT_WORK_TX_EMPTY, 1'b1, "FIFO is not empty");
+        check_status(WORK_TX_STAT_REG, STAT_TX_EMPTY, 1'b1, "FIFO is not empty");
 
         // set 1 midstate mode
         axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
@@ -1206,14 +1228,14 @@ module s9io_v0_1_tb();
         fifo_write_work(fifo_data1);
 
         // check if FIFO is not empty
-        check_status(STAT_WORK_TX_EMPTY, 1'b0, "FIFO is empty after write");
+        check_status(WORK_TX_STAT_REG, STAT_TX_EMPTY, 1'b0, "FIFO is empty after write");
 
         // reset of IP core
         axi_write(CTRL_REG, 32'h0);
         axi_write(CTRL_REG, CTRL_ENABLE);
 
         // check if FIFO is empty
-        check_status(STAT_WORK_TX_EMPTY, 1'b1, "FIFO is not empty after reset");
+        check_status(WORK_TX_STAT_REG, STAT_TX_EMPTY, 1'b1, "FIFO is not empty after reset");
 
         // check IRQ flags
         check_irq_flags(3'b001, "IP core reset");
@@ -1257,7 +1279,7 @@ module s9io_v0_1_tb();
         axi_read(ERR_COUNTER, rdata);
         // one wrong byte received - CRC byte
         compare_data(32'h1, rdata, "ERR_COUNTER");
-        check_status(STAT_CMD_RX_EMPTY, 1'b1, "RX command FIFO is not empty");
+        check_status(CMD_STAT_REG, STAT_RX_EMPTY, 1'b1, "RX command FIFO is not empty");
 
         // send corrupted work response
         uart_send_data(uart_data2);
@@ -1266,7 +1288,7 @@ module s9io_v0_1_tb();
         axi_read(ERR_COUNTER, rdata);
         // seven wrong bytes received - whole message
         compare_data(32'h8, rdata, "ERR_COUNTER");
-        check_status(STAT_WORK_RX_EMPTY, 1'b1, "RX work FIFO is not empty");
+        check_status(WORK_RX_STAT_REG, STAT_RX_EMPTY, 1'b1, "RX work FIFO is not empty");
 
         // clear error counter register
         axi_write(CTRL_REG, CTRL_ENABLE | CTRL_ERR_CNT_CLEAR);
@@ -1309,7 +1331,7 @@ module s9io_v0_1_tb();
         // check if counter is incremented and FIFO is not empty
         axi_read(ERR_COUNTER, rdata);
         compare_data(32'h4, rdata, "ERR_COUNTER");
-        check_status(STAT_WORK_RX_EMPTY, 1'b0, "RX work FIFO is empty");
+        check_status(WORK_RX_STAT_REG, STAT_RX_EMPTY, 1'b0, "RX work FIFO is empty");
 
         // clear error counter register by reset of IP core
         axi_write(CTRL_REG, 32'h0);
@@ -1478,11 +1500,11 @@ module s9io_v0_1_tb();
 
     // ---------------------------------------------------------------------------------------------
     // check of flag in status register
-    task check_status(input logic[31:0] flag, bit expected, input string err_msg);
+    task check_status(input logic[31:0] stat_reg, input logic[31:0] flag, bit expected, input string err_msg);
         static logic[31:0] rdata = 0;
 
         // read status register
-        axi_read(STAT_REG, rdata);
+        axi_read(stat_reg, rdata);
 
         // check flag
         if (((rdata & flag) != 0) != expected) begin
@@ -1521,20 +1543,26 @@ module s9io_v0_1_tb();
         static logic[31:0] rdata = 0;
 
         // read status register
-        axi_read(STAT_REG, rdata);
+        axi_read(CMD_STAT_REG, rdata);
 
-        if (((rdata & STAT_IRQ_PEND_CMD_RX) != 0) != exp_flags[2]) begin
-            $display("  %t: ERROR: IRQ_PEND_CMD_RX flag should be %d (%s)", $time, exp_flags[2], msg);
+        if (((rdata & STAT_IRQ_PEND) != 0) != exp_flags[2]) begin
+            $display("  %t: ERROR: CMD_STAT_REG.IRQ_PEND flag should be %d (%s)", $time, exp_flags[2], msg);
             err_counter++;
         end
 
-        if (((rdata & STAT_IRQ_PEND_WORK_RX) != 0) != exp_flags[1]) begin
-            $display("  %t: ERROR: IRQ_PEND_WORK_RX flag should be %d (%s)", $time, exp_flags[1], msg);
+        // read status register
+        axi_read(WORK_RX_STAT_REG, rdata);
+
+        if (((rdata & STAT_IRQ_PEND) != 0) != exp_flags[1]) begin
+            $display("  %t: ERROR: WORK_RX_STAT_REG.IRQ_PEND flag should be %d (%s)", $time, exp_flags[1], msg);
             err_counter++;
         end
 
-        if (((rdata & STAT_IRQ_PEND_WORK_TX) != 0) != exp_flags[0]) begin
-            $display("  %t: ERROR: IRQ_PEND_WORK_TX flag should be %d (%s)", $time, exp_flags[0], msg);
+        // read status register
+        axi_read(WORK_TX_STAT_REG, rdata);
+
+        if (((rdata & STAT_IRQ_PEND) != 0) != exp_flags[0]) begin
+            $display("  %t: ERROR: WORK_TX_STAT_REG.IRQ_PEND flag should be %d (%s)", $time, exp_flags[0], msg);
             err_counter++;
         end
     endtask
