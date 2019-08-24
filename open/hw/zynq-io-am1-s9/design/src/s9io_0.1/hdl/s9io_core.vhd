@@ -124,6 +124,7 @@ architecture RTL of s9io_core is
     signal work_id_tx_d         : std_logic_vector(15 downto 0);
     signal work_id_tx_q         : std_logic_vector(15 downto 0);
     signal work_id_rx           : std_logic_vector(6 downto 0);
+    signal work_id_rx_cmp       : std_logic_vector(6 downto 0);
 
     -- Rx FSM type and signals declaration
     type fsm_rx_type_t is (st_idle, st_wait, st_read, st_calc_crc, st_check_crc,
@@ -752,7 +753,7 @@ begin
 
     ------------------------------------------------------------------------------------------------
     -- calculation of full work ID
-    p_work_id_calc: process (fsm_rx_q, work_id_rx, work_id_tx_q) begin
+    p_work_id_calc: process (fsm_rx_q, work_id_rx, work_id_rx_cmp, work_id_tx_q) begin
         -- default assignment
         work_id <= (others => '0');
 
@@ -760,13 +761,19 @@ begin
             work_id(6 downto 0) <= work_id_rx;                  -- copy received work ID
             work_id(15 downto 7) <= work_id_tx_q(15 downto 7);  -- preset of last send work ID
 
-            if (work_id_rx > work_id_tx_q(6 downto 0)) then
+            if (work_id_rx_cmp > work_id_tx_q(6 downto 0)) then
                 work_id(15 downto 7) <= std_logic_vector(unsigned(work_id_tx_q(15 downto 7)) - 1);
             end if;
         end if;
     end process;
 
     work_id_rx <= response_q(5)(6 downto 0);
+
+    -- mask LSBs of response work ID according to number of midstates
+    work_id_rx_cmp <=
+        (response_q(5)(6 downto 0) and "1111111") when (ctrl_midstate_cnt = "00") else
+        (response_q(5)(6 downto 0) and "1111110") when (ctrl_midstate_cnt = "01") else
+        (response_q(5)(6 downto 0) and "1111100");
 
     ------------------------------------------------------------------------------------------------
     -- sequential part of receive FSM (state register)
