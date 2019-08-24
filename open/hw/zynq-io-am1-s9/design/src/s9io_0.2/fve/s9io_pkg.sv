@@ -25,7 +25,7 @@
  * Description:    Package with s9io IP core parameters
  *
  * Engineer:       Marian Pristach
- * Revision:       1.0.0 (26.09.2018)
+ * Revision:       1.1.0 (22.07.2019)
  *
  * Comments:
  **************************************************************************************************/
@@ -41,81 +41,76 @@ package s9io_pkg;
     // ---------------------------------------------------------------------------------------------
     // Definition of IP core AXI interface
     // ---------------------------------------------------------------------------------------------
-    // Command Interface Receive FIFO, read-only
-    parameter CMD_RX_FIFO  = 32'h00;
-    // Command Interface Transmit FIFO, write-only
-    parameter CMD_TX_FIFO = 32'h04;
-    // Work Interface Receive FIFO, read-only
-    parameter WORK_RX_FIFO = 32'h08;
-    // Work Interface Transmit FIFO, write-only
-    parameter WORK_TX_FIFO = 32'h0C;
+
+    // IP Core Version Register, read-only
+    parameter VERSION          = 32'h0000;
+    // Build ID Register, read-only
+    parameter BUILD_ID         = 32'h0004;
     // Control Register, read/write
-    parameter CTRL_REG = 32'h10;
-    // Status Register, read-only
-    parameter STAT_REG = 32'h14;
-    // Baudrate Divisor, read/write
-    parameter BAUD_REG = 32'h18;
-    // Work Time Delay, read/write
-    parameter WORK_TIME = 32'h1C;
-    // Threshold for Work Transmit FIFO IRQ (32b words), read/write
-    parameter IRQ_FIFO_THR = 32'h20;
-    // Counter of dropped frames (CRC mismatch, ...), read-only
-    parameter ERR_COUNTER = 32'h30;
-    // Last Work ID send to ASICs, read-only
-    parameter LAST_WORK_ID = 32'h34;
-    // Build ID (Unix timestamp), read-only
-    parameter BUILD_ID = 32'h3C;
+    parameter CTRL_REG         = 32'h0008;
+    // Status Register - reserved, read-only
+    parameter STAT_REG         = 32'h000C;
+    // Baudrate Divisor Register, read/write
+    parameter BAUD_REG         = 32'h0010;
+    // Work Time Delay Register, read/write
+    parameter WORK_TIME        = 32'h0014;
+    // Error Counter Register, read-only
+    parameter ERR_COUNTER      = 32'h0018;
+    // Command Receive Interface FIFO, read-only
+    parameter CMD_RX_FIFO      = 32'h1000;
+    // Command Transmit Interface FIFO, write-only
+    parameter CMD_TX_FIFO      = 32'h1004;
+    // Command Control Register, read/write
+    parameter CMD_CTRL_REG     = 32'h1008;
+    // Command Status Register, read-only
+    parameter CMD_STAT_REG     = 32'h100C;
+    // Work Receive Interface FIFO, read-only
+    parameter WORK_RX_FIFO     = 32'h2000;
+    // Work Receive Control Register, read/write
+    parameter WORK_RX_CTRL_REG = 32'h2008;
+    // Work Receive Status Register, read-only
+    parameter WORK_RX_STAT_REG = 32'h200C;
+    // Work Transmit Interface FIFO, write-only
+    parameter WORK_TX_FIFO     = 32'h3004;
+    // Work Transmit Control Register, read/write
+    parameter WORK_TX_CTRL_REG = 32'h3008;
+    // Work Transmit Status Register, read-only
+    parameter WORK_TX_STAT_REG = 32'h300C;
+    // Work Transmit IRQ Threshold, read/write
+    parameter WORK_TX_IRQ_THR  = 32'h3010;
+    // Work Transmit Last Work ID, read-only
+    parameter WORK_TX_LAST_ID  = 32'h3014;
 
     // ---------------------------------------------------------------------------------------------
-    // Control Register
+    // Control Registers
     // ---------------------------------------------------------------------------------------------
     // Enable, read/write
-    parameter CTRL_ENABLE = 32'h8000;
+    parameter CTRL_ENABLE = 32'h8;
     // Number of midstates per work, encoded as log2 of values: 1, 2, 4, read/write
-    parameter CTRL_MIDSTATE_1 = 32'h0000;
-    parameter CTRL_MIDSTATE_2 = 32'h2000;
-    parameter CTRL_MIDSTATE_4 = 32'h4000;
-    // Enable interrupt for Work Receive FIFO, read/write
-    parameter CTRL_IRQ_EN_WORK_RX = 32'h1000;
-    // Enable interrupt for Work Transmit FIFO, read/write
-    parameter CTRL_IRQ_EN_WORK_TX = 32'h0800;
-    // Enable interrupt for Command Receive FIFO, read/write
-    parameter CTRL_IRQ_EN_CMD_RX = 32'h0400;
+    parameter CTRL_MIDSTATE_1 = 32'h0;
+    parameter CTRL_MIDSTATE_2 = 32'h2;
+    parameter CTRL_MIDSTATE_4 = 32'h4;
     // Clear error counter, write-only
-    parameter CTRL_ERR_CNT_CLEAR = 32'h0010;
-    // Reset/clear Work Transmit FIFO, write-only
-    parameter CTRL_RST_WORK_TX_FIFO = 32'h0008;
-    // Reset/clear Work Receive FIFO, write-only
-    parameter CTRL_RST_WORK_RX_FIFO = 32'h0004;
-    // Reset/clear Command Transmit FIFO, write-only
-    parameter CTRL_RST_CMD_TX_FIFO = 32'h0002;
-    // Reset/clear Command Receive FIFO, write-only
-    parameter CTRL_RST_CMD_RX_FIFO = 32'h0001;
+    parameter CTRL_ERR_CNT_CLEAR = 32'h1;
+    // Enable interrupt, read/write
+    parameter CTRL_IRQ_EN = 32'h4;
+    // Reset/clear Transmit FIFO, write-only
+    parameter CTRL_RST_TX_FIFO = 32'h2;
+    // Reset/clear Receive FIFO, write-only
+    parameter CTRL_RST_RX_FIFO = 32'h1;
 
     // ---------------------------------------------------------------------------------------------
-    // Status Register - read-only
+    // Status Registers - read-only
     // ---------------------------------------------------------------------------------------------
     // Interrupt pending for Work Receive FIFO
-    parameter STAT_IRQ_PEND_WORK_RX = 32'h1000;
-    // Interrupt pending for Work Transmit FIFO
-    parameter STAT_IRQ_PEND_WORK_TX = 32'h0800;
-    // Interrupt pending for Command Receive FIFO
-    parameter STAT_IRQ_PEND_CMD_RX = 32'h0400;
+    parameter STAT_IRQ_PEND = 32'h10;
     // Work Interface Transmit FIFO Full
-    parameter STAT_WORK_TX_FULL = 32'h0080;
+    parameter STAT_TX_FULL  = 32'h08;
     // Work Interface Transmit FIFO Empty
-    parameter STAT_WORK_TX_EMPTY = 32'h0040;
+    parameter STAT_TX_EMPTY = 32'h04;
     // Work Interface Receive FIFO Full
-    parameter STAT_WORK_RX_FULL = 32'h0020;
+    parameter STAT_RX_FULL  = 32'h02;
     // Work Interface Receive FIFO Empty
-    parameter STAT_WORK_RX_EMPTY = 32'h0010;
-    // Command Interface Transmit FIFO Full
-    parameter STAT_CMD_TX_FULL = 32'h0008;
-    // Command Interface Transmit FIFO Empty
-    parameter STAT_CMD_TX_EMPTY = 32'h0004;
-    // Command Interface Receive FIFO Full
-    parameter STAT_CMD_RX_FULL = 32'h0002;
-    // Command Interface Receive FIFO Empty
-    parameter STAT_CMD_RX_EMPTY = 32'h0001;
+    parameter STAT_RX_EMPTY = 32'h01;
 
 endpackage : s9io_pkg

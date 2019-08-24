@@ -18,30 +18,31 @@
 - axi_uart16550 - standard Xilinx AXI UART 16550 module (6x)
 - s9io - custom IP core for communication with hashing chips BM1387 (3x)
 
-| Name of IP         | Type of IP                | Memory address   | IRQ             | Frequency [MHz] |
-| ------------------ | ------------------------- | :--------------: | :-------------: | :-------------: |
-| axi_gpio_input     | Xilinx AXI GPIO v2.0      | 0x41200000       | false           | 50              |
-| axi_gpio_output    | Xilinx AXI GPIO v2.0      | 0x41210000       | false           | 50              |
-| axi_iic_0          | Xilinx AXI I2C v2.0       | 0x41600000       | true (61)       | 50              |
-| axi_timer_0        | Xilinx AXI Timer v2.0     | 0x42800000       | false           | 50              |
-| axi_uart16550_0    | Xilinx AXI UART16550 v2.0 | 0x43C00000       | true (62)       | 50              |
-| axi_uart16550_1    | Xilinx AXI UART16550 v2.0 | 0x43C10000       | true (63)       | 50              |
-| axi_uart16550_2    | Xilinx AXI UART16550 v2.0 | 0x43C20000       | true (64)       | 50              |
-| axi_uart16550_3    | Xilinx AXI UART16550 v2.0 | 0x43C30000       | true (65)       | 50              |
-| axi_uart16550_4    | Xilinx AXI UART16550 v2.0 | 0x43C40000       | true (66)       | 50              |
-| s9io_5             | Braiins AXI S9IO v0.1     | 0x43C50000       | true (67,68,84) | 50              |
-| s9io_6             | Braiins AXI S9IO v0.1     | 0x43C60000       | true (85..87)   | 50              |
-| s9io_7             | Braiins AXI S9IO v0.1     | 0x43C70000       | true (88..90)   | 50              |
-| axi_uart16550_8    | Xilinx AXI UART16550 v2.0 | 0x43C80000       | true (91)       | 50              |
+| Name of IP         | Type of IP                | Base address | Range  | IRQ             | Frequency [MHz] |
+| ------------------ | ------------------------- | :----------: | :----: | :-------------: | :-------------: |
+| axi_gpio_input     | Xilinx AXI GPIO v2.0      | 0x41200000   | 64kB   | false           | 50              |
+| axi_gpio_output    | Xilinx AXI GPIO v2.0      | 0x41210000   | 64kB   | false           | 50              |
+| axi_iic_0          | Xilinx AXI I2C v2.0       | 0x41600000   | 64kB   | true (61)       | 50              |
+| axi_timer_0        | Xilinx AXI Timer v2.0     | 0x42800000   | 64kB   | false           | 50              |
+| axi_uart16550_0    | Xilinx AXI UART16550 v2.0 | 0x43C00000   | 64kB   | true (62)       | 50              |
+| axi_uart16550_1    | Xilinx AXI UART16550 v2.0 | 0x43C10000   | 64kB   | true (63)       | 50              |
+| axi_uart16550_2    | Xilinx AXI UART16550 v2.0 | 0x43C20000   | 64kB   | true (64)       | 50              |
+| axi_uart16550_3    | Xilinx AXI UART16550 v2.0 | 0x43C30000   | 64kB   | true (65)       | 50              |
+| axi_uart16550_4    | Xilinx AXI UART16550 v2.0 | 0x43C40000   | 64kB   | true (66)       | 50              |
+| s9io_5             | Braiins AXI S9IO v0.2     | 0x43C50000   | 64kB   | true (67,68,84) | 50              |
+| s9io_6             | Braiins AXI S9IO v0.2     | 0x43C60000   | 64kB   | true (85..87)   | 50              |
+| s9io_7             | Braiins AXI S9IO v0.2     | 0x43C70000   | 64kB   | true (88..90)   | 50              |
+| axi_uart16550_8    | Xilinx AXI UART16550 v2.0 | 0x43C80000   | 64kB   | true (91)       | 50              |
 
 s9io IP cores are connected to connectors J6, J7 and J8.
 
 UART modules 0..4 and 8 are connected to ports J1..J5 and J9.
 
 # S9IO IP Core Description
-IP core is designed for sending configuration commands and work specifications into ASICs BM1387 used in Antminer S9 and provides basic post-processing of input data.
+IP core is designed for sending control commands and work specifications into ASICs BM1387 used in Antminer S9 and provides basic post-processing of input data.
 IP core contains following features:
-- two interfaces - one is intended for configuration (commands) of the hashing chips and one for streaming mining works
+- two interfaces - one is intended for control (commands) of the hashing chips and one for streaming mining works
+- four register's windows (common, CMD, WORK_RX, WORK_TX) for independent access in parallel way (4kB each)
 - FIFO buffers to hold of input and output data for command and work interfaces
 - UART interface with configurable baud-rate
 - CRC modules for calculation of checksum for work specifications (CRC16), commands (CRC5) and responses (CRC5)
@@ -60,26 +61,131 @@ Size of FIFO buffers is set to:
 
 
 ## IP Core AXI Interface
-IP core can be configured through AXI4-Lite interface. Address map of registers available through AXI interface:
+IP core can be configured through AXI4-Lite interface.
+Registers are split into 4 windows:
+- common registers
+- command receive/transmit interface registers (CMD)
+- work receive interface (WORK_RX)
+- work transmit interface (WORK_TX)
 
-| Address | Name         | Access | Reset Value | Description                     |
-| :-----: | ------------ | :----: | :---------: | ------------------------------- |
-| 0x00    | CMD_RX_FIFO  | R      | X           | Command Interface Receive FIFO  |
-| 0x04    | CMD_TX_FIFO  | W      | -           | Command Interface Transmit FIFO |
-| 0x08    | WORK_RX_FIFO | R      | X           | Work Interface Receive FIFO     |
-| 0x0C    | WORK_TX_FIFO | W      | -           | Work Interface Transmit FIFO    |
-| 0x10    | CTRL_REG     | RW     | 0x0000      | Control Register                |
-| 0x14    | STAT_REG     | R      | 0x0855      | Status Register                 |
-| 0x18    | BAUD_REG     | RW     | 0           | Baudrate Divisor Register       |
-| 0x1C    | WORK_TIME    | RW     | 1           | Work Time Delay Register        |
-| 0x20    | IRQ_FIFO_THR | RW     | 0           | Work IRQ Threshold Register     |
-| 0x30    | ERR_COUNTER  | R      | 0           | Error Counter Register          |
-| 0x34    | LAST_WORK_ID | R      | 0           | Last Work ID Register           |
-| 0x3C    | BUILD_ID     | R      | BUILD_ID    | Build ID Register               |
+Address map of registers available through AXI interface:
+
+| Address | Name             | Access | Reset Value | Description                     |
+| :-----: | ---------------- | :----: | :---------: | ------------------------------- |
+| 0x0000  | VERSION          | R      | 0x00090002  | IP Core Version Register        |
+| 0x0004  | BUILD_ID         | R      | BUILD_ID    | Build ID Register               |
+| 0x0008  | CTRL_REG         | RW     | 0x0000      | Control Register                |
+| 0x000C  | STAT_REG         | R      | 0x0000      | Status Register - reserved      |
+| 0x0010  | BAUD_REG         | RW     | 0           | Baudrate Divisor Register       |
+| 0x0014  | WORK_TIME        | RW     | 1           | Work Time Delay Register        |
+| 0x0018  | ERR_COUNTER      | R      | 0           | Error Counter Register          |
+| 0x1000  | CMD_RX_FIFO      | R      | X           | Command Receive Interface FIFO  |
+| 0x1004  | CMD_TX_FIFO      | W      | -           | Command Transmit Interface FIFO |
+| 0x1008  | CMD_CTRL_REG     | RW     | 0x0000      | Command Control Register        |
+| 0x100C  | CMD_STAT_REG     | R      | 0x0005      | Command Status Register         |
+| 0x2000  | WORK_RX_FIFO     | R      | X           | Work Receive Interface FIFO     |
+| 0x2008  | WORK_RX_CTRL_REG | RW     | 0x0000      | Work Receive Control Register   |
+| 0x200C  | WORK_RX_STAT_REG | R      | 0x0001      | Work Receive Status Register    |
+| 0x3004  | WORK_TX_FIFO     | W      | -           | Work Transmit Interface FIFO    |
+| 0x3008  | WORK_TX_CTRL_REG | RW     | 0x0000      | Work Transmit Control Register  |
+| 0x300C  | WORK_TX_STAT_REG | R      | 0x0014      | Work Transmit Status Register   |
+| 0x3010  | WORK_TX_IRQ_THR  | RW     | 0           | Work Transmit IRQ Threshold     |
+| 0x3014  | WORK_TX_LAST_ID  | R      | 0           | Work Transmit Last Work ID      |
 
 
-### Command Interface Receive FIFO (CMD_RX_FIFO)
-Receive command interface is intended for reading responses of configuration commands from ASICs.
+## IP Core Common Registers
+
+### IP Core Version Register (VERSION)
+Register contains verson of the IP core. Value is divided into following parts:
+- bits 31..24 - miner type (00 = Antminer)
+- bits 23..16 - IP core model (09 = S9)
+- bits 15..8 - reserved
+- bits 7..4 - IP core major version
+- bits 3..0 - IP core minor version
+
+Register is 32-bit width and it is read-only.
+
+
+### Build ID Register (BUILD_ID)
+Register contains Unix timestamp when the bitstream was generated. It can be used for identification of bitstream version.
+HDL file _s9io_version.vhd_ with timestamp is generated automatically before synthesis.
+Also file with build history is generated in directory _design_. File contains information about git commit used for build.
+Build history file can contains a warning if the git work-tree is dirty (contains local changes).
+In this case a full diff of git work-tree is stored in file _git.diff_ in build directory.
+Register is 32-bit width and it is read-only.
+
+
+### Control Register (CTRL_REG)
+Control register provides commonc configuration of the IP core. Register contains following bits:
+
+| Bits  | Name             | Access | Reset Value | Description                               |
+| :---: | ---------------- | :----: | :---------: | ----------------------------------------- |
+| 3     | ENABLE           | RW     | 0           | Enable of IP core                         |
+| 2..1  | MIDSTATE_CNT     | RW     | 0           | Number of midstates per work              |
+| 0     | ERR_CNT_CLEAR    | W      | 0           | Clear error counter                       |
+
+Enable flag is common for whole IP core and must be enabled for any operation in other register's windows.
+
+Number of midstates per work is encoded as log2 of number of midstates:
+* 0 - 1 midstate
+* 1 - 2 midstates
+* 2 - 4 midstates
+* 3 - reserved
+
+Hard reset of buffers is supported by disabling of IP core. So, if a problem in communication with ASICs occurs then the IP core must be reinitialized.
+
+
+### Status Register (STAT_REG)
+Status register provides status of the IP core. Register is read-only and reserved for future use.
+
+
+### Baudrate Divisor Register (BAUD_REG)
+Baudrate divisor register defines value for modulo counter used for generation of synchronization pulses for UART receiver and transmitter.
+Register is 32-bit width but only 12 LSBs are used for modulo counter.
+
+Baudrate speed is defined by equation:
+```
+baudrate = f_CLK / (16 * (BAUD_REG + 1))    [Bd; Hz, -]
+```
+Value of baudrate register is calculated by equation:
+```
+BAUD_REG = (f_CLK / (16 * baudrate )) - 1    [-; Hz, Bd]
+```
+_f_CLK_ is frequency of AXI interface, in this case 50 MHz.
+Register allows to set baudrate in range from 763 Bd/s to 3.125 MBd/s.
+
+
+### Work Time Delay Register (WORK_TIME)
+Work time delay register defines value of modulo counter used for generation of synchronization pulses for submitting command and work frames.
+Register is 32-bit width but only 24 LSBs are used for modulo counter.
+
+Delay is defined by equation:
+```
+delay = WORK_TIME / f_CLK   [s; -, Hz]
+```
+Value of work time register is calculated by equation:
+```
+WORK_TIME = delay * f_CLK   [-; s, Hz]
+```
+_f_CLK_ is frequency of AXI interface, in this case 50 MHz.
+
+The value defines period between two work frames regardless of the used baudrate speed.
+If both work and command buffers contains data, then the command frame is sent immediately after work frame within the time period.
+This method allows to send command requests together with work requests without disruption of delay between work frames.
+
+Register allows to set the period up to 335 ms. The lowest value of delay is determined by length of frames and used baudrate speed.
+If the length of work frame (and/or command frame) is higher then set period then the next frame is sent immediately without any delay.
+
+
+### Error Counter Register (ERR_COUNTER)
+Register contains value of error counter. Counter is incremented if response frame is dropped due to CRC mismatch.
+Register is 32-bit width and it is read-only. Register can be cleared by control register CTRL_REG.ERR_CNT_CLEAR.
+
+
+## Command Interface Registers
+
+### Command Receive Interface FIFO (CMD_RX_FIFO)
+Receive command interface is intended for reading responses of control commands from ASICs.
 Each response consists of two 32b words.
 
 For example, incoming data
@@ -97,7 +203,8 @@ Where:
 
 Register is 32-bit width and it is read-only. Register must be read only by 32b words because each read access increments pointer in the buffer.
 
-### Command Interface Transmit FIFO (CMD_TX_FIFO)
+
+### Command Transmit Interface FIFO (CMD_TX_FIFO)
 Transmit command interface is intended for writing configurable commands into ASICs.
 Data without CRC are written into register.
 LSB byte is send as first through UART interface.
@@ -126,7 +233,34 @@ Register is 32-bit width and it is write-only. Register must be written only by 
 Note that current IP core supports only commands with maximum length of 9 bytes due to timing determinism of data sent through UART.
 For commands with higher length then 9 bytes the timing is not guaranteed.
 
-### Work Interface Receive FIFO (WORK_RX_FIFO)
+
+### Command Control Register (CMD_CTRL_REG)
+Control register provides configuration of command window of the IP core. Register contains following bits:
+
+| Bits  | Name         | Access | Reset Value | Description                                |
+| :---: | ------------ | :----: | :---------: | ------------------------------------------ |
+| 2     | IRQ_EN       | RW     | 0           | Enable interrupt for Command Receive FIFO  |
+| 1     | RST_TX_FIFO  | W      | 0           | Reset/clear Command Transmit FIFO          |
+| 0     | RST_RX_FIFO  | W      | 0           | Reset/clear Command Receive FIFO           |
+
+Reset of FIFOs is provided synchronously according to the state of FSM. So the reset requests are suitable to flush of buffers when data in buffers are retired and new works have to be generated.
+
+
+### Command Status Register (CMD_STAT_REG)
+Status register provides status of command window of the IP core. Register contains following bits:
+
+| Bits  | Name         | Access | Reset Value | Description                                |
+| :---: | ------------ | :----: | :---------: | ------------------------------------------ |
+| 4     | IRQ_PEND     | R      | 0           | Interrupt pending for Command Receive FIFO |
+| 3     | TX_FULL      | R      | 0           | Command Interface Transmit FIFO Full       |
+| 2     | TX_EMPTY     | R      | 1           | Command Interface Transmit FIFO Empty      |
+| 1     | RX_FULL      | R      | 0           | Command Interface Receive FIFO Full        |
+| 0     | RX_EMPTY     | R      | 1           | Command Interface Receive FIFO Empty       |
+
+
+## Work Receive Interface Registers
+
+### Work Receive Interface FIFO (WORK_RX_FIFO)
 Receive work interface is intended for reading work responses from ASICs.
 Each response consists of two 32b words.
 
@@ -146,7 +280,32 @@ Where:
 Register is 32-bit width and it is read-only. Register must be read only by 32b words because each read access increments pointer in the buffer.
 
 
-### Work Interface Transmit FIFO (WORK_TX_FIFO)
+### Work Receive Control Register (WORK_RX_CTRL_REG)
+Control register provides configuration of work receive window of the IP core. Register contains following bits:
+
+| Bits  | Name         | Access | Reset Value | Description                               |
+| :---: | ------------ | :----: | :---------: | ----------------------------------------- |
+| 2     | IRQ_EN       | RW     | 0           | Enable interrupt for Work Receive FIFO    |
+| 1     | reserved     | R      | 0           | reserved bit                              |
+| 0     | RST_RX_FIFO  | W      | 0           | Reset/clear Work Receive FIFO             |
+
+Reset of FIFOs is provided synchronously according to the state of FSM. So the reset requests are suitable to flush of buffers when data in buffers are retired and new works have to be generated.
+
+
+### Work Receive Status Register (WORK_RX_STAT_REG)
+Status register provides status of work receive window of the IP core. Register contains following bits:
+
+| Bits  | Name         | Access | Reset Value | Description                               |
+| :---: | ------------ | :----: | :---------: | ----------------------------------------- |
+| 4     | IRQ_PEND     | R      | 0           | Interrupt pending for Work Receive FIFO   |
+| 3..2  | reserved     | R      | 0           | reserved bits                             |
+| 1     | RX_FULL      | R      | 0           | Work Interface Receive FIFO Full          |
+| 0     | RX_EMPTY     | R      | 1           | Work Interface Receive FIFO Empty         |
+
+
+## Work Transmit Interface Registers
+
+### Work Transmit Interface FIFO (WORK_TX_FIFO)
 Transmit work interface is intended for writing work specifications into ASICs.
 
 Each mining work specification have the following format:
@@ -162,102 +321,39 @@ Each mining work specification have the following format:
 | 80-111  | midstate 2 (only for 4 midstates work)       |
 | 112-143 | midstate 3 (only for 4 midstates work)       |
 
-Extended work ID can be up to 16 bits. Lower 1 - 2 bits have to be 0 depending whether submitting work that contains 2 or 4 midstates.
+Extended work ID can be up to 16 bits. Lower 1 - 2 bits have to be 0 depending whether submitting work that contains 1, 2, or 4 midstates resp.
 Words in midstates are in reverse order `State[7]..State[0]`. However, unlike **BM1387** specification words don't have to be in big endian, IP core performs the ordering change on its own.
-Extended work ID allows pairing of assigned mining work with a result, currently, there are 7 bits available for the work ID send into ASICs. The work's IDs have to be assigned with a gap of 4 (e.g. 0, 4, 8 or 2, 6, 10). The reason is that the chip communicates the midstate index via `work_id`.
+Extended work ID allows pairing of assigned mining work with a result, currently, there are 7 bits available for the work ID send into ASICs. The work's IDs have to be assigned with a gap of 4 (e.g. 0, 4, 8, 12). The reason is that the chip communicates the midstate index via `work_id`.
 
 Register is 32-bit width and it is write-only. Register must be written only by 32b words because each write access increments pointer in the buffer.
 
 
-### Control Register (CTRL_REG)
-Control register provides configuration of the IP core. Register contains following bits:
+### Work Transmit Control Register (WORK_TX_CTRL_REG)
+Control register provides configuration of work transmit window of the IP core. Register contains following bits:
 
-| Bits  | Name             | Access | Reset Value | Description                               |
-| :---: | ---------------- | :----: | :---------: | ----------------------------------------- |
-| 15    | ENABLE           | RW     | 0           | Enable of IP core                         |
-| 14-13 | MIDSTATE_CNT     | RW     | 0           | Number of midstates per work              |
-| 12    | IRQ_EN_WORK_RX   | RW     | 0           | Enable interrupt for Work Receive FIFO    |
-| 11    | IRQ_EN_WORK_TX   | RW     | 0           | Enable interrupt for Work Transmit FIFO   |
-| 10    | IRQ_EN_CMD_RX    | RW     | 0           | Enable interrupt for Command Receive FIFO |
-| 4     | ERR_CNT_CLEAR    | W      | 0           | Clear error counter                       |
-| 3     | RST_WORK_TX_FIFO | W      | 0           | Reset/clear Work Transmit FIFO            |
-| 2     | RST_WORK_RX_FIFO | W      | 0           | Reset/clear Work Receive FIFO             |
-| 1     | RST_CMD_TX_FIFO  | W      | 0           | Reset/clear Command Transmit FIFO         |
-| 0     | RST_CMD_RX_FIFO  | W      | 0           | Reset/clear Command Receive FIFO          |
-
-Number of midstates per work is encoded as log2 of number of midstates:
-* 0 - 1 midstate
-* 1 - 2 midstates
-* 2 - 4 midstates
-* 3 - reserved
+| Bits  | Name         | Access | Reset Value | Description                               |
+| :---: | ------------ | :----: | :---------: | ----------------------------------------- |
+| 2     | IRQ_EN       | RW     | 0           | Enable interrupt for Work Transmit FIFO   |
+| 1     | RST_TX_FIFO  | W      | 0           | Reset/clear Work Transmit FIFO            |
+| 0     | reserved     | R      | 0           | reserved bit                              |
 
 Reset of FIFOs is provided synchronously according to the state of FSM. So the reset requests are suitable to flush of buffers when data in buffers are retired and new works have to be generated.
-Hard reset of buffers is supported by disabling of IP core. So, if a problem in communication with ASICs occurs then the IP core must be reinitialized.
-
-### Status Register (STAT_REG)
-Status register provides status of the IP core. Register contains following bits:
-
-| Bits  | Name             | Access | Reset Value | Description                                |
-| :---: | ---------------- | :----: | :---------: | ------------------------------------------ |
-| 12    | IRQ_PEND_WORK_RX | R      | 0           | Interrupt pending for Work Receive FIFO    |
-| 11    | IRQ_PEND_WORK_TX | R      | 1           | Interrupt pending for Work Transmit FIFO   |
-| 10    | IRQ_PEND_CMD_RX  | R      | 0           | Interrupt pending for Command Receive FIFO |
-| 9     | reserved         | R      | 0           | reserved bit                               |
-| 8     | reserved         | R      | 0           | reserved bit                               |
-| 7     | WORK_TX_FULL     | R      | 0           | Work Interface Transmit FIFO Full          |
-| 6     | WORK_TX_EMPTY    | R      | 1           | Work Interface Transmit FIFO Empty         |
-| 5     | WORK_RX_FULL     | R      | 0           | Work Interface Receive FIFO Full           |
-| 4     | WORK_RX_EMPTY    | R      | 1           | Work Interface Receive FIFO Empty          |
-| 3     | CMD_TX_FULL      | R      | 0           | Command Interface Transmit FIFO Full       |
-| 2     | CMD_TX_EMPTY     | R      | 1           | Command Interface Transmit FIFO Empty      |
-| 1     | CMD_RX_FULL      | R      | 0           | Command Interface Receive FIFO Full        |
-| 0     | CMD_RX_EMPTY     | R      | 1           | Command Interface Receive FIFO Empty       |
-
-### Baudrate Divisor Register (BAUD_REG)
-Baudrate divisor register defines value for modulo counter used for generation of synchronization pulses for UART receiver and transmitter.
-Register is 32-bit width but only 12 LSBs are used for modulo counter.
-
-Baudrate speed is defined by equation:
-```
-baudrate = f_CLK / (16 * (BAUD_REG + 1))    [Bd, Hz, -]
-```
-Value of baudrate register is calculated by equation:
-```
-BAUD_REG = (f_CLK / (16 * baudrate )) - 1    [-, Hz, Bd]
-```
-_f_CLK_ is frequency of AXI interface, in this case 50 MHz.
-Register allows to set baudrate in range of 763 Bd/s to 3.125 MBd/s.
-
-### Work Time Delay Register (WORK_TIME)
-Work time delay register defines value of modulo counter used for generation of synchronization pulses for submitting command and work frames.
-Register is 32-bit width but only 24 LSBs are used for modulo counter.
-
-Delay is defined by equation:
-```
-delay = WORK_TIME / f_CLK   [s, -, Hz]
-```
-Value of work time register is calculated by equation:
-```
-WORK_TIME = delay * f_CLK   [-, s, Hz]
-```
-_f_CLK_ is frequency of AXI interface, in this case 50 MHz.
-
-The value defines period between two work frames regardless of the used baudrate speed.
-If both work and command buffers contains data, then the command frame is sent immediately after work frame within the time period.
-This method allows to send command requests together with work requests without disruption of delay between work frames.
-
-Register allows to set the period up to 335 ms. The lowest value of delay is determined by length of frames and used baudrate speed.
-If the length of work frame (and/or command frame) is higher then set period then the next frame is sent immediately without any delay.
 
 
-### Work IRQ Threshold Register (IRQ_FIFO_THR)
+### Work Transmit Status Register (WORK_TX_STAT_REG)
+Status register provides status of work transmit window of the IP core. Register contains following bits:
+
+| Bits  | Name         | Access | Reset Value | Description                               |
+| :---: | ------------ | :----: | :---------: | ----------------------------------------- |
+| 4     | IRQ_PEND     | R      | 1           | Interrupt pending for Work Transmit FIFO  |
+| 3     | TX_FULL      | R      | 0           | Work Interface Transmit FIFO Full         |
+| 2     | TX_EMPTY     | R      | 1           | Work Interface Transmit FIFO Empty        |
+| 1..0  | reserved     | R      | 0           | reserved bits                             |
+
+
+### Work IRQ Threshold Register (WORK_TX_IRQ_THR)
 Work IRQ threshold register defines value used as trigger for generation of interrupt request for work TX FIFO.
 Value defines minimum number of 32b words. Interrupt request is generated if the number of words in work TX  FIFO drop bellow defined value.
-
-
-### Error Counter Register (ERR_COUNTER)
-Register contains value of error counter. Counter is incremented if response frame is dropped due to CRC mismatch.
-Register is 32-bit width and it is read-only. Register can be cleared by control register CTRL_REG.ERR_CNT_CLEAR.
 
 
 ### Last Work ID Register (LAST_WORK_ID)
@@ -265,33 +361,24 @@ Register holds value of last work ID send to ASICs. ID is in full format.
 Register is 32-bit width but only 16 LSBs are used. Register is read-only.
 
 
-### Build ID Register (BUILD_ID)
-Register contains Unix timestamp when the bitstream was generated. It can be used for identification of bitstream version.
-HDL file _s9io_version.vhd_ with timestamp is generated automatically before synthesis.
-Also file with build history is generated in directory _design_. File contains information about git commit used for build.
-Build history file can contains a warning if the git work-tree is dirty (contains local changes).
-In this case a full diff of git work-tree is stored in file _git.diff_ in build directory.
-Register is 32-bit width and it is read-only.
-
-
 ## Interrupt Request Ports
 IP core has 3 interrupt ports for signaling state of FIFO buffers:
-- irq_work_tx - is used for signaling if content of work transmit FIFO drop bellow value defined in register `IRQ_FIFO_THR`
+- irq_work_tx - is used for signaling if content of work transmit FIFO drop bellow value defined in register `WORK_TX_IRQ_THR`
 - irq_work_rx - is used for signaling if work receive FIFO contains at least one work response
 - irq_cmd_rx - is used for signaling if command receive FIFO contains at least one command response
 
-Interrupt ports represent value of flags IRQ_PEND_WORK_TX, IRQ_PEND_WORK_RX, IRQ_PEND_CMD_RX in status register masked by IRQ enable bits IRQ_EN_WORK_TX, IRQ_EN_WORK_RX and IRQ_EN_CMD_RX from control register.
+Interrupt ports represent value of flag IRQ_PEND in status registers masked by IRQ enable bit IRQ_EN from control registers.
 
-Interrupt flag IRQ_PEND_WORK_TX is set when content of work transmit FIFO drop bellow value defined in register `IRQ_FIFO_THR`.
-Interrupt flag IRQ_PEND_WORK_TX is cleared when content of work transmit FIFO rise up value defined in register `IRQ_FIFO_THR`.
+Interrupt flag WORK_TX_STAT_REG.IRQ_PEND is set when content of work transmit FIFO drop bellow value defined in register `WORK_TX_IRQ_THR`.
+Interrupt flag WORK_TX_STAT_REG.IRQ_PEND is cleared when content of work transmit FIFO rise up value defined in register `WORK_TX_IRQ_THR`.
 
-Interrupt flag IRQ_PEND_WORK_RX is set when new work response is received and stored into receive FIFO.
-Interrupt flag IRQ_PEND_WORK_RX is cleared when user read from work receive FIFO.
+Interrupt flag WORK_RX_STAT_REG.IRQ_PEND is set when new work response is received and stored into receive FIFO.
+Interrupt flag WORK_RX_STAT_REG.IRQ_PEND is cleared when user read from work receive FIFO.
 
-Interrupt flag IRQ_PEND_CMD_RX is set when new command response is received and stored into receive FIFO.
-Interrupt flag IRQ_PEND_CMD_RX is cleared when user read from command receive FIFO.
+Interrupt flag CMD_STAT_REG.IRQ_PEND is set when new command response is received and stored into receive FIFO.
+Interrupt flag CMD_STAT_REG.IRQ_PEND is cleared when user read from command receive FIFO.
 
-Flags IRQ_PEND_WORK_RX and IRQ_PEND_CMD_RX are cleared on reset of individual FIFO by bits RST_WORK_RX_FIFO and RST_CMD_RX_FIFO in control register. All flags are also cleared when IP core is disabled.
+Flags WORK_RX_STAT_REG.IRQ_PEND and CMD_STAT_REG.IRQ_PEND are cleared on reset of individual FIFO by bit RST_RX_FIFO in control registers WORK_RX_CTRL_REG and CMD_CTRL_REG. The flags are also cleared when IP core is disabled.
 
 ID of interrupt ports connected to the ARM should be (base is the lowest number defined in [table](#List-of-Implemented-IP-Cores)):
 - irq_work_tx - (base + 0)

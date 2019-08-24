@@ -152,7 +152,7 @@ xilinx.com:ip:axi_timer:2.0\
 xilinx.com:ip:axi_uart16550:2.0\
 xilinx.com:ip:processing_system7:5.5\
 xilinx.com:ip:proc_sys_reset:5.0\
-braiins.cz:ip:s9io:0.1\
+braiins.cz:ip:s9io:0.2\
 xilinx.com:ip:util_vector_logic:2.0\
 xilinx.com:ip:xlconcat:2.1\
 "
@@ -677,13 +677,13 @@ proc create_root_design { parentCell } {
   set rst_ps7_0_50M [ create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 rst_ps7_0_50M ]
 
   # Create instance: s9io_5, and set properties
-  set s9io_5 [ create_bd_cell -type ip -vlnv braiins.cz:ip:s9io:0.1 s9io_5 ]
+  set s9io_5 [ create_bd_cell -type ip -vlnv braiins.cz:ip:s9io:0.2 s9io_5 ]
 
   # Create instance: s9io_6, and set properties
-  set s9io_6 [ create_bd_cell -type ip -vlnv braiins.cz:ip:s9io:0.1 s9io_6 ]
+  set s9io_6 [ create_bd_cell -type ip -vlnv braiins.cz:ip:s9io:0.2 s9io_6 ]
 
   # Create instance: s9io_7, and set properties
-  set s9io_7 [ create_bd_cell -type ip -vlnv braiins.cz:ip:s9io:0.1 s9io_7 ]
+  set s9io_7 [ create_bd_cell -type ip -vlnv braiins.cz:ip:s9io:0.2 s9io_7 ]
 
   # Create instance: util_vector_logic_0, and set properties
   set util_vector_logic_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:util_vector_logic:2.0 util_vector_logic_0 ]

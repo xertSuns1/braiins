@@ -25,7 +25,7 @@
 -- Description:    IP core for S9 Board Interface
 --
 -- Engineer:       Marian Pristach
--- Revision:       1.0.1 (04.01.2019)
+-- Revision:       1.1.0 (22.07.2019)
 -- Comments:
 ----------------------------------------------------------------------------------------------------
 library ieee;
@@ -65,11 +65,16 @@ entity s9io_core is
         work_tx_fifo_wr   : in  std_logic;
         work_tx_fifo_data : in  std_logic_vector(31 downto 0);
 
-        -- Control Register
-        reg_ctrl          : in  std_logic_vector(15 downto 0);
+        -- Control Registers
+        reg_ctrl          : in  std_logic_vector(3 downto 0);
+        reg_ctrl_cmd      : in  std_logic_vector(2 downto 0);
+        reg_ctrl_work_rx  : in  std_logic_vector(2 downto 0);
+        reg_ctrl_work_tx  : in  std_logic_vector(2 downto 0);
 
-        -- Control Register
-        reg_status        : out std_logic_vector(12 downto 0);
+        -- Control Registers
+        reg_status_cmd     : out std_logic_vector(4 downto 0);
+        reg_status_work_rx : out std_logic_vector(4 downto 0);
+        reg_status_work_tx : out std_logic_vector(4 downto 0);
 
         -- UART baudrate divisor Register
         reg_uart_divisor  : in  std_logic_vector(11 downto 0);
@@ -278,17 +283,22 @@ begin
         end if;
     end process;
 
-    -- Control Register
-    ctrl_enable         <= reg_ctrl(15);
-    ctrl_midstate_cnt   <= reg_ctrl(14 downto 13);
-    ctrl_irq_en_work_rx <= reg_ctrl(12);
-    ctrl_irq_en_work_tx <= reg_ctrl(11);
-    ctrl_irq_en_cmd_rx  <= reg_ctrl(10);
-    ctrl_err_cnt_clear  <= reg_ctrl(4);
-    ctrl_rst_work_tx    <= reg_ctrl(3);
-    ctrl_rst_work_rx    <= reg_ctrl(2);
-    ctrl_rst_cmd_tx     <= reg_ctrl(1);
-    ctrl_rst_cmd_rx     <= reg_ctrl(0);
+
+    ------------------------------------------------------------------------------------------------
+    -- Control Registers
+    ctrl_enable         <= reg_ctrl(3);
+    ctrl_midstate_cnt   <= reg_ctrl(2 downto 1);
+    ctrl_err_cnt_clear  <= reg_ctrl(0);
+
+    ctrl_irq_en_cmd_rx  <= reg_ctrl_cmd(2);
+    ctrl_rst_cmd_tx     <= reg_ctrl_cmd(1);
+    ctrl_rst_cmd_rx     <= reg_ctrl_cmd(0);
+
+    ctrl_irq_en_work_rx <= reg_ctrl_work_rx(2);
+    ctrl_rst_work_rx    <= reg_ctrl_work_rx(0);
+
+    ctrl_irq_en_work_tx <= reg_ctrl_work_tx(2);
+    ctrl_rst_work_tx    <= reg_ctrl_work_tx(1);
 
 
     ------------------------------------------------------------------------------------------------
@@ -998,20 +1008,25 @@ begin
     end process;
 
     ------------------------------------------------------------------------------------------------
-    -- Status Register
-    reg_status <=
-        irq_pending_work_rx_q &
-        irq_pending_work_tx &
+    -- Status Registers
+    reg_status_cmd <=
         irq_pending_cmd_rx_q &
-        "00" &
-        work_tx_fifo_full &
-        work_tx_fifo_empty &
-        work_rx_fifo_full &
-        work_rx_fifo_empty &
         cmd_tx_fifo_full &
         cmd_tx_fifo_empty &
         cmd_rx_fifo_full &
         cmd_rx_fifo_empty;
+
+    reg_status_work_rx <=
+        irq_pending_work_rx_q &
+        "00" &
+        work_rx_fifo_full &
+        work_rx_fifo_empty;
+
+    reg_status_work_tx <=
+        irq_pending_work_tx &
+        work_tx_fifo_full &
+        work_tx_fifo_empty &
+        "00";
 
     ------------------------------------------------------------------------------------------------
     -- masked IRQ

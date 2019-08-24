@@ -36,7 +36,7 @@ proc create_ipi_design {design_name} {
     set_property CONFIG.ASSOCIATED_RESET ARESETN $ACLK
 
     # Create instance: s9io_0, and set properties
-    set s9io_0 [create_bd_cell -type ip -vlnv braiins.cz:ip:s9io:0.1 s9io_0]
+    set s9io_0 [create_bd_cell -type ip -vlnv braiins.cz:ip:s9io:0.2 s9io_0]
 
     # Create instance: master_0, and set properties
     set master_0 [create_bd_cell -type ip -vlnv  xilinx.com:ip:axi_vip master_0]
@@ -89,11 +89,11 @@ set_property -name {xsim.simulate.runtime} -value {100ms} -objects [get_filesets
 set_property SOURCE_SET sources_1 [get_filesets $fileset]
 
 # import verification files
-add_files -fileset $fileset -norecurse "src/s9io_0.1/fve/s9io_tb.sv"
-add_files -fileset $fileset -norecurse "src/s9io_0.1/fve/s9io_pkg.sv"
-add_files -fileset $fileset -norecurse "src/s9io_0.1/fve/bfm_uart.sv"
+add_files -fileset $fileset -norecurse "src/s9io_0.2/fve/s9io_tb.sv"
+add_files -fileset $fileset -norecurse "src/s9io_0.2/fve/s9io_pkg.sv"
+add_files -fileset $fileset -norecurse "src/s9io_0.2/fve/bfm_uart.sv"
 
-set_property top s9io_v0_1_tb [get_filesets $fileset]
+set_property top s9io_v0_2_tb [get_filesets $fileset]
 set_property top_lib {} [get_filesets $fileset]
 set_property top_file {} [get_filesets $fileset]
 

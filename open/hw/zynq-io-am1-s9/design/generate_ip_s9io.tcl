@@ -27,7 +27,7 @@
 ####################################################################################################
 set ip_name "s9io"
 set ip_library "ip"
-set ip_version "0.1"
+set ip_version "0.2"
 set ip_vendor "braiins.cz"
 set src_path "src/${ip_name}_${ip_version}/hdl"
 set ip_repo "${projdir}/ip_repo"
@@ -45,8 +45,8 @@ set s9io_files [ list \
     "${src_path}/uart_tx.vhd" \
     "${src_path}/uart.vhd" \
     "${src_path}/s9io_core.vhd" \
-    "${src_path}/s9io_v0_1_S00_AXI.vhd" \
-    "${src_path}/s9io_v0_1.vhd" \
+    "${src_path}/s9io_v0_2_S00_AXI.vhd" \
+    "${src_path}/s9io_v0_2.vhd" \
 ]
 
 timestamp "Generating IP core ${ip_name} ..."
@@ -71,7 +71,7 @@ create_peripheral ${ip_vendor} ${ip_library} ${ip_name} ${ip_version} -dir $ip_r
 set ip_core [ipx::find_open_core $ip_id]
 
 add_peripheral_interface S00_AXI -interface_mode slave -axi_type lite $ip_core
-set_property VALUE 16 [ipx::get_bus_parameters WIZ_NUM_REG -of_objects [ipx::get_bus_interfaces S00_AXI -of_objects $ip_core]]
+# set_property VALUE 16 [ipx::get_bus_parameters WIZ_NUM_REG -of_objects [ipx::get_bus_interfaces S00_AXI -of_objects $ip_core]]
 generate_peripheral -driver -bfm_example_design -debug_hw_example_design $ip_core
 write_peripheral $ip_core
 
