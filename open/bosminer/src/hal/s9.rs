@@ -12,16 +12,19 @@ use std::default::Default;
 use std::sync::Arc;
 use std::thread;
 
+use lazy_static::lazy_static;
+
 use std::time::{Duration, SystemTime};
 
 use ii_wire::utils::CompatFix;
 use tokio::await;
 
-use slog::{info, trace};
+use slog::{info, trace, warn};
 
 use error::ErrorKind;
 use failure::ResultExt;
 
+use crate::btc;
 use crate::misc::LOGGER;
 use crate::work;
 
@@ -63,6 +66,12 @@ const FPGA_IPCORE_F_CLK_BASE_BAUD_DIV: usize = 16;
 
 /// Default PLL frequency for clocking the chips
 const DEFAULT_S9_PLL_FREQUENCY: u64 = 650_000_000;
+
+lazy_static! {
+    /// What is our target?
+    static ref ASIC_TARGET: btc::Target =
+        btc::Target::from_pool_difficulty(config::ASIC_DIFFICULTY);
+}
 
 /// Convert number of midstates to register value
 /// We cannot use `Into` because the structure is foreign to our crate
@@ -714,6 +723,11 @@ async fn async_recv_solutions<T>(
                 // work item detected a new unique solution, we will push it for further processing
                 if let Some(unique_solution) = status.unique_solution {
                     if !status.duplicate || !opts.filter_duplicate_solutions {
+                        if !unique_solution.is_valid(&ASIC_TARGET) {
+                            warn!(LOGGER, "Solution from hashchain not hitting ASIC target");
+                            stats.hardware_errors += 1;
+                            stats.error_counter_incremented = true;
+                        }
                         work_solution.send(unique_solution);
                     }
                 }

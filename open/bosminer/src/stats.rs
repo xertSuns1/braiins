@@ -58,10 +58,11 @@ pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<hal::MiningSt
         if stats.error_counter_incremented {
             info!(
                 LOGGER,
-                "Mismatched nonce count: {}, stale solutions: {}, duplicate solutions: {}",
+                "Mismatched nonce count: {}, stale solutions: {}, duplicate solutions: {}, hardware errors: {}",
                 stats.mismatched_solution_nonces,
                 stats.stale_solutions,
                 stats.duplicate_solutions,
+                stats.hardware_errors,
             );
             stats.error_counter_incremented = false;
         }
