@@ -113,7 +113,7 @@ impl std::fmt::Debug for Solution {
 
 impl From<UniqueMiningWorkSolution> for Solution {
     fn from(solution: UniqueMiningWorkSolution) -> Self {
-        let midstate_idx = solution.solution.midstate_idx;
+        let midstate_idx = solution.midstate_idx();
         Self::new(solution, midstate_idx)
     }
 }
@@ -252,7 +252,7 @@ async fn collect_solutions(
             "received: was={:08x} got={:08x} ms={} hash={}",
             job.nonce,
             solution.nonce(),
-            solution.solution.midstate_idx,
+            solution.midstate_idx(),
             solution.hash()
         );
         await!(registry.lock())

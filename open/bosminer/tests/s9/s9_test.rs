@@ -1,3 +1,4 @@
+use bosminer::config;
 use bosminer::hal::{self, s9::null_work};
 use bosminer::test_utils;
 use bosminer::utils;
@@ -24,12 +25,11 @@ pub fn prepare_test_work() -> hal::MiningWork {
     let time = 0xffffffff;
     let job = Arc::new(null_work::NullJob::new(time, 0xffff_ffff, 0));
 
-    let mid = hal::Midstate {
+    let one_midstate = hal::Midstate {
         version: 0,
         state: [0u8; 32].into(),
     };
-
-    hal::MiningWork::new(job, vec![mid], time)
+    hal::MiningWork::new(job, vec![one_midstate; config::MIDSTATE_COUNT], time)
 }
 
 /// Count replies (even duplicate ones) and erase counters
@@ -123,14 +123,14 @@ fn test_work_generation() {
         // solution for the submitted work
         let more_work_count = 2usize;
         let h_chain_guard = await!(h_chain_ctl.lock()).expect("locking failed");
-        let expected_solution_count = more_work_count * h_chain_guard.get_chip_count();
+        //let expected_solution_count = more_work_count * h_chain_guard.get_chip_count();
         drop(h_chain_guard);
         await!(send_and_receive_test_workloads(
             &mut engine_sender,
             &solution_queue_rx,
             mining_stats.clone(),
             more_work_count,
-            expected_solution_count,
+            0,
         ));
     });
     // the shutdown receiver has to survive up to this point to prevent
