@@ -4,12 +4,12 @@
 //! that all work has been correctly defined and sent to hardware).
 #![feature(await_macro, async_await)]
 
-use rminer::btc;
-use rminer::config;
-use rminer::hal::{self, BitcoinJob, MiningWork, UniqueMiningWorkSolution};
-use rminer::test_utils;
-use rminer::utils;
-use rminer::work;
+use bosminer::btc;
+use bosminer::config;
+use bosminer::hal::{self, BitcoinJob, MiningWork, UniqueMiningWorkSolution};
+use bosminer::test_utils;
+use bosminer::utils;
+use bosminer::work;
 
 use btc::HashTrait;
 
@@ -19,13 +19,13 @@ use tokio::timer::Delay;
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
 use futures_locks::Mutex;
+use ii_wire::utils::CompatFix;
 use tokio::await;
-use wire::utils::CompatFix;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use rminer::misc::LOGGER;
+use bosminer::misc::LOGGER;
 use slog::{error, info, trace, warn};
 
 /// Problem is a "work recipe" for mining hardware that is to have a particular
