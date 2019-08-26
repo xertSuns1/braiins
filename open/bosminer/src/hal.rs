@@ -287,7 +287,12 @@ pub struct MiningStats {
     pub unique_solutions: u64,
     /// Amount of computed work in shares (for example one work computed at difficulty 64 is 64 shares)
     pub unique_solutions_shares: u64,
-    /// Flag to signal that some error counter has increased since last check
+    /// Number of submitted results that are not hitting ASIC target
+    pub hardware_errors: u64,
+    /// Flag to signal that some error counter has been incremented since last check
+    /// TODO: separate all error statistics into sub-structure,
+    /// implement `DerefMut` traid for said sub-structure which sets `error_counter_incremented`
+    /// to `true` when mutably dereferenced
     pub error_counter_incremented: bool,
 }
 
@@ -301,6 +306,7 @@ impl MiningStats {
             unique_solutions: 0,
             unique_solutions_shares: 0,
             error_counter_incremented: false,
+            hardware_errors: 0,
         }
     }
 }
