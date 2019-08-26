@@ -27,6 +27,8 @@ core:
     - lua
     - lua-cjson
     - luasocket
+    - luci-app-bosminer
+    - luci-app-miner
     - luci-base
     - luci-lib-ip
     - luci-lib-jsonc
