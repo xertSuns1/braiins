@@ -98,7 +98,7 @@ pub struct HChainCtl<VBackend> {
     /// Number of chips that have been detected
     chip_count: usize,
     /// Eliminates the need to query the IP core about the current number of configured midstates
-    midstate_count_bits: u8,
+    midstate_count_log2: s9_io::hchainio0::ctrl_reg::MIDSTATE_CNT_A,
     /// PLL frequency
     pll_frequency: u64,
     /// Voltage controller on this hashboard
@@ -132,12 +132,12 @@ where
     /// * `gpio_mgr` - gpio manager used for producing pins required for hashboard control
     /// * `voltage_ctrl_backend` - communication backend for the voltage controller
     /// * `hashboard_idx` - index of this hashboard determines which FPGA IP core is to be mapped
-    /// * `midstate_count` - see Self
+    /// * `midstate_count_log2` - see Self
     pub fn new(
         gpio_mgr: &gpio::ControlPinManager,
         voltage_ctrl_backend: VBackend,
         hashboard_idx: usize,
-        midstate_count: &s9_io::hchainio0::ctrl_reg::MIDSTATE_CNTW,
+        midstate_count_log2: s9_io::hchainio0::ctrl_reg::MIDSTATE_CNT_A,
     ) -> error::Result<Self> {
         // Hashboard creation is aborted if the pin is not present
         let plug_pin = gpio_mgr
@@ -162,7 +162,6 @@ where
                 "failed to initialize reset pin".to_string(),
             ))?;
 
-        let midstate_count_bits = midstate_count._bits();
         let mut cmd_fifo = fifo::HChainFifo::new(hashboard_idx)?;
         let mut work_rx_fifo = fifo::HChainFifo::new(hashboard_idx)?;
         let mut work_tx_fifo = fifo::HChainFifo::new(hashboard_idx)?;
@@ -174,7 +173,7 @@ where
         Ok(Self {
             work_id: 0,
             chip_count: 0,
-            midstate_count_bits,
+            midstate_count_log2,
             voltage_ctrl: power::VoltageCtrl::new(voltage_ctrl_backend, hashboard_idx),
             plug_pin,
             rst_pin,
@@ -191,7 +190,7 @@ where
     /// Return number of midstates
     #[inline]
     fn midstate_count(&self) -> u16 {
-        1 << self.midstate_count_bits
+        1 << self.midstate_count_log2 as u8
     }
 
     /// Calculate work_time for this instance of HChain
@@ -216,7 +215,7 @@ where
         trace!(LOGGER, "Using work time: {}", work_time);
         self.cmd_fifo.set_ip_core_work_time(work_time);
         self.cmd_fifo
-            .set_ip_core_midstate_count(self.midstate_count_bits);
+            .set_ip_core_midstate_count(self.midstate_count_log2);
 
         Ok(())
     }
@@ -467,13 +466,13 @@ where
     /// Helper function that extracts work ID from the solution ID
     #[inline]
     pub fn get_work_id_from_solution_id(&self, solution_id: u32) -> u32 {
-        ((solution_id >> WORK_ID_OFFSET) >> self.midstate_count_bits)
+        ((solution_id >> WORK_ID_OFFSET) >> self.midstate_count_log2 as u8)
     }
 
     /// Extracts midstate index from the solution ID
     #[inline]
     fn get_midstate_idx_from_solution_id(&self, solution_id: u32) -> usize {
-        ((solution_id >> WORK_ID_OFFSET) & ((1u32 << self.midstate_count_bits) - 1)) as usize
+        ((solution_id >> WORK_ID_OFFSET) & ((1u32 << self.midstate_count_log2 as u8) - 1)) as usize
     }
 
     /// Extracts solution index from the solution ID
@@ -799,7 +798,7 @@ impl HChain {
             &gpio_mgr,
             voltage_ctrl_backend.clone(),
             8,
-            &s9_io::hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
+            s9_io::hchainio0::ctrl_reg::MIDSTATE_CNT_A::ONE,
         )
         .unwrap();
 
@@ -946,7 +945,7 @@ mod test {
             &gpio_mgr,
             voltage_ctrl_backend,
             8,
-            &hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
+            hchainio0::ctrl_reg::MIDSTATE_CNT_A::ONE,
         );
         match h_chain_ctl {
             Ok(_) => assert!(true),
@@ -962,7 +961,7 @@ mod test {
             &gpio_mgr,
             voltage_ctrl_backend,
             8,
-            &hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
+            hchainio0::ctrl_reg::MIDSTATE_CNT_A::ONE,
         )
         .expect("Failed to create hash board instance");
 
@@ -988,14 +987,14 @@ mod test {
             0x855,
             "Unexpected status register value"
         );
-        assert_eq!(
+        assert!(
             h_chain_ctl
                 .cmd_fifo
                 .hash_chain_io
                 .ctrl_reg
                 .read()
-                .midstate_cnt(),
-            hchainio0::ctrl_reg::MIDSTATE_CNTR::ONE,
+                .midstate_cnt()
+                .is_one(),
             "Unexpected midstate count"
         );
     }
@@ -1011,30 +1010,30 @@ mod test {
             work_id: u32,
             midstate_idx: usize,
             solution_idx: usize,
-            midstate_count: hchainio0::ctrl_reg::MIDSTATE_CNTW,
+            midstate_count_log2: hchainio0::ctrl_reg::MIDSTATE_CNT_A,
         };
         let expected_solution_data = [
             ExpectedSolutionData {
                 work_id: 0x1235,
                 midstate_idx: 0,
                 solution_idx: 2,
-                midstate_count: hchainio0::ctrl_reg::MIDSTATE_CNTW::ONE,
+                midstate_count_log2: hchainio0::ctrl_reg::MIDSTATE_CNT_A::ONE,
             },
             ExpectedSolutionData {
                 work_id: 0x1235 >> 1,
                 midstate_idx: 1,
                 solution_idx: 2,
-                midstate_count: hchainio0::ctrl_reg::MIDSTATE_CNTW::TWO,
+                midstate_count_log2: hchainio0::ctrl_reg::MIDSTATE_CNT_A::TWO,
             },
             ExpectedSolutionData {
                 work_id: 0x1235 >> 2,
                 midstate_idx: 1,
                 solution_idx: 2,
-                midstate_count: hchainio0::ctrl_reg::MIDSTATE_CNTW::FOUR,
+                midstate_count_log2: hchainio0::ctrl_reg::MIDSTATE_CNT_A::FOUR,
             },
         ];
         for (i, expected_solution_data) in expected_solution_data.iter().enumerate() {
-            // The midstate configuration (ctrl_reg::MIDSTATE_CNTW) doesn't implement a debug
+            // The midstate configuration (ctrl_reg::MIDSTATE_CNT_W) doesn't implement a debug
             // trait. Therefore, we extract only those parts that can be easily displayed when a
             // test failed.
             let expected_data = (
@@ -1048,7 +1047,7 @@ mod test {
                 &gpio_mgr,
                 voltage_ctrl_backend,
                 8,
-                &expected_solution_data.midstate_count,
+                expected_solution_data.midstate_count_log2,
             )
             .unwrap();
 

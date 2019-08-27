@@ -139,10 +139,10 @@ impl HChainFifo {
             .write(|w| unsafe { w.bits(baud_clock_div) });
     }
 
-    pub fn set_ip_core_midstate_count(&self, count: u8) {
+    pub fn set_ip_core_midstate_count(&self, value: hchainio0::ctrl_reg::MIDSTATE_CNT_A) {
         self.hash_chain_io
             .ctrl_reg
-            .modify(|_, w| unsafe { w.midstate_cnt().bits(count) });
+            .modify(|_, w| w.midstate_cnt().variant(value));
     }
 }
 
