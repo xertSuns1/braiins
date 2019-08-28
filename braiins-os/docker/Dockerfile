@@ -19,7 +19,8 @@ RUN apt-get update && apt-get install -y \
     libssl1.0-dev \
     texinfo \
     device-tree-compiler \
-    python3-gdbm
+    python3-gdbm \
+    curl
 
 FROM build-system
 
@@ -38,3 +39,16 @@ RUN pip3 install -r requirements.txt
 
 COPY --chown=build:build ./bashrc ./.bashrc
 COPY --chown=build:build ./requirements.md5 .
+
+ENV PATH="/home/$USER/.cargo/bin:${PATH}"
+RUN bash -c "curl --proto '=https' --tlsv1.2 -sSf 'https://sh.rustup.rs' | sh /dev/stdin -y" && \
+    rustup component add rustfmt
+
+RUN cargo install svd2rust --version 0.16.1 && \
+    cargo install form --version 0.7.0 && \
+    rustup target add arm-unknown-linux-musleabi
+
+RUN rustup toolchain install nightly-2019-05-01 && \
+    rustup target add --toolchain nightly-2019-05-01 arm-unknown-linux-musleabi && \
+    rustup toolchain install nightly-2019-05-10 && \
+    rustup target add --toolchain nightly-2019-05-10 arm-unknown-linux-musleabi
