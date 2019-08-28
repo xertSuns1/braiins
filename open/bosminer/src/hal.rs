@@ -215,6 +215,11 @@ impl UniqueMiningWorkSolution {
         self.work.midstates[i].version
     }
 
+    #[inline]
+    pub fn midstate_idx(&self) -> usize {
+        self.solution.midstate_idx
+    }
+
     /// Return double hash of this solution
     pub fn hash(&self) -> btc::DHash {
         match self.hash.get() {
