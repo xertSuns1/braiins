@@ -725,22 +725,19 @@ async fn async_recv_solutions<T>(
                     if !status.duplicate || !opts.filter_duplicate_solutions {
                         if !unique_solution.is_valid(&ASIC_TARGET) {
                             warn!(LOGGER, "Solution from hashchain not hitting ASIC target");
-                            stats.hardware_errors += 1;
-                            stats.error_counter_incremented = true;
+                            stats.error_stats.hardware_errors += 1;
                         }
                         work_solution.send(unique_solution);
                     }
                 }
                 if status.duplicate {
-                    stats.duplicate_solutions += 1;
-                    stats.error_counter_incremented = true;
+                    stats.error_stats.duplicate_solutions += 1;
                 } else {
                     stats.unique_solutions += 1;
                     stats.unique_solutions_shares += config::ASIC_DIFFICULTY as u64;
                 }
                 if status.mismatched_nonce {
-                    stats.error_counter_incremented = true;
-                    stats.mismatched_solution_nonces += 1;
+                    stats.error_stats.mismatched_solution_nonces += 1;
                 }
             }
             None => {
@@ -748,8 +745,7 @@ async fn async_recv_solutions<T>(
                     LOGGER,
                     "No work present for solution, ID:{:#x} {:#010x?}", work_id, solution
                 );
-                stats.stale_solutions += 1;
-                stats.error_counter_incremented = true;
+                stats.error_stats.stale_solutions += 1;
             }
         }
     }
