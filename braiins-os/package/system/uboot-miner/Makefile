@@ -96,7 +96,7 @@ define Package/uboot-zynq-$(1)
 	TITLE:=$(2)
 	URL:=http://www.denx.de/wiki/U-Boot
 	VARIANT:=$(1)
-	MAINTAINER:=Libor Vasicek <libor.vasicek@braiins.cz>
+	MAINTAINER:=Braiins <braiins@braiins.com>
 endef
 endef
 

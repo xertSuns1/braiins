@@ -4,7 +4,7 @@ PKG_NAME:=bmminer
 PKG_VERSION:=1.0.0
 PKG_RELEASE:=1
 
-PKG_MAINTAINER:=Libor Vasicek <libor.vasicek@braiins.cz>
+PKG_MAINTAINER:=Braiins <braiins@braiins.com>
 
 ifeq ($(strip $(CONFIG_EXTERNAL_BMMINER_TREE)),"")
 	PKG_SOURCE_PROTO:=git

@@ -4,7 +4,7 @@ include $(INCLUDE_DIR)/kernel.mk
 PKG_NAME:=miner_tools
 PKG_RELEASE:=1
 
-PKG_MAINTAINER:=Libor Vasicek <libor.vasicek@braiins.cz>
+PKG_MAINTAINER:=Braiins <braiins@braiins.com>
 
 include $(INCLUDE_DIR)/package.mk
 
