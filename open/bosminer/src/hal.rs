@@ -270,10 +270,11 @@ impl Debug for UniqueMiningWorkSolution {
     }
 }
 
-/// Holds all hardware-related statistics for a hashchain
-pub struct MiningStats {
-    /// Number of work items generated for the hardware
-    pub work_generated: usize,
+/// Holds all error statistics
+#[derive(Clone, PartialEq, Eq, Default)]
+pub struct MiningErrorStats {
+    /// Number of submitted results that are not hitting ASIC target
+    pub hardware_errors: u64,
     /// Number of stale solutions received from the hardware
     pub stale_solutions: u64,
     /// Unable to feed the hardware fast enough results in duplicate solutions as
@@ -283,30 +284,25 @@ pub struct MiningStats {
     /// filtering hardware errors, this should really stay at 0, otherwise we have some weird
     /// hardware problem)
     pub mismatched_solution_nonces: u64,
+}
+
+/// Holds all hardware-related statistics for a hashchain
+#[derive(Clone, PartialEq, Eq, Default)]
+pub struct MiningStats {
+    /// Number of work items generated for the hardware
+    pub work_generated: usize,
     /// Counter of unique solutions
     pub unique_solutions: u64,
     /// Amount of computed work in shares (for example one work computed at difficulty 64 is 64 shares)
     pub unique_solutions_shares: u64,
-    /// Number of submitted results that are not hitting ASIC target
-    pub hardware_errors: u64,
-    /// Flag to signal that some error counter has been incremented since last check
-    /// TODO: separate all error statistics into sub-structure,
-    /// implement `DerefMut` traid for said sub-structure which sets `error_counter_incremented`
-    /// to `true` when mutably dereferenced
-    pub error_counter_incremented: bool,
+    /// Error statistics
+    pub error_stats: MiningErrorStats,
 }
 
 impl MiningStats {
     pub fn new() -> Self {
         Self {
-            work_generated: 0,
-            stale_solutions: 0,
-            duplicate_solutions: 0,
-            mismatched_solution_nonces: 0,
-            unique_solutions: 0,
-            unique_solutions_shares: 0,
-            error_counter_incremented: false,
-            hardware_errors: 0,
+            ..Default::default()
         }
     }
 }

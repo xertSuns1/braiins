@@ -26,7 +26,7 @@ fn shares_to_giga_hashes(shares: u128) -> f64 {
 
 pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<hal::MiningStats>>) {
     let mut last_stat_time = Instant::now();
-
+    let mut old_error_stats = Default::default();
     loop {
         await!(Delay::new(Instant::now() + Duration::from_secs(1)))
             .expect("stats delay wait failed");
@@ -55,16 +55,17 @@ pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<hal::MiningSt
             warn!(LOGGER, "No work is being solved!");
         }
 
-        if stats.error_counter_incremented {
+        if stats.error_stats != old_error_stats {
+            let error_stats = stats.error_stats.clone();
             info!(
                 LOGGER,
                 "Mismatched nonce count: {}, stale solutions: {}, duplicate solutions: {}, hardware errors: {}",
-                stats.mismatched_solution_nonces,
-                stats.stale_solutions,
-                stats.duplicate_solutions,
-                stats.hardware_errors,
+                error_stats.mismatched_solution_nonces,
+                error_stats.stale_solutions,
+                error_stats.duplicate_solutions,
+                error_stats.hardware_errors,
             );
-            stats.error_counter_incremented = false;
+            old_error_stats = error_stats;
         }
 
         last_stat_time = Instant::now();
