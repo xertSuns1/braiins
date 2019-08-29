@@ -5,7 +5,7 @@ PKG_NAME:=cgminer
 PKG_VERSION:=4.10.0
 PKG_RELEASE:=1
 
-PKG_MAINTAINER:=Libor Vasicek <libor.vasicek@braiins.cz>
+PKG_MAINTAINER:=Braiins <braiins@braiins.com>
 
 ifeq ($(strip $(CONFIG_EXTERNAL_CGMINER_TREE)),"")
 	PKG_SOURCE_PROTO:=git

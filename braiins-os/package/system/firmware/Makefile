@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=firmware
-PKG_MAINTAINER:=Libor Vasicek <libor.vasicek@braiins.cz>
+PKG_MAINTAINER:=Braiins <braiins@braiins.com>
 
 # set firmware version
 PKG_RELEASE:=$(call qstrip,$(CONFIG_FIRMWARE_VERSION))
