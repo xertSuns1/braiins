@@ -1,10 +1,10 @@
-use bosminer::config;
-use bosminer::hal::{self, s9::null_work};
-use bosminer::test_utils;
-use bosminer::utils;
-use bosminer::work;
+use crate::config;
+use crate::hal::{self, s9::null_work};
+use crate::test_utils;
+use crate::utils;
+use crate::work;
 
-use bosminer::misc::LOGGER;
+use crate::misc::LOGGER;
 use slog::info;
 
 use std::default::Default;

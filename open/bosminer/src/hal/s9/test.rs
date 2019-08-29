@@ -1,6 +1,8 @@
 use super::*;
 use s9_io::hchainio0;
 
+pub mod mining;
+
 #[test]
 fn test_hchain_ctl_instance() {
     let gpio_mgr = gpio::ControlPinManager::new();
