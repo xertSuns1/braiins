@@ -1,7 +1,7 @@
 use super::*;
 use s9_io::hchainio0;
 
-pub mod mining;
+pub mod work_generation;
 
 #[test]
 fn test_hchain_ctl_instance() {
