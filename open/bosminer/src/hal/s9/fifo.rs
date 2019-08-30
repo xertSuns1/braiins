@@ -13,6 +13,7 @@ use std::time::Duration;
 use s9_io::hchainio0;
 
 use super::error::{self, ErrorKind};
+use crate::hal;
 use failure::ResultExt;
 
 /// How long to wait for RX interrupt
@@ -63,6 +64,7 @@ pub struct HChainFifo {
 #[cfg(not(feature = "hctl_polling"))]
 pub struct HChainFifo {
     pub hash_chain_io: Mmap<hchainio0::RegisterBlock>,
+    midstate_count: Option<usize>,
     work_tx_irq: uio::UioDevice,
     work_rx_irq: uio::UioDevice,
     cmd_rx_irq: uio::UioDevice,
@@ -143,6 +145,37 @@ impl HChainFifo {
         self.hash_chain_io
             .ctrl_reg
             .modify(|_, w| w.midstate_cnt().variant(value));
+    }
+
+    /// TODO: have this method only for TX fifo type
+    pub fn set_midstate_count(&mut self, midstate_count: usize) {
+        self.midstate_count = Some(midstate_count);
+    }
+
+    pub fn send_work(
+        &mut self,
+        work: &hal::MiningWork,
+        work_id: u32,
+    ) -> Result<u32, failure::Error> {
+        let hw_midstate_count = self.midstate_count.expect("midstate count was not set");
+        let expected_midstate_count = work.midstates.len();
+        assert_eq!(
+            expected_midstate_count, hw_midstate_count,
+            "Expected {} midstates, but S9 is configured for {} midstates!",
+            expected_midstate_count, hw_midstate_count,
+        );
+
+        self.write_to_work_tx_fifo(work_id.to_le())?;
+        self.write_to_work_tx_fifo(work.bits().to_le())?;
+        self.write_to_work_tx_fifo(work.ntime.to_le())?;
+        self.write_to_work_tx_fifo(work.merkle_root_tail().to_le())?;
+
+        for mid in work.midstates.iter() {
+            for midstate_word in mid.state.words::<u32>().rev() {
+                self.write_to_work_tx_fifo(midstate_word.to_be())?;
+            }
+        }
+        Ok(work_id)
     }
 }
 

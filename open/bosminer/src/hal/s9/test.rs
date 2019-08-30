@@ -23,7 +23,7 @@ fn test_hchain_ctl_instance() {
 fn test_hchain_ctl_init() {
     let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
-    let h_chain_ctl = HChainCtl::new(
+    let mut h_chain_ctl = HChainCtl::new(
         &gpio_mgr,
         voltage_ctrl_backend,
         config::S9_HASHBOARD_INDEX,
