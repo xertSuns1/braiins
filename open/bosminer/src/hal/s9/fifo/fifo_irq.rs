@@ -141,6 +141,7 @@ impl HChainFifo {
 
         let fifo = Self {
             hash_chain_io,
+            midstate_count: None,
             work_tx_irq: map_irq(hashboard_idx, "work-tx")?,
             work_rx_irq: map_irq(hashboard_idx, "work-rx")?,
             cmd_rx_irq: map_irq(hashboard_idx, "cmd-rx")?,

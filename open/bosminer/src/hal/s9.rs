@@ -236,7 +236,7 @@ where
     }
 
     /// Helper method that initializes the FPGA IP core
-    fn ip_core_init(&self) -> error::Result<()> {
+    fn ip_core_init(&mut self) -> error::Result<()> {
         // Disable ip core
         self.cmd_fifo.disable_ip_core();
         self.cmd_fifo.enable_ip_core();
@@ -247,6 +247,11 @@ where
         self.cmd_fifo.set_ip_core_work_time(work_time);
         self.cmd_fifo
             .set_ip_core_midstate_count(self.midstate_count_log2);
+        let midstate_count = self.midstate_count() as usize;
+        self.work_tx_fifo
+            .as_mut()
+            .expect("work tx fifo missing")
+            .set_midstate_count(midstate_count);
 
         Ok(())
     }
@@ -584,6 +589,7 @@ where
         let nonce = await!(rx_fifo.async_read_from_work_rx_fifo())?;
         let word2 = await!(rx_fifo.async_read_from_work_rx_fifo())?;
 
+        // TODO: maybe all the `work_id` tracking could be kept in TX fifo?
         let h_chain_ctl = await!(h_chain_ctl.lock()).expect("h_chain lock failed");
         let solution = crate::hal::MiningWorkSolution {
             nonce,
@@ -595,32 +601,6 @@ where
         };
 
         Ok((rx_fifo, Some(solution)))
-    }
-
-    fn send_work(
-        tx_fifo: &mut fifo::HChainFifo,
-        work: &crate::hal::MiningWork,
-        work_id: u32,
-    ) -> Result<u32, failure::Error> {
-        assert_eq!(
-            work.midstates.len(),
-            config::MIDSTATE_COUNT,
-            "Work contains {} midstates, but S9 wants {} midstates!",
-            work.midstates.len(),
-            config::MIDSTATE_COUNT
-        );
-
-        tx_fifo.write_to_work_tx_fifo(work_id.to_le())?;
-        tx_fifo.write_to_work_tx_fifo(work.bits().to_le())?;
-        tx_fifo.write_to_work_tx_fifo(work.ntime.to_le())?;
-        tx_fifo.write_to_work_tx_fifo(work.merkle_root_tail().to_le())?;
-
-        for mid in work.midstates.iter() {
-            for midstate_word in mid.state.words::<u32>().rev() {
-                tx_fifo.write_to_work_tx_fifo(midstate_word.to_be())?;
-            }
-        }
-        Ok(work_id)
     }
 }
 
@@ -645,7 +625,7 @@ async fn send_init_work<T>(
             .next_work_id();
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
         // TODO: remember work_id assignment in registry
-        super::s9::HChainCtl::<T>::send_work(tx_fifo, &work, work_id).expect("send work");
+        tx_fifo.send_work(&work, work_id).expect("send work");
     }
 }
 
@@ -676,8 +656,7 @@ async fn async_send_work<T>(
                     .expect("h_chain lock")
                     .next_work_id();
                 // send work is synchronous
-                super::s9::HChainCtl::<T>::send_work(&mut tx_fifo, &work, work_id)
-                    .expect("send work");
+                tx_fifo.send_work(&work, work_id).expect("send work");
                 await!(work_registry.lock())
                     .expect("locking ok")
                     .store_work(work_id as usize, work);
