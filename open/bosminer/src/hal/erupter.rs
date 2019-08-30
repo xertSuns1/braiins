@@ -3,11 +3,10 @@ pub mod device;
 pub mod error;
 pub mod icarus;
 
+use ii_logging::macros::*;
+
 use crate::work;
 use error::ErrorKind;
-
-use crate::misc::LOGGER;
-use slog::{error, info};
 
 use tokio_threadpool::blocking;
 
@@ -23,18 +22,15 @@ fn main_task(
     mining_stats: Arc<Mutex<super::MiningStats>>,
     _shutdown: crate::hal::ShutdownSender,
 ) -> crate::error::Result<()> {
-    info!(LOGGER, "Block Erupter: finding device in USB...");
+    info!("Block Erupter: finding device in USB...");
     let usb_context =
         libusb::Context::new().with_context(|_| ErrorKind::Usb("cannot create USB context"))?;
     let mut device = device::BlockErupter::find(&usb_context)
         .ok_or_else(|| ErrorKind::Usb("cannot find Block Erupter device"))?;
 
-    info!(LOGGER, "Block Erupter: initialization...");
+    info!("Block Erupter: initialization...");
     device.init()?;
-    info!(
-        LOGGER,
-        "Block Erupter: initialized and ready to solve the work!"
-    );
+    info!("Block Erupter: initialized and ready to solve the work!");
 
     let (generator, solution_sender) = work_solver.split();
     let mut solver = device.into_solver(generator);
@@ -75,7 +71,7 @@ pub fn run(
                     .take()
                     .expect("`tokio_threadpool::blocking` called FnOnce more than once");
                 if let Err(e) = main_task(work_solver, mining_stats, shutdown) {
-                    error!(LOGGER, "{}", e);
+                    error!("{}", e);
                 }
             })
             .map_err(|_| panic!("the threadpool shut down"))

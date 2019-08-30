@@ -1,8 +1,7 @@
+use ii_logging::macros::*;
+
 use super::*;
 use crate::hal;
-
-use crate::misc::LOGGER;
-use slog::warn;
 
 use futures::channel::mpsc;
 
@@ -66,7 +65,7 @@ impl Generator {
                 hal::WorkLoop::Continue(value) => value,
                 // tha last work is returned from work engine (the work is exhausted)
                 hal::WorkLoop::Break(value) => {
-                    warn!(LOGGER, "No more work available for current job!");
+                    warn!("No more work available for current job!");
                     // inform the 'WorkHub' for rescheduling a new work
                     self.engine_receiver.reschedule();
                     value

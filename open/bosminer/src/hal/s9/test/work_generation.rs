@@ -1,10 +1,9 @@
+use ii_logging::macros::*;
+
 use super::*;
 
 use crate::hal;
 use crate::utils;
-
-use crate::misc::LOGGER;
-use slog::info;
 
 use std::time::{Duration, Instant};
 
@@ -89,8 +88,8 @@ async fn send_and_receive_test_workloads<'a>(
     expected_solution_count: usize,
 ) {
     info!(
-        LOGGER,
-        "Sending {} work items and trying to receive {} solutions", n_send, expected_solution_count,
+        "Sending {} work items and trying to receive {} solutions",
+        n_send, expected_solution_count,
     );
     //
     // Put in some tasks

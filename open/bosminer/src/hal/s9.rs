@@ -9,6 +9,8 @@ pub mod registry;
 #[cfg(test)]
 pub mod test;
 
+use ii_logging::macros::*;
+
 // TODO: remove thread specific components
 use std::sync::Arc;
 use std::thread;
@@ -20,13 +22,10 @@ use std::time::{Duration, SystemTime};
 use ii_wire::utils::CompatFix;
 use tokio::await;
 
-use slog::{info, trace, warn};
-
 use error::ErrorKind;
 use failure::ResultExt;
 
 use crate::btc;
-use crate::misc::LOGGER;
 use crate::work;
 
 use futures_locks::Mutex;
@@ -227,7 +226,7 @@ where
 
         self.set_ip_core_baud_rate(INIT_CHIP_BAUD_RATE)?;
         let work_time = self.calculate_work_time();
-        trace!(LOGGER, "Using work time: {}", work_time);
+        trace!("Using work time: {}", work_time);
         self.cmd_fifo.set_ip_core_work_time(work_time);
         self.cmd_fifo
             .set_ip_core_midstate_count(self.midstate_count_log2);
@@ -259,7 +258,6 @@ where
     fn set_asic_diff(&self, difficulty: usize) -> error::Result<()> {
         let tm_reg = bm1387::TicketMaskReg::new(difficulty as u32)?;
         trace!(
-            LOGGER,
             "Setting ticket mask register for difficulty {}, value {:#010x?}",
             difficulty,
             tm_reg
@@ -279,19 +277,16 @@ where
     /// Initializes the complete hashboard including enumerating all chips
     pub fn init(&mut self) -> error::Result<()> {
         self.ip_core_init()?;
-        info!(LOGGER, "Hashboard IP core initialized");
+        info!("Hashboard IP core initialized");
         self.voltage_ctrl.reset()?;
-        info!(LOGGER, "Voltage controller reset");
+        info!("Voltage controller reset");
         self.voltage_ctrl.jump_from_loader_to_app()?;
-        info!(LOGGER, "Voltage controller application started");
+        info!("Voltage controller application started");
         let version = self.voltage_ctrl.get_version()?;
-        info!(
-            LOGGER,
-            "Voltage controller firmware version {:#04x}", version
-        );
+        info!("Voltage controller firmware version {:#04x}", version);
         // TODO accept multiple
         if version != power::EXPECTED_VOLTAGE_CTRL_VERSION {
-            // TODO: error!(LOGGER, "{}", err_msg);
+            // TODO: error!("{}", err_msg);
             Err(ErrorKind::UnexpectedVersion(
                 "voltage controller firmware".to_string(),
                 version.to_string(),
@@ -300,12 +295,12 @@ where
         }
         // Voltage controller successfully initialized at this point, we should start sending
         // heart beats to it. Otherwise, it would shut down in about 10 seconds.
-        info!(LOGGER, "Starting voltage controller heart beat task");
+        info!("Starting voltage controller heart beat task");
         let _ = self.voltage_ctrl.start_heart_beat_task();
 
         self.voltage_ctrl.set_voltage(6)?;
         self.voltage_ctrl.enable_voltage()?;
-        info!(LOGGER, "Resetting hash board");
+        info!("Resetting hash board");
         self.enter_reset()?;
         // disable voltage
         self.voltage_ctrl.disable_voltage()?;
@@ -321,9 +316,9 @@ where
         //            return Err(io::Error::new(
         //                io::ErrorKind::Other, format!("Detected voltage {}", voltage)));
         //        }
-        info!(LOGGER, "Starting chip enumeration");
+        info!("Starting chip enumeration");
         self.enumerate_chips()?;
-        info!(LOGGER, "Discovered {} chips", self.chip_count);
+        info!("Discovered {} chips", self.chip_count);
 
         // set PLL
         self.set_pll()?;
@@ -435,11 +430,8 @@ where
             bm1387::CHIP_OSC_CLK_BASE_BAUD_DIV,
         )?;
         info!(
-            LOGGER,
             "Setting Hash chain baud rate @ requested: {}, actual: {}, divisor {:#04x}",
-            baud_rate,
-            actual_baud_rate,
-            baud_clock_div
+            baud_rate, actual_baud_rate, baud_clock_div
         );
         // Each chip is always configured with inverted clock
         let ctl_reg =
@@ -463,11 +455,8 @@ where
             FPGA_IPCORE_F_CLK_BASE_BAUD_DIV,
         )?;
         info!(
-            LOGGER,
             "Setting IP core baud rate @ requested: {}, actual: {}, divisor {:#04x}",
-            baud,
-            actual_baud_rate,
-            baud_clock_div
+            baud, actual_baud_rate, baud_clock_div
         );
 
         self.cmd_fifo.set_baud_clock_div(baud_clock_div as u32);
@@ -511,7 +500,7 @@ where
             0,
             "Control command length not aligned to 4 byte boundary!"
         );
-        trace!(LOGGER, "Sending Control Command {:x?}", cmd);
+        trace!("Sending Control Command {:x?}", cmd);
         for chunk in cmd.chunks(4) {
             self.cmd_fifo
                 .write_to_cmd_tx_fifo(LittleEndian::read_u32(chunk));
@@ -598,7 +587,6 @@ async fn send_init_work<T>(
     // Each core gets one work
     const NUM_WORK: usize = bm1387::NUM_CORES_ON_CHIP;
     trace!(
-        LOGGER,
         "Sending out {} pieces of dummy work to initialize chips",
         NUM_WORK
     );
@@ -688,7 +676,7 @@ async fn async_recv_solutions<T>(
                 if let Some(unique_solution) = status.unique_solution {
                     if !status.duplicate {
                         if !unique_solution.is_valid(&ASIC_TARGET) {
-                            warn!(LOGGER, "Solution from hashchain not hitting ASIC target");
+                            warn!("Solution from hashchain not hitting ASIC target");
                             stats.error_stats.hardware_errors += 1;
                         }
                         work_solution.send(unique_solution);
@@ -706,8 +694,8 @@ async fn async_recv_solutions<T>(
             }
             None => {
                 info!(
-                    LOGGER,
-                    "No work present for solution, ID:{:#x} {:#010x?}", work_id, solution
+                    "No work present for solution, ID:{:#x} {:#010x?}",
+                    work_id, solution
                 );
                 stats.error_stats.stale_solutions += 1;
             }
@@ -808,9 +796,9 @@ impl HChain {
         )
         .unwrap();
 
-        info!(LOGGER, "Initializing hash chain controller");
+        info!("Initializing hash chain controller");
         h_chain_ctl.init().unwrap();
-        info!(LOGGER, "Hash chain controller initialized");
+        info!("Hash chain controller initialized");
 
         let work_registry = Arc::new(Mutex::new(registry::MiningWorkRegistry::new(
             config::MIDSTATE_COUNT,

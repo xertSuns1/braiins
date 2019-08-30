@@ -1,5 +1,4 @@
-use crate::misc::LOGGER;
-use slog::trace;
+use ii_logging::macros::*;
 
 // TODO remove thread specific code
 use std::sync::{Arc, Mutex};
@@ -244,7 +243,7 @@ where
     }
 
     pub fn set_voltage(&mut self, value: u8) -> error::Result<()> {
-        trace!(LOGGER, "Setting voltage to {}", value);
+        trace!("Setting voltage to {}", value);
         self.write(SET_VOLTAGE, &[value])
     }
 
@@ -287,7 +286,7 @@ where
                         .send_heart_beat()
                         .expect("send_heart_beat failed");
 
-                    //trace!(LOGGER, "Heartbeat for board {}", idx);
+                    //trace!("Heartbeat for board {}", idx);
                     // evaluate how much time it took to send the heart beat and sleep for the rest
                     // of the heart beat period
                     let elapsed = now
