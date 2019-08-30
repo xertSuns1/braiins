@@ -8,7 +8,6 @@ edition = '2018'
 
 members = [
     "s9-io",
-    "antminer-dev",
 ]
 
 [dependencies]
