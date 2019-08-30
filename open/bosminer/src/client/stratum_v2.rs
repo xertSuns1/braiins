@@ -1,9 +1,8 @@
+use ii_logging::macros::*;
+
 use crate::btc::{self, HashTrait};
 use crate::hal;
 use crate::work;
-
-use crate::misc::LOGGER;
-use slog::trace;
 
 use ii_wire::utils::CompatFix;
 use tokio::prelude::*;
@@ -126,7 +125,7 @@ impl StratumEventHandler {
     }
 
     pub fn update_target(&mut self, new_target: Uint256Bytes) {
-        trace!(LOGGER, "changing target to {:?}", new_target);
+        trace!("changing target to {:?}", new_target);
         let new_target_u256: uint::U256 = new_target.into();
         self.job_sender.change_target(new_target_u256.into());
     }
@@ -386,7 +385,7 @@ async fn event_handler_task(
 ) {
     while let Some(msg) = await!(connection_rx.next()) {
         let msg = msg.unwrap();
-        trace!(LOGGER, "handling message {}", StringifyV2::print(&msg));
+        trace!("handling message {}", StringifyV2::print(&msg));
         msg.accept(&mut event_handler);
     }
 }

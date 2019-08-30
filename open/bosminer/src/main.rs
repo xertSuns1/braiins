@@ -32,6 +32,8 @@ async fn main_task(stratum_addr: String, user: String) {
 }
 
 fn main() {
+    let _log_guard = ii_logging::setup_for_app();
+
     let args = clap::App::new("bosminer")
         .arg(
             Arg::with_name("pool")

@@ -4,6 +4,8 @@
 //! that all work has been correctly defined and sent to hardware).
 #![feature(await_macro, async_await)]
 
+use ii_logging::macros::*;
+
 use bosminer::btc;
 use bosminer::config;
 use bosminer::hal::{self, BitcoinJob, MiningWork, UniqueMiningWorkSolution};
@@ -24,9 +26,6 @@ use tokio::await;
 
 use std::collections::HashMap;
 use std::sync::Arc;
-
-use bosminer::misc::LOGGER;
-use slog::{error, info, trace, warn};
 
 /// Problem is a "work recipe" for mining hardware that is to have a particular
 /// solution in a particular midstate.
@@ -178,7 +177,7 @@ impl Registry {
     /// Adds problem to registry.
     /// Returns true if this problem is unique.
     fn add_problem(&mut self, problem: Problem) -> bool {
-        trace!(LOGGER, "adding problem: {:?}", &problem);
+        trace!("adding problem: {:?}", &problem);
         let key = SolutionKey::from_problem(problem.clone());
         if self.map.get(&key).is_some() {
             return false;
@@ -194,7 +193,7 @@ impl Registry {
             .get_mut(&SolutionKey::from_solution(solution.clone()))
         {
             Some(state) => state.solved = true,
-            None => warn!(LOGGER, "no problem for {:?}", solution),
+            None => warn!("no problem for {:?}", solution),
         }
     }
 
@@ -205,7 +204,7 @@ impl Registry {
         for (_solution_key, solution_state) in self.map.iter() {
             if !solution_state.solved {
                 if print_missing_solutions {
-                    error!(LOGGER, "no solution for block {:?}", solution_state.problem);
+                    error!("no solution for block {:?}", solution_state.problem);
                 }
                 everything_solved = false;
             }
@@ -248,7 +247,6 @@ async fn collect_solutions(
     while let Some(solution) = await!(solution_queue_rx.next()) {
         let job: &test_utils::TestBlock = solution.job();
         info!(
-            LOGGER,
             "received: was={:08x} got={:08x} ms={} hash={}",
             job.nonce,
             solution.nonce(),

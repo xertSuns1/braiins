@@ -1,12 +1,11 @@
+use ii_logging::macros::*;
+
 use super::*;
 use crate::btc;
 use crate::config;
 use crate::hal;
 use crate::stats;
 use crate::work;
-
-use crate::misc::LOGGER;
-use slog::{info, trace};
 
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
@@ -81,7 +80,7 @@ impl JobSender {
     }
 
     pub fn send(&mut self, job: Arc<dyn hal::BitcoinJob>) {
-        info!(LOGGER, "--- broadcasting new job ---");
+        info!("--- broadcasting new job ---");
         let engine = Arc::new(engine::VersionRolling::new(job, config::MIDSTATE_COUNT));
         self.engine_sender.broadcast(engine);
     }
@@ -107,13 +106,12 @@ impl JobSolutionReceiver {
 
     fn trace_share(solution: &hal::UniqueMiningWorkSolution, target: &btc::Target) {
         trace!(
-            LOGGER,
             "nonce={:08x} bytes={}",
             solution.nonce(),
             hex::encode(&solution.get_block_header().into_bytes()[..])
         );
-        trace!(LOGGER, "  hash={:x}", solution.hash());
-        trace!(LOGGER, "target={:x}", target);
+        trace!("  hash={:x}", solution.hash());
+        trace!("target={:x}", target);
     }
 
     pub async fn receive(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
@@ -124,7 +122,7 @@ impl JobSolutionReceiver {
                 .expect("cannot read from shared current target");
             if solution.is_valid(current_target) {
                 stats::account_solution(&current_target);
-                info!(LOGGER, "----- SHARE BELOW TARGET -----");
+                info!("----- SHARE BELOW TARGET -----");
                 Self::trace_share(&solution, &current_target);
                 return Some(solution);
             }
