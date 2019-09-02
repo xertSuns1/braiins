@@ -2,7 +2,7 @@ use ii_logging::macros::*;
 
 use super::*;
 
-use crate::hal;
+use crate::hal::s9::{self, power};
 
 use std::time::{Duration, Instant};
 
@@ -17,9 +17,8 @@ use tokio::timer::Delay;
 use ii_async_compat::{timeout_future, TimeoutResult};
 
 /// Our local abbreviation
-type HChainCtl = super::HChainCtl<
-    power::VoltageCtrlI2cSharedBlockingBackend<power::VoltageCtrlI2cBlockingBackend>,
->;
+type HChainCtl =
+    s9::HChainCtl<power::VoltageCtrlI2cSharedBlockingBackend<power::VoltageCtrlI2cBlockingBackend>>;
 
 /// Prepares sample work with empty midstates
 /// NOTE: this work has 2 valid nonces:
@@ -119,7 +118,7 @@ async fn send_and_receive_test_workloads<'a>(
 }
 
 fn start_hchain() -> HChainCtl {
-    use super::power::VoltageCtrlBackend;
+    use power::VoltageCtrlBackend;
 
     let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
@@ -127,7 +126,7 @@ fn start_hchain() -> HChainCtl {
         power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
     let midstate_count_log2 = MIDSTATE_CNT_A::ONE;
 
-    let mut h_chain_ctl = super::HChainCtl::new(
+    let mut h_chain_ctl = s9::HChainCtl::new(
         &gpio_mgr,
         voltage_ctrl_backend.clone(),
         config::S9_HASHBOARD_INDEX,
