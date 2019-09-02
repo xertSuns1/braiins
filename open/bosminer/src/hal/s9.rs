@@ -11,6 +11,8 @@ pub mod test;
 
 use ii_logging::macros::*;
 
+use crate::hal::{self, s9};
+
 // TODO: remove thread specific components
 use std::sync::Arc;
 use std::thread;
@@ -545,7 +547,7 @@ where
         Ok(Some(resp))
     }
 
-    fn get_work_id_from_solution(&self, solution: &super::MiningWorkSolution) -> u32 {
+    fn get_work_id_from_solution(&self, solution: &hal::MiningWorkSolution) -> u32 {
         self.get_work_id_from_solution_id(solution.solution_id)
     }
 
@@ -577,7 +579,7 @@ where
 
 /// Initialize cores by sending open-core work with correct nbits to each core
 async fn send_init_work<T>(
-    h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
+    h_chain_ctl: Arc<Mutex<s9::HChainCtl<T>>>,
     tx_fifo: &mut fifo::HChainFifo,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
@@ -609,8 +611,8 @@ async fn send_init_work<T>(
 
 async fn async_send_work<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
-    mining_stats: Arc<Mutex<super::MiningStats>>,
-    h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
+    mining_stats: Arc<Mutex<hal::MiningStats>>,
+    h_chain_ctl: Arc<Mutex<s9::HChainCtl<T>>>,
     mut tx_fifo: fifo::HChainFifo,
     mut work_generator: work::Generator,
 ) where
@@ -640,8 +642,8 @@ async fn async_send_work<T>(
 
 async fn async_recv_solutions<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
-    mining_stats: Arc<Mutex<super::MiningStats>>,
-    h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
+    mining_stats: Arc<Mutex<hal::MiningStats>>,
+    h_chain_ctl: Arc<Mutex<s9::HChainCtl<T>>>,
     mut rx_fifo: fifo::HChainFifo,
     work_solution: work::SolutionSender,
 ) where
@@ -649,11 +651,9 @@ async fn async_recv_solutions<T>(
 {
     // solution receiving/filtering part
     loop {
-        let (rx_fifo_out, solution) = await!(super::s9::HChainCtl::recv_solution(
-            h_chain_ctl.clone(),
-            rx_fifo
-        ))
-        .expect("recv solution");
+        let (rx_fifo_out, solution) =
+            await!(s9::HChainCtl::recv_solution(h_chain_ctl.clone(), rx_fifo))
+                .expect("recv solution");
         rx_fifo = rx_fifo_out;
         let solution = solution.expect("solution is ok");
         let work_id = await!(h_chain_ctl.lock())
@@ -703,8 +703,8 @@ async fn async_recv_solutions<T>(
 
 fn spawn_tx_task<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
-    mining_stats: Arc<Mutex<super::MiningStats>>,
-    h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
+    mining_stats: Arc<Mutex<hal::MiningStats>>,
+    h_chain_ctl: Arc<Mutex<s9::HChainCtl<T>>>,
     work_generator: work::Generator,
     shutdown: crate::hal::ShutdownSender,
 ) where
@@ -731,8 +731,8 @@ fn spawn_tx_task<T>(
 
 fn spawn_rx_task<T>(
     work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
-    mining_stats: Arc<Mutex<super::MiningStats>>,
-    h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
+    mining_stats: Arc<Mutex<hal::MiningStats>>,
+    h_chain_ctl: Arc<Mutex<s9::HChainCtl<T>>>,
     work_solution: work::SolutionSender,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
@@ -763,23 +763,23 @@ impl HChain {
     pub fn start_h_chain(
         &self,
         work_solver: work::Solver,
-        mining_stats: Arc<Mutex<super::MiningStats>>,
+        mining_stats: Arc<Mutex<hal::MiningStats>>,
         shutdown: crate::hal::ShutdownSender,
     ) -> Arc<
         Mutex<
-            super::s9::HChainCtl<
+            s9::HChainCtl<
                 power::VoltageCtrlI2cSharedBlockingBackend<power::VoltageCtrlI2cBlockingBackend>,
             >,
         >,
     > {
-        use super::s9::power::VoltageCtrlBackend;
+        use s9::power::VoltageCtrlBackend;
 
         let gpio_mgr = gpio::ControlPinManager::new();
         let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
         let voltage_ctrl_backend =
             power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
         let midstate_count_log2 = midstate_count_to_register(config::MIDSTATE_COUNT);
-        let mut h_chain_ctl = super::s9::HChainCtl::new(
+        let mut h_chain_ctl = s9::HChainCtl::new(
             &gpio_mgr,
             voltage_ctrl_backend.clone(),
             config::S9_HASHBOARD_INDEX,
@@ -819,7 +819,7 @@ impl HChain {
 /// Entry point for running the hardware backend
 pub fn run(
     work_solver: work::Solver,
-    mining_stats: Arc<Mutex<super::MiningStats>>,
+    mining_stats: Arc<Mutex<hal::MiningStats>>,
     shutdown: crate::hal::ShutdownSender,
 ) {
     // Create one chain
