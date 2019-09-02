@@ -12,6 +12,7 @@ fn test_hchain_ctl_instance() {
         voltage_ctrl_backend,
         config::S9_HASHBOARD_INDEX,
         hchainio0::ctrl_reg::MIDSTATE_CNT_A::ONE,
+        config::ASIC_DIFFICULTY,
     );
     match h_chain_ctl {
         Ok(_) => assert!(true),
@@ -28,6 +29,7 @@ fn test_hchain_ctl_init() {
         voltage_ctrl_backend,
         config::S9_HASHBOARD_INDEX,
         hchainio0::ctrl_reg::MIDSTATE_CNT_A::ONE,
+        config::ASIC_DIFFICULTY,
     )
     .expect("Failed to create hash board instance");
 
@@ -114,6 +116,7 @@ fn test_get_solution_word_attributes() {
             voltage_ctrl_backend,
             config::S9_HASHBOARD_INDEX,
             expected_solution_data.midstate_count_log2,
+            config::ASIC_DIFFICULTY,
         )
         .unwrap();
 
