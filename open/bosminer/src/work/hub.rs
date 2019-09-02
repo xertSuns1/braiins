@@ -1,7 +1,8 @@
 use ii_logging::macros::*;
 
+use ii_bitcoin as btc;
+
 use super::*;
-use crate::btc;
 use crate::config;
 use crate::hal;
 use crate::stats;
@@ -134,7 +135,6 @@ impl JobSolutionReceiver {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::btc;
     use crate::test_utils;
     use crate::utils::compat_block_on;
 

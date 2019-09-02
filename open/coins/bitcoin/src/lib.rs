@@ -1,4 +1,7 @@
-use crate::error;
+pub mod test_blocks;
+
+// reexport Bitcoin test structures
+pub use test_blocks::{TestBlock, TEST_BLOCKS};
 
 use packed_struct::prelude::*;
 use packed_struct_codegen::PackedStruct;
@@ -217,7 +220,7 @@ impl Target {
     }
 
     /// Create target from its compact representation used by Bitcoin protocol
-    pub fn from_compact(bits: u32) -> error::Result<Self> {
+    pub fn from_compact(bits: u32) -> Result<Self, &'static str> {
         // this code is inspired by `rust-bitcoin` crate implementation
         // original comment:
         //
@@ -231,9 +234,7 @@ impl Target {
 
         // the mantissa is signed but may not be negative
         if mantissa > 0x7fffff {
-            Err(format!(
-                "largest legal value for mantissa has been exceeded"
-            ))?
+            return Err("largest legal value for mantissa has been exceeded");
         }
 
         Ok(if exponent <= 3 {
@@ -368,20 +369,19 @@ impl MeetsTarget for DHash {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::hal::BitcoinJob;
-    use crate::test_utils;
+    use test_blocks::TEST_BLOCKS;
 
     use bitcoin_hashes::hex::ToHex;
 
     #[test]
     fn test_block_header() {
-        for block in test_utils::TEST_BLOCKS.iter() {
+        for block in TEST_BLOCKS.iter() {
             let block_header = BlockHeader {
-                version: block.version(),
-                previous_hash: block.previous_hash().into_inner(),
-                merkle_root: block.merkle_root().into_inner(),
-                time: block.time(),
-                bits: block.bits(),
+                version: block.version,
+                previous_hash: block.previous_hash.into_inner(),
+                merkle_root: block.merkle_root.into_inner(),
+                time: block.time,
+                bits: block.bits,
                 nonce: block.nonce,
             };
 
@@ -402,11 +402,11 @@ pub mod test {
 
     #[test]
     fn test_block_header_midstate() {
-        for block in test_utils::TEST_BLOCKS.iter() {
+        for block in TEST_BLOCKS.iter() {
             let block_header = BlockHeader {
-                version: block.version(),
-                previous_hash: block.previous_hash().into_inner(),
-                merkle_root: block.merkle_root().into_inner(),
+                version: block.version,
+                previous_hash: block.previous_hash.into_inner(),
+                merkle_root: block.merkle_root.into_inner(),
                 ..Default::default()
             };
 
@@ -426,7 +426,7 @@ pub mod test {
     fn test_midstate_words() {
         use bytes::{BufMut, BytesMut};
 
-        for block in test_utils::TEST_BLOCKS.iter() {
+        for block in TEST_BLOCKS.iter() {
             // test midstate conversion to words iterator and back to bytes representation
             // * for u32 words
             let mut midstate = BytesMut::with_capacity(32);
@@ -513,8 +513,8 @@ pub mod test {
 
     #[test]
     fn test_target_compact() {
-        for block in test_utils::TEST_BLOCKS.iter() {
-            let bits = block.bits();
+        for block in TEST_BLOCKS.iter() {
+            let bits = block.bits;
 
             // check conversion from compact representation of target to full one and back
             assert_eq!(bits, Target::from_compact(bits).unwrap().into_compact());
@@ -529,9 +529,9 @@ pub mod test {
 
     #[test]
     fn test_meets_target() {
-        for block in test_utils::TEST_BLOCKS.iter() {
+        for block in TEST_BLOCKS.iter() {
             // convert network difficulty to target
-            let target = Target::from_compact(block.bits()).unwrap();
+            let target = Target::from_compact(block.bits).unwrap();
 
             // check if test block meets the target
             assert!(block.hash.meets(&target));
@@ -540,7 +540,7 @@ pub mod test {
 
     #[test]
     fn test_target_bytes() {
-        for block in test_utils::TEST_BLOCKS.iter() {
+        for block in TEST_BLOCKS.iter() {
             // convert hash of block to target
             let target: Target = block.hash.into();
 

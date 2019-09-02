@@ -11,6 +11,8 @@ pub mod test;
 
 use ii_logging::macros::*;
 
+use ii_bitcoin as btc;
+
 // TODO: remove thread specific components
 use std::sync::Arc;
 use std::thread;
@@ -25,7 +27,6 @@ use tokio::await;
 use error::ErrorKind;
 use failure::ResultExt;
 
-use crate::btc;
 use crate::work;
 
 use futures_locks::Mutex;
