@@ -6,4 +6,4 @@
 ///
 /// If you get UNRESOLVED IMPORT here, it probably means someone added
 /// configuration option for one architecture but not for all of them.
-pub use crate::hal::config::{ASIC_DIFFICULTY, MIDSTATE_COUNT};
+pub use crate::hal::config::{ASIC_DIFFICULTY, JOB_TIMEOUT, MIDSTATE_COUNT};
