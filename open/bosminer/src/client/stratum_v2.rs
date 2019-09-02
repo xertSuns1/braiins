@@ -125,10 +125,10 @@ impl StratumEventHandler {
         self.job_sender.send(Arc::new(job));
     }
 
-    pub fn update_target(&mut self, new_target: Uint256Bytes) {
+    pub fn update_target(&mut self, value: Uint256Bytes) {
+        let new_target: ii_bitcoin::Target = value.into();
         trace!("changing target to {:?}", new_target);
-        let new_target_u256: uint::U256 = new_target.into();
-        self.job_sender.change_target(new_target_u256.into());
+        self.job_sender.change_target(new_target);
     }
 }
 

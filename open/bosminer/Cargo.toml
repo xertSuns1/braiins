@@ -14,7 +14,6 @@ members = [
 s9-io = { path = "s9-io", optional = true }
 packed_struct="0.3"
 packed_struct_codegen = "0.3"
-uint = "0.5.0"
 byteorder = "1.2.7"
 linux-embedded-hal = { version = "0.2.0", optional = true }
 sysfs_gpio = { version = "0.5.3", optional = true }
