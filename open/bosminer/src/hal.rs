@@ -17,7 +17,7 @@ pub use s9::{
     run,
 };
 
-use ii_bitcoin::{self as btc, HashTrait, MeetsTarget};
+use ii_bitcoin::{HashTrait, MeetsTarget};
 
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
@@ -40,9 +40,9 @@ pub trait BitcoinJob: Debug + Downcast + Send + Sync {
     /// Bit-mask with general purpose bits which can be freely manipulated (specified by BIP320)
     fn version_mask(&self) -> u32;
     /// Double SHA256 hash of the previous block header
-    fn previous_hash(&self) -> &btc::DHash;
+    fn previous_hash(&self) -> &ii_bitcoin::DHash;
     /// Double SHA256 hash based on all of the transactions in the block
-    fn merkle_root(&self) -> &btc::DHash;
+    fn merkle_root(&self) -> &ii_bitcoin::DHash;
     /// Current block timestamp as seconds since 1970-01-01T00:00 UTC
     fn time(&self) -> u32;
     /// Maximal timestamp for current block as seconds since 1970-01-01T00:00 UTC
@@ -110,7 +110,7 @@ pub struct Midstate {
     /// Version field used for calculating the midstate
     pub version: u32,
     /// Internal state of SHA256 after processing the first chunk (32 bytes)
-    pub state: btc::Midstate,
+    pub state: ii_bitcoin::Midstate,
 }
 
 /// Describes actual mining work for submission to a hashing hardware.
@@ -171,7 +171,7 @@ pub struct UniqueMiningWorkSolution {
     /// Solution of the PoW puzzle
     solution: MiningWorkSolution,
     /// Lazy evaluated double hash of this solution
-    hash: Cell<Option<btc::DHash>>,
+    hash: Cell<Option<ii_bitcoin::DHash>>,
 }
 
 impl UniqueMiningWorkSolution {
@@ -221,7 +221,7 @@ impl UniqueMiningWorkSolution {
     }
 
     /// Return double hash of this solution
-    pub fn hash(&self) -> btc::DHash {
+    pub fn hash(&self) -> ii_bitcoin::DHash {
         match self.hash.get() {
             Some(value) => value,
             None => {
@@ -234,10 +234,10 @@ impl UniqueMiningWorkSolution {
     }
 
     /// Converts mining work solution to Bitcoin block header structure which is packable
-    pub fn get_block_header(&self) -> btc::BlockHeader {
+    pub fn get_block_header(&self) -> ii_bitcoin::BlockHeader {
         let job = &self.work.job;
 
-        btc::BlockHeader {
+        ii_bitcoin::BlockHeader {
             version: self.version(),
             previous_hash: job.previous_hash().into_inner(),
             merkle_root: job.merkle_root().into_inner(),
@@ -247,7 +247,7 @@ impl UniqueMiningWorkSolution {
         }
     }
 
-    pub fn is_valid(&self, current_target: &btc::Target) -> bool {
+    pub fn is_valid(&self, current_target: &ii_bitcoin::Target) -> bool {
         if !self.work.job.is_valid() {
             // job is obsolete and has to be flushed
             return false;

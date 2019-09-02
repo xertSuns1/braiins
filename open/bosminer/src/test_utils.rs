@@ -1,7 +1,6 @@
 use crate::hal;
 use crate::work;
 
-use ii_bitcoin as btc;
 pub use ii_bitcoin::{TestBlock, TEST_BLOCKS};
 
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
@@ -15,11 +14,11 @@ impl hal::BitcoinJob for TestBlock {
         0
     }
 
-    fn previous_hash(&self) -> &btc::DHash {
+    fn previous_hash(&self) -> &ii_bitcoin::DHash {
         &self.previous_hash
     }
 
-    fn merkle_root(&self) -> &btc::DHash {
+    fn merkle_root(&self) -> &ii_bitcoin::DHash {
         &self.merkle_root
     }
 
