@@ -124,6 +124,8 @@ pub struct HChainCtl<VBackend> {
     chip_count: usize,
     /// Eliminates the need to query the IP core about the current number of configured midstates
     midstate_count_log2: s9_io::hchainio0::ctrl_reg::MIDSTATE_CNT_A,
+    /// ASIC difficulty
+    asic_difficulty: usize,
     /// PLL frequency
     pll_frequency: u64,
     /// Voltage controller on this hashboard
@@ -163,6 +165,7 @@ where
         voltage_ctrl_backend: VBackend,
         hashboard_idx: usize,
         midstate_count_log2: s9_io::hchainio0::ctrl_reg::MIDSTATE_CNT_A,
+        asic_difficulty: usize,
     ) -> error::Result<Self> {
         // Hashboard creation is aborted if the pin is not present
         let plug_pin = gpio_mgr
@@ -199,6 +202,7 @@ where
             work_id: 0,
             chip_count: 0,
             midstate_count_log2,
+            asic_difficulty,
             voltage_ctrl: power::VoltageCtrl::new(voltage_ctrl_backend, hashboard_idx),
             plug_pin,
             rst_pin,
@@ -272,12 +276,12 @@ where
     }
 
     /// Configures difficulty globally on all chips within the hashchain
-    fn set_asic_diff(&self) -> error::Result<()> {
-        let tm_reg = bm1387::TicketMaskReg::new(config::ASIC_DIFFICULTY as u32)?;
+    fn set_asic_diff(&self, difficulty: usize) -> error::Result<()> {
+        let tm_reg = bm1387::TicketMaskReg::new(difficulty as u32)?;
         trace!(
             LOGGER,
             "Setting ticket mask register for difficulty {}, value {:#010x?}",
-            config::ASIC_DIFFICULTY,
+            difficulty,
             tm_reg
         );
         let cmd = bm1387::SetConfigCmd::new(0, true, bm1387::TICKET_MASK_REG, tm_reg.into());
@@ -349,7 +353,7 @@ where
         self.configure_hash_chain(TARGET_CHIP_BAUD_RATE, false, true)?;
         self.set_ip_core_baud_rate(TARGET_CHIP_BAUD_RATE)?;
 
-        self.set_asic_diff()?;
+        self.set_asic_diff(self.asic_difficulty)?;
         Ok(())
     }
 
@@ -828,6 +832,7 @@ impl HChain {
             voltage_ctrl_backend.clone(),
             config::S9_HASHBOARD_INDEX,
             midstate_count_log2,
+            config::ASIC_DIFFICULTY,
         )
         .unwrap();
 
