@@ -6,14 +6,13 @@
 
 use ii_logging::macros::*;
 
-use bosminer::btc;
+use ii_bitcoin::{self as btc, HashTrait};
+
 use bosminer::config;
 use bosminer::hal::{self, BitcoinJob, MiningWork, UniqueMiningWorkSolution};
 use bosminer::test_utils;
 use bosminer::utils;
 use bosminer::work;
-
-use btc::HashTrait;
 
 use std::time::{Duration, Instant};
 use tokio::timer::Delay;

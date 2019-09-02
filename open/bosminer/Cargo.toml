@@ -26,14 +26,13 @@ tokio-threadpool = "0.1.14"
 futures-preview = { version = "0.3.0-alpha.15", features = ["compat"] }
 futures-01 = { version = "0.1.27", package = "futures" }
 futures-locks = "0.3.3"
-bitcoin_hashes = "0.3.2"
 downcast-rs = "1.0.4"
+ii-bitcoin = { path = "../coins/bitcoin" }
 ii-wire = { path = "../protocols/wire" }
 ii-stratum = { path = "../protocols/stratum" }
 tokio-async-await = "0.1.7"
 hex = "0.3.1"
 clap = "2.33.0"
-bytes = "0.4"
 libusb = { version = "0.3.0", optional = true }
 ii-logging = { path = "../utils-rs/logging" }
 

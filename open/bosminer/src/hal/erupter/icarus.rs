@@ -1,6 +1,6 @@
 //! Provides Icarus hashing chip driver
 
-use crate::btc;
+use ii_bitcoin as btc;
 
 use packed_struct::prelude::*;
 use packed_struct_codegen::PackedStruct;

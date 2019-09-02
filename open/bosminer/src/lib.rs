@@ -1,6 +1,5 @@
 #![feature(await_macro, async_await, duration_float)]
 
-pub mod btc;
 pub mod client;
 pub mod config;
 pub mod error;

@@ -17,7 +17,7 @@ pub use s9::{
     run,
 };
 
-use crate::btc::{self, HashTrait, MeetsTarget};
+use ii_bitcoin::{self as btc, HashTrait, MeetsTarget};
 
 use futures::channel::mpsc;
 use futures::stream::StreamExt;

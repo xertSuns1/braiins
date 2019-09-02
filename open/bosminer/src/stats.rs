@@ -1,18 +1,17 @@
 use ii_logging::macros::*;
 
-use std::time::{Duration, Instant};
-
-use crate::btc;
 use crate::hal;
+
+use ii_bitcoin as btc;
 
 use tokio::await;
 use tokio::timer::Delay;
 
 use futures_locks::Mutex;
 
-use std::sync::Arc;
-
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// Share=1 represents a space of 2^32 calculated hashes for Bitcoin
 /// mainnet (exactly 2^256/(0xffff<<208), where 0xffff<<208 is defined

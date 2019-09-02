@@ -1,4 +1,5 @@
-use crate::btc::{self, HashTrait};
+use ii_bitcoin::{self as btc, HashTrait};
+
 use crate::hal::{self, BitcoinJob};
 
 use std::sync::Arc;

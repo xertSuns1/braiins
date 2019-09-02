@@ -1,6 +1,7 @@
 use ii_logging::macros::*;
 
-use crate::btc::{self, HashTrait};
+use ii_bitcoin::{self as btc, HashTrait};
+
 use crate::hal;
 use crate::work;
 
