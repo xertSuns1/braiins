@@ -10,7 +10,6 @@ pub mod registry;
 pub mod test;
 
 // TODO: remove thread specific components
-use std::default::Default;
 use std::sync::Arc;
 use std::thread;
 
@@ -86,25 +85,6 @@ pub fn midstate_count_to_register(midstate_count: usize) -> MIDSTATE_CNT_A {
             "Midstate count of {} not supported on platform S9",
             midstate_count
         ),
-    }
-}
-
-/// Hash Chain Options is to pass additional information during hash chain
-/// controller initialization.
-#[derive(Clone)]
-pub struct HChainOptions {
-    // This affects if initialization sends opencore-like jobs to init the chips.
-    // Obviously unless you test opencore, this has to be enabled.
-    pub send_init_work: bool,
-    pub filter_duplicate_solutions: bool,
-}
-
-impl Default for HChainOptions {
-    fn default() -> Self {
-        Self {
-            send_init_work: true,
-            filter_duplicate_solutions: true,
-        }
     }
 }
 
@@ -678,7 +658,6 @@ async fn async_recv_solutions<T>(
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     mut rx_fifo: fifo::HChainFifo,
     work_solution: work::SolutionSender,
-    opts: HChainOptions,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -707,7 +686,7 @@ async fn async_recv_solutions<T>(
 
                 // work item detected a new unique solution, we will push it for further processing
                 if let Some(unique_solution) = status.unique_solution {
-                    if !status.duplicate || !opts.filter_duplicate_solutions {
+                    if !status.duplicate {
                         if !unique_solution.is_valid(&ASIC_TARGET) {
                             warn!(LOGGER, "Solution from hashchain not hitting ASIC target");
                             stats.error_stats.hardware_errors += 1;
@@ -742,7 +721,6 @@ fn spawn_tx_task<T>(
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     work_generator: work::Generator,
     shutdown: crate::hal::ShutdownSender,
-    opts: HChainOptions,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -754,9 +732,7 @@ fn spawn_tx_task<T>(
                 .take()
                 .expect("work-tx fifo missing");
 
-            if opts.send_init_work {
-                await!(send_init_work::<T>(h_chain_ctl.clone(), &mut tx_fifo));
-            }
+            await!(send_init_work::<T>(h_chain_ctl.clone(), &mut tx_fifo));
             await!(async_send_work(
                 work_registry,
                 mining_stats,
@@ -775,7 +751,6 @@ fn spawn_rx_task<T>(
     mining_stats: Arc<Mutex<super::MiningStats>>,
     h_chain_ctl: Arc<Mutex<super::s9::HChainCtl<T>>>,
     work_solution: work::SolutionSender,
-    opts: HChainOptions,
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -792,20 +767,17 @@ fn spawn_rx_task<T>(
                 h_chain_ctl,
                 rx_fifo,
                 work_solution,
-                opts,
             ));
         }
             .compat_fix(),
     );
 }
 
-pub struct HChain {
-    opts: HChainOptions,
-}
+pub struct HChain {}
 
 impl HChain {
-    pub fn new(opts: HChainOptions) -> Self {
-        Self { opts }
+    pub fn new() -> Self {
+        Self {}
     }
 
     pub fn start_h_chain(
@@ -852,14 +824,12 @@ impl HChain {
             h_chain_ctl.clone(),
             work_generator,
             shutdown.clone(),
-            self.opts.clone(),
         );
         spawn_rx_task(
             work_registry.clone(),
             mining_stats.clone(),
             h_chain_ctl.clone(),
             work_solution,
-            self.opts.clone(),
         );
 
         h_chain_ctl
@@ -873,7 +843,7 @@ pub fn run(
     shutdown: crate::hal::ShutdownSender,
 ) {
     // Create one chain
-    let chain = HChain::new(Default::default());
+    let chain = HChain::new();
     chain.start_h_chain(work_solver, mining_stats, shutdown);
 }
 
