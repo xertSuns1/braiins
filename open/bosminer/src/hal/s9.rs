@@ -11,8 +11,6 @@ pub mod test;
 
 use ii_logging::macros::*;
 
-use ii_bitcoin as btc;
-
 // TODO: remove thread specific components
 use std::sync::Arc;
 use std::thread;
@@ -70,8 +68,8 @@ const DEFAULT_S9_PLL_FREQUENCY: u64 = 650_000_000;
 
 lazy_static! {
     /// What is our target?
-    static ref ASIC_TARGET: btc::Target =
-        btc::Target::from_pool_difficulty(config::ASIC_DIFFICULTY);
+    static ref ASIC_TARGET: ii_bitcoin::Target =
+        ii_bitcoin::Target::from_pool_difficulty(config::ASIC_DIFFICULTY);
 }
 
 /// Convert number of midstates to register value

@@ -1,6 +1,6 @@
 use ii_logging::macros::*;
 
-use ii_bitcoin::{self as btc, HashTrait};
+use ii_bitcoin::HashTrait;
 
 use crate::hal;
 use crate::work;
@@ -35,8 +35,8 @@ struct StratumJob {
     block_height: u32,
     current_block_height: Arc<AtomicU32>,
     version: u32,
-    prev_hash: btc::DHash,
-    merkle_root: btc::DHash,
+    prev_hash: ii_bitcoin::DHash,
+    merkle_root: ii_bitcoin::DHash,
     time: u32,
     max_time: u32,
     bits: u32,
@@ -55,8 +55,8 @@ impl StratumJob {
             block_height: job_msg.block_height,
             current_block_height,
             version: job_msg.version,
-            prev_hash: btc::DHash::from_slice(prevhash_msg.prev_hash.as_ref()).unwrap(),
-            merkle_root: btc::DHash::from_slice(job_msg.merkle_root.as_ref()).unwrap(),
+            prev_hash: ii_bitcoin::DHash::from_slice(prevhash_msg.prev_hash.as_ref()).unwrap(),
+            merkle_root: ii_bitcoin::DHash::from_slice(job_msg.merkle_root.as_ref()).unwrap(),
             time: prevhash_msg.min_ntime,
             max_time: prevhash_msg.min_ntime + prevhash_msg.max_ntime_offset as u32,
             bits: prevhash_msg.nbits,
@@ -73,11 +73,11 @@ impl hal::BitcoinJob for StratumJob {
         VERSION_MASK
     }
 
-    fn previous_hash(&self) -> &btc::DHash {
+    fn previous_hash(&self) -> &ii_bitcoin::DHash {
         &self.prev_hash
     }
 
-    fn merkle_root(&self) -> &btc::DHash {
+    fn merkle_root(&self) -> &ii_bitcoin::DHash {
         &self.merkle_root
     }
 

@@ -1,7 +1,5 @@
 //! Provides Icarus hashing chip driver
 
-use ii_bitcoin as btc;
-
 use packed_struct::prelude::*;
 use packed_struct_codegen::PackedStruct;
 
@@ -38,9 +36,9 @@ pub struct WorkPayload {
 }
 
 impl WorkPayload {
-    pub fn new(midstate: &btc::Midstate, merkle_tail: u32, time: u32, bits: u32) -> Self {
+    pub fn new(midstate: &ii_bitcoin::Midstate, merkle_tail: u32, time: u32, bits: u32) -> Self {
         // midstate 32bit words are stored in array in a reverse order
-        let mut midstate_words = [0u32; btc::SHA256_DIGEST_SIZE / size_of::<u32>()];
+        let mut midstate_words = [0u32; ii_bitcoin::SHA256_DIGEST_SIZE / size_of::<u32>()];
         for (i, word) in midstate.words().rev().enumerate() {
             midstate_words[i] = word;
         }

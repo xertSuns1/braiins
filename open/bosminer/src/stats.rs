@@ -2,8 +2,6 @@ use ii_logging::macros::*;
 
 use crate::hal;
 
-use ii_bitcoin as btc;
-
 use tokio::await;
 use tokio::timer::Delay;
 
@@ -71,7 +69,7 @@ pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<hal::MiningSt
 
 static SUBMITTED_SHARE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-pub fn account_solution(target: &btc::Target) {
+pub fn account_solution(target: &ii_bitcoin::Target) {
     let difficulty = target.get_difficulty() as u64;
     SUBMITTED_SHARE_COUNTER.fetch_add(difficulty, Ordering::SeqCst);
 }

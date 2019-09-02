@@ -6,7 +6,7 @@
 
 use ii_logging::macros::*;
 
-use ii_bitcoin::{self as btc, HashTrait};
+use ii_bitcoin::HashTrait;
 
 use bosminer::config;
 use bosminer::hal::{self, BitcoinJob, MiningWork, UniqueMiningWorkSolution};
@@ -67,7 +67,7 @@ impl From<Problem> for MiningWork {
         let mut midstates = Vec::with_capacity(config::MIDSTATE_COUNT);
 
         // prepare block chunk1 with all invariants
-        let mut block_chunk1 = btc::BlockHeader {
+        let mut block_chunk1 = ii_bitcoin::BlockHeader {
             previous_hash: job.previous_hash().into_inner(),
             merkle_root: job.merkle_root().into_inner(),
             ..Default::default()
@@ -121,7 +121,7 @@ impl From<UniqueMiningWorkSolution> for Solution {
 /// For now we use block hash and midstate index in which the work was solved.
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
 struct SolutionKey {
-    hash: btc::DHash,
+    hash: ii_bitcoin::DHash,
     midstate_idx: usize,
 }
 

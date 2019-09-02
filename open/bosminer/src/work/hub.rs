@@ -1,7 +1,5 @@
 use ii_logging::macros::*;
 
-use ii_bitcoin as btc;
-
 use super::*;
 use crate::config;
 use crate::hal;
@@ -30,7 +28,7 @@ impl Hub {
 }
 
 /// Helper function for creating target difficulty suitable for sharing
-pub fn create_shared_target(target: btc::Target) -> Arc<RwLock<btc::Target>> {
+pub fn create_shared_target(target: ii_bitcoin::Target) -> Arc<RwLock<ii_bitcoin::Target>> {
     Arc::new(RwLock::new(target))
 }
 
@@ -62,18 +60,18 @@ impl JobSolver {
 /// Typically the mining protocol handler will inject new jobs through it
 pub struct JobSender {
     engine_sender: EngineSender,
-    current_target: Arc<RwLock<btc::Target>>,
+    current_target: Arc<RwLock<ii_bitcoin::Target>>,
 }
 
 impl JobSender {
-    pub fn new(engine_sender: EngineSender, current_target: Arc<RwLock<btc::Target>>) -> Self {
+    pub fn new(engine_sender: EngineSender, current_target: Arc<RwLock<ii_bitcoin::Target>>) -> Self {
         Self {
             engine_sender,
             current_target,
         }
     }
 
-    pub fn change_target(&self, target: btc::Target) {
+    pub fn change_target(&self, target: ii_bitcoin::Target) {
         *self
             .current_target
             .write()
@@ -91,13 +89,13 @@ impl JobSender {
 /// pool specified target
 pub struct JobSolutionReceiver {
     solution_channel: mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
-    current_target: Arc<RwLock<btc::Target>>,
+    current_target: Arc<RwLock<ii_bitcoin::Target>>,
 }
 
 impl JobSolutionReceiver {
     pub fn new(
         solution_channel: mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
-        current_target: Arc<RwLock<btc::Target>>,
+        current_target: Arc<RwLock<ii_bitcoin::Target>>,
     ) -> Self {
         Self {
             solution_channel,
@@ -105,7 +103,7 @@ impl JobSolutionReceiver {
         }
     }
 
-    fn trace_share(solution: &hal::UniqueMiningWorkSolution, target: &btc::Target) {
+    fn trace_share(solution: &hal::UniqueMiningWorkSolution, target: &ii_bitcoin::Target) {
         trace!(
             "nonce={:08x} bytes={}",
             solution.nonce(),
@@ -177,9 +175,9 @@ pub mod test {
     }
 
     /// Helper function that compares 2 hashes while interpreting them as targets
-    fn double_hash_cmp(a: &btc::DHash, b: &btc::DHash) -> std::cmp::Ordering {
-        let a_target: btc::Target = (*a).into();
-        let b_target: btc::Target = (*b).into();
+    fn double_hash_cmp(a: &ii_bitcoin::DHash, b: &ii_bitcoin::DHash) -> std::cmp::Ordering {
+        let a_target: ii_bitcoin::Target = (*a).into();
+        let b_target: ii_bitcoin::Target = (*b).into();
         a_target.cmp(&b_target)
     }
 
@@ -210,7 +208,7 @@ pub mod test {
             .unwrap();
 
         // change the target to return from solution receiver only this block
-        let target: btc::Target = target_block.hash.into();
+        let target: ii_bitcoin::Target = target_block.hash.into();
         job_sender.change_target(target);
 
         // send all solutions to the queue not to block on receiver

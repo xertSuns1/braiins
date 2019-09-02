@@ -1,4 +1,4 @@
-use ii_bitcoin::{self as btc, HashTrait};
+use ii_bitcoin::HashTrait;
 
 use crate::hal::{self, BitcoinJob};
 
@@ -9,7 +9,7 @@ use byteorder::{ByteOrder, LittleEndian};
 /// NullJob to be used for chip initialization and tests
 #[derive(Debug, Copy, Clone)]
 pub struct NullJob {
-    hash: btc::DHash,
+    hash: ii_bitcoin::DHash,
     time: u32,
     bits: u32,
     version: u32,
@@ -19,7 +19,7 @@ impl NullJob {
     /// XXX: maybe create a structure with named members to pass to this constructor, otherwise it's confusing.
     pub fn new(time: u32, bits: u32, version: u32) -> Self {
         Self {
-            hash: btc::DHash::from_slice(&[0xffu8; 32]).unwrap(),
+            hash: ii_bitcoin::DHash::from_slice(&[0xffu8; 32]).unwrap(),
             time,
             bits,
             version,
@@ -40,11 +40,11 @@ impl hal::BitcoinJob for NullJob {
         0
     }
 
-    fn previous_hash(&self) -> &btc::DHash {
+    fn previous_hash(&self) -> &ii_bitcoin::DHash {
         &self.hash
     }
 
-    fn merkle_root(&self) -> &btc::DHash {
+    fn merkle_root(&self) -> &ii_bitcoin::DHash {
         &self.hash
     }
 
@@ -66,7 +66,7 @@ pub fn prepare(i: u64) -> hal::MiningWork {
     let job = Arc::new(NullJob::new(0, 0xffff_ffff, 0));
     let time = job.time();
 
-    let mut midstate_bytes = [0u8; btc::SHA256_DIGEST_SIZE];
+    let mut midstate_bytes = [0u8; ii_bitcoin::SHA256_DIGEST_SIZE];
     LittleEndian::write_u64(&mut midstate_bytes, i);
 
     let mid = hal::Midstate {
@@ -84,7 +84,7 @@ pub fn prepare_opencore(enable_core: bool, midstate_count: usize) -> hal::Mining
 
     let one_midstate = hal::Midstate {
         version: 0,
-        state: [0u8; btc::SHA256_DIGEST_SIZE].into(),
+        state: [0u8; ii_bitcoin::SHA256_DIGEST_SIZE].into(),
     };
 
     hal::MiningWork::new(job, vec![one_midstate; midstate_count], time)

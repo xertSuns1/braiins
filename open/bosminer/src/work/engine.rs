@@ -2,7 +2,7 @@
 //! backend processing
 use crate::hal;
 
-use ii_bitcoin::{self as btc, HashTrait};
+use ii_bitcoin::HashTrait;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -22,7 +22,7 @@ impl hal::WorkEngine for ExhaustedWork {
 
 /// BIP320 specifies sixteen bits in block header nVersion field
 /// The maximal index represent the range which is excluded so it must be incremented by 1.
-const BIP320_MAX_INDEX: u32 = btc::BIP320_VERSION_MAX + 1;
+const BIP320_MAX_INDEX: u32 = ii_bitcoin::BIP320_VERSION_MAX + 1;
 
 /// Primitive for atomic range counter
 /// This structure can be freely shared among parallel processes and each range is returned only to
@@ -113,7 +113,7 @@ pub struct VersionRolling {
 
 impl VersionRolling {
     pub fn new(job: Arc<dyn hal::BitcoinJob>, midstate_count: usize) -> Self {
-        let base_version = job.version() & !btc::BIP320_VERSION_MASK;
+        let base_version = job.version() & !ii_bitcoin::BIP320_VERSION_MASK;
         Self {
             job,
             midstate_count,
@@ -125,8 +125,8 @@ impl VersionRolling {
     /// Convert the allocated index to a block version as per BIP320
     #[inline]
     fn get_block_version(&self, index: u32) -> u32 {
-        assert!(index <= btc::BIP320_VERSION_MAX);
-        self.base_version | (index << btc::BIP320_VERSION_SHIFT)
+        assert!(index <= ii_bitcoin::BIP320_VERSION_MAX);
+        self.base_version | (index << ii_bitcoin::BIP320_VERSION_SHIFT)
     }
 }
 
@@ -149,7 +149,7 @@ impl hal::WorkEngine for VersionRolling {
         let mut midstates = Vec::with_capacity(self.midstate_count);
 
         // prepare block chunk1 with all invariants
-        let mut block_chunk1 = btc::BlockHeader {
+        let mut block_chunk1 = ii_bitcoin::BlockHeader {
             previous_hash: self.job.previous_hash().into_inner(),
             merkle_root: self.job.merkle_root().into_inner(),
             ..Default::default()
@@ -195,7 +195,7 @@ pub mod test {
     #[test]
     fn test_atomic_range() {
         compare_range(0, 1, 1);
-        compare_range(btc::BIP320_VERSION_MAX - 1, btc::BIP320_VERSION_MAX, 1);
+        compare_range(ii_bitcoin::BIP320_VERSION_MAX - 1, ii_bitcoin::BIP320_VERSION_MAX, 1);
         compare_range(std::u32::MAX - 1, std::u32::MAX, 1);
 
         compare_range(0, 2, 1);
@@ -232,7 +232,7 @@ pub mod test {
     }
 
     fn get_block_version(job: &Arc<test_utils::TestBlock>, index: u32) -> u32 {
-        job.version() | (index << btc::BIP320_VERSION_SHIFT)
+        job.version() | (index << ii_bitcoin::BIP320_VERSION_SHIFT)
     }
 
     #[test]
@@ -243,7 +243,7 @@ pub mod test {
 
         // modify current version counter to decrease the search space
         // adn test only boundary values
-        const START_INDEX: u32 = btc::BIP320_VERSION_MAX - 1;
+        const START_INDEX: u32 = ii_bitcoin::BIP320_VERSION_MAX - 1;
         engine
             .curr_range
             .curr_index
@@ -261,7 +261,7 @@ pub mod test {
 
         match engine.next_work() {
             hal::WorkLoop::Break(work) => assert_eq!(
-                get_block_version(&job, btc::BIP320_VERSION_MAX),
+                get_block_version(&job, ii_bitcoin::BIP320_VERSION_MAX),
                 work.midstates[0].version
             ),
             _ => panic!("expected 'hal::WorkLoop::Break'"),
