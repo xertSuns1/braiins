@@ -44,7 +44,6 @@ features = ["unproven"]
 
 [features]
 default = []
-hctl_polling = []
 backend_selected = []
 antminer_s9 = ["backend_selected", "s9-io", "uio", "linux-embedded-hal", "sysfs_gpio"]
 erupter = ["backend_selected", "libusb"]
