@@ -1,6 +1,5 @@
 /target
 **/*.rs.bk
-s9-io/src
 Test.toml
 
 # LEDE/OpenWrt build system
