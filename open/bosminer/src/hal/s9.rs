@@ -575,182 +575,172 @@ where
 
         Ok((rx_fifo, Some(solution)))
     }
-}
 
-/// Initialize cores by sending open-core work with correct nbits to each core
-async fn send_init_work<T>(
-    h_chain_ctl: Arc<Mutex<s9::HChainCtl<T>>>,
-    tx_fifo: &mut fifo::HChainFifo,
-) where
-    T: 'static + Send + Sync + power::VoltageCtrlBackend,
-{
-    // Each core gets one work
-    const NUM_WORK: usize = bm1387::NUM_CORES_ON_CHIP;
-    trace!(
-        "Sending out {} pieces of dummy work to initialize chips",
-        NUM_WORK
-    );
-    for _ in 0..NUM_WORK {
-        let work = &null_work::prepare_opencore(true, config::MIDSTATE_COUNT);
-        let work_id = await!(h_chain_ctl.lock())
-            .expect("h_chain lock")
-            .next_work_id();
-        await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
-        // TODO: remember work_id assignment in registry
-        tx_fifo.send_work(&work, work_id).expect("send work");
+    /// Initialize cores by sending open-core work with correct nbits to each core
+    async fn send_init_work(
+        h_chain_ctl: Arc<Mutex<s9::HChainCtl<VBackend>>>,
+        tx_fifo: &mut fifo::HChainFifo,
+    ) {
+        // Each core gets one work
+        const NUM_WORK: usize = bm1387::NUM_CORES_ON_CHIP;
+        trace!(
+            "Sending out {} pieces of dummy work to initialize chips",
+            NUM_WORK
+        );
+        for _ in 0..NUM_WORK {
+            let work = &null_work::prepare_opencore(true, config::MIDSTATE_COUNT);
+            let work_id = await!(h_chain_ctl.lock())
+                .expect("h_chain lock")
+                .next_work_id();
+            await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
+            // TODO: remember work_id assignment in registry
+            tx_fifo.send_work(&work, work_id).expect("send work");
+        }
     }
-}
 
-/// Generates enough testing work until the work FIFO becomes full
-/// The work is made unique by specifying a unique midstate.
-///
-/// As the next step the method starts collecting solutions, eliminating duplicates and extracting
-/// valid solutions for further processing
-///
-/// Returns the amount of work generated during this run
-
-async fn async_send_work<T>(
-    work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
-    mining_stats: Arc<Mutex<hal::MiningStats>>,
-    h_chain_ctl: Arc<Mutex<s9::HChainCtl<T>>>,
-    mut tx_fifo: fifo::HChainFifo,
-    mut work_generator: work::Generator,
-) where
-    T: 'static + Send + Sync + power::VoltageCtrlBackend,
-{
-    loop {
-        await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
-        let work = await!(work_generator.generate());
-        match work {
-            None => return,
-            Some(work) => {
-                let work_id = await!(h_chain_ctl.lock())
-                    .expect("h_chain lock")
-                    .next_work_id();
-                // send work is synchronous
-                tx_fifo.send_work(&work, work_id).expect("send work");
-                await!(work_registry.lock())
-                    .expect("locking ok")
-                    .store_work(work_id as usize, work);
-                let mut stats = await!(mining_stats.lock()).expect("minig stats lock");
-                stats.work_generated += config::MIDSTATE_COUNT;
-                drop(stats);
+    /// Generates enough testing work until the work FIFO becomes full
+    /// The work is made unique by specifying a unique midstate.
+    ///
+    /// As the next step the method starts collecting solutions, eliminating duplicates and extracting
+    /// valid solutions for further processing
+    ///
+    /// Returns the amount of work generated during this run
+    async fn async_send_work(
+        work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
+        mining_stats: Arc<Mutex<hal::MiningStats>>,
+        h_chain_ctl: Arc<Mutex<s9::HChainCtl<VBackend>>>,
+        mut tx_fifo: fifo::HChainFifo,
+        mut work_generator: work::Generator,
+    ) {
+        loop {
+            await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
+            let work = await!(work_generator.generate());
+            match work {
+                None => return,
+                Some(work) => {
+                    let work_id = await!(h_chain_ctl.lock())
+                        .expect("h_chain lock")
+                        .next_work_id();
+                    // send work is synchronous
+                    tx_fifo.send_work(&work, work_id).expect("send work");
+                    await!(work_registry.lock())
+                        .expect("locking ok")
+                        .store_work(work_id as usize, work);
+                    let mut stats = await!(mining_stats.lock()).expect("minig stats lock");
+                    stats.work_generated += config::MIDSTATE_COUNT;
+                    drop(stats);
+                }
             }
         }
     }
-}
 
-async fn async_recv_solutions<T>(
-    work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
-    mining_stats: Arc<Mutex<hal::MiningStats>>,
-    h_chain_ctl: Arc<Mutex<s9::HChainCtl<T>>>,
-    mut rx_fifo: fifo::HChainFifo,
-    work_solution: work::SolutionSender,
-) where
-    T: 'static + Send + Sync + power::VoltageCtrlBackend,
-{
-    // solution receiving/filtering part
-    loop {
-        let (rx_fifo_out, solution) =
-            await!(s9::HChainCtl::recv_solution(h_chain_ctl.clone(), rx_fifo))
-                .expect("recv solution");
-        rx_fifo = rx_fifo_out;
-        let solution = solution.expect("solution is ok");
-        let work_id = await!(h_chain_ctl.lock())
-            .expect("h_chain lock")
-            .get_work_id_from_solution(&solution) as usize;
-        let mut stats = await!(mining_stats.lock()).expect("lock mining stats");
-        let mut work_registry = await!(work_registry.lock()).expect("work registry lock failed");
+    async fn async_recv_solutions(
+        work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
+        mining_stats: Arc<Mutex<hal::MiningStats>>,
+        h_chain_ctl: Arc<Mutex<s9::HChainCtl<VBackend>>>,
+        mut rx_fifo: fifo::HChainFifo,
+        work_solution: work::SolutionSender,
+    ) {
+        // solution receiving/filtering part
+        loop {
+            let (rx_fifo_out, solution) =
+                await!(s9::HChainCtl::recv_solution(h_chain_ctl.clone(), rx_fifo))
+                    .expect("recv solution");
+            rx_fifo = rx_fifo_out;
+            let solution = solution.expect("solution is ok");
+            let work_id = await!(h_chain_ctl.lock())
+                .expect("h_chain lock")
+                .get_work_id_from_solution(&solution) as usize;
+            let mut stats = await!(mining_stats.lock()).expect("lock mining stats");
+            let mut work_registry =
+                await!(work_registry.lock()).expect("work registry lock failed");
 
-        let work = work_registry.find_work(work_id);
-        match work {
-            Some(work_item) => {
-                let solution_idx = await!(h_chain_ctl.lock())
-                    .expect("h_chain lock")
-                    .get_solution_idx_from_solution_id(solution.solution_id);
-                let status = work_item.insert_solution(solution, solution_idx);
+            let work = work_registry.find_work(work_id);
+            match work {
+                Some(work_item) => {
+                    let solution_idx = await!(h_chain_ctl.lock())
+                        .expect("h_chain lock")
+                        .get_solution_idx_from_solution_id(solution.solution_id);
+                    let status = work_item.insert_solution(solution, solution_idx);
 
-                // work item detected a new unique solution, we will push it for further processing
-                if let Some(unique_solution) = status.unique_solution {
-                    if !status.duplicate {
-                        if !unique_solution.is_valid(&ASIC_TARGET) {
-                            warn!("Solution from hashchain not hitting ASIC target");
-                            stats.error_stats.hardware_errors += 1;
+                    // work item detected a new unique solution, we will push it for further processing
+                    if let Some(unique_solution) = status.unique_solution {
+                        if !status.duplicate {
+                            if !unique_solution.is_valid(&ASIC_TARGET) {
+                                warn!("Solution from hashchain not hitting ASIC target");
+                                stats.error_stats.hardware_errors += 1;
+                            }
+                            work_solution.send(unique_solution);
                         }
-                        work_solution.send(unique_solution);
+                    }
+                    if status.duplicate {
+                        stats.error_stats.duplicate_solutions += 1;
+                    } else {
+                        stats.unique_solutions += 1;
+                        stats.unique_solutions_shares += config::ASIC_DIFFICULTY as u64;
+                    }
+                    if status.mismatched_nonce {
+                        stats.error_stats.mismatched_solution_nonces += 1;
                     }
                 }
-                if status.duplicate {
-                    stats.error_stats.duplicate_solutions += 1;
-                } else {
-                    stats.unique_solutions += 1;
-                    stats.unique_solutions_shares += config::ASIC_DIFFICULTY as u64;
+                None => {
+                    info!(
+                        "No work present for solution, ID:{:#x} {:#010x?}",
+                        work_id, solution
+                    );
+                    stats.error_stats.stale_solutions += 1;
                 }
-                if status.mismatched_nonce {
-                    stats.error_stats.mismatched_solution_nonces += 1;
-                }
-            }
-            None => {
-                info!(
-                    "No work present for solution, ID:{:#x} {:#010x?}",
-                    work_id, solution
-                );
-                stats.error_stats.stale_solutions += 1;
             }
         }
     }
-}
 
-fn spawn_tx_task<T>(
-    work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
-    mining_stats: Arc<Mutex<hal::MiningStats>>,
-    h_chain_ctl: Arc<Mutex<s9::HChainCtl<T>>>,
-    work_generator: work::Generator,
-    shutdown: crate::hal::ShutdownSender,
-) where
-    T: 'static + Send + Sync + power::VoltageCtrlBackend,
-{
-    ii_async_compat::spawn(async move {
-        let mut tx_fifo = await!(h_chain_ctl.lock())
-            .expect("locking failed")
-            .work_tx_fifo
-            .take()
-            .expect("work-tx fifo missing");
+    fn spawn_tx_task(
+        work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
+        mining_stats: Arc<Mutex<hal::MiningStats>>,
+        h_chain_ctl: Arc<Mutex<s9::HChainCtl<VBackend>>>,
+        work_generator: work::Generator,
+        shutdown: crate::hal::ShutdownSender,
+    ) {
+        ii_async_compat::spawn(async move {
+            let mut tx_fifo = await!(h_chain_ctl.lock())
+                .expect("locking failed")
+                .work_tx_fifo
+                .take()
+                .expect("work-tx fifo missing");
 
-        await!(send_init_work::<T>(h_chain_ctl.clone(), &mut tx_fifo));
-        await!(async_send_work(
-            work_registry,
-            mining_stats,
-            h_chain_ctl,
-            tx_fifo,
-            work_generator,
-        ));
-        shutdown.send("no more work from workhub");
-    });
-}
+            await!(Self::send_init_work(h_chain_ctl.clone(), &mut tx_fifo));
+            await!(Self::async_send_work(
+                work_registry,
+                mining_stats,
+                h_chain_ctl,
+                tx_fifo,
+                work_generator,
+            ));
+            shutdown.send("no more work from workhub");
+        });
+    }
 
-fn spawn_rx_task<T>(
-    work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
-    mining_stats: Arc<Mutex<hal::MiningStats>>,
-    h_chain_ctl: Arc<Mutex<s9::HChainCtl<T>>>,
-    work_solution: work::SolutionSender,
-) where
-    T: 'static + Send + Sync + power::VoltageCtrlBackend,
-{
-    ii_async_compat::spawn(async move {
-        let rx_fifo = await!(h_chain_ctl.lock())
-            .expect("locking failed")
-            .work_rx_fifo
-            .take()
-            .expect("work-rx fifo missing");
-        await!(async_recv_solutions(
-            work_registry,
-            mining_stats,
-            h_chain_ctl,
-            rx_fifo,
-            work_solution,
-        ));
-    });
+    fn spawn_rx_task(
+        work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
+        mining_stats: Arc<Mutex<hal::MiningStats>>,
+        h_chain_ctl: Arc<Mutex<s9::HChainCtl<VBackend>>>,
+        work_solution: work::SolutionSender,
+    ) {
+        ii_async_compat::spawn(async move {
+            let rx_fifo = await!(h_chain_ctl.lock())
+                .expect("locking failed")
+                .work_rx_fifo
+                .take()
+                .expect("work-rx fifo missing");
+            await!(Self::async_recv_solutions(
+                work_registry,
+                mining_stats,
+                h_chain_ctl,
+                rx_fifo,
+                work_solution,
+            ));
+        });
+    }
 }
 
 pub struct HChain {}
@@ -798,14 +788,14 @@ impl HChain {
         let h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
         let (work_generator, work_solution) = work_solver.split();
 
-        spawn_tx_task(
+        HChainCtl::spawn_tx_task(
             work_registry.clone(),
             mining_stats.clone(),
             h_chain_ctl.clone(),
             work_generator,
             shutdown.clone(),
         );
-        spawn_rx_task(
+        HChainCtl::spawn_rx_task(
             work_registry.clone(),
             mining_stats.clone(),
             h_chain_ctl.clone(),
