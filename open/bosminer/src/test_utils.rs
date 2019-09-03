@@ -158,10 +158,9 @@ pub fn create_test_work_generator() -> work::Generator {
 mod test {
     use super::*;
     use crate::hal::BitcoinJob;
-    use crate::utils::compat_block_on;
 
     fn get_engine(work_receiver: &mut work::EngineReceiver) -> Arc<hal::WorkEngine> {
-        compat_block_on(work_receiver.get_engine()).expect("cannot get test work engine")
+        ii_async_compat::block_on(work_receiver.get_engine()).expect("cannot get test work engine")
     }
 
     fn cmp_block_with_work(block: &TestBlock, work: hal::MiningWork) -> hal::MiningWork {

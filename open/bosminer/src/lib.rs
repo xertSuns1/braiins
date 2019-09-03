@@ -5,7 +5,6 @@ pub mod config;
 pub mod error;
 pub mod hal;
 pub mod stats;
-pub mod utils;
 pub mod work;
 
 pub mod test_utils;

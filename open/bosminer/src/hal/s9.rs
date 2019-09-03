@@ -19,7 +19,6 @@ use lazy_static::lazy_static;
 
 use std::time::{Duration, SystemTime};
 
-use ii_wire::utils::CompatFix;
 use tokio::await;
 
 use error::ErrorKind;
@@ -711,26 +710,23 @@ fn spawn_tx_task<T>(
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
-    tokio::spawn(
-        async move {
-            let mut tx_fifo = await!(h_chain_ctl.lock())
-                .expect("locking failed")
-                .work_tx_fifo
-                .take()
-                .expect("work-tx fifo missing");
+    ii_async_compat::spawn(async move {
+        let mut tx_fifo = await!(h_chain_ctl.lock())
+            .expect("locking failed")
+            .work_tx_fifo
+            .take()
+            .expect("work-tx fifo missing");
 
-            await!(send_init_work::<T>(h_chain_ctl.clone(), &mut tx_fifo));
-            await!(async_send_work(
-                work_registry,
-                mining_stats,
-                h_chain_ctl,
-                tx_fifo,
-                work_generator,
-            ));
-            shutdown.send("no more work from workhub");
-        }
-            .compat_fix(),
-    );
+        await!(send_init_work::<T>(h_chain_ctl.clone(), &mut tx_fifo));
+        await!(async_send_work(
+            work_registry,
+            mining_stats,
+            h_chain_ctl,
+            tx_fifo,
+            work_generator,
+        ));
+        shutdown.send("no more work from workhub");
+    });
 }
 
 fn spawn_rx_task<T>(
@@ -741,23 +737,20 @@ fn spawn_rx_task<T>(
 ) where
     T: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
-    tokio::spawn(
-        async move {
-            let rx_fifo = await!(h_chain_ctl.lock())
-                .expect("locking failed")
-                .work_rx_fifo
-                .take()
-                .expect("work-rx fifo missing");
-            await!(async_recv_solutions(
-                work_registry,
-                mining_stats,
-                h_chain_ctl,
-                rx_fifo,
-                work_solution,
-            ));
-        }
-            .compat_fix(),
-    );
+    ii_async_compat::spawn(async move {
+        let rx_fifo = await!(h_chain_ctl.lock())
+            .expect("locking failed")
+            .work_rx_fifo
+            .take()
+            .expect("work-rx fifo missing");
+        await!(async_recv_solutions(
+            work_registry,
+            mining_stats,
+            h_chain_ctl,
+            rx_fifo,
+            work_solution,
+        ));
+    });
 }
 
 pub struct HChain {}

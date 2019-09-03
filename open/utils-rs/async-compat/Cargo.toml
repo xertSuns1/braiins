@@ -1,0 +1,10 @@
+[package]
+name = "ii-async-compat"
+version = "0.1.0"
+authors = ["Braiins <braiins@braiins.com>"]
+edition = "2018"
+
+[dependencies]
+futures-preview = { version = "=0.3.0-alpha.16", features = ["compat"] }
+futures-01 = { version = "0.1.27", package = "futures" }
+tokio = { version = "=0.1.19", features = ["async-await-preview"] }

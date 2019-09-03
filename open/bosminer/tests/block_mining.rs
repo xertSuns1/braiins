@@ -11,7 +11,6 @@ use ii_bitcoin::HashTrait;
 use bosminer::config;
 use bosminer::hal::{self, BitcoinJob, MiningWork, UniqueMiningWorkSolution};
 use bosminer::test_utils;
-use bosminer::utils;
 use bosminer::work;
 
 use std::time::{Duration, Instant};
@@ -20,7 +19,6 @@ use tokio::timer::Delay;
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
 use futures_locks::Mutex;
-use ii_wire::utils::CompatFix;
 use tokio::await;
 
 use std::collections::HashMap;
@@ -265,7 +263,7 @@ fn test_block_mining() {
 
     // this is a small miner core: we generate work, collect solutions, and we pair them together
     // we expect all (generated) problems to be solved
-    utils::run_async_main_exits(async {
+    ii_async_compat::run_main_exits(async {
         // Create solver and channels to send/receive work
         let (mut engine_sender, solution_queue_rx, mut reschedule_receiver, work_solver) =
             build_solvers();
@@ -280,7 +278,7 @@ fn test_block_mining() {
         hal::run(work_solver, mining_stats.clone(), shutdown_sender);
 
         // start task to collect solutions and put them to registry
-        tokio::spawn(collect_solutions(solution_queue_rx, registry.clone()).compat_fix());
+        ii_async_compat::spawn(collect_solutions(solution_queue_rx, registry.clone()));
 
         // TODO: first work sent to miner is for some reason ignored
         // workaround: send two works
