@@ -67,6 +67,12 @@ const FPGA_IPCORE_F_CLK_BASE_BAUD_DIV: usize = 16;
 /// Default PLL frequency for clocking the chips
 const DEFAULT_S9_PLL_FREQUENCY: u64 = 650_000_000;
 
+/// Default initial voltage
+const INITIAL_VOLTAGE: power::Voltage = power::Voltage::from_volts(9.4);
+
+/// Default PLL value (650 MHz)
+const DEFAULT_PLL_CONFIG: u32 = 0x21026800;
+
 lazy_static! {
     /// What is our target?
     static ref ASIC_TARGET: ii_bitcoin::Target =
@@ -298,7 +304,7 @@ where
         info!("Starting voltage controller heart beat task");
         let _ = self.voltage_ctrl.start_heart_beat_task();
 
-        self.voltage_ctrl.set_voltage(6)?;
+        self.voltage_ctrl.set_voltage(INITIAL_VOLTAGE)?;
         self.voltage_ctrl.enable_voltage()?;
         info!("Resetting hash board");
         self.enter_reset()?;
@@ -398,9 +404,9 @@ where
     /// Loads PLL register with a starting value
     fn set_pll(&self) -> error::Result<()> {
         self.for_all_chips(|addr| {
-            // see {"650",0x068040, 0x0220, 0x680221} in driver-btm-c5
             // TODO: fix endianity of this register so it matches datasheet
-            let cmd = bm1387::SetConfigCmd::new(addr, false, bm1387::PLL_PARAM_REG, 0x21026800);
+            let cmd =
+                bm1387::SetConfigCmd::new(addr, false, bm1387::PLL_PARAM_REG, DEFAULT_PLL_CONFIG);
             self.send_ctl_cmd(&cmd.pack(), false);
             Ok(())
         })
