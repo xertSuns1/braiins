@@ -5,7 +5,6 @@ use super::error::{self, ErrorKind};
 use super::icarus;
 
 use crate::hal;
-use crate::utils::compat_block_on;
 use crate::work;
 
 use failure::{Fail, ResultExt};
@@ -304,7 +303,7 @@ impl<'a> Iterator for BlockErupterSolver<'a> {
             }
 
             prev_work = self.curr_work.take().map(|work| (work, self.solution_id));
-            match compat_block_on(self.work_generator.generate()) {
+            match ii_async_compat::block_on(self.work_generator.generate()) {
                 // end of stream
                 None => break,
                 // send new work and wait for result in the next iteration when no error occurs

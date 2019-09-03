@@ -3,7 +3,6 @@ use ii_logging::macros::*;
 use super::*;
 
 use crate::hal;
-use crate::utils;
 
 use std::time::{Duration, Instant};
 
@@ -15,7 +14,7 @@ use futures::stream::StreamExt;
 use tokio::await;
 use tokio::timer::Delay;
 
-use crate::utils::{timeout_future, TimeoutResult};
+use ii_async_compat::{timeout_future, TimeoutResult};
 
 /// Our local abbreviation
 type HChainCtl = super::HChainCtl<
@@ -158,15 +157,15 @@ fn test_work_generation() {
     let _work_sender_guard = work_sender.clone();
     let _solution_sender_guard = solution_sender.clone();
 
-    utils::run_async_main_exits(async move {
+    ii_async_compat::run_main_exits(async move {
         // Start HW
         let h_chain_ctl = Arc::new(Mutex::new(start_hchain()));
 
         // start HW receiver
-        tokio::spawn(receiver_task(h_chain_ctl.clone(), solution_sender).compat_fix());
+        ii_async_compat::spawn(receiver_task(h_chain_ctl.clone(), solution_sender));
 
         // start HW sender
-        tokio::spawn(sender_task(h_chain_ctl.clone(), work_receiver).compat_fix());
+        ii_async_compat::spawn(sender_task(h_chain_ctl.clone(), work_receiver));
 
         // the first 3 work loads don't produce any solutions, these are merely to initialize the input
         // queue of each hashing chip

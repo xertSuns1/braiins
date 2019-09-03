@@ -5,7 +5,6 @@ use bosminer::hal;
 use bosminer::stats;
 use bosminer::work;
 
-use ii_wire::utils::CompatFix;
 use tokio::await;
 
 use futures_locks::Mutex;
@@ -25,8 +24,8 @@ async fn main_task(stratum_addr: String, user: String) {
     // start HW backend for selected target
     hal::run(work_solver, mining_stats.clone(), shutdown_sender);
     // start hashrate-meter task
-    tokio::spawn(stats::hashrate_meter_task_hashchain(mining_stats).compat_fix());
-    tokio::spawn(stats::hashrate_meter_task().compat_fix());
+    ii_async_compat::spawn(stats::hashrate_meter_task_hashchain(mining_stats));
+    ii_async_compat::spawn(stats::hashrate_meter_task());
     // start stratum V2 client
     await!(stratum_v2::run(job_solver, stratum_addr, user));
 }
@@ -59,5 +58,5 @@ fn main() {
     let stratum_addr = args.value_of("pool").unwrap();
     let user = args.value_of("user").unwrap();
 
-    tokio::run(main_task(stratum_addr.to_string(), user.to_string()).compat_fix());
+    ii_async_compat::run(main_task(stratum_addr.to_string(), user.to_string()));
 }

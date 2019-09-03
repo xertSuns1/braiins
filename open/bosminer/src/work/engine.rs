@@ -195,7 +195,11 @@ pub mod test {
     #[test]
     fn test_atomic_range() {
         compare_range(0, 1, 1);
-        compare_range(ii_bitcoin::BIP320_VERSION_MAX - 1, ii_bitcoin::BIP320_VERSION_MAX, 1);
+        compare_range(
+            ii_bitcoin::BIP320_VERSION_MAX - 1,
+            ii_bitcoin::BIP320_VERSION_MAX,
+            1,
+        );
         compare_range(std::u32::MAX - 1, std::u32::MAX, 1);
 
         compare_range(0, 2, 1);

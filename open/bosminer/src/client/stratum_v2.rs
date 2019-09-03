@@ -5,7 +5,6 @@ use ii_bitcoin::HashTrait;
 use crate::hal;
 use crate::work;
 
-use ii_wire::utils::CompatFix;
 use tokio::prelude::*;
 use tokio::r#await;
 
@@ -411,7 +410,7 @@ pub async fn run(job_solver: work::JobSolver, stratum_addr: String, user: String
     let (connection_rx, connection_tx) = connection.split();
 
     // run event handler in a separate task
-    tokio::spawn(event_handler_task(connection_rx, event_handler).compat_fix());
+    ii_async_compat::spawn(event_handler_task(connection_rx, event_handler));
 
     await!(StratumSolutionHandler::new(connection_tx, job_solution).run());
 }

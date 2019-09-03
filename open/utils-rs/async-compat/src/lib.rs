@@ -1,11 +1,30 @@
+#![feature(await_macro, async_await, duration_float)]
+
 use futures::compat::Future01CompatExt;
 use futures::{FutureExt, TryFutureExt};
 use futures_01::future::Either;
 use futures_01::Future as OldFuture;
-use ii_wire::utils::CompatFix;
+
 use std::future::Future as StdFuture;
 use std::time::{Duration, Instant};
+
 use tokio::timer::Delay;
+
+/// Like `tokio::run`, but takes an `async` block
+pub fn run<F>(future: F)
+where
+    F: StdFuture<Output = ()> + Send + 'static,
+{
+    tokio::run(future.unit_error().boxed().compat());
+}
+
+/// Like `tokio::spawn`, but takes an `async` block
+pub fn spawn<F>(future: F)
+where
+    F: StdFuture<Output = ()> + Send + 'static,
+{
+    tokio::spawn(future.unit_error().boxed().compat());
+}
 
 /// Start Tokio runtime
 ///
@@ -14,7 +33,7 @@ use tokio::timer::Delay;
 ///
 /// This is a way to shutdown Tokio without diving too deep into
 /// Tokio internals.
-pub fn run_async_main_exits<F>(future: F)
+pub fn run_main_exits<F>(future: F)
 where
     F: StdFuture<Output = ()> + Send + 'static,
 {
@@ -22,7 +41,7 @@ where
 
     let mut runtime = Runtime::new().expect("failed to start new Runtime");
     runtime
-        .block_on(future.compat_fix())
+        .block_on(future.unit_error().boxed().compat())
         .expect("main task can't return error");
 }
 
@@ -30,12 +49,13 @@ where
 ///
 /// This function will block the caller until the given future has completed.
 /// This implementation is compatible with tokio.
-pub fn compat_block_on<F: StdFuture + Send>(f: F) -> F::Output {
-    f.unit_error()
+pub fn block_on<F: StdFuture + Send>(future: F) -> F::Output {
+    future
+        .unit_error()
         .boxed()
         .compat()
         .wait()
-        .expect("future in `compat_block_on` returned error")
+        .expect("future in `block_on` returned error")
 }
 
 /// Enum representing waiting for timeout.
