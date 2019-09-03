@@ -558,13 +558,13 @@ where
     async fn recv_solution(
         h_chain_ctl: Arc<Mutex<Self>>,
         mut rx_fifo: fifo::HChainFifo,
-    ) -> Result<(fifo::HChainFifo, Option<crate::hal::MiningWorkSolution>), failure::Error> {
+    ) -> Result<(fifo::HChainFifo, Option<hal::MiningWorkSolution>), failure::Error> {
         let nonce = await!(rx_fifo.async_read_from_work_rx_fifo())?;
         let word2 = await!(rx_fifo.async_read_from_work_rx_fifo())?;
 
         // TODO: maybe all the `work_id` tracking could be kept in TX fifo?
         let h_chain_ctl = await!(h_chain_ctl.lock()).expect("h_chain lock failed");
-        let solution = crate::hal::MiningWorkSolution {
+        let solution = hal::MiningWorkSolution {
             nonce,
             // this hardware doesn't do any nTime rolling, keep it @ None
             ntime: None,
@@ -695,7 +695,7 @@ where
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         mining_stats: Arc<Mutex<hal::MiningStats>>,
         work_generator: work::Generator,
-        shutdown: crate::hal::ShutdownSender,
+        shutdown: hal::ShutdownSender,
     ) {
         ii_async_compat::spawn(async move {
             let mut tx_fifo = await!(h_chain_ctl.lock())
@@ -750,7 +750,7 @@ impl HChain {
         &self,
         work_solver: work::Solver,
         mining_stats: Arc<Mutex<hal::MiningStats>>,
-        shutdown: crate::hal::ShutdownSender,
+        shutdown: hal::ShutdownSender,
     ) -> Arc<
         Mutex<
             s9::HChainCtl<
@@ -806,7 +806,7 @@ impl HChain {
 pub fn run(
     work_solver: work::Solver,
     mining_stats: Arc<Mutex<hal::MiningStats>>,
-    shutdown: crate::hal::ShutdownSender,
+    shutdown: hal::ShutdownSender,
 ) {
     // Create one chain
     let chain = HChain::new();
