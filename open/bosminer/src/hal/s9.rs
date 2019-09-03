@@ -577,10 +577,7 @@ where
     }
 
     /// Initialize cores by sending open-core work with correct nbits to each core
-    async fn send_init_work(
-        h_chain_ctl: Arc<Mutex<s9::HChainCtl<VBackend>>>,
-        tx_fifo: &mut fifo::HChainFifo,
-    ) {
+    async fn send_init_work(h_chain_ctl: Arc<Mutex<Self>>, tx_fifo: &mut fifo::HChainFifo) {
         // Each core gets one work
         const NUM_WORK: usize = bm1387::NUM_CORES_ON_CHIP;
         trace!(
@@ -606,9 +603,9 @@ where
     ///
     /// Returns the amount of work generated during this run
     async fn async_send_work(
+        h_chain_ctl: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         mining_stats: Arc<Mutex<hal::MiningStats>>,
-        h_chain_ctl: Arc<Mutex<s9::HChainCtl<VBackend>>>,
         mut tx_fifo: fifo::HChainFifo,
         mut work_generator: work::Generator,
     ) {
@@ -635,17 +632,16 @@ where
     }
 
     async fn async_recv_solutions(
+        h_chain_ctl: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         mining_stats: Arc<Mutex<hal::MiningStats>>,
-        h_chain_ctl: Arc<Mutex<s9::HChainCtl<VBackend>>>,
         mut rx_fifo: fifo::HChainFifo,
         work_solution: work::SolutionSender,
     ) {
         // solution receiving/filtering part
         loop {
             let (rx_fifo_out, solution) =
-                await!(s9::HChainCtl::recv_solution(h_chain_ctl.clone(), rx_fifo))
-                    .expect("recv solution");
+                await!(Self::recv_solution(h_chain_ctl.clone(), rx_fifo)).expect("recv solution");
             rx_fifo = rx_fifo_out;
             let solution = solution.expect("solution is ok");
             let work_id = await!(h_chain_ctl.lock())
@@ -695,9 +691,9 @@ where
     }
 
     fn spawn_tx_task(
+        h_chain_ctl: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         mining_stats: Arc<Mutex<hal::MiningStats>>,
-        h_chain_ctl: Arc<Mutex<s9::HChainCtl<VBackend>>>,
         work_generator: work::Generator,
         shutdown: crate::hal::ShutdownSender,
     ) {
@@ -710,9 +706,9 @@ where
 
             await!(Self::send_init_work(h_chain_ctl.clone(), &mut tx_fifo));
             await!(Self::async_send_work(
+                h_chain_ctl,
                 work_registry,
                 mining_stats,
-                h_chain_ctl,
                 tx_fifo,
                 work_generator,
             ));
@@ -721,9 +717,9 @@ where
     }
 
     fn spawn_rx_task(
+        h_chain_ctl: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         mining_stats: Arc<Mutex<hal::MiningStats>>,
-        h_chain_ctl: Arc<Mutex<s9::HChainCtl<VBackend>>>,
         work_solution: work::SolutionSender,
     ) {
         ii_async_compat::spawn(async move {
@@ -733,9 +729,9 @@ where
                 .take()
                 .expect("work-rx fifo missing");
             await!(Self::async_recv_solutions(
+                h_chain_ctl,
                 work_registry,
                 mining_stats,
-                h_chain_ctl,
                 rx_fifo,
                 work_solution,
             ));
@@ -789,16 +785,16 @@ impl HChain {
         let (work_generator, work_solution) = work_solver.split();
 
         HChainCtl::spawn_tx_task(
+            h_chain_ctl.clone(),
             work_registry.clone(),
             mining_stats.clone(),
-            h_chain_ctl.clone(),
             work_generator,
             shutdown.clone(),
         );
         HChainCtl::spawn_rx_task(
+            h_chain_ctl.clone(),
             work_registry.clone(),
             mining_stats.clone(),
-            h_chain_ctl.clone(),
             work_solution,
         );
 
