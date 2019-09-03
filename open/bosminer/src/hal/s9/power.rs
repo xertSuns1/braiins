@@ -65,6 +65,40 @@ const RD_TEMP_OFFSET_VALUE: u8 = 0x23;
 /// The PIC firmware in the voltage controller is expected to provide/return this version
 pub const EXPECTED_VOLTAGE_CTRL_VERSION: u8 = 0x03;
 
+/// Bundle voltage value with methods to convert it to/from various representations
+pub struct Voltage(f32);
+
+impl Voltage {
+    pub const fn from_volts(voltage: f32) -> Self {
+        Self(voltage)
+    }
+
+    #[inline]
+    pub fn as_volts(&self) -> f32 {
+        self.0
+    }
+
+    /// These PIC conversion functions and coefficients are taken from
+    /// bmminer source: getPICvoltageFromValue, getVolValueFromPICvoltage
+    const VOLT_CONV_COEF_1: f32 = 1608.420446;
+    const VOLT_CONV_COEF_2: f32 = 170.423497;
+
+    pub fn as_pic_value(&self) -> error::Result<u8> {
+        let pic_val = (Self::VOLT_CONV_COEF_1 - Self::VOLT_CONV_COEF_2 * self.0).round();
+        if pic_val >= 0.0 && pic_val <= 255.0 {
+            Ok(pic_val as u8)
+        } else {
+            Err(ErrorKind::Power(
+                "requested voltage out of range".to_string(),
+            ))?
+        }
+    }
+
+    pub fn from_pic_value(pic_val: u8) -> Self {
+        Self((Self::VOLT_CONV_COEF_1 - pic_val as f32) / Self::VOLT_CONV_COEF_2)
+    }
+}
+
 /// Describes a voltage controller backend interface
 pub trait VoltageCtrlBackend {
     /// Sends a Write transaction for a voltage controller on a particular hashboard
@@ -165,25 +199,6 @@ impl VoltageCtrlBackend for VoltageCtrlI2cSharedBlockingBackend<VoltageCtrlI2cBl
     }
 }
 
-/// Convert voltage to voltage controller value in PIC
-/// These are taken from bmminer source: getPICvoltageFromValue, getVolValueFromPICvoltage
-/// Return either `Some` value if conversion was successful, `None` otherwise
-pub fn voltage_to_pic_value(voltage: f32) -> error::Result<u8> {
-    let pic_val = (1608.420446 - 170.423497 * voltage).round();
-    if pic_val >= 0.0 && pic_val <= 255.0 {
-        Ok(pic_val as u8)
-    } else {
-        Err(ErrorKind::Power(
-            "requested voltage out of range".to_string(),
-        ))?
-    }
-}
-
-/// Convert PIC value to voltage
-pub fn pic_value_to_voltage(pic_val: u8) -> f32 {
-    (1608.420446 - pic_val as f32) / 170.423497
-}
-
 /// Represents a voltage controller for a particular hashboard
 pub struct VoltageCtrl<T> {
     // Backend that carries out the operation
@@ -242,9 +257,9 @@ where
         self.write(ENABLE_VOLTAGE, &[false as u8])
     }
 
-    pub fn set_voltage(&mut self, value: u8) -> error::Result<()> {
-        trace!("Setting voltage to {}", value);
-        self.write(SET_VOLTAGE, &[value])
+    pub fn set_voltage(&mut self, voltage: Voltage) -> error::Result<()> {
+        trace!("Setting voltage to {}", voltage.as_volts());
+        self.write(SET_VOLTAGE, &[voltage.as_pic_value()?])
     }
 
     pub fn get_voltage(&mut self) -> error::Result<u8> {
@@ -319,18 +334,38 @@ mod test {
 
     #[test]
     fn test_voltage_to_pic() {
-        assert_eq!(voltage_to_pic_value(9.4).unwrap(), 6);
-        assert_eq!(voltage_to_pic_value(8.9).unwrap(), 92);
-        assert_eq!(voltage_to_pic_value(8.1).unwrap(), 228);
-        assert!(voltage_to_pic_value(10.0).is_err());
+        assert_eq!(Voltage::from_volts(9.4).as_pic_value().unwrap(), 6);
+        assert_eq!(Voltage::from_volts(8.9).as_pic_value().unwrap(), 92);
+        assert_eq!(Voltage::from_volts(8.1).as_pic_value().unwrap(), 228);
+        assert!(Voltage::from_volts(10.0).as_pic_value().is_err());
     }
 
     #[test]
     fn test_pic_to_voltage() {
         let epsilon = 0.01f32;
-        let difference = pic_value_to_voltage(6) - 9.40;
+        let difference = Voltage::from_pic_value(6).as_volts() - 9.40;
         assert!(difference.abs() <= epsilon);
-        let difference = pic_value_to_voltage(92) - 8.9;
+        let difference = Voltage::from_pic_value(92).as_volts() - 8.9;
         assert!(difference.abs() <= epsilon);
+    }
+
+    #[test]
+    fn test_pic_boundary() {
+        // pic=255
+        assert!(Voltage::from_volts(7.941513170569432)
+            .as_pic_value()
+            .is_ok());
+        // pic=256
+        assert!(Voltage::from_volts(7.935645435089271)
+            .as_pic_value()
+            .is_err());
+        // pic=0
+        assert!(Voltage::from_volts(9.437785718010469)
+            .as_pic_value()
+            .is_ok());
+        // pic=-1
+        assert!(Voltage::from_volts(9.443653453490631)
+            .as_pic_value()
+            .is_err());
     }
 }
