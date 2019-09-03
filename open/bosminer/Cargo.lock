@@ -145,6 +145,7 @@ dependencies = [
  "hex 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "ii-async-compat 0.1.0",
  "ii-bitcoin 0.1.0",
+ "ii-fpga-io-am1-s9 0.1.0",
  "ii-logging 0.1.0",
  "ii-stratum 0.1.0",
  "ii-wire 0.1.0",
@@ -153,7 +154,6 @@ dependencies = [
  "linux-embedded-hal 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "packed_struct 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "packed_struct_codegen 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "s9-io 0.1.0",
  "sysfs_gpio 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.1.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-async-await 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -474,6 +474,15 @@ dependencies = [
  "packed_struct 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "packed_struct_codegen 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "uint 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "ii-fpga-io-am1-s9"
+version = "0.1.0"
+dependencies = [
+ "bare-metal 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "svd-build 0.1.0",
+ "vcell 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1004,14 +1013,6 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
-name = "s9-io"
-version = "0.1.0"
-dependencies = [
- "bare-metal 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "vcell 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "scoped_threadpool"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1158,6 +1159,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "strsim"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "svd-build"
+version = "0.1.0"
 
 [[package]]
 name = "syn"

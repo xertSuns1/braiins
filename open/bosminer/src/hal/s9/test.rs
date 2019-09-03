@@ -1,7 +1,8 @@
-use super::*;
-use s9_io::hchainio0;
-
 pub mod work_generation;
+
+use super::*;
+
+use ii_fpga_io_am1_s9::hchainio0;
 
 #[test]
 fn test_hchain_ctl_instance() {

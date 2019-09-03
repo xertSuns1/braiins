@@ -4,14 +4,8 @@ version = "0.1.0"
 authors = ["Braiins <braiins@braiins.com>"]
 edition = '2018'
 
-[workspace]
-
-members = [
-    "s9-io",
-]
-
 [dependencies]
-s9-io = { path = "s9-io", optional = true }
+ii-fpga-io-am1-s9 = { path = "../hw/zynq-io-am1-s9/fpga-io", optional = true }
 packed_struct="0.3"
 packed_struct_codegen = "0.3"
 byteorder = "1.2.7"
@@ -44,5 +38,5 @@ features = ["unproven"]
 [features]
 default = []
 backend_selected = []
-antminer_s9 = ["backend_selected", "s9-io", "uio", "linux-embedded-hal", "sysfs_gpio"]
+antminer_s9 = ["backend_selected", "ii-fpga-io-am1-s9", "uio", "linux-embedded-hal", "sysfs_gpio"]
 erupter = ["backend_selected", "libusb"]

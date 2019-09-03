@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use std::ops;
 use std::time::Duration;
 
-use s9_io::hchainio0;
+use ii_fpga_io_am1_s9::hchainio0;
 
 use super::error::{self, ErrorKind};
 use crate::hal;

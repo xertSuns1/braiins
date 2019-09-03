@@ -36,7 +36,7 @@ use packed_struct::{PackedStruct, PackedStructSlice};
 use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
 
-use s9_io::hchainio0::ctrl_reg::MIDSTATE_CNT_A;
+use ii_fpga_io_am1_s9::hchainio0::ctrl_reg::MIDSTATE_CNT_A;
 
 /// Timing constants
 const INACTIVATE_FROM_CHAIN_DELAY_MS: u64 = 100;
@@ -102,7 +102,7 @@ pub struct HChainCtl<VBackend> {
     /// Number of chips that have been detected
     chip_count: usize,
     /// Eliminates the need to query the IP core about the current number of configured midstates
-    midstate_count_log2: s9_io::hchainio0::ctrl_reg::MIDSTATE_CNT_A,
+    midstate_count_log2: MIDSTATE_CNT_A,
     /// ASIC difficulty
     asic_difficulty: usize,
     /// PLL frequency
@@ -143,7 +143,7 @@ where
         gpio_mgr: &gpio::ControlPinManager,
         voltage_ctrl_backend: VBackend,
         hashboard_idx: usize,
-        midstate_count_log2: s9_io::hchainio0::ctrl_reg::MIDSTATE_CNT_A,
+        midstate_count_log2: MIDSTATE_CNT_A,
         asic_difficulty: usize,
     ) -> error::Result<Self> {
         // Hashboard creation is aborted if the pin is not present
