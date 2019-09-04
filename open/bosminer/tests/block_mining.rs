@@ -10,6 +10,7 @@ use ii_bitcoin::HashTrait;
 
 use bosminer::config;
 use bosminer::hal::{self, BitcoinJob, MiningWork, UniqueMiningWorkSolution};
+use bosminer::runtime_config;
 use bosminer::test_utils;
 use bosminer::work;
 
@@ -59,10 +60,11 @@ impl std::fmt::Debug for Problem {
 /// slightly. There's no guarantee these blocks have no solution.
 impl From<Problem> for MiningWork {
     fn from(problem: Problem) -> Self {
+        let midstate_count = runtime_config::get_midstate_count();
         let job: &test_utils::TestBlock = problem.model_solution.job();
         let time = job.time();
         let correct_version = job.version();
-        let mut midstates = Vec::with_capacity(config::MIDSTATE_COUNT);
+        let mut midstates = Vec::with_capacity(midstate_count);
 
         // prepare block chunk1 with all invariants
         let mut block_chunk1 = ii_bitcoin::BlockHeader {
@@ -72,7 +74,7 @@ impl From<Problem> for MiningWork {
         };
 
         // generate all midstates from given range of indexes
-        for index in 0..config::MIDSTATE_COUNT {
+        for index in 0..midstate_count {
             // use index for generation compatible header version
             let version = correct_version ^ (index as u32) ^ (problem.target_midstate as u32);
             block_chunk1.version = version;
@@ -264,6 +266,9 @@ fn test_block_mining() {
     // this is a small miner core: we generate work, collect solutions, and we pair them together
     // we expect all (generated) problems to be solved
     ii_async_compat::run_main_exits(async {
+        // read config
+        let midstate_count = runtime_config::get_midstate_count();
+
         // Create solver and channels to send/receive work
         let (mut engine_sender, solution_queue_rx, mut reschedule_receiver, work_solver) =
             build_solvers();
@@ -287,7 +292,7 @@ fn test_block_mining() {
         )));
 
         // generate all blocks for all possible midstates
-        for target_midstate in 0..config::MIDSTATE_COUNT {
+        for target_midstate in 0..midstate_count {
             for test_block in test_utils::TEST_BLOCKS.iter() {
                 let problem = Problem {
                     model_solution: test_block.into(),
