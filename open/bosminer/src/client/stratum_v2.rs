@@ -290,7 +290,7 @@ async fn setup_mining_connection<'a>(
 ) -> Result<(), ()> {
     let setup_msg = SetupMiningConnection {
         protocol_version: 0,
-        connection_url: String255::from_string(stratum_addr),
+        connection_url: Str0_255::from_string(stratum_addr),
         /// header only mining
         required_extranonce_size: 0,
     };
