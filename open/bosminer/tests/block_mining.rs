@@ -18,9 +18,9 @@ use std::time::{Duration, Instant};
 use tokio::timer::Delay;
 
 use futures::channel::mpsc;
+use futures::compat::Future01CompatExt;
+use futures::lock::Mutex;
 use futures::stream::StreamExt;
-use futures_locks::Mutex;
-use tokio::await;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -252,9 +252,7 @@ async fn collect_solutions(
             solution.midstate_idx(),
             solution.hash()
         );
-        await!(registry.lock())
-            .expect("registry lock")
-            .add_solution(solution.into());
+        await!(registry.lock()).add_solution(solution.into());
     }
 }
 
@@ -298,9 +296,7 @@ fn test_block_mining() {
                     model_solution: test_block.into(),
                     target_midstate,
                 };
-                let is_unique = await!(registry.lock())
-                    .expect("registry lock")
-                    .add_problem(problem.clone());
+                let is_unique = await!(registry.lock()).add_problem(problem.clone());
                 if !is_unique {
                     panic!("duplicate problem");
                 }
@@ -315,17 +311,14 @@ fn test_block_mining() {
         // wait for hw to finish computation
         let timeout_started = Instant::now();
         while timeout_started.elapsed() < config::JOB_TIMEOUT {
-            await!(Delay::new(Instant::now() + Duration::from_secs(1))).unwrap();
-            if await!(registry.lock())
-                .expect("registry lock failed")
-                .check_everything_solved(false)
-            {
+            await!(Delay::new(Instant::now() + Duration::from_secs(1)).compat()).unwrap();
+            if await!(registry.lock()).check_everything_solved(false) {
                 break;
             }
         }
 
         // go through registry and check if everything was solved
-        let registry = await!(registry.lock()).expect("registry lock");
+        let registry = await!(registry.lock());
         assert!(registry.check_everything_solved(true));
     });
 

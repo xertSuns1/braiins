@@ -6,12 +6,13 @@ use crate::hal::s9::{self, power};
 
 use std::time::{Duration, Instant};
 
-use futures_locks::Mutex;
 use std::sync::Arc;
 
 use futures::channel::mpsc;
+use futures::compat::Future01CompatExt;
+use futures::lock::Mutex;
 use futures::stream::StreamExt;
-use tokio::await;
+
 use tokio::timer::Delay;
 
 use ii_async_compat::{timeout_future, TimeoutResult};
@@ -41,7 +42,6 @@ async fn receiver_task(
     solution_sender: mpsc::UnboundedSender<hal::MiningWorkSolution>,
 ) {
     let mut rx_fifo = await!(h_chain_ctl.lock())
-        .expect("locking failed")
         .work_rx_fifo
         .take()
         .expect("work-rx fifo missing");
@@ -62,7 +62,6 @@ async fn sender_task(
     mut work_receiver: mpsc::UnboundedReceiver<hal::MiningWork>,
 ) {
     let mut tx_fifo = await!(h_chain_ctl.lock())
-        .expect("locking failed")
         .work_tx_fifo
         .take()
         .expect("work-tx fifo missing");
@@ -70,10 +69,7 @@ async fn sender_task(
     loop {
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
         let work = await!(work_receiver.next()).expect("failed receiving work");
-        let work_id = await!(h_chain_ctl.lock())
-            .expect("h_chain lock")
-            .work_id_gen
-            .next();
+        let work_id = await!(h_chain_ctl.lock()).work_id_gen.next();
         // send work is synchronous
         tx_fifo.send_work(&work, work_id as u32).expect("send work");
     }
@@ -97,7 +93,7 @@ async fn send_and_receive_test_workloads<'a>(
         // wait time to send out work + to compute work
         // TODO: come up with a formula instead of fixed time interval
         // wait = work_time * number_of_chips + time_to_send_out_a_jov
-        await!(Delay::new(Instant::now() + Duration::from_millis(100))).unwrap();
+        await!(Delay::new(Instant::now() + Duration::from_millis(100)).compat()).unwrap();
     }
     let mut returned_solution_count = 0;
     loop {
@@ -177,9 +173,7 @@ fn test_work_generation() {
         // submit 2 more work items, since we are intentionally being slow all chips should send a
         // solution for the submitted work
         let more_work_count = 2usize;
-        let chip_count = await!(h_chain_ctl.lock())
-            .expect("locking failed")
-            .get_chip_count();
+        let chip_count = await!(h_chain_ctl.lock()).get_chip_count();
         let expected_solution_count = more_work_count * chip_count;
 
         await!(send_and_receive_test_workloads(

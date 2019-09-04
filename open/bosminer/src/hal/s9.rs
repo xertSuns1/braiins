@@ -22,14 +22,12 @@ use lazy_static::lazy_static;
 
 use std::time::{Duration, SystemTime};
 
-use tokio::await;
-
 use error::ErrorKind;
 use failure::ResultExt;
 
 use crate::work;
 
-use futures_locks::Mutex;
+use futures::lock::Mutex;
 
 use byteorder::{ByteOrder, LittleEndian};
 use packed_struct::{PackedStruct, PackedStructSlice};
@@ -608,10 +606,7 @@ where
         );
         for _ in 0..NUM_WORK {
             let work = &null_work::prepare_opencore(true, tx_fifo.midstate_count.to_count());
-            let work_id = await!(h_chain_ctl.lock())
-                .expect("h_chain lock")
-                .work_id_gen
-                .next();
+            let work_id = await!(h_chain_ctl.lock()).work_id_gen.next();
             await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
             // TODO: remember work_id assignment in registry
             tx_fifo.send_work(&work, work_id as u32).expect("send work");
@@ -638,16 +633,11 @@ where
             match work {
                 None => return,
                 Some(work) => {
-                    let work_id = await!(h_chain_ctl.lock())
-                        .expect("h_chain lock")
-                        .work_id_gen
-                        .next();
+                    let work_id = await!(h_chain_ctl.lock()).work_id_gen.next();
                     // send work is synchronous
                     tx_fifo.send_work(&work, work_id as u32).expect("send work");
-                    await!(work_registry.lock())
-                        .expect("locking ok")
-                        .store_work(work_id as usize, work);
-                    let mut stats = await!(mining_stats.lock()).expect("minig stats lock");
+                    await!(work_registry.lock()).store_work(work_id as usize, work);
+                    let mut stats = await!(mining_stats.lock());
                     stats.work_generated += tx_fifo.midstate_count.to_count();
                     drop(stats);
                 }
@@ -669,9 +659,8 @@ where
             rx_fifo = rx_fifo_out;
             let solution_id = SolutionId::from_reg(solution.solution_id, rx_fifo.midstate_count);
             let work_id = solution_id.work_id;
-            let mut stats = await!(mining_stats.lock()).expect("lock mining stats");
-            let mut work_registry =
-                await!(work_registry.lock()).expect("work registry lock failed");
+            let mut stats = await!(mining_stats.lock());
+            let mut work_registry = await!(work_registry.lock());
 
             let work = work_registry.find_work(work_id);
             match work {
@@ -718,7 +707,6 @@ where
     ) {
         ii_async_compat::spawn(async move {
             let mut tx_fifo = await!(h_chain_ctl.lock())
-                .expect("locking failed")
                 .work_tx_fifo
                 .take()
                 .expect("work-tx fifo missing");
@@ -743,7 +731,6 @@ where
     ) {
         ii_async_compat::spawn(async move {
             let rx_fifo = await!(h_chain_ctl.lock())
-                .expect("locking failed")
                 .work_rx_fifo
                 .take()
                 .expect("work-rx fifo missing");

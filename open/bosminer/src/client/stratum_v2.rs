@@ -6,7 +6,6 @@ use crate::hal;
 use crate::work;
 
 use tokio::prelude::*;
-use tokio::r#await;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
