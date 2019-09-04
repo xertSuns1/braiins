@@ -88,9 +88,7 @@ impl Voltage {
         if pic_val >= 0.0 && pic_val <= 255.0 {
             Ok(pic_val as u8)
         } else {
-            Err(ErrorKind::Power(
-                "requested voltage out of range".to_string(),
-            ))?
+            Err(ErrorKind::Power("requested voltage out of range".to_string()).into())
         }
     }
 
