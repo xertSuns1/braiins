@@ -6,9 +6,7 @@ use bosminer::runtime_config;
 use bosminer::stats;
 use bosminer::work;
 
-use tokio::await;
-
-use futures_locks::Mutex;
+use futures::lock::Mutex;
 
 use std::sync::Arc;
 

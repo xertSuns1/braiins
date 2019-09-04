@@ -11,8 +11,8 @@ use error::ErrorKind;
 use tokio_threadpool::blocking;
 
 // use old futures which is compatible with current tokio
-use futures_01::future::{poll_fn, Future};
-use futures_locks::Mutex;
+use futures::lock::Mutex;
+use futures_01::future::poll_fn;
 
 use failure::ResultExt;
 use std::sync::Arc;
@@ -39,11 +39,7 @@ fn main_task(
     for solution in &mut solver {
         solution_sender.send(solution);
 
-        mining_stats
-            .lock()
-            .wait()
-            .expect("cannot lock mining stats")
-            .unique_solutions += 1;
+        ii_async_compat::block_on(mining_stats.lock()).unique_solutions += 1;
     }
 
     // check solver for errors

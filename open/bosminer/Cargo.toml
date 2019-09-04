@@ -16,9 +16,8 @@ failure = "0.1.5"
 uio-async = { path = "../utils-rs/uio-async", optional = true }
 tokio = { version = "=0.1.19", features = ["async-await-preview"] }
 tokio-threadpool = "0.1.14"
-futures-preview = { version = "0.3.0-alpha.15", features = ["compat"] }
+futures-preview = { version = "=0.3.0-alpha.16", features = ["compat"] }
 futures-01 = { version = "0.1.27", package = "futures" }
-futures-locks = "0.3.3"
 downcast-rs = "1.0.4"
 ii-bitcoin = { path = "../coins/bitcoin" }
 ii-wire = { path = "../protocols/wire" }
