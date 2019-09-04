@@ -45,9 +45,9 @@ async fn receiver_task(
         .work_rx_fifo
         .take()
         .expect("work-rx fifo missing");
+
     loop {
-        let (rx_fifo_out, solution) =
-            await!(HChainCtl::recv_solution(rx_fifo)).expect("recv solution");
+        let (rx_fifo_out, solution) = await!(rx_fifo.recv_solution()).expect("recv solution");
         rx_fifo = rx_fifo_out;
 
         solution_sender
