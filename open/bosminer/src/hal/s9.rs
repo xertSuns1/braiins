@@ -781,7 +781,10 @@ impl HChain {
         )
         .unwrap();
 
-        info!("Initializing hash chain controller");
+        info!(
+            "Initializing hash chain controller for (midstate count {})",
+            h_chain_ctl.midstate_count()
+        );
         h_chain_ctl.init().unwrap();
         info!("Hash chain controller initialized");
 

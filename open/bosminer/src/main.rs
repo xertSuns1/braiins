@@ -2,6 +2,7 @@
 
 use bosminer::client::stratum_v2;
 use bosminer::hal;
+use bosminer::runtime_config;
 use bosminer::stats;
 use bosminer::work;
 
@@ -52,11 +53,23 @@ fn main() {
                 .required(true)
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("disable-asic-boost")
+                .long("disable-asic-boost")
+                .help("Disable ASIC boost (use just one midstate)")
+                .required(false),
+        )
         .get_matches();
 
     // Unwraps should be ok as long as the flags are required
     let stratum_addr = args.value_of("pool").unwrap();
     let user = args.value_of("user").unwrap();
+
+    // Set just 1 midstate if user requested disabling asicboost
+    if args.is_present("disable-asic-boost") {
+        let mut config = runtime_config::CONFIG.lock().expect("config lock failed");
+        config.midstate_count = 1;
+    }
 
     ii_async_compat::run(main_task(stratum_addr.to_string(), user.to_string()));
 }

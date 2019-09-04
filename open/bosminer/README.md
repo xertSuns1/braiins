@@ -147,11 +147,14 @@ The miner can be run on host target or on remote one depending on backend and su
 
 ```shell
 # run miner on host target (without runner)
-cargo run --target <TARGET> --features <BACKEND> -- --pool <POOLV2PROXY> --user <POOLUSER>
+cargo run --target <TARGET> --features <BACKEND> -- --pool <POOLV2PROXY> --user <POOLUSER> [--disable-asic-boost]
 
 # run miner on remote target (using runner written in python)
-cargo run --target <TARGET> --features <BACKEND> -- [--hostname <HOSTNAME>] -- --pool <POOLV2PROXY> --user <POOLUSER>
+cargo run --target <TARGET> --features <BACKEND> -- [--hostname <HOSTNAME>] -- --pool <POOLV2PROXY> --user <POOLUSER> [--disable-asic-boost]
 ```
+
+The `--disable-asic-boost` option disables ASIC boost on S9 targets (ASIC boost is enabled by default on S9) - this is achieved by changing the number of midstates sent to chips from 4 to 1. This option does nothing on eruptor target.
+
 
 ## Logging
 
