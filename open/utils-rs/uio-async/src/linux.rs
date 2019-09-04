@@ -10,7 +10,8 @@ use std::num::ParseIntError;
 use std::os::unix::prelude::AsRawFd;
 use std::time::{Duration, Instant};
 use timeout_readwrite::TimeoutReader;
-use tokio::await;
+
+use futures::compat::Future01CompatExt;
 
 const PAGESIZE: usize = 4096;
 
@@ -316,7 +317,7 @@ impl UioDevice {
         let file = file.into_io(&tokio::reactor::Handle::default())?;
         let buf = [0u8; 4];
         let read_task = tokio::io::read_exact(file, buf);
-        let (_file_, buf_) = await!(read_task)?;
+        let (_file_, buf_) = await!(read_task.compat())?;
         let res = u32::from_ne_bytes(buf_);
         Ok(res)
     }

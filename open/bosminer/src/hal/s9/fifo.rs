@@ -20,7 +20,7 @@ unsafe impl Sync for HChainFifo {}
 /// Reference-like type holding a memory map created using UioMapping
 /// Used to hold a memory mapping of IP core's register block
 pub struct Mmap<T = u8> {
-    map: uio::UioMapping,
+    map: uio_async::UioMapping,
     _marker: PhantomData<*const T>,
 }
 
@@ -64,21 +64,21 @@ const EXPECTED_BITSTREAM_BUILD_ID: u32 = 0x5D5E7158;
 pub struct HChainFifo {
     pub hash_chain_io: Mmap<hchainio0::RegisterBlock>,
     midstate_count: Option<usize>,
-    work_tx_irq: uio::UioDevice,
-    work_rx_irq: uio::UioDevice,
-    cmd_rx_irq: uio::UioDevice,
+    work_tx_irq: uio_async::UioDevice,
+    work_rx_irq: uio_async::UioDevice,
+    cmd_rx_irq: uio_async::UioDevice,
 }
 
 fn open_ip_core_uio(
     hashboard_idx: usize,
     uio_type: &'static str,
-) -> error::Result<(uio::UioDevice, String)> {
+) -> error::Result<(uio_async::UioDevice, String)> {
     let uio_name = format!("chain{}-{}", hashboard_idx - 1, uio_type);
-    Ok((uio::UioDevice::open_by_name(&uio_name)?, uio_name))
+    Ok((uio_async::UioDevice::open_by_name(&uio_name)?, uio_name))
 }
 
 /// Performs IRQ mapping of IP core's block
-fn map_irq(hashboard_idx: usize, irq_type: &'static str) -> error::Result<uio::UioDevice> {
+fn map_irq(hashboard_idx: usize, irq_type: &'static str) -> error::Result<uio_async::UioDevice> {
     let (uio, _uio_name) = open_ip_core_uio(hashboard_idx, irq_type)?;
     Ok(uio)
 }
@@ -329,14 +329,14 @@ mod test {
     #[test]
     fn test_lookup_uio() {
         let name = String::from("chain7-mem");
-        uio::UioDevice::open_by_name(&name).unwrap();
+        uio_async::UioDevice::open_by_name(&name).unwrap();
     }
 
     /// Try opening non-existent UIO device.
     #[test]
     fn test_lookup_uio_notfound() {
         let name = String::from("chain7-nonsense");
-        let uio = uio::UioDevice::open_by_name(&name);
+        let uio = uio_async::UioDevice::open_by_name(&name);
         assert!(
             uio.is_err(),
             "Found UIO device {} that shouldn't really be there"

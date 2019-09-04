@@ -5,7 +5,7 @@ use std::fmt::{self, Debug, Display};
 
 use std::io;
 use sysfs_gpio;
-use uio;
+use uio_async;
 
 pub struct Error {
     inner: Context<ErrorKind>,
@@ -131,8 +131,8 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<uio::UioError> for Error {
-    fn from(uio_error: uio::UioError) -> Self {
+impl From<uio_async::UioError> for Error {
+    fn from(uio_error: uio_async::UioError) -> Self {
         let msg = uio_error.to_string();
         Self {
             inner: uio_error.context(ErrorKind::Uio(msg)),
