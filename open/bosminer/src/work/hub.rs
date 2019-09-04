@@ -1,8 +1,8 @@
 use ii_logging::macros::*;
 
 use super::*;
-use crate::config;
 use crate::hal;
+use crate::runtime_config;
 use crate::stats;
 use crate::work;
 
@@ -83,7 +83,10 @@ impl JobSender {
 
     pub fn send(&mut self, job: Arc<dyn hal::BitcoinJob>) {
         info!("--- broadcasting new job ---");
-        let engine = Arc::new(engine::VersionRolling::new(job, config::MIDSTATE_COUNT));
+        let engine = Arc::new(engine::VersionRolling::new(
+            job,
+            runtime_config::get_midstate_count(),
+        ));
         self.engine_sender.broadcast(engine);
     }
 }

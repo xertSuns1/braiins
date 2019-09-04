@@ -4,6 +4,7 @@ pub mod client;
 pub mod config;
 pub mod error;
 pub mod hal;
+pub mod runtime_config;
 pub mod stats;
 pub mod work;
 

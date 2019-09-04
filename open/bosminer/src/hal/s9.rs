@@ -12,6 +12,7 @@ pub mod test;
 use ii_logging::macros::*;
 
 use crate::hal::{self, s9};
+use crate::runtime_config;
 
 // TODO: remove thread specific components
 use std::sync::Arc;
@@ -591,7 +592,7 @@ where
             NUM_WORK
         );
         for _ in 0..NUM_WORK {
-            let work = &null_work::prepare_opencore(true, config::MIDSTATE_COUNT);
+            let work = &null_work::prepare_opencore(true, runtime_config::get_midstate_count());
             let work_id = await!(h_chain_ctl.lock())
                 .expect("h_chain lock")
                 .next_work_id();
@@ -630,7 +631,7 @@ where
                         .expect("locking ok")
                         .store_work(work_id as usize, work);
                     let mut stats = await!(mining_stats.lock()).expect("minig stats lock");
-                    stats.work_generated += config::MIDSTATE_COUNT;
+                    stats.work_generated += runtime_config::get_midstate_count();
                     drop(stats);
                 }
             }
@@ -770,7 +771,7 @@ impl HChain {
         let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
         let voltage_ctrl_backend =
             power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
-        let midstate_count_log2 = midstate_count_to_register(config::MIDSTATE_COUNT);
+        let midstate_count_log2 = midstate_count_to_register(runtime_config::get_midstate_count());
         let mut h_chain_ctl = s9::HChainCtl::new(
             &gpio_mgr,
             voltage_ctrl_backend.clone(),
@@ -785,7 +786,7 @@ impl HChain {
         info!("Hash chain controller initialized");
 
         let work_registry = Arc::new(Mutex::new(registry::MiningWorkRegistry::new(
-            config::MIDSTATE_COUNT,
+            runtime_config::get_midstate_count(),
         )));
         let h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
         let (work_generator, work_solution) = work_solver.split();
