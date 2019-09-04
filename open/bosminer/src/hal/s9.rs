@@ -48,10 +48,6 @@ const INIT_DELAY_MS: u64 = 1000;
 /// addresses to the chips need to be assigned with step of 4 (e.g. 0, 4, 8, etc.)
 const MAX_CHIPS_ON_CHAIN: usize = 64;
 
-/// Bit position where work ID starts in the second word provided by the IP core with mining work
-/// solution
-const WORK_ID_OFFSET: usize = 8;
-
 /// Oscillator speed for all chips on S9 hash boards
 const CHIP_OSC_CLK_HZ: usize = 25_000_000;
 
@@ -80,17 +76,105 @@ lazy_static! {
         ii_bitcoin::Target::from_pool_difficulty(config::ASIC_DIFFICULTY);
 }
 
-/// Convert number of midstates to register value
-/// We cannot use `Into` because the structure is foreign to our crate
-pub fn midstate_count_to_register(midstate_count: usize) -> MIDSTATE_CNT_A {
-    match midstate_count {
-        1 => MIDSTATE_CNT_A::ONE,
-        2 => MIDSTATE_CNT_A::TWO,
-        4 => MIDSTATE_CNT_A::FOUR,
-        _ => panic!(
-            "Midstate count of {} not supported on platform S9",
-            midstate_count
-        ),
+/// `MidstateCount` represents the number of midstates S9 FPGA sends to chips.
+/// This information needs to be accessible to everyone that processes `work_id`.
+///
+/// `MidstateCount` provides methods to encode number of midstates in various ways:
+///  * bitmask to mask out parts of `solution_id`
+///  * base-2 logarithm of number of midstates
+///  * FPGA configuration value (which is base-2 logarithm, but as an enum)
+///
+/// `MidstateCount` is always valid - creation of `MidstateCount` object that isn't
+/// supported by hardware shouldn't be possible.
+#[derive(Debug, Clone, Copy)]
+pub struct MidstateCount {
+    /// internal representation is base-2 logarithm of number of midstates
+    log2: usize,
+}
+
+impl MidstateCount {
+    /// Construct Self, panic if number of midstates is not valid for this hw
+    fn new(count: usize) -> Self {
+        match count {
+            1 => Self { log2: 0 },
+            2 => Self { log2: 1 },
+            4 => Self { log2: 2 },
+            _ => panic!("Unsupported S9 Midstate count {}", count),
+        }
+    }
+
+    /// Return midstate count encoded for FPGA
+    fn to_reg(&self) -> MIDSTATE_CNT_A {
+        match self.log2 {
+            0 => MIDSTATE_CNT_A::ONE,
+            1 => MIDSTATE_CNT_A::TWO,
+            2 => MIDSTATE_CNT_A::FOUR,
+            _ => panic!("invalid internal midstate count logarithm"),
+        }
+    }
+
+    /// Return midstate count
+    #[inline]
+    fn to_count(&self) -> usize {
+        1 << self.log2
+    }
+
+    /// Return midstate count mask (to get midstate_idx bits from `work_id`)
+    #[inline]
+    fn to_mask(&self) -> usize {
+        (1 << self.log2) - 1
+    }
+}
+
+/// `SolutionId` provides parsing and representation of "solution id" part of
+/// chip response read as second word from FPGA FIFO.
+#[derive(Debug, Clone)]
+struct SolutionId {
+    pub work_id: usize,
+    pub midstate_idx: usize,
+    pub solution_idx: usize,
+}
+
+impl SolutionId {
+    /// Bit position where work ID starts in the second word provided by the IP core with mining work
+    /// solution
+    const WORK_ID_OFFSET: usize = 8;
+
+    /// Extract fields of "solution id" word into Self
+    pub fn from_reg(solution_reg: u32, midstate_count: MidstateCount) -> Self {
+        let solution_id = (solution_reg & 0xffffff) as usize;
+        let work_id_ext = solution_id >> Self::WORK_ID_OFFSET;
+        Self {
+            solution_idx: solution_id & ((1 << Self::WORK_ID_OFFSET) - 1),
+            work_id: work_id_ext & !midstate_count.to_mask(),
+            midstate_idx: work_id_ext & midstate_count.to_mask(),
+        }
+    }
+}
+
+/// `WorkIdGen` represents a wrapping 16-bit counter used for `work_id` generation.
+/// The counter increments by number of midstates.
+#[derive(Debug, Clone)]
+struct WorkIdGen {
+    midstate_count: MidstateCount,
+    work_id: u16,
+}
+
+impl WorkIdGen {
+    pub fn new(midstate_count: MidstateCount) -> Self {
+        Self {
+            midstate_count,
+            work_id: 0,
+        }
+    }
+
+    pub fn next(&mut self) -> usize {
+        let retval = self.work_id as usize;
+        // compiler has to know that work ID rolls over regularly
+        self.work_id = self
+            .work_id
+            .wrapping_add(self.midstate_count.to_count() as u16);
+        retval
     }
 }
 
@@ -105,11 +189,11 @@ pub fn midstate_count_to_register(midstate_count: usize) -> MIDSTATE_CNT_A {
 /// TODO: rename to HashBoardCtrl and get rid of the hash_chain identifiers + array
 pub struct HChainCtl<VBackend> {
     /// Current work ID once it rolls over, we can start retiring old jobs
-    work_id: u16,
+    work_id_gen: WorkIdGen,
     /// Number of chips that have been detected
     chip_count: usize,
     /// Eliminates the need to query the IP core about the current number of configured midstates
-    midstate_count_log2: MIDSTATE_CNT_A,
+    midstate_count: MidstateCount,
     /// ASIC difficulty
     asic_difficulty: usize,
     /// PLL frequency
@@ -145,12 +229,13 @@ where
     /// * `gpio_mgr` - gpio manager used for producing pins required for hashboard control
     /// * `voltage_ctrl_backend` - communication backend for the voltage controller
     /// * `hashboard_idx` - index of this hashboard determines which FPGA IP core is to be mapped
-    /// * `midstate_count_log2` - see Self
+    /// * `midstate_count` - see Self
+    /// TODO: asic_difficulty
     pub fn new(
         gpio_mgr: &gpio::ControlPinManager,
         voltage_ctrl_backend: VBackend,
         hashboard_idx: usize,
-        midstate_count_log2: MIDSTATE_CNT_A,
+        midstate_count: MidstateCount,
         asic_difficulty: usize,
     ) -> error::Result<Self> {
         // Hashboard creation is aborted if the pin is not present
@@ -176,18 +261,18 @@ where
                 "failed to initialize reset pin".to_string(),
             ))?;
 
-        let mut cmd_fifo = fifo::HChainFifo::new(hashboard_idx)?;
-        let mut work_rx_fifo = fifo::HChainFifo::new(hashboard_idx)?;
-        let mut work_tx_fifo = fifo::HChainFifo::new(hashboard_idx)?;
+        let mut cmd_fifo = fifo::HChainFifo::new(hashboard_idx, midstate_count)?;
+        let mut work_rx_fifo = fifo::HChainFifo::new(hashboard_idx, midstate_count)?;
+        let mut work_tx_fifo = fifo::HChainFifo::new(hashboard_idx, midstate_count)?;
 
         cmd_fifo.init()?;
         work_rx_fifo.init()?;
         work_tx_fifo.init()?;
 
         Ok(Self {
-            work_id: 0,
+            work_id_gen: WorkIdGen::new(midstate_count),
             chip_count: 0,
-            midstate_count_log2,
+            midstate_count,
             asic_difficulty,
             voltage_ctrl: power::VoltageCtrl::new(voltage_ctrl_backend, hashboard_idx),
             plug_pin,
@@ -201,26 +286,13 @@ where
             work_tx_fifo: Some(work_tx_fifo),
         })
     }
-
-    /// Return number of midstates
-    #[inline]
-    fn midstate_count(&self) -> u16 {
-        1 << self.midstate_count_log2 as u8
-    }
-
-    /// Return midstate bits mask
-    #[inline]
-    fn midstate_mask(&self) -> u32 {
-        (1 << self.midstate_count_log2 as u8) - 1
-    }
-
     /// Calculate work_time for this instance of HChain
     ///
     /// Returns number of ticks (suitable to be written to `WORK_TIME` register)
     #[inline]
     fn calculate_work_time(&self) -> u32 {
         secs_to_fpga_ticks(calculate_work_delay_for_pll(
-            self.midstate_count() as u64,
+            self.midstate_count.to_count() as u64,
             self.pll_frequency,
         ))
     }
@@ -236,12 +308,7 @@ where
         trace!("Using work time: {}", work_time);
         self.cmd_fifo.set_ip_core_work_time(work_time);
         self.cmd_fifo
-            .set_ip_core_midstate_count(self.midstate_count_log2);
-        let midstate_count = self.midstate_count() as usize;
-        self.work_tx_fifo
-            .as_mut()
-            .expect("work tx fifo missing")
-            .set_midstate_count(midstate_count);
+            .set_ip_core_midstate_count(self.midstate_count.to_reg());
 
         Ok(())
     }
@@ -470,33 +537,6 @@ where
         Ok(())
     }
 
-    /// Work ID's are generated with a step that corresponds to the number of configured midstates
-    #[inline]
-    pub fn next_work_id(&mut self) -> u32 {
-        let retval = self.work_id as u32;
-        // compiler has to know that work ID rolls over regularly
-        self.work_id = self.work_id.wrapping_add(self.midstate_count());
-        retval
-    }
-
-    /// Helper function that extracts work ID from the solution ID
-    #[inline]
-    pub fn get_work_id_from_solution_id(&self, solution_id: u32) -> u32 {
-        ((solution_id >> WORK_ID_OFFSET) & !self.midstate_mask())
-    }
-
-    /// Extracts midstate index from the solution ID
-    #[inline]
-    fn get_midstate_idx_from_solution_id(&self, solution_id: u32) -> usize {
-        ((solution_id >> WORK_ID_OFFSET) & self.midstate_mask()) as usize
-    }
-
-    /// Extracts solution index from the solution ID
-    #[inline]
-    pub fn get_solution_idx_from_solution_id(&self, solution_id: u32) -> usize {
-        (solution_id & ((1u32 << WORK_ID_OFFSET) - 1)) as usize
-    }
-
     /// Serializes command into 32-bit words and submits it to the command TX FIFO
     ///
     /// * `wait` - when true, wait until all commands are sent
@@ -554,33 +594,26 @@ where
         Ok(Some(resp))
     }
 
-    fn get_work_id_from_solution(&self, solution: &hal::MiningWorkSolution) -> u32 {
-        self.get_work_id_from_solution_id(solution.solution_id)
-    }
-
     pub fn get_chip_count(&self) -> usize {
         self.chip_count
     }
 
     async fn recv_solution(
-        h_chain_ctl: Arc<Mutex<Self>>,
         mut rx_fifo: fifo::HChainFifo,
-    ) -> Result<(fifo::HChainFifo, Option<hal::MiningWorkSolution>), failure::Error> {
+    ) -> Result<(fifo::HChainFifo, hal::MiningWorkSolution), failure::Error> {
         let nonce = await!(rx_fifo.async_read_from_work_rx_fifo())?;
         let word2 = await!(rx_fifo.async_read_from_work_rx_fifo())?;
+        let solution_id = SolutionId::from_reg(word2, rx_fifo.midstate_count);
 
-        // TODO: maybe all the `work_id` tracking could be kept in TX fifo?
-        let h_chain_ctl = await!(h_chain_ctl.lock()).expect("h_chain lock failed");
         let solution = hal::MiningWorkSolution {
             nonce,
-            // this hardware doesn't do any nTime rolling, keep it @ None
             ntime: None,
-            midstate_idx: h_chain_ctl.get_midstate_idx_from_solution_id(word2),
-            // leave the result ID as-is so that we can extract solution index etc later.
-            solution_id: word2 & 0xffffffu32,
+            midstate_idx: solution_id.midstate_idx,
+            solution_idx: solution_id.solution_idx,
+            solution_id: word2,
         };
 
-        Ok((rx_fifo, Some(solution)))
+        Ok((rx_fifo, solution))
     }
 
     /// Initialize cores by sending open-core work with correct nbits to each core
@@ -592,13 +625,14 @@ where
             NUM_WORK
         );
         for _ in 0..NUM_WORK {
-            let work = &null_work::prepare_opencore(true, runtime_config::get_midstate_count());
+            let work = &null_work::prepare_opencore(true, tx_fifo.midstate_count.to_count());
             let work_id = await!(h_chain_ctl.lock())
                 .expect("h_chain lock")
-                .next_work_id();
+                .work_id_gen
+                .next();
             await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
             // TODO: remember work_id assignment in registry
-            tx_fifo.send_work(&work, work_id).expect("send work");
+            tx_fifo.send_work(&work, work_id as u32).expect("send work");
         }
     }
 
@@ -624,14 +658,15 @@ where
                 Some(work) => {
                     let work_id = await!(h_chain_ctl.lock())
                         .expect("h_chain lock")
-                        .next_work_id();
+                        .work_id_gen
+                        .next();
                     // send work is synchronous
-                    tx_fifo.send_work(&work, work_id).expect("send work");
+                    tx_fifo.send_work(&work, work_id as u32).expect("send work");
                     await!(work_registry.lock())
                         .expect("locking ok")
                         .store_work(work_id as usize, work);
                     let mut stats = await!(mining_stats.lock()).expect("minig stats lock");
-                    stats.work_generated += runtime_config::get_midstate_count();
+                    stats.work_generated += tx_fifo.midstate_count.to_count();
                     drop(stats);
                 }
             }
@@ -639,21 +674,19 @@ where
     }
 
     async fn async_recv_solutions(
-        h_chain_ctl: Arc<Mutex<Self>>,
+        _h_chain_ctl: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         mining_stats: Arc<Mutex<hal::MiningStats>>,
         mut rx_fifo: fifo::HChainFifo,
-        work_solution: work::SolutionSender,
+        solution_sender: work::SolutionSender,
     ) {
         // solution receiving/filtering part
         loop {
             let (rx_fifo_out, solution) =
-                await!(Self::recv_solution(h_chain_ctl.clone(), rx_fifo)).expect("recv solution");
+                await!(Self::recv_solution(rx_fifo)).expect("recv solution failed");
             rx_fifo = rx_fifo_out;
-            let solution = solution.expect("solution is ok");
-            let work_id = await!(h_chain_ctl.lock())
-                .expect("h_chain lock")
-                .get_work_id_from_solution(&solution) as usize;
+            let solution_id = SolutionId::from_reg(solution.solution_id, rx_fifo.midstate_count);
+            let work_id = solution_id.work_id;
             let mut stats = await!(mining_stats.lock()).expect("lock mining stats");
             let mut work_registry =
                 await!(work_registry.lock()).expect("work registry lock failed");
@@ -661,10 +694,7 @@ where
             let work = work_registry.find_work(work_id);
             match work {
                 Some(work_item) => {
-                    let solution_idx = await!(h_chain_ctl.lock())
-                        .expect("h_chain lock")
-                        .get_solution_idx_from_solution_id(solution.solution_id);
-                    let status = work_item.insert_solution(solution, solution_idx);
+                    let status = work_item.insert_solution(solution);
 
                     // work item detected a new unique solution, we will push it for further processing
                     if let Some(unique_solution) = status.unique_solution {
@@ -673,7 +703,7 @@ where
                                 warn!("Solution from hashchain not hitting ASIC target");
                                 stats.error_stats.hardware_errors += 1;
                             }
-                            work_solution.send(unique_solution);
+                            solution_sender.send(unique_solution);
                         }
                     }
                     if status.duplicate {
@@ -727,7 +757,7 @@ where
         h_chain_ctl: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         mining_stats: Arc<Mutex<hal::MiningStats>>,
-        work_solution: work::SolutionSender,
+        solution_sender: work::SolutionSender,
     ) {
         ii_async_compat::spawn(async move {
             let rx_fifo = await!(h_chain_ctl.lock())
@@ -740,7 +770,7 @@ where
                 work_registry,
                 mining_stats,
                 rx_fifo,
-                work_solution,
+                solution_sender,
             ));
         });
     }
@@ -758,6 +788,7 @@ impl HChain {
         work_solver: work::Solver,
         mining_stats: Arc<Mutex<hal::MiningStats>>,
         shutdown: hal::ShutdownSender,
+        midstate_count: usize,
     ) -> Arc<
         Mutex<
             s9::HChainCtl<
@@ -771,25 +802,24 @@ impl HChain {
         let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
         let voltage_ctrl_backend =
             power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
-        let midstate_count_log2 = midstate_count_to_register(runtime_config::get_midstate_count());
         let mut h_chain_ctl = s9::HChainCtl::new(
             &gpio_mgr,
             voltage_ctrl_backend.clone(),
             config::S9_HASHBOARD_INDEX,
-            midstate_count_log2,
+            MidstateCount::new(midstate_count),
             config::ASIC_DIFFICULTY,
         )
         .unwrap();
 
         info!(
             "Initializing hash chain controller for (midstate count {})",
-            h_chain_ctl.midstate_count()
+            midstate_count,
         );
         h_chain_ctl.init().unwrap();
         info!("Hash chain controller initialized");
 
         let work_registry = Arc::new(Mutex::new(registry::MiningWorkRegistry::new(
-            runtime_config::get_midstate_count(),
+            midstate_count,
         )));
         let h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
         let (work_generator, work_solution) = work_solver.split();
@@ -820,7 +850,12 @@ pub fn run(
 ) {
     // Create one chain
     let chain = HChain::new();
-    chain.start_h_chain(work_solver, mining_stats, shutdown);
+    chain.start_h_chain(
+        work_solver,
+        mining_stats,
+        shutdown,
+        runtime_config::get_midstate_count(),
+    );
 }
 
 /// Helper method that calculates baud rate clock divisor value for the specified baud rate.

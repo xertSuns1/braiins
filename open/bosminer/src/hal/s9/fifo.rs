@@ -8,7 +8,7 @@ use std::time::Duration;
 use ii_fpga_io_am1_s9::hchainio0;
 
 use super::error::{self, ErrorKind};
-use crate::hal;
+use crate::hal::{self, s9};
 use failure::ResultExt;
 
 /// How long to wait for RX interrupt
@@ -63,7 +63,7 @@ const EXPECTED_BITSTREAM_BUILD_ID: u32 = 0x5D5E7158;
 
 pub struct HChainFifo {
     pub hash_chain_io: Mmap<hchainio0::RegisterBlock>,
-    midstate_count: Option<usize>,
+    pub midstate_count: s9::MidstateCount,
     work_tx_irq: uio_async::UioDevice,
     work_rx_irq: uio_async::UioDevice,
     cmd_rx_irq: uio_async::UioDevice,
@@ -146,17 +146,12 @@ impl HChainFifo {
             .modify(|_, w| w.midstate_cnt().variant(value));
     }
 
-    /// TODO: have this method only for TX fifo type
-    pub fn set_midstate_count(&mut self, midstate_count: usize) {
-        self.midstate_count = Some(midstate_count);
-    }
-
     pub fn send_work(
         &mut self,
         work: &hal::MiningWork,
         work_id: u32,
     ) -> Result<u32, failure::Error> {
-        let hw_midstate_count = self.midstate_count.expect("midstate count was not set");
+        let hw_midstate_count = self.midstate_count.to_count();
         let expected_midstate_count = work.midstates.len();
         assert_eq!(
             expected_midstate_count, hw_midstate_count,
@@ -302,12 +297,12 @@ impl HChainFifo {
         Ok(())
     }
 
-    pub fn new(hashboard_idx: usize) -> error::Result<Self> {
+    pub fn new(hashboard_idx: usize, midstate_count: s9::MidstateCount) -> error::Result<Self> {
         let hash_chain_io = unsafe { Mmap::new(hashboard_idx)? };
 
         let fifo = Self {
             hash_chain_io,
-            midstate_count: None,
+            midstate_count,
             work_tx_irq: map_irq(hashboard_idx, "work-tx")?,
             work_rx_irq: map_irq(hashboard_idx, "work-rx")?,
             cmd_rx_irq: map_irq(hashboard_idx, "cmd-rx")?,
@@ -365,7 +360,8 @@ mod test {
     /// Test that we are able to construct HChainFifo instance
     #[test]
     fn test_fifo_construction() {
-        let _fifo = HChainFifo::new(TEST_CHAIN_INDEX).expect("fifo construction failed");
+        let _fifo = HChainFifo::new(TEST_CHAIN_INDEX, s9::MidstateCount::new(1))
+            .expect("fifo construction failed");
     }
 
     /// Try to map IRQ.
@@ -388,7 +384,8 @@ mod test {
     /// Test it on empty rx queue (IRQ always deasserted).
     #[test]
     fn test_get_irq_timeout() {
-        let mut fifo = HChainFifo::new(TEST_CHAIN_INDEX).expect("fifo construction failed");
+        let mut fifo = HChainFifo::new(TEST_CHAIN_INDEX, s9::MidstateCount::new(1))
+            .expect("fifo construction failed");
         // fifo initialization flushes all received responses
         fifo.init().expect("fifo initialization failed");
         drop(fifo);

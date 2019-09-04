@@ -22,7 +22,6 @@ impl MiningWorkRegistryItem {
     pub fn insert_solution(
         &mut self,
         new_solution: hal::MiningWorkSolution,
-        _solution_idx: usize,
     ) -> InsertSolutionStatus {
         let mut status = InsertSolutionStatus {
             duplicate: false,

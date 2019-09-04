@@ -156,7 +156,9 @@ pub struct MiningWorkSolution {
     pub ntime: Option<u32>,
     /// index of a midstate that corresponds to the found nonce
     pub midstate_idx: usize,
-    /// Unique identifier for the solution
+    /// index of a solution (if multiple were found)
+    pub solution_idx: usize,
+    /// unique solution identifier
     pub solution_id: u32,
 }
 
@@ -377,6 +379,7 @@ pub mod test_utils {
                 nonce: test_block.nonce,
                 ntime: None,
                 midstate_idx: 0,
+                solution_idx: 0,
                 solution_id: 0,
             }
         }

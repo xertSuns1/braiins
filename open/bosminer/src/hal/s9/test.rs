@@ -2,7 +2,27 @@ pub mod work_generation;
 
 use super::*;
 
-use ii_fpga_io_am1_s9::hchainio0;
+#[test]
+fn test_midstate_count_instance() {
+    MidstateCount::new(1);
+    MidstateCount::new(2);
+    MidstateCount::new(4);
+}
+
+#[test]
+#[should_panic]
+fn test_midstate_count_instance_fail() {
+    MidstateCount::new(3);
+}
+
+#[test]
+fn test_midstate_count_conversion() {
+    use ii_fpga_io_am1_s9::hchainio0::ctrl_reg::MIDSTATE_CNT_A;
+
+    assert_eq!(MidstateCount::new(4).to_mask(), 3);
+    assert_eq!(MidstateCount::new(2).to_count(), 2);
+    assert_eq!(MidstateCount::new(4).to_reg(), MIDSTATE_CNT_A::FOUR);
+}
 
 #[test]
 fn test_hchain_ctl_instance() {
@@ -12,7 +32,7 @@ fn test_hchain_ctl_instance() {
         &gpio_mgr,
         voltage_ctrl_backend,
         config::S9_HASHBOARD_INDEX,
-        hchainio0::ctrl_reg::MIDSTATE_CNT_A::ONE,
+        MidstateCount::new(1),
         config::ASIC_DIFFICULTY,
     );
     match h_chain_ctl {
@@ -29,7 +49,7 @@ fn test_hchain_ctl_init() {
         &gpio_mgr,
         voltage_ctrl_backend,
         config::S9_HASHBOARD_INDEX,
-        hchainio0::ctrl_reg::MIDSTATE_CNT_A::ONE,
+        MidstateCount::new(1),
         config::ASIC_DIFFICULTY,
     )
     .expect("Failed to create hash board instance");
@@ -74,31 +94,31 @@ fn test_hchain_ctl_init() {
 /// provided by the FPGA IP core
 #[test]
 fn test_get_solution_word_attributes() {
-    let solution_word = 0x00123502;
+    let solution_word = 0x98123502;
     struct ExpectedSolutionData {
-        work_id: u32,
+        work_id: usize,
         midstate_idx: usize,
         solution_idx: usize,
-        midstate_count_log2: hchainio0::ctrl_reg::MIDSTATE_CNT_A,
+        midstate_count: MidstateCount,
     };
     let expected_solution_data = [
         ExpectedSolutionData {
             work_id: 0x1235,
             midstate_idx: 0,
             solution_idx: 2,
-            midstate_count_log2: hchainio0::ctrl_reg::MIDSTATE_CNT_A::ONE,
+            midstate_count: MidstateCount::new(1),
         },
         ExpectedSolutionData {
             work_id: 0x1234,
             midstate_idx: 1,
             solution_idx: 2,
-            midstate_count_log2: hchainio0::ctrl_reg::MIDSTATE_CNT_A::TWO,
+            midstate_count: MidstateCount::new(2),
         },
         ExpectedSolutionData {
             work_id: 0x1234,
             midstate_idx: 1,
             solution_idx: 2,
-            midstate_count_log2: hchainio0::ctrl_reg::MIDSTATE_CNT_A::FOUR,
+            midstate_count: MidstateCount::new(4),
         },
     ];
     for (i, expected_solution_data) in expected_solution_data.iter().enumerate() {
@@ -110,37 +130,23 @@ fn test_get_solution_word_attributes() {
             expected_solution_data.midstate_idx,
             expected_solution_data.solution_idx,
         );
-        let gpio_mgr = gpio::ControlPinManager::new();
-        let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
-        let h_chain_ctl = HChainCtl::new(
-            &gpio_mgr,
-            voltage_ctrl_backend,
-            config::S9_HASHBOARD_INDEX,
-            expected_solution_data.midstate_count_log2,
-            config::ASIC_DIFFICULTY,
-        )
-        .unwrap();
+        let solution_id =
+            SolutionId::from_reg(solution_word, expected_solution_data.midstate_count);
 
         assert_eq!(
-            h_chain_ctl.get_work_id_from_solution_id(solution_word),
-            expected_solution_data.work_id,
+            solution_id.work_id, expected_solution_data.work_id,
             "Invalid work ID, iteration: {}, test data: {:#06x?}",
-            i,
-            expected_data
+            i, expected_data
         );
         assert_eq!(
-            h_chain_ctl.get_midstate_idx_from_solution_id(solution_word),
-            expected_solution_data.midstate_idx,
+            solution_id.midstate_idx, expected_solution_data.midstate_idx,
             "Invalid midstate index, iteration: {}, test data: {:#06x?}",
-            i,
-            expected_data
+            i, expected_data
         );
         assert_eq!(
-            h_chain_ctl.get_solution_idx_from_solution_id(solution_word),
-            expected_solution_data.solution_idx,
+            solution_id.solution_idx, expected_solution_data.solution_idx,
             "Invalid solution index, iteration: {}, test data: {:#06x?}",
-            i,
-            expected_data
+            i, expected_data
         );
     }
 }
@@ -190,4 +196,15 @@ fn test_work_time_computation() {
         secs_to_fpga_ticks(calculate_work_delay_for_pll(1, 650_000_000)),
         36296
     );
+}
+
+#[test]
+fn test_work_id_gen() {
+    let mut work_id_gen = WorkIdGen::new(MidstateCount::new(2));
+    assert_eq!(work_id_gen.next(), 0);
+    assert_eq!(work_id_gen.next(), 2);
+    assert_eq!(work_id_gen.next(), 4);
+    work_id_gen.work_id = 0xfffe;
+    assert_eq!(work_id_gen.next(), 0xfffe);
+    assert_eq!(work_id_gen.next(), 0);
 }

@@ -47,10 +47,9 @@ async fn receiver_task(
         .expect("work-rx fifo missing");
     loop {
         let (rx_fifo_out, solution) =
-            await!(HChainCtl::recv_solution(h_chain_ctl.clone(), rx_fifo)).expect("recv solution");
+            await!(HChainCtl::recv_solution(rx_fifo)).expect("recv solution");
         rx_fifo = rx_fifo_out;
 
-        let solution = solution.expect("solution is not OK");
         solution_sender
             .unbounded_send(solution)
             .expect("solution send failed");
@@ -73,9 +72,10 @@ async fn sender_task(
         let work = await!(work_receiver.next()).expect("failed receiving work");
         let work_id = await!(h_chain_ctl.lock())
             .expect("h_chain lock")
-            .next_work_id();
+            .work_id_gen
+            .next();
         // send work is synchronous
-        tx_fifo.send_work(&work, work_id).expect("send work");
+        tx_fifo.send_work(&work, work_id as u32).expect("send work");
     }
 }
 
@@ -124,13 +124,12 @@ fn start_hchain() -> HChainCtl {
     let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
     let voltage_ctrl_backend =
         power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
-    let midstate_count_log2 = MIDSTATE_CNT_A::ONE;
 
     let mut h_chain_ctl = s9::HChainCtl::new(
         &gpio_mgr,
         voltage_ctrl_backend.clone(),
         config::S9_HASHBOARD_INDEX,
-        midstate_count_log2,
+        s9::MidstateCount::new(1),
         1,
     )
     .unwrap();

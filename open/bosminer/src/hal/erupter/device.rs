@@ -246,6 +246,7 @@ impl<'a> BlockErupterSolver<'a> {
                 nonce,
                 ntime: None,
                 midstate_idx: 0,
+                solution_idx: 0,
                 solution_id,
             },
             Some(timestamp),
