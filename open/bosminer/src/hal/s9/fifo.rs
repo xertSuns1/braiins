@@ -172,6 +172,24 @@ impl HChainFifo {
         Ok(work_id)
     }
 
+    pub async fn recv_solution(
+        mut self,
+    ) -> Result<(Self, hal::MiningWorkSolution), failure::Error> {
+        let nonce = await!(self.async_read_from_work_rx_fifo())?;
+        let word2 = await!(self.async_read_from_work_rx_fifo())?;
+        let solution_id = s9::SolutionId::from_reg(word2, self.midstate_count);
+
+        let solution = hal::MiningWorkSolution {
+            nonce,
+            ntime: None,
+            midstate_idx: solution_id.midstate_idx,
+            solution_idx: solution_id.solution_idx,
+            solution_id: word2,
+        };
+
+        Ok((self, solution))
+    }
+
     /// Return the value of last work ID send to ASICs
     #[inline]
     pub fn get_last_work_id(&mut self) -> u32 {

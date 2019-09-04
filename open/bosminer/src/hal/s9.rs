@@ -598,24 +598,6 @@ where
         self.chip_count
     }
 
-    async fn recv_solution(
-        mut rx_fifo: fifo::HChainFifo,
-    ) -> Result<(fifo::HChainFifo, hal::MiningWorkSolution), failure::Error> {
-        let nonce = await!(rx_fifo.async_read_from_work_rx_fifo())?;
-        let word2 = await!(rx_fifo.async_read_from_work_rx_fifo())?;
-        let solution_id = SolutionId::from_reg(word2, rx_fifo.midstate_count);
-
-        let solution = hal::MiningWorkSolution {
-            nonce,
-            ntime: None,
-            midstate_idx: solution_id.midstate_idx,
-            solution_idx: solution_id.solution_idx,
-            solution_id: word2,
-        };
-
-        Ok((rx_fifo, solution))
-    }
-
     /// Initialize cores by sending open-core work with correct nbits to each core
     async fn send_init_work(h_chain_ctl: Arc<Mutex<Self>>, tx_fifo: &mut fifo::HChainFifo) {
         // Each core gets one work
@@ -683,7 +665,7 @@ where
         // solution receiving/filtering part
         loop {
             let (rx_fifo_out, solution) =
-                await!(Self::recv_solution(rx_fifo)).expect("recv solution failed");
+                await!(rx_fifo.recv_solution()).expect("recv solution failed");
             rx_fifo = rx_fifo_out;
             let solution_id = SolutionId::from_reg(solution.solution_id, rx_fifo.midstate_count);
             let work_id = solution_id.work_id;
