@@ -2,6 +2,7 @@
 core:
   list:
     - bosminer
+    - bosminer_monitor
     - ca-bundle
     - ca-certificates
     - gdbserver
