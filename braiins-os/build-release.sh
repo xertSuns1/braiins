@@ -34,6 +34,7 @@ recovery_mtdparts_dm1_g29="$recovery_mtdparts_dm1_g19"
 #DRY_RUN=echo
 STAGE1=y
 CLONE=n
+PREVIEW=y
 
 echo ID is: `id`
 echo KEY is: $key
@@ -55,7 +56,7 @@ function generate_sd_img() {
     subtarget=$1
     echo 'src_dir="'$2'"'
     echo 'sd_img="'$3'"'
-    echo 'fw_img="'$4'"'
+    [ $PREVIEW = n ] && echo 'fw_img="'$4'"'
 
     echo 'sd_img_tmp=$(mktemp)'
     echo 'dd if=/dev/zero of=${sd_img_tmp} bs=1M count=46'
@@ -76,25 +77,25 @@ function generate_sd_img() {
     [ -n "$recovery_mtdparts" ] && echo 'echo "recovery_mtdparts='"$recovery_mtdparts"'" | sudo tee -a /mnt/uEnv.txt'
     echo 'sudo umount /mnt'
 
-    echo 'sudo mount /dev/mapper/${loop}p2 /mnt'
-    echo 'sudo mkdir -p /mnt/work/work'
-    echo 'sudo chmod 0 /mnt/work/work'
-    echo 'sudo mkdir -p /mnt/upper/usr/share/upgrade'
-    echo 'sudo cp ${fw_img} /mnt/upper/usr/share/upgrade/firmware.tar.gz'
-    echo 'sudo umount /mnt'
+    [ $PREVIEW = n ] && echo 'sudo mount /dev/mapper/${loop}p2 /mnt'
+    [ $PREVIEW = n ] && echo 'sudo mkdir -p /mnt/work/work'
+    [ $PREVIEW = n ] && echo 'sudo chmod 0 /mnt/work/work'
+    [ $PREVIEW = n ] && echo 'sudo mkdir -p /mnt/upper/usr/share/upgrade'
+    [ $PREVIEW = n ] && echo 'sudo cp ${fw_img} /mnt/upper/usr/share/upgrade/firmware.tar.gz'
+    [ $PREVIEW = n ] && echo 'sudo umount /mnt'
 
     echo 'sudo kpartx -d ${sd_img_tmp}'
     echo 'mv ${sd_img_tmp} ${sd_img}'
 }
 
 if [ "$date_and_patch_level" != "current" ]; then
-	tag=`git tag | grep $date_and_patch_level | tail -1`
-	if [ -z "$tag" ]; then
-		echo "Error: supplied release \"$date_and_patch_level\" not found in tags"
-		exit 4
-	else
-		$DRY_RUN git checkout $tag
-	fi
+    tag=`git tag | grep $date_and_patch_level | tail -1`
+    if [ -z "$tag" ]; then
+        echo "Error: supplied release \"$date_and_patch_level\" not found in tags"
+        exit 4
+    else
+        $DRY_RUN git checkout $tag
+    fi
 fi
 
 # get build version for current branch
@@ -106,11 +107,11 @@ for subtarget in $release_subtargets; do
     platform=$target-$subtarget
     # We need to ensure that feeds are update
     if [ $STAGE1 = y ]; then
-	$DRY_RUN ./bb.py --platform $platform prepare
-	$DRY_RUN ./bb.py --platform $platform clean
-	$DRY_RUN ./bb.py --platform $platform prepare --update-feeds
-	# build everything for a particular platform
-	$DRY_RUN ./bb.py --platform $platform build --key $key -j$parallel_jobs -v
+    $DRY_RUN ./bb.py --platform $platform prepare
+    $DRY_RUN ./bb.py --platform $platform clean
+    $DRY_RUN ./bb.py --platform $platform prepare --update-feeds
+    # build everything for a particular platform
+    $DRY_RUN ./bb.py --platform $platform build --key $key -j$parallel_jobs -v
     fi
 
     package_name=${fw_prefix}_${subtarget}_${version}
@@ -118,18 +119,18 @@ for subtarget in $release_subtargets; do
 
     # Deploy SD and upgrade images
     for i in sd upgrade; do
-	$DRY_RUN ./bb.py --platform $platform deploy local_$i:$platform_dir/$i --pool-user $pool_user
+    $DRY_RUN ./bb.py --platform $platform deploy local_$i:$platform_dir/$i --pool-user $pool_user
     done
 
     # Feeds deploy is specially handled as it has to merge with firmware packages
     packages_url=$feeds_url/$subtarget/Packages
 
     if [ "$package_merge" == "true" ]; then
-	echo Merging package list with previous release for $platform...
-	extra_feeds_opts="--feeds-base $packages_url"
+    echo Merging package list with previous release for $platform...
+    extra_feeds_opts="--feeds-base $packages_url"
     else
-	echo Nothing has been published for $platform, skipping merge of Packages...
-	extra_feeds_opts=
+    echo Nothing has been published for $platform, skipping merge of Packages...
+    extra_feeds_opts=
     fi
     $DRY_RUN ./bb.py --platform $platform deploy local_feeds:$platform_dir/feeds $extra_feeds_opts --pool-user $pool_user
 
@@ -141,14 +142,14 @@ for subtarget in $release_subtargets; do
      fw_img=$package_name/upgrade/${fw_prefix}_${subtarget}_ssh_${version}.tar.gz
      gpg_opts="--armor --detach-sign --sign-with release@braiins.cz --sign"
      echo set -e > $pack_and_sign_script
-     echo mkdir -p $publish_dir/$subtarget >> $pack_and_sign_script
-     echo cp -r $package_name/feeds/"*" $publish_dir/$subtarget >> $pack_and_sign_script
+     echo mkdir -p $publish_dir >> $pack_and_sign_script
+     [ $PREVIEW = n ] && echo mkdir -p $publish_dir/$subtarget >> $pack_and_sign_script
+     [ $PREVIEW = n ] && echo cp -r $package_name/feeds/"*" $publish_dir/$subtarget >> $pack_and_sign_script
      generate_sd_img $subtarget $package_name $sd_img $fw_img >> $pack_and_sign_script
      echo gpg2 $gpg_opts $sd_img >> $pack_and_sign_script
-     echo for upgrade_img in $package_name/upgrade/\*\; do >> $pack_and_sign_script
-     echo cp \$upgrade_img $publish_dir >> $pack_and_sign_script
-     echo gpg2 $gpg_opts $publish_dir/\$\(basename \$upgrade_img\) >> $pack_and_sign_script
-     echo
-     echo done >> $pack_and_sign_script
+     [ $PREVIEW = n ] && echo for upgrade_img in $package_name/upgrade/\*\; do >> $pack_and_sign_script
+     [ $PREVIEW = n ] && echo cp \$upgrade_img $publish_dir >> $pack_and_sign_script
+     [ $PREVIEW = n ] && echo gpg2 $gpg_opts $publish_dir/\$\(basename \$upgrade_img\) >> $pack_and_sign_script
+     [ $PREVIEW = n ] && echo done >> $pack_and_sign_script
     )
 done
