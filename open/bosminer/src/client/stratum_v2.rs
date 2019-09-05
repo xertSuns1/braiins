@@ -310,13 +310,13 @@ async fn open_channel<'a>(
 ) -> Result<(), ()> {
     let channel_msg = OpenChannel {
         req_id: 10,
-        user,
+        user: user.try_into()?,
         extended: false,
         device: DeviceInfo {
-            vendor: "Braiins".to_string(),
-            hw_rev: "1".to_string(),
-            fw_ver: "Braiins OS 2019-06-05".to_string(),
-            dev_id: "xyz".to_string(),
+            vendor: "Braiins".try_into()?,
+            hw_rev: "1".try_into()?,
+            fw_ver: "Braiins OS 2019-06-05".try_into()?,
+            dev_id: "xyz".try_into()?,
         },
         nominal_hashrate: 1e9,
         // Maximum bitcoin target is 0xffff << 208 (= difficulty 1 share)
