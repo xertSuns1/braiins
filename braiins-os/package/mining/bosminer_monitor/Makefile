@@ -45,6 +45,9 @@ define Build/Compile
 endef
 
 define Package/bosminer_monitor/install
+	$(INSTALL_DIR) $(1)/etc/profile.d/
+	$(INSTALL_BIN) ./files/bosminer_monitor.profile $(1)/etc/profile.d/bosminer_monitor.sh
+
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/bosminer_monitor.sh $(1)/usr/sbin/
 
