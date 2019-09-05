@@ -1,0 +1,44 @@
+@startuml
+
+cloud "Stratum" as stratum
+cloud "S9" as s9
+
+package "Hub" {
+  rectangle "Solver" as sol {
+    rectangle "Generator" as gen {
+      rectangle "EngineReceiver" as er {
+      }
+    }
+    rectangle "SolutionSender" as ssend {
+    }
+  }
+
+  rectangle "JobSolver" as jsolver {
+    rectangle "JobSender" as jsender {
+      rectangle "EngineSender" as es {
+      }
+    }
+    () CurrentTarget as curtag
+    rectangle "JobSolutionReceiver" as jsolrecv {
+    }
+    curtag ~~~> jsender
+    curtag ~~~> jsolrecv
+  }
+
+  note right of sol : backend
+  note right of jsolver : frontend
+
+
+es -> er : WorkEngine
+ssend -> jsolrecv : UniqueMiningWorkSolution
+
+stratum --> jsender : Job
+jsender --> es : engine::VersionRolling(job)
+jsolrecv --> stratum : UniqueMiningWorkSolution
+
+}
+
+gen --> s9 : MiningWork
+s9 --> ssend : UniqueMiningWorkSolution
+
+@enduml
