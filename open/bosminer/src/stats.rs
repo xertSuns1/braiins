@@ -44,10 +44,10 @@ pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<hal::MiningSt
         );
 
         if work_generated == 0 {
-            warn!("No work is being generated!");
+            trace!("No work is being generated!");
         }
         if unique_solutions == 0 {
-            warn!("No work is being solved!");
+            trace!("No work is being solved!");
         }
 
         if stats.error_stats != old_error_stats {
