@@ -73,6 +73,7 @@ endef
 define Package/bosminer/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(CARGO_OUTPUT_DIR)/$(PKG_NAME) $(1)/usr/bin/
+	$(INSTALL_BIN) ./files/set_fan.sh $(1)/usr/bin/set_fan
 endef
 
 $(eval $(call BuildPackage,bosminer))
