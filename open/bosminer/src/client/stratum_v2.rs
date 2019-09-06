@@ -148,7 +148,7 @@ impl StratumEventHandler {
 
     pub fn update_target(&mut self, value: Uint256Bytes) {
         let new_target: ii_bitcoin::Target = value.into();
-        trace!("changing target to {:?}", new_target);
+        info!("changing target to {:?}", new_target);
         self.job_sender.change_target(new_target);
     }
 }
