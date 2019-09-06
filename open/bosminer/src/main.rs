@@ -59,7 +59,7 @@ fn main() {
             Arg::with_name("pool")
                 .short("p")
                 .long("pool")
-                .value_name("URL")
+                .value_name("HOSTNAME:PORT")
                 .help("Address the stratum V2 server")
                 .required(true)
                 .takes_value(true),
@@ -68,7 +68,7 @@ fn main() {
             Arg::with_name("user")
                 .short("u")
                 .long("user")
-                .value_name("NAME")
+                .value_name("USERNAME.WORKERNAME")
                 .help("Specify user and worker name")
                 .required(true)
                 .takes_value(true),
