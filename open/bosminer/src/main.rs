@@ -34,6 +34,22 @@ use std::sync::Arc;
 
 use clap::{self, Arg};
 
+/// Starts statistics tasks specific for S9
+/// TODO: This function is to be removed once we replace the stats module with a more robust
+/// solution
+#[cfg(feature = "antminer_s9")]
+fn start_mining_stats_task(mining_stats: Arc<Mutex<hal::MiningStats>>) {
+    ii_async_compat::spawn(stats::hashrate_meter_task_hashchain(mining_stats));
+    ii_async_compat::spawn(stats::hashrate_meter_task());
+}
+
+/// Starts statistics tasks specific for block erupter
+/// TODO: to be removed, see above
+#[cfg(feature = "erupter")]
+fn start_mining_stats_task(_mining_stats: Arc<Mutex<hal::MiningStats>>) {
+    ii_async_compat::spawn(stats::hashrate_meter_task());
+}
+
 async fn main_task(stratum_addr: String, user: String) {
     // create job and work solvers
     let (job_solver, work_solver) = work::Hub::build_solvers();
@@ -44,9 +60,8 @@ async fn main_task(stratum_addr: String, user: String) {
 
     // start HW backend for selected target
     hal::run(work_solver, mining_stats.clone(), shutdown_sender);
-    // start hashrate-meter task
-    ii_async_compat::spawn(stats::hashrate_meter_task_hashchain(mining_stats));
-    ii_async_compat::spawn(stats::hashrate_meter_task());
+    // start statistics processing
+    start_mining_stats_task(mining_stats);
     // start stratum V2 client
     await!(stratum_v2::run(job_solver, stratum_addr, user));
 }
