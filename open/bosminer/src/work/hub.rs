@@ -132,13 +132,13 @@ impl JobSolutionReceiver {
     }
 
     fn trace_share(solution: &hal::UniqueMiningWorkSolution, target: &ii_bitcoin::Target) {
-        trace!(
+        info!(
             "nonce={:08x} bytes={}",
             solution.nonce(),
             hex::encode(&solution.get_block_header().into_bytes()[..])
         );
-        trace!("  hash={:x}", solution.hash());
-        trace!("target={:x}", target);
+        info!("  hash={:x}", solution.hash());
+        info!("target={:x}", target);
     }
 
     pub async fn receive(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
