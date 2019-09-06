@@ -60,11 +60,13 @@ pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<hal::MiningSt
         let hashing_time = last_stat_time.elapsed().as_secs_f64();
 
         info!(
-            "Hashchain hash rate: generated {:.2} Gh/s, computed {:.2} Gh/s",
-            shares_to_giga_hashes(work_generated as u128) / hashing_time,
+            "Hash rate @ ASIC difficulty: {:.2} Gh/s",
             shares_to_giga_hashes(solved_shares as u128) / hashing_time,
         );
-
+        trace!(
+            "Hash rate of generated work: {:.2} Gh/s",
+            shares_to_giga_hashes(work_generated as u128) / hashing_time,
+        );
         if work_generated == 0 {
             trace!("No work is being generated!");
         }
@@ -106,7 +108,7 @@ pub async fn hashrate_meter_task() {
         total_shares += SUBMITTED_SHARE_COUNTER.swap(0, Ordering::SeqCst) as u128;
         let total_hashing_time = hashing_started.elapsed();
         info!(
-            "Hash rate from submitted shares: {:.2} Gh/s",
+            "Hash rate @ pool difficulty: {:.2} Gh/s",
             shares_to_giga_hashes(total_shares) / total_hashing_time.as_secs_f64(),
         );
     }

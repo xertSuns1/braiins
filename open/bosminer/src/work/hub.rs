@@ -149,7 +149,8 @@ impl JobSolutionReceiver {
                 .expect("cannot read from shared current target");
             if solution.is_valid(current_target) {
                 stats::account_solution(&current_target);
-                info!("----- SHARE BELOW TARGET -----");
+                info!("----- Found share within current job's difficulty (diff={}) target range -----",
+                    current_target.get_difficulty());
                 Self::trace_share(&solution, &current_target);
                 return Some(solution);
             }
