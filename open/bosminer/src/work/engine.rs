@@ -22,6 +22,7 @@
 
 //! Provides work engines that are capable for converting Jobs to actual work suitable for mining
 //! backend processing
+use super::*;
 use crate::hal;
 use crate::job;
 
@@ -33,13 +34,13 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct ExhaustedWork;
 
-impl hal::WorkEngine for ExhaustedWork {
+impl Engine for ExhaustedWork {
     fn is_exhausted(&self) -> bool {
         true
     }
 
-    fn next_work(&self) -> hal::WorkLoop<hal::MiningWork> {
-        hal::WorkLoop::Exhausted
+    fn next_work(&self) -> LoopState<hal::MiningWork> {
+        LoopState::Exhausted
     }
 }
 
@@ -153,16 +154,16 @@ impl VersionRolling {
     }
 }
 
-impl hal::WorkEngine for VersionRolling {
+impl Engine for VersionRolling {
     fn is_exhausted(&self) -> bool {
         self.curr_range.is_exhausted(None)
     }
 
-    fn next_work(&self) -> hal::WorkLoop<hal::MiningWork> {
+    fn next_work(&self) -> LoopState<hal::MiningWork> {
         // determine next range of indexes from version space
         let (current, next) = match self.curr_range.next() {
             // return immediately when the space is exhausted
-            None => return hal::WorkLoop::Exhausted,
+            None => return LoopState::Exhausted,
             // use range of indexes for generation of midstates
             Some(range) => range,
         };
@@ -193,9 +194,9 @@ impl hal::WorkEngine for VersionRolling {
         if self.curr_range.is_exhausted(next) {
             // when the whole version space has been exhausted then mark the generated work as
             // a last one (the next call of this method will return 'Exhausted')
-            hal::WorkLoop::Break(work)
+            LoopState::Break(work)
         } else {
-            hal::WorkLoop::Continue(work)
+            LoopState::Continue(work)
         }
     }
 }
@@ -203,7 +204,6 @@ impl hal::WorkEngine for VersionRolling {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::hal::WorkEngine;
     use crate::job::Bitcoin;
     use crate::test_utils;
 
@@ -278,26 +278,26 @@ pub mod test {
         assert!(!engine.is_exhausted());
 
         match engine.next_work() {
-            hal::WorkLoop::Continue(work) => assert_eq!(
+            LoopState::Continue(work) => assert_eq!(
                 get_block_version(&job, START_INDEX),
                 work.midstates[0].version
             ),
-            _ => panic!("expected 'hal::WorkLoop::Continue'"),
+            _ => panic!("expected 'LoopState::Continue'"),
         }
         assert!(!engine.is_exhausted());
 
         match engine.next_work() {
-            hal::WorkLoop::Break(work) => assert_eq!(
+            LoopState::Break(work) => assert_eq!(
                 get_block_version(&job, ii_bitcoin::BIP320_VERSION_MAX),
                 work.midstates[0].version
             ),
-            _ => panic!("expected 'hal::WorkLoop::Break'"),
+            _ => panic!("expected 'LoopState::Break'"),
         }
         assert!(engine.is_exhausted());
 
         match engine.next_work() {
-            hal::WorkLoop::Exhausted => {}
-            _ => panic!("expected 'hal::WorkLoop::Exhausted'"),
+            LoopState::Exhausted => {}
+            _ => panic!("expected 'LoopState::Exhausted'"),
         }
         assert!(engine.is_exhausted());
     }

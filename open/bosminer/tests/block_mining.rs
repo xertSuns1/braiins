@@ -245,7 +245,7 @@ impl Registry {
 fn build_solvers() -> (
     work::EngineSender,
     mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
-    mpsc::UnboundedReceiver<work::DynWorkEngine>,
+    mpsc::UnboundedReceiver<work::DynEngine>,
     work::Solver,
 ) {
     let (reschedule_sender, reschedule_receiver) = mpsc::unbounded();

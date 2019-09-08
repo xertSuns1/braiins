@@ -69,10 +69,10 @@ impl OneWorkEngineInner {
         self.work.is_none()
     }
 
-    fn next_work(&mut self) -> hal::WorkLoop<hal::MiningWork> {
+    fn next_work(&mut self) -> work::LoopState<hal::MiningWork> {
         match self.work.take() {
-            Some(work) => hal::WorkLoop::Break(work),
-            None => hal::WorkLoop::Exhausted,
+            Some(work) => work::LoopState::Break(work),
+            None => work::LoopState::Exhausted,
         }
     }
 }
@@ -97,12 +97,12 @@ impl OneWorkEngine {
     }
 }
 
-impl hal::WorkEngine for OneWorkEngine {
+impl work::Engine for OneWorkEngine {
     fn is_exhausted(&self) -> bool {
         self.lock_inner().is_exhausted()
     }
 
-    fn next_work(&self) -> hal::WorkLoop<hal::MiningWork> {
+    fn next_work(&self) -> work::LoopState<hal::MiningWork> {
         self.lock_inner().next_work()
     }
 }
@@ -118,14 +118,14 @@ impl TestWorkEngineInner {
         self.next_test_block.is_none()
     }
 
-    fn next_work(&mut self) -> hal::WorkLoop<hal::MiningWork> {
+    fn next_work(&mut self) -> work::LoopState<hal::MiningWork> {
         if self.is_exhausted() {
-            return hal::WorkLoop::Exhausted;
+            return work::LoopState::Exhausted;
         }
 
         match self.test_block_iter.next() {
-            None => hal::WorkLoop::Break(self.next_test_block.take()),
-            Some(block) => hal::WorkLoop::Continue(self.next_test_block.replace(block)),
+            None => work::LoopState::Break(self.next_test_block.take()),
+            Some(block) => work::LoopState::Continue(self.next_test_block.replace(block)),
         }
         .map(|block| block.expect("test block is 'None'").into())
     }
@@ -156,12 +156,12 @@ impl TestWorkEngine {
     }
 }
 
-impl hal::WorkEngine for TestWorkEngine {
+impl work::Engine for TestWorkEngine {
     fn is_exhausted(&self) -> bool {
         self.lock_inner().is_exhausted()
     }
 
-    fn next_work(&self) -> hal::WorkLoop<hal::MiningWork> {
+    fn next_work(&self) -> work::LoopState<hal::MiningWork> {
         self.lock_inner().next_work()
     }
 }
@@ -182,7 +182,7 @@ mod test {
     use super::*;
     use crate::job::Bitcoin;
 
-    fn get_engine(work_receiver: &mut work::EngineReceiver) -> Arc<hal::WorkEngine> {
+    fn get_engine(work_receiver: &mut work::EngineReceiver) -> Arc<work::Engine> {
         ii_async_compat::block_on(work_receiver.get_engine()).expect("cannot get test work engine")
     }
 
@@ -208,14 +208,14 @@ mod test {
                 .next_work()
                 .map(|work| cmp_block_with_work(block, work))
             {
-                hal::WorkLoop::Exhausted => {
+                work::LoopState::Exhausted => {
                     panic!("test work generator returned less work than expected")
                 }
-                hal::WorkLoop::Break(_) => {
+                work::LoopState::Break(_) => {
                     assert!(!work_break, "test work generator returned double break");
                     work_break = true;
                 }
-                hal::WorkLoop::Continue(_) => {
+                work::LoopState::Continue(_) => {
                     assert!(!work_break, "test work generator continues after break")
                 }
             }
@@ -225,7 +225,7 @@ mod test {
             "test work generator returned more work than expected"
         );
         match test_engine.next_work() {
-            hal::WorkLoop::Exhausted => (),
+            work::LoopState::Exhausted => (),
             _ => panic!("test work generator continues after returning all work"),
         };
     }
