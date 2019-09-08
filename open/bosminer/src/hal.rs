@@ -294,43 +294,6 @@ impl Debug for UniqueMiningWorkSolution {
     }
 }
 
-/// Holds all error statistics
-#[derive(Clone, PartialEq, Eq, Default)]
-pub struct MiningErrorStats {
-    /// Number of submitted results that are not hitting ASIC target
-    pub hardware_errors: u64,
-    /// Number of stale solutions received from the hardware
-    pub stale_solutions: u64,
-    /// Unable to feed the hardware fast enough results in duplicate solutions as
-    /// multiple chips may process the same mining work
-    pub duplicate_solutions: u64,
-    /// Keep track of nonces that didn't match with previously received solutions (after
-    /// filtering hardware errors, this should really stay at 0, otherwise we have some weird
-    /// hardware problem)
-    pub mismatched_solution_nonces: u64,
-}
-
-/// Holds all hardware-related statistics for a hashchain
-#[derive(Clone, PartialEq, Eq, Default)]
-pub struct MiningStats {
-    /// Number of work items generated for the hardware
-    pub work_generated: usize,
-    /// Counter of unique solutions
-    pub unique_solutions: u64,
-    /// Amount of computed work in shares (for example one work computed at difficulty 64 is 64 shares)
-    pub unique_solutions_shares: u64,
-    /// Error statistics
-    pub error_stats: MiningErrorStats,
-}
-
-impl MiningStats {
-    pub fn new() -> Self {
-        Self {
-            ..Default::default()
-        }
-    }
-}
-
 /// Message used for shutdown synchronization
 pub type ShutdownMsg = &'static str;
 

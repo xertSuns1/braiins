@@ -35,6 +35,7 @@ use ii_logging::macros::*;
 
 use crate::hal::{self, s9};
 use crate::runtime_config;
+use crate::stats;
 
 // TODO: remove thread specific components
 use std::sync::Arc;
@@ -645,7 +646,7 @@ where
     async fn async_send_work(
         h_chain_ctl: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
-        mining_stats: Arc<Mutex<hal::MiningStats>>,
+        mining_stats: Arc<Mutex<stats::Mining>>,
         mut tx_fifo: fifo::HChainFifo,
         mut work_generator: work::Generator,
     ) {
@@ -670,7 +671,7 @@ where
     async fn async_recv_solutions(
         _h_chain_ctl: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
-        mining_stats: Arc<Mutex<hal::MiningStats>>,
+        mining_stats: Arc<Mutex<stats::Mining>>,
         mut rx_fifo: fifo::HChainFifo,
         solution_sender: work::SolutionSender,
     ) {
@@ -723,7 +724,7 @@ where
     fn spawn_tx_task(
         h_chain_ctl: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
-        mining_stats: Arc<Mutex<hal::MiningStats>>,
+        mining_stats: Arc<Mutex<stats::Mining>>,
         work_generator: work::Generator,
         shutdown: hal::ShutdownSender,
     ) {
@@ -748,7 +749,7 @@ where
     fn spawn_rx_task(
         h_chain_ctl: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
-        mining_stats: Arc<Mutex<hal::MiningStats>>,
+        mining_stats: Arc<Mutex<stats::Mining>>,
         solution_sender: work::SolutionSender,
     ) {
         ii_async_compat::spawn(async move {
@@ -777,7 +778,7 @@ impl HChain {
     pub fn start_h_chain(
         &self,
         work_solver: work::Solver,
-        mining_stats: Arc<Mutex<hal::MiningStats>>,
+        mining_stats: Arc<Mutex<stats::Mining>>,
         shutdown: hal::ShutdownSender,
         midstate_count: usize,
     ) -> Arc<
@@ -836,7 +837,7 @@ impl HChain {
 /// Entry point for running the hardware backend
 pub fn run(
     work_solver: work::Solver,
-    mining_stats: Arc<Mutex<hal::MiningStats>>,
+    mining_stats: Arc<Mutex<stats::Mining>>,
     shutdown: hal::ShutdownSender,
 ) {
     // Create one chain

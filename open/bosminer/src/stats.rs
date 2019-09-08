@@ -22,8 +22,6 @@
 
 use ii_logging::macros::*;
 
-use crate::hal;
-
 use tokio::timer::Delay;
 
 use futures::compat::Future01CompatExt;
@@ -32,6 +30,43 @@ use futures::lock::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+/// Holds all error statistics
+#[derive(Clone, PartialEq, Eq, Default)]
+pub struct MiningError {
+    /// Number of submitted results that are not hitting ASIC target
+    pub hardware_errors: u64,
+    /// Number of stale solutions received from the hardware
+    pub stale_solutions: u64,
+    /// Unable to feed the hardware fast enough results in duplicate solutions as
+    /// multiple chips may process the same mining work
+    pub duplicate_solutions: u64,
+    /// Keep track of nonces that didn't match with previously received solutions (after
+    /// filtering hardware errors, this should really stay at 0, otherwise we have some weird
+    /// hardware problem)
+    pub mismatched_solution_nonces: u64,
+}
+
+/// Holds all hardware-related statistics for a hashchain
+#[derive(Clone, PartialEq, Eq, Default)]
+pub struct Mining {
+    /// Number of work items generated for the hardware
+    pub work_generated: usize,
+    /// Counter of unique solutions
+    pub unique_solutions: u64,
+    /// Amount of computed work in shares (for example one work computed at difficulty 64 is 64 shares)
+    pub unique_solutions_shares: u64,
+    /// Error statistics
+    pub error_stats: MiningError,
+}
+
+impl Mining {
+    pub fn new() -> Self {
+        Self {
+            ..Default::default()
+        }
+    }
+}
 
 /// Share=1 represents a space of 2^32 calculated hashes for Bitcoin
 /// mainnet (exactly 2^256/(0xffff<<208), where 0xffff<<208 is defined
@@ -42,7 +77,7 @@ fn shares_to_giga_hashes(shares: u128) -> f64 {
     (shares << 32) as f64 * 1e-9
 }
 
-pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<hal::MiningStats>>) {
+pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<Mining>>) {
     let mut last_stat_time = Instant::now();
     let mut old_error_stats = Default::default();
     loop {
