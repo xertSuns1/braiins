@@ -24,10 +24,10 @@
 
 use bosminer::client::stratum_v2;
 use bosminer::hal;
+use bosminer::hub;
 use bosminer::runtime_config;
 use bosminer::shutdown;
 use bosminer::stats;
-use bosminer::work;
 
 use futures::lock::Mutex;
 
@@ -53,7 +53,7 @@ fn start_mining_stats_task(_mining_stats: Arc<Mutex<stats::Mining>>) {
 
 async fn main_task(stratum_addr: String, user: String) {
     // create job and work solvers
-    let (job_solver, work_solver) = work::Hub::build_solvers();
+    let (job_solver, work_solver) = hub::build_solvers();
     // create shutdown channel
     let (shutdown_sender, _shutdown_receiver) = shutdown::channel();
     // create mining stats
