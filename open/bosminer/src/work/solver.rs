@@ -68,7 +68,7 @@ impl Generator {
 
     /// Loops until new work is available or no more `WorkEngines` are supplied (signals
     /// Generator shutdown)
-    pub async fn generate(&mut self) -> Option<hal::MiningWork> {
+    pub async fn generate(&mut self) -> Option<Assignment> {
         loop {
             let work;
             match await!(self.engine_receiver.get_engine()) {

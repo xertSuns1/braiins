@@ -24,6 +24,7 @@ use ii_logging::macros::*;
 
 use super::*;
 use crate::hal;
+use crate::work;
 
 use std::time::{Duration, Instant};
 
@@ -46,15 +47,15 @@ type HChainCtl =
 /// NOTE: this work has 2 valid nonces:
 /// - 0x83ea0372 (solution 0)
 /// - 0x09f86be1 (solution 1)
-fn prepare_test_work(midstate_count: usize) -> hal::MiningWork {
+fn prepare_test_work(midstate_count: usize) -> work::Assignment {
     let time = 0xffffffff;
     let job = Arc::new(null_work::NullJob::new(time, 0xffff_ffff, 0));
 
-    let one_midstate = hal::Midstate {
+    let one_midstate = work::Midstate {
         version: 0,
         state: [0u8; 32].into(),
     };
-    hal::MiningWork::new(job, vec![one_midstate; midstate_count], time)
+    work::Assignment::new(job, vec![one_midstate; midstate_count], time)
 }
 
 /// Task that receives solutions from hardware and sends them to channel
@@ -80,7 +81,7 @@ async fn receiver_task(
 /// Task that receives work from channel and sends it to HW
 async fn sender_task(
     h_chain_ctl: Arc<Mutex<HChainCtl>>,
-    mut work_receiver: mpsc::UnboundedReceiver<hal::MiningWork>,
+    mut work_receiver: mpsc::UnboundedReceiver<work::Assignment>,
 ) {
     let mut tx_fifo = await!(h_chain_ctl.lock())
         .work_tx_fifo
@@ -97,7 +98,7 @@ async fn sender_task(
 }
 
 async fn send_and_receive_test_workloads<'a>(
-    work_sender: &'a mpsc::UnboundedSender<hal::MiningWork>,
+    work_sender: &'a mpsc::UnboundedSender<work::Assignment>,
     solution_receiver: &'a mut mpsc::UnboundedReceiver<hal::MiningWorkSolution>,
     n_send: usize,
     expected_solution_count: usize,

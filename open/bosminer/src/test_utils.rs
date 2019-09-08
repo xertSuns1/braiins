@@ -20,7 +20,6 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use crate::hal;
 use crate::job;
 use crate::work;
 
@@ -61,7 +60,7 @@ impl job::Bitcoin for TestBlock {
 /// WorkEngine for testing purposes that carries exactly one piece of `MiningWork`
 #[derive(Debug)]
 struct OneWorkEngineInner {
-    work: Option<hal::MiningWork>,
+    work: Option<work::Assignment>,
 }
 
 impl OneWorkEngineInner {
@@ -69,7 +68,7 @@ impl OneWorkEngineInner {
         self.work.is_none()
     }
 
-    fn next_work(&mut self) -> work::LoopState<hal::MiningWork> {
+    fn next_work(&mut self) -> work::LoopState<work::Assignment> {
         match self.work.take() {
             Some(work) => work::LoopState::Break(work),
             None => work::LoopState::Exhausted,
@@ -86,7 +85,7 @@ pub struct OneWorkEngine {
 }
 
 impl OneWorkEngine {
-    pub fn new(work: hal::MiningWork) -> Self {
+    pub fn new(work: work::Assignment) -> Self {
         Self {
             inner: StdMutex::new(OneWorkEngineInner { work: Some(work) }),
         }
@@ -102,7 +101,7 @@ impl work::Engine for OneWorkEngine {
         self.lock_inner().is_exhausted()
     }
 
-    fn next_work(&self) -> work::LoopState<hal::MiningWork> {
+    fn next_work(&self) -> work::LoopState<work::Assignment> {
         self.lock_inner().next_work()
     }
 }
@@ -118,7 +117,7 @@ impl TestWorkEngineInner {
         self.next_test_block.is_none()
     }
 
-    fn next_work(&mut self) -> work::LoopState<hal::MiningWork> {
+    fn next_work(&mut self) -> work::LoopState<work::Assignment> {
         if self.is_exhausted() {
             return work::LoopState::Exhausted;
         }
@@ -161,7 +160,7 @@ impl work::Engine for TestWorkEngine {
         self.lock_inner().is_exhausted()
     }
 
-    fn next_work(&self) -> work::LoopState<hal::MiningWork> {
+    fn next_work(&self) -> work::LoopState<work::Assignment> {
         self.lock_inner().next_work()
     }
 }
@@ -186,7 +185,7 @@ mod test {
         ii_async_compat::block_on(work_receiver.get_engine()).expect("cannot get test work engine")
     }
 
-    fn cmp_block_with_work(block: &TestBlock, work: hal::MiningWork) -> hal::MiningWork {
+    fn cmp_block_with_work(block: &TestBlock, work: work::Assignment) -> work::Assignment {
         assert_eq!(block.midstate, work.midstates[0].state);
         assert_eq!(block.merkle_root_tail(), work.merkle_root_tail());
         assert_eq!(block.time(), work.ntime);

@@ -193,7 +193,7 @@ pub struct BlockErupterSolver<'a> {
     device: BlockErupter<'a>,
     work_generator: work::Generator,
     work_start: SystemTime,
-    curr_work: Option<hal::MiningWork>,
+    curr_work: Option<work::Assignment>,
     next_solution: Option<hal::UniqueMiningWorkSolution>,
     solution_id: u32,
     stop_reason: RefCell<error::Result<()>>,
@@ -218,7 +218,7 @@ impl<'a> BlockErupterSolver<'a> {
         self.stop_reason.replace(Ok(()))
     }
 
-    fn send_work(&mut self, work: &hal::MiningWork) {
+    fn send_work(&mut self, work: &work::Assignment) {
         let work_payload = icarus::WorkPayload::new(
             &work.midstates[0].state,
             work.merkle_root_tail(),
@@ -257,7 +257,7 @@ impl<'a> BlockErupterSolver<'a> {
     }
 
     fn create_unique_solution(
-        work: hal::MiningWork,
+        work: work::Assignment,
         nonce: u32,
         timestamp: SystemTime,
         solution_id: u32,

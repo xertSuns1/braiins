@@ -31,7 +31,7 @@ use ii_logging::macros::*;
 use ii_bitcoin::HashTrait;
 
 use bosminer::config;
-use bosminer::hal::{self, MiningWork, UniqueMiningWorkSolution};
+use bosminer::hal::{self, UniqueMiningWorkSolution};
 use bosminer::job::Bitcoin;
 use bosminer::runtime_config;
 use bosminer::shutdown;
@@ -83,7 +83,7 @@ impl std::fmt::Debug for Problem {
 /// The in-soluble midstates (other than the one specified in the problem)
 /// are created from the original solution by increasing/decreasing the version
 /// slightly. There's no guarantee these blocks have no solution.
-impl From<Problem> for MiningWork {
+impl From<Problem> for work::Assignment {
     fn from(problem: Problem) -> Self {
         let midstate_count = runtime_config::get_midstate_count();
         let job: &test_utils::TestBlock = problem.model_solution.job();
@@ -103,12 +103,12 @@ impl From<Problem> for MiningWork {
             // use index for generation compatible header version
             let version = correct_version ^ (index as u32) ^ (problem.target_midstate as u32);
             block_chunk1.version = version;
-            midstates.push(hal::Midstate {
+            midstates.push(work::Midstate {
                 version,
                 state: block_chunk1.midstate(),
             })
         }
-        MiningWork::new(Arc::new(*job), midstates, time)
+        work::Assignment::new(Arc::new(*job), midstates, time)
     }
 }
 
