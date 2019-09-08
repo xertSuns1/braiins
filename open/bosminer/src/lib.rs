@@ -26,6 +26,7 @@ pub mod client;
 pub mod config;
 pub mod error;
 pub mod hal;
+pub mod hub;
 pub mod job;
 pub mod runtime_config;
 pub mod shutdown;

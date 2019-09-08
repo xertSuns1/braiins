@@ -20,26 +20,22 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use super::*;
+//! Top level builder for `job::Solver` and `work::Solver` intended to be used when instantiating
+//! the full miner
+
 use crate::job;
 use crate::work;
 
 use futures::channel::mpsc;
 
-/// Top level builder for `JobSolver` and `work::Solver` intended to be used when instantiating
-/// the full miner
-pub struct Hub;
-
-impl Hub {
-    /// Create Solvers for frontend (pool) and backend (HW accelerator)
-    pub fn build_solvers() -> (job::Solver, work::Solver) {
-        let (engine_sender, engine_receiver) = engine_channel(None);
-        let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
-        (
-            job::Solver::new(engine_sender, solution_queue_rx),
-            work::Solver::new(engine_receiver, solution_queue_tx),
-        )
-    }
+/// Create Solvers for frontend (pool) and backend (HW accelerator)
+pub fn build_solvers() -> (job::Solver, work::Solver) {
+    let (engine_sender, engine_receiver) = work::engine_channel(None);
+    let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
+    (
+        job::Solver::new(engine_sender, solution_queue_rx),
+        work::Solver::new(engine_receiver, solution_queue_tx),
+    )
 }
 
 #[cfg(test)]
@@ -52,7 +48,9 @@ pub mod test {
     /// in the test
     #[test]
     fn test_solvers_connection() {
-        let (job_solver, work_solver) = work::Hub::build_solvers();
+        use std::sync::Arc;
+
+        let (job_solver, work_solver) = build_solvers();
 
         let (mut job_sender, mut solution_receiver) = job_solver.split();
         let (mut work_generator, solution_sender) = work_solver.split();
@@ -96,7 +94,7 @@ pub mod test {
     /// solutions and yields only those that meet the target.
     #[test]
     fn test_job_solver_target() {
-        let (engine_sender, _) = engine_channel(None);
+        let (engine_sender, _) = work::engine_channel(None);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
 
         let (job_sender, mut solution_receiver) =
