@@ -20,11 +20,22 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use ii_logging::macros::*;
+
 use ii_bitcoin::HashTrait;
+
+use crate::job;
+use crate::runtime_config;
+use crate::stats;
+use crate::work;
+
+use futures::channel::mpsc;
+use futures::stream::StreamExt;
 
 use std::convert::TryInto;
 use std::fmt::Debug;
 use std::mem;
+use std::sync::{Arc, RwLock};
 
 use downcast_rs::{impl_downcast, Downcast};
 
@@ -65,3 +76,113 @@ pub trait Bitcoin: Debug + Downcast + Send + Sync {
     }
 }
 impl_downcast!(Bitcoin);
+
+/// Helper function for creating target difficulty suitable for sharing
+pub fn create_shared_target(target: ii_bitcoin::Target) -> Arc<RwLock<ii_bitcoin::Target>> {
+    Arc::new(RwLock::new(target))
+}
+
+/// Compound object for job submission and solution reception intended to be passed to
+/// protocol handler
+pub struct Solver {
+    job_sender: Sender,
+    solution_receiver: SolutionReceiver,
+}
+
+impl Solver {
+    pub fn new(
+        engine_sender: work::EngineSender,
+        solution_queue_rx: mpsc::UnboundedReceiver<work::UniqueSolution>,
+    ) -> Self {
+        let current_target = create_shared_target(Default::default());
+        Self {
+            job_sender: Sender::new(engine_sender, current_target.clone()),
+            solution_receiver: SolutionReceiver::new(solution_queue_rx, current_target),
+        }
+    }
+
+    pub fn split(self) -> (Sender, SolutionReceiver) {
+        (self.job_sender, self.solution_receiver)
+    }
+}
+
+/// This is the entrypoint for new jobs and updates into processing.
+/// Typically the mining protocol handler will inject new jobs through it
+pub struct Sender {
+    engine_sender: work::EngineSender,
+    current_target: Arc<RwLock<ii_bitcoin::Target>>,
+}
+
+impl Sender {
+    pub fn new(
+        engine_sender: work::EngineSender,
+        current_target: Arc<RwLock<ii_bitcoin::Target>>,
+    ) -> Self {
+        Self {
+            engine_sender,
+            current_target,
+        }
+    }
+
+    pub fn change_target(&self, target: ii_bitcoin::Target) {
+        *self
+            .current_target
+            .write()
+            .expect("cannot write to shared current target") = target;
+    }
+
+    pub fn send(&mut self, job: Arc<dyn job::Bitcoin>) {
+        info!("--- broadcasting new job ---");
+        let engine = Arc::new(work::engine::VersionRolling::new(
+            job,
+            runtime_config::get_midstate_count(),
+        ));
+        self.engine_sender.broadcast(engine);
+    }
+}
+
+/// Receives `work::UniqueSolution` via a channel and filters only solutions that meet the
+/// pool specified target
+pub struct SolutionReceiver {
+    solution_channel: mpsc::UnboundedReceiver<work::UniqueSolution>,
+    current_target: Arc<RwLock<ii_bitcoin::Target>>,
+}
+
+impl SolutionReceiver {
+    pub fn new(
+        solution_channel: mpsc::UnboundedReceiver<work::UniqueSolution>,
+        current_target: Arc<RwLock<ii_bitcoin::Target>>,
+    ) -> Self {
+        Self {
+            solution_channel,
+            current_target,
+        }
+    }
+
+    fn trace_share(solution: &work::UniqueSolution, target: &ii_bitcoin::Target) {
+        info!(
+            "nonce={:08x} bytes={}",
+            solution.nonce(),
+            hex::encode(&solution.get_block_header().into_bytes()[..])
+        );
+        info!("  hash={:x}", solution.hash());
+        info!("target={:x}", target);
+    }
+
+    pub async fn receive(&mut self) -> Option<work::UniqueSolution> {
+        while let Some(solution) = await!(self.solution_channel.next()) {
+            let current_target = &*self
+                .current_target
+                .read()
+                .expect("cannot read from shared current target");
+            if solution.is_valid(current_target) {
+                stats::account_solution(&current_target);
+                info!("----- Found share within current job's difficulty (diff={}) target range -----",
+                      current_target.get_difficulty());
+                Self::trace_share(&solution, &current_target);
+                return Some(solution);
+            }
+        }
+        None
+    }
+}

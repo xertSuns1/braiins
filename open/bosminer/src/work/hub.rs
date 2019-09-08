@@ -20,18 +20,11 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use ii_logging::macros::*;
-
 use super::*;
 use crate::job;
-use crate::runtime_config;
-use crate::stats;
 use crate::work;
 
 use futures::channel::mpsc;
-use futures::stream::StreamExt;
-
-use std::sync::{Arc, RwLock};
 
 /// Top level builder for `JobSolver` and `work::Solver` intended to be used when instantiating
 /// the full miner
@@ -39,123 +32,13 @@ pub struct Hub;
 
 impl Hub {
     /// Create Solvers for frontend (pool) and backend (HW accelerator)
-    pub fn build_solvers() -> (JobSolver, work::Solver) {
+    pub fn build_solvers() -> (job::Solver, work::Solver) {
         let (engine_sender, engine_receiver) = engine_channel(None);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
         (
-            JobSolver::new(engine_sender, solution_queue_rx),
+            job::Solver::new(engine_sender, solution_queue_rx),
             work::Solver::new(engine_receiver, solution_queue_tx),
         )
-    }
-}
-
-/// Helper function for creating target difficulty suitable for sharing
-pub fn create_shared_target(target: ii_bitcoin::Target) -> Arc<RwLock<ii_bitcoin::Target>> {
-    Arc::new(RwLock::new(target))
-}
-
-/// Compound object for job submission and solution reception intended to be passed to
-/// protocol handler
-pub struct JobSolver {
-    job_sender: JobSender,
-    solution_receiver: JobSolutionReceiver,
-}
-
-impl JobSolver {
-    pub fn new(
-        engine_sender: EngineSender,
-        solution_queue_rx: mpsc::UnboundedReceiver<work::UniqueSolution>,
-    ) -> Self {
-        let current_target = create_shared_target(Default::default());
-        Self {
-            job_sender: JobSender::new(engine_sender, current_target.clone()),
-            solution_receiver: JobSolutionReceiver::new(solution_queue_rx, current_target),
-        }
-    }
-
-    pub fn split(self) -> (JobSender, JobSolutionReceiver) {
-        (self.job_sender, self.solution_receiver)
-    }
-}
-
-/// This is the entrypoint for new jobs and updates into processing.
-/// Typically the mining protocol handler will inject new jobs through it
-pub struct JobSender {
-    engine_sender: EngineSender,
-    current_target: Arc<RwLock<ii_bitcoin::Target>>,
-}
-
-impl JobSender {
-    pub fn new(
-        engine_sender: EngineSender,
-        current_target: Arc<RwLock<ii_bitcoin::Target>>,
-    ) -> Self {
-        Self {
-            engine_sender,
-            current_target,
-        }
-    }
-
-    pub fn change_target(&self, target: ii_bitcoin::Target) {
-        *self
-            .current_target
-            .write()
-            .expect("cannot write to shared current target") = target;
-    }
-
-    pub fn send(&mut self, job: Arc<dyn job::Bitcoin>) {
-        info!("--- broadcasting new job ---");
-        let engine = Arc::new(engine::VersionRolling::new(
-            job,
-            runtime_config::get_midstate_count(),
-        ));
-        self.engine_sender.broadcast(engine);
-    }
-}
-
-/// Receives `UniqueMiningWorkSolution` via a channel and filters only solutions that meet the
-/// pool specified target
-pub struct JobSolutionReceiver {
-    solution_channel: mpsc::UnboundedReceiver<work::UniqueSolution>,
-    current_target: Arc<RwLock<ii_bitcoin::Target>>,
-}
-
-impl JobSolutionReceiver {
-    pub fn new(
-        solution_channel: mpsc::UnboundedReceiver<work::UniqueSolution>,
-        current_target: Arc<RwLock<ii_bitcoin::Target>>,
-    ) -> Self {
-        Self {
-            solution_channel,
-            current_target,
-        }
-    }
-
-    fn trace_share(solution: &work::UniqueSolution, target: &ii_bitcoin::Target) {
-        info!(
-            "nonce={:08x} bytes={}",
-            solution.nonce(),
-            hex::encode(&solution.get_block_header().into_bytes()[..])
-        );
-        info!("  hash={:x}", solution.hash());
-        info!("target={:x}", target);
-    }
-
-    pub async fn receive(&mut self) -> Option<work::UniqueSolution> {
-        while let Some(solution) = await!(self.solution_channel.next()) {
-            let current_target = &*self
-                .current_target
-                .read()
-                .expect("cannot read from shared current target");
-            if solution.is_valid(current_target) {
-                stats::account_solution(&current_target);
-                info!("----- Found share within current job's difficulty (diff={}) target range -----",
-                    current_target.get_difficulty());
-                Self::trace_share(&solution, &current_target);
-                return Some(solution);
-            }
-        }
-        None
     }
 }
 
@@ -217,7 +100,7 @@ pub mod test {
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
 
         let (job_sender, mut solution_receiver) =
-            JobSolver::new(engine_sender, solution_queue_rx).split();
+            job::Solver::new(engine_sender, solution_queue_rx).split();
 
         // default target is be set to difficulty 1 so all solution should pass
         for block in test_utils::TEST_BLOCKS.iter() {

@@ -31,7 +31,7 @@ use crate::job::{self, Bitcoin};
 
 use ii_bitcoin::{HashTrait, MeetsTarget};
 
-pub use hub::{Hub, JobSender, JobSolutionReceiver, JobSolver};
+pub use hub::Hub;
 pub use solver::{Generator, SolutionSender, Solver};
 
 use futures::channel::mpsc;
