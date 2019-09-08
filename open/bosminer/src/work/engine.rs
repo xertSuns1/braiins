@@ -23,7 +23,6 @@
 //! Provides work engines that are capable for converting Jobs to actual work suitable for mining
 //! backend processing
 use super::*;
-use crate::hal;
 use crate::job;
 
 use ii_bitcoin::HashTrait;
@@ -39,7 +38,7 @@ impl Engine for ExhaustedWork {
         true
     }
 
-    fn next_work(&self) -> LoopState<hal::MiningWork> {
+    fn next_work(&self) -> LoopState<Assignment> {
         LoopState::Exhausted
     }
 }
@@ -159,7 +158,7 @@ impl Engine for VersionRolling {
         self.curr_range.is_exhausted(None)
     }
 
-    fn next_work(&self) -> LoopState<hal::MiningWork> {
+    fn next_work(&self) -> LoopState<Assignment> {
         // determine next range of indexes from version space
         let (current, next) = match self.curr_range.next() {
             // return immediately when the space is exhausted
@@ -184,13 +183,13 @@ impl Engine for VersionRolling {
             // use index for generation compatible header version
             let version = self.get_block_version(index);
             block_chunk1.version = version;
-            midstates.push(hal::Midstate {
+            midstates.push(Midstate {
                 version,
                 state: block_chunk1.midstate(),
             })
         }
 
-        let work = hal::MiningWork::new(self.job.clone(), midstates, self.job.time());
+        let work = Assignment::new(self.job.clone(), midstates, self.job.time());
         if self.curr_range.is_exhausted(next) {
             // when the whole version space has been exhausted then mark the generated work as
             // a last one (the next call of this method will return 'Exhausted')

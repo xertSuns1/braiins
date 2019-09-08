@@ -31,6 +31,7 @@ use ii_fpga_io_am1_s9::hchainio0;
 
 use super::error::{self, ErrorKind};
 use crate::hal::{self, s9};
+use crate::work;
 use failure::ResultExt;
 
 /// How long to wait for RX interrupt
@@ -170,7 +171,7 @@ impl HChainFifo {
 
     pub fn send_work(
         &mut self,
-        work: &hal::MiningWork,
+        work: &work::Assignment,
         work_id: u32,
     ) -> Result<u32, failure::Error> {
         let hw_midstate_count = self.midstate_count.to_count();

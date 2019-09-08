@@ -27,7 +27,7 @@ pub mod engine;
 mod hub;
 mod solver;
 
-use crate::hal;
+use crate::job;
 
 pub use hub::{Hub, JobSender, JobSolutionReceiver, JobSolver};
 pub use solver::{Generator, SolutionSender, Solver};
@@ -69,10 +69,53 @@ impl<T> LoopState<T> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Midstate {
+    /// Version field used for calculating the midstate
+    pub version: u32,
+    /// Internal state of SHA256 after processing the first chunk (32 bytes)
+    pub state: ii_bitcoin::Midstate,
+}
+
+/// Describes actual mining work for assignment to a hashing hardware.
+/// Starting with merkle_root_tail the data goes to chunk2 of SHA256.
+/// TODO: add ntime limit for supporting hardware that can do nTime rolling on its own
+#[derive(Clone, Debug)]
+pub struct Assignment {
+    /// Bitcoin job shared with initial network protocol and work solution
+    // TODO: remove pub after moving `UniqueMiningWorkSolution` to this module
+    pub job: Arc<dyn job::Bitcoin>,
+    /// Multiple midstates can be generated for each work
+    pub midstates: Vec<Midstate>,
+    /// Start value for nTime, hardware may roll nTime further
+    pub ntime: u32,
+}
+
+impl Assignment {
+    pub fn new(job: Arc<dyn job::Bitcoin>, midstates: Vec<Midstate>, ntime: u32) -> Self {
+        Self {
+            job,
+            midstates,
+            ntime,
+        }
+    }
+
+    /// Return merkle root tail
+    pub fn merkle_root_tail(&self) -> u32 {
+        self.job.merkle_root_tail()
+    }
+
+    /// Return current target (nBits)
+    #[inline]
+    pub fn bits(&self) -> u32 {
+        self.job.bits()
+    }
+}
+
 pub trait Engine: Debug + Send + Sync {
     fn is_exhausted(&self) -> bool;
 
-    fn next_work(&self) -> LoopState<hal::MiningWork>;
+    fn next_work(&self) -> LoopState<Assignment>;
 }
 
 /// Shared work engine type

@@ -22,8 +22,8 @@
 
 use ii_bitcoin::HashTrait;
 
-use crate::hal;
 use crate::job::{self, Bitcoin};
+use crate::work;
 
 use std::sync::Arc;
 
@@ -85,30 +85,30 @@ impl job::Bitcoin for NullJob {
 }
 
 /// * `i` - unique identifier for the generated midstate
-pub fn prepare(i: u64) -> hal::MiningWork {
+pub fn prepare(i: u64) -> work::Assignment {
     let job = Arc::new(NullJob::new(0, 0xffff_ffff, 0));
     let time = job.time();
 
     let mut midstate_bytes = [0u8; ii_bitcoin::SHA256_DIGEST_SIZE];
     LittleEndian::write_u64(&mut midstate_bytes, i);
 
-    let mid = hal::Midstate {
+    let mid = work::Midstate {
         version: 0,
         state: midstate_bytes.into(),
     };
 
-    hal::MiningWork::new(job, vec![mid], time)
+    work::Assignment::new(job, vec![mid], time)
 }
 
-pub fn prepare_opencore(enable_core: bool, midstate_count: usize) -> hal::MiningWork {
+pub fn prepare_opencore(enable_core: bool, midstate_count: usize) -> work::Assignment {
     let bits = if enable_core { 0xffff_ffff } else { 0 };
     let job = Arc::new(NullJob::new(0, bits, 0));
     let time = job.time();
 
-    let one_midstate = hal::Midstate {
+    let one_midstate = work::Midstate {
         version: 0,
         state: [0u8; ii_bitcoin::SHA256_DIGEST_SIZE].into(),
     };
 
-    hal::MiningWork::new(job, vec![one_midstate; midstate_count], time)
+    work::Assignment::new(job, vec![one_midstate; midstate_count], time)
 }

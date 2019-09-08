@@ -40,6 +40,7 @@ pub use s9::{
 };
 
 use crate::job::{self, Bitcoin};
+use crate::work;
 
 use ii_bitcoin::{HashTrait, MeetsTarget};
 
@@ -47,48 +48,6 @@ use std::cell::Cell;
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 use std::time::SystemTime;
-
-#[derive(Clone, Debug)]
-pub struct Midstate {
-    /// Version field used for calculating the midstate
-    pub version: u32,
-    /// Internal state of SHA256 after processing the first chunk (32 bytes)
-    pub state: ii_bitcoin::Midstate,
-}
-
-/// Describes actual mining work for submission to a hashing hardware.
-/// Starting with merkle_root_tail the data goes to chunk2 of SHA256.
-/// TODO: add ntime limit for supporting hardware that can do nTime rolling on its own
-#[derive(Clone, Debug)]
-pub struct MiningWork {
-    /// Bitcoin job shared with initial network protocol and work solution
-    job: Arc<dyn job::Bitcoin>,
-    /// Multiple midstates can be generated for each work
-    pub midstates: Vec<Midstate>,
-    /// Start value for nTime, hardware may roll nTime further
-    pub ntime: u32,
-}
-
-impl MiningWork {
-    pub fn new(job: Arc<dyn job::Bitcoin>, midstates: Vec<Midstate>, ntime: u32) -> Self {
-        Self {
-            job,
-            midstates,
-            ntime,
-        }
-    }
-
-    /// Return merkle root tail
-    pub fn merkle_root_tail(&self) -> u32 {
-        self.job.merkle_root_tail()
-    }
-
-    /// Return current target (nBits)
-    #[inline]
-    pub fn bits(&self) -> u32 {
-        self.job.bits()
-    }
-}
 
 /// Represents raw solution from the mining hardware
 #[derive(Clone, Debug)]
@@ -112,7 +71,7 @@ pub struct UniqueMiningWorkSolution {
     /// Time stamp when it has been fetched from the solution FIFO
     timestamp: SystemTime,
     /// Original mining work associated with this solution
-    work: MiningWork,
+    work: work::Assignment,
     /// Solution of the PoW puzzle
     solution: MiningWorkSolution,
     /// Lazy evaluated double hash of this solution
@@ -121,7 +80,7 @@ pub struct UniqueMiningWorkSolution {
 
 impl UniqueMiningWorkSolution {
     pub fn new(
-        work: MiningWork,
+        work: work::Assignment,
         solution: MiningWorkSolution,
         timestamp: Option<SystemTime>,
     ) -> Self {
@@ -219,12 +178,12 @@ pub mod test_utils {
     use super::*;
     use crate::test_utils;
 
-    impl From<&test_utils::TestBlock> for MiningWork {
+    impl From<&test_utils::TestBlock> for work::Assignment {
         fn from(test_block: &test_utils::TestBlock) -> Self {
             let job = Arc::new(*test_block);
             let time = job.time();
 
-            let mid = Midstate {
+            let mid = work::Midstate {
                 version: job.version(),
                 state: job.midstate,
             };

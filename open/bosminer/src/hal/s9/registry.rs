@@ -21,6 +21,7 @@
 // contact us at opensource@braiins.com.
 
 use crate::hal;
+use crate::work;
 
 /// Maximum length of pending work list corresponds with the work ID range supported by the FPGA
 const MAX_WORK_LIST_COUNT: usize = 65536;
@@ -28,7 +29,7 @@ const MAX_WORK_LIST_COUNT: usize = 65536;
 /// Mining registry item contains work and solutions
 #[derive(Clone)]
 pub struct MiningWorkRegistryItem {
-    work: hal::MiningWork,
+    work: work::Assignment,
     /// Each slot in the vector is associated with particular solution index as reported by
     /// the chips. Generally, hash board may fail to send a preceding solution due to
     /// corrupted communication frames. Therefore, each solution slot is optional.
@@ -121,7 +122,7 @@ impl MiningWorkRegistry {
     /// older than 1/2 of MAX_WORK_LIST_COUNT
     /// * `id` - identifies the work
     /// * `work` - new work to be stored
-    pub fn store_work(&mut self, id: usize, work: hal::MiningWork) {
+    pub fn store_work(&mut self, id: usize, work: work::Assignment) {
         // The slot must be empty
         assert!(
             self.pending_work_list[id].is_none(),
