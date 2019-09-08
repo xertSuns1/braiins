@@ -25,6 +25,7 @@ use ii_logging::macros::*;
 use ii_bitcoin::HashTrait;
 
 use crate::hal;
+use crate::job;
 use crate::work;
 
 use tokio::prelude::*;
@@ -85,7 +86,7 @@ impl StratumJob {
     }
 }
 
-impl hal::BitcoinJob for StratumJob {
+impl job::Bitcoin for StratumJob {
     fn version(&self) -> u32 {
         self.version
     }

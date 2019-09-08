@@ -21,13 +21,14 @@
 // contact us at opensource@braiins.com.
 
 use crate::hal;
+use crate::job;
 use crate::work;
 
 pub use ii_bitcoin::{TestBlock, TEST_BLOCKS};
 
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 
-impl hal::BitcoinJob for TestBlock {
+impl job::Bitcoin for TestBlock {
     fn version(&self) -> u32 {
         self.version
     }
@@ -179,7 +180,7 @@ pub fn create_test_work_generator() -> work::Generator {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::hal::BitcoinJob;
+    use crate::job::Bitcoin;
 
     fn get_engine(work_receiver: &mut work::EngineReceiver) -> Arc<hal::WorkEngine> {
         ii_async_compat::block_on(work_receiver.get_engine()).expect("cannot get test work engine")
