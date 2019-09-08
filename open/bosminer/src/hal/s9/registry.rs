@@ -20,7 +20,6 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use crate::hal;
 use crate::work;
 
 /// Maximum length of pending work list corresponds with the work ID range supported by the FPGA
@@ -33,7 +32,7 @@ pub struct MiningWorkRegistryItem {
     /// Each slot in the vector is associated with particular solution index as reported by
     /// the chips. Generally, hash board may fail to send a preceding solution due to
     /// corrupted communication frames. Therefore, each solution slot is optional.
-    solutions: std::vec::Vec<hal::MiningWorkSolution>,
+    solutions: std::vec::Vec<work::Solution>,
 }
 
 impl MiningWorkRegistryItem {
@@ -42,10 +41,7 @@ impl MiningWorkRegistryItem {
     /// * `solution` - solution to be inserted
     /// * `solution_idx` - each work may have multiple valid solutions, this index denotes its
     /// order. The index is reported by the hashing chip
-    pub fn insert_solution(
-        &mut self,
-        new_solution: hal::MiningWorkSolution,
-    ) -> InsertSolutionStatus {
+    pub fn insert_solution(&mut self, new_solution: work::Solution) -> InsertSolutionStatus {
         let mut status = InsertSolutionStatus {
             duplicate: false,
             mismatched_nonce: false,
@@ -68,7 +64,7 @@ impl MiningWorkRegistryItem {
         }
 
         // report the unique solution via status
-        status.unique_solution = Some(hal::UniqueMiningWorkSolution::new(
+        status.unique_solution = Some(work::UniqueSolution::new(
             self.work.clone(),
             new_solution,
             None,
@@ -86,7 +82,7 @@ pub struct InsertSolutionStatus {
     pub duplicate: bool,
     /// actual solution (defined if the above 2 are false)
     /// TODO: rename `unique_solution` to solution
-    pub unique_solution: Option<hal::UniqueMiningWorkSolution>,
+    pub unique_solution: Option<work::UniqueSolution>,
 }
 
 /// Simple mining work registry that stores each work in a slot denoted by its work ID.

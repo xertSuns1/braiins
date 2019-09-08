@@ -24,7 +24,6 @@ use ii_logging::macros::*;
 
 use ii_bitcoin::HashTrait;
 
-use crate::hal;
 use crate::job;
 use crate::work;
 
@@ -257,7 +256,7 @@ impl StratumSolutionHandler {
         }
     }
 
-    async fn process_solution(&mut self, solution: hal::UniqueMiningWorkSolution) {
+    async fn process_solution(&mut self, solution: work::UniqueSolution) {
         let job: &StratumJob = solution.job();
 
         let seq_num = self.seq_num;
