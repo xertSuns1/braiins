@@ -38,7 +38,7 @@ use clap::{self, Arg};
 /// TODO: This function is to be removed once we replace the stats module with a more robust
 /// solution
 #[cfg(feature = "antminer_s9")]
-fn start_mining_stats_task(mining_stats: Arc<Mutex<hal::MiningStats>>) {
+fn start_mining_stats_task(mining_stats: Arc<Mutex<stats::Mining>>) {
     ii_async_compat::spawn(stats::hashrate_meter_task_hashchain(mining_stats));
     ii_async_compat::spawn(stats::hashrate_meter_task());
 }
@@ -46,7 +46,7 @@ fn start_mining_stats_task(mining_stats: Arc<Mutex<hal::MiningStats>>) {
 /// Starts statistics tasks specific for block erupter
 /// TODO: to be removed, see above
 #[cfg(feature = "erupter")]
-fn start_mining_stats_task(_mining_stats: Arc<Mutex<hal::MiningStats>>) {
+fn start_mining_stats_task(_mining_stats: Arc<Mutex<stats::Mining>>) {
     ii_async_compat::spawn(stats::hashrate_meter_task());
 }
 
@@ -56,7 +56,7 @@ async fn main_task(stratum_addr: String, user: String) {
     // create shutdown channel
     let (shutdown_sender, _shutdown_receiver) = hal::Shutdown::new().split();
     // create mining stats
-    let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
+    let mining_stats = Arc::new(Mutex::new(stats::Mining::new()));
 
     // start HW backend for selected target
     hal::run(work_solver, mining_stats.clone(), shutdown_sender);

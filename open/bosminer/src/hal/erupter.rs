@@ -27,7 +27,7 @@ pub mod icarus;
 
 use ii_logging::macros::*;
 
-use crate::work;
+use crate::{stats, work};
 use error::ErrorKind;
 
 use tokio_threadpool::blocking;
@@ -41,7 +41,7 @@ use std::sync::Arc;
 
 fn main_task(
     work_solver: work::Solver,
-    mining_stats: Arc<Mutex<super::MiningStats>>,
+    mining_stats: Arc<Mutex<stats::Mining>>,
     _shutdown: crate::hal::ShutdownSender,
 ) -> crate::error::Result<()> {
     info!("Block Erupter: finding device in USB...");
@@ -72,7 +72,7 @@ fn main_task(
 /// Entry point for running the hardware backend
 pub fn run(
     work_solver: work::Solver,
-    mining_stats: Arc<Mutex<super::MiningStats>>,
+    mining_stats: Arc<Mutex<stats::Mining>>,
     shutdown: crate::hal::ShutdownSender,
 ) {
     // wrap `main_task` parameters to Option to overcome FnOnce closure inside FnMut

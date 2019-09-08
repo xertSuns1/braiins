@@ -33,6 +33,7 @@ use ii_bitcoin::HashTrait;
 use bosminer::config;
 use bosminer::hal::{self, BitcoinJob, MiningWork, UniqueMiningWorkSolution};
 use bosminer::runtime_config;
+use bosminer::stats;
 use bosminer::test_utils;
 use bosminer::work;
 
@@ -294,7 +295,7 @@ fn test_block_mining() {
             build_solvers();
 
         // create mining stats
-        let mining_stats = Arc::new(Mutex::new(hal::MiningStats::new()));
+        let mining_stats = Arc::new(Mutex::new(stats::Mining::new()));
 
         // create problem registry
         let registry = Arc::new(Mutex::new(Registry::new()));
