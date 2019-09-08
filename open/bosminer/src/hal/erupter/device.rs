@@ -26,7 +26,6 @@
 use super::error::{self, ErrorKind};
 use super::icarus;
 
-use crate::hal;
 use crate::work;
 
 use failure::{Fail, ResultExt};
@@ -194,7 +193,7 @@ pub struct BlockErupterSolver<'a> {
     work_generator: work::Generator,
     work_start: SystemTime,
     curr_work: Option<work::Assignment>,
-    next_solution: Option<hal::UniqueMiningWorkSolution>,
+    next_solution: Option<work::UniqueSolution>,
     solution_id: u32,
     stop_reason: RefCell<error::Result<()>>,
 }
@@ -261,10 +260,10 @@ impl<'a> BlockErupterSolver<'a> {
         nonce: u32,
         timestamp: SystemTime,
         solution_id: u32,
-    ) -> hal::UniqueMiningWorkSolution {
-        hal::UniqueMiningWorkSolution::new(
+    ) -> work::UniqueSolution {
+        work::UniqueSolution::new(
             work,
-            hal::MiningWorkSolution {
+            work::Solution {
                 nonce,
                 ntime: None,
                 midstate_idx: 0,
@@ -277,7 +276,7 @@ impl<'a> BlockErupterSolver<'a> {
 }
 
 impl<'a> Iterator for BlockErupterSolver<'a> {
-    type Item = hal::UniqueMiningWorkSolution;
+    type Item = work::UniqueSolution;
 
     /// Waits for new work and send it to the Block Erupter device
     /// When the solution is found then the result is returned as an unique mining work solution.

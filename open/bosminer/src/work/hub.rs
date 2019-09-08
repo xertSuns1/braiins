@@ -23,7 +23,6 @@
 use ii_logging::macros::*;
 
 use super::*;
-use crate::hal;
 use crate::job;
 use crate::runtime_config;
 use crate::stats;
@@ -65,12 +64,12 @@ pub struct JobSolver {
 impl JobSolver {
     pub fn new(
         engine_sender: EngineSender,
-        solution_queue_rx: mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
+        solution_queue_rx: mpsc::UnboundedReceiver<work::UniqueSolution>,
     ) -> Self {
         let current_target = create_shared_target(Default::default());
         Self {
-            job_sender: hub::JobSender::new(engine_sender, current_target.clone()),
-            solution_receiver: hub::JobSolutionReceiver::new(solution_queue_rx, current_target),
+            job_sender: JobSender::new(engine_sender, current_target.clone()),
+            solution_receiver: JobSolutionReceiver::new(solution_queue_rx, current_target),
         }
     }
 
@@ -117,13 +116,13 @@ impl JobSender {
 /// Receives `UniqueMiningWorkSolution` via a channel and filters only solutions that meet the
 /// pool specified target
 pub struct JobSolutionReceiver {
-    solution_channel: mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
+    solution_channel: mpsc::UnboundedReceiver<work::UniqueSolution>,
     current_target: Arc<RwLock<ii_bitcoin::Target>>,
 }
 
 impl JobSolutionReceiver {
     pub fn new(
-        solution_channel: mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
+        solution_channel: mpsc::UnboundedReceiver<work::UniqueSolution>,
         current_target: Arc<RwLock<ii_bitcoin::Target>>,
     ) -> Self {
         Self {
@@ -132,7 +131,7 @@ impl JobSolutionReceiver {
         }
     }
 
-    fn trace_share(solution: &hal::UniqueMiningWorkSolution, target: &ii_bitcoin::Target) {
+    fn trace_share(solution: &work::UniqueSolution, target: &ii_bitcoin::Target) {
         info!(
             "nonce={:08x} bytes={}",
             solution.nonce(),
@@ -142,7 +141,7 @@ impl JobSolutionReceiver {
         info!("target={:x}", target);
     }
 
-    pub async fn receive(&mut self) -> Option<hal::UniqueMiningWorkSolution> {
+    pub async fn receive(&mut self) -> Option<work::UniqueSolution> {
         while let Some(solution) = await!(self.solution_channel.next()) {
             let current_target = &*self
                 .current_target

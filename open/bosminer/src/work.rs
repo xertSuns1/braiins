@@ -27,7 +27,9 @@ pub mod engine;
 mod hub;
 mod solver;
 
-use crate::job;
+use crate::job::{self, Bitcoin};
+
+use ii_bitcoin::{HashTrait, MeetsTarget};
 
 pub use hub::{Hub, JobSender, JobSolutionReceiver, JobSolver};
 pub use solver::{Generator, SolutionSender, Solver};
@@ -36,8 +38,10 @@ use futures::channel::mpsc;
 use tokio::prelude::*;
 use tokio::sync::watch;
 
-use std::fmt::Debug;
+use std::cell::Cell;
+use std::fmt::{self, Debug};
 use std::sync::Arc;
+use std::time::SystemTime;
 
 pub enum LoopState<T> {
     /// Mining work is exhausted
@@ -83,8 +87,7 @@ pub struct Midstate {
 #[derive(Clone, Debug)]
 pub struct Assignment {
     /// Bitcoin job shared with initial network protocol and work solution
-    // TODO: remove pub after moving `UniqueMiningWorkSolution` to this module
-    pub job: Arc<dyn job::Bitcoin>,
+    job: Arc<dyn job::Bitcoin>,
     /// Multiple midstates can be generated for each work
     pub midstates: Vec<Midstate>,
     /// Start value for nTime, hardware may roll nTime further
@@ -109,6 +112,127 @@ impl Assignment {
     #[inline]
     pub fn bits(&self) -> u32 {
         self.job.bits()
+    }
+}
+
+/// Represents raw solution from the mining hardware
+#[derive(Clone, Debug)]
+pub struct Solution {
+    /// actual nonce
+    pub nonce: u32,
+    /// nTime of the solution in case the HW also rolls the nTime field
+    pub ntime: Option<u32>,
+    /// index of a midstate that corresponds to the found nonce
+    pub midstate_idx: usize,
+    /// index of a solution (if multiple were found)
+    pub solution_idx: usize,
+    /// unique solution identifier
+    pub solution_id: u32,
+}
+
+/// Container with mining work and a corresponding solution received at a particular time
+/// This data structure is used when posting work+solution pairs for further submission upstream.
+#[derive(Clone)]
+pub struct UniqueSolution {
+    /// Time stamp when it has been fetched from the solution FIFO
+    timestamp: SystemTime,
+    /// Original mining work associated with this solution
+    work: Assignment,
+    /// Solution of the PoW puzzle
+    solution: Solution,
+    /// Lazy evaluated double hash of this solution
+    hash: Cell<Option<ii_bitcoin::DHash>>,
+}
+
+impl UniqueSolution {
+    pub fn new(work: Assignment, solution: Solution, timestamp: Option<SystemTime>) -> Self {
+        Self {
+            timestamp: timestamp.unwrap_or_else(|| SystemTime::now()),
+            work,
+            solution,
+            hash: Cell::new(None),
+        }
+    }
+
+    pub fn job<T: job::Bitcoin>(&self) -> &T {
+        self.work
+            .job
+            .downcast_ref::<T>()
+            .expect("cannot downcast to original job")
+    }
+
+    #[inline]
+    pub fn nonce(&self) -> u32 {
+        self.solution.nonce
+    }
+
+    #[inline]
+    pub fn time(&self) -> u32 {
+        if let Some(time) = self.solution.ntime {
+            time
+        } else {
+            self.work.ntime
+        }
+    }
+
+    #[inline]
+    pub fn version(&self) -> u32 {
+        let i = self.solution.midstate_idx;
+        self.work.midstates[i].version
+    }
+
+    #[inline]
+    pub fn midstate_idx(&self) -> usize {
+        self.solution.midstate_idx
+    }
+
+    /// Return double hash of this solution
+    pub fn hash(&self) -> ii_bitcoin::DHash {
+        match self.hash.get() {
+            Some(value) => value,
+            None => {
+                // compute hash and store it into cache for later use
+                let value = self.get_block_header().hash();
+                self.hash.set(Some(value));
+                value
+            }
+        }
+    }
+
+    /// Converts mining work solution to Bitcoin block header structure which is packable
+    pub fn get_block_header(&self) -> ii_bitcoin::BlockHeader {
+        let job = &self.work.job;
+
+        ii_bitcoin::BlockHeader {
+            version: self.version(),
+            previous_hash: job.previous_hash().into_inner(),
+            merkle_root: job.merkle_root().into_inner(),
+            time: self.time(),
+            bits: job.bits(),
+            nonce: self.nonce(),
+        }
+    }
+
+    pub fn is_valid(&self, current_target: &ii_bitcoin::Target) -> bool {
+        if !self.work.job.is_valid() {
+            // job is obsolete and has to be flushed
+            return false;
+        }
+
+        // compute hash for this solution and compare it with target
+        self.hash().meets(current_target)
+    }
+}
+
+impl Debug for UniqueSolution {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{:?} (nonce {:08x}, midstate {})",
+            self.hash(),
+            self.solution.nonce,
+            self.solution.midstate_idx
+        )
     }
 }
 
@@ -205,6 +329,72 @@ impl EngineReceiver {
             reschedule_sender
                 .unbounded_send(engine)
                 .expect("reschedule notify send failed");
+        }
+    }
+}
+
+pub mod test_utils {
+    use super::*;
+    use crate::test_utils;
+
+    impl From<&test_utils::TestBlock> for Assignment {
+        fn from(test_block: &test_utils::TestBlock) -> Self {
+            let job = Arc::new(*test_block);
+            let time = job.time();
+
+            let mid = Midstate {
+                version: job.version(),
+                state: job.midstate,
+            };
+
+            Self {
+                job,
+                midstates: vec![mid],
+                ntime: time,
+            }
+        }
+    }
+
+    impl From<&test_utils::TestBlock> for Solution {
+        fn from(test_block: &test_utils::TestBlock) -> Self {
+            Self {
+                nonce: test_block.nonce,
+                ntime: None,
+                midstate_idx: 0,
+                solution_idx: 0,
+                solution_id: 0,
+            }
+        }
+    }
+
+    impl From<&test_utils::TestBlock> for UniqueSolution {
+        fn from(test_block: &test_utils::TestBlock) -> Self {
+            Self {
+                timestamp: SystemTime::UNIX_EPOCH,
+                work: test_block.into(),
+                solution: test_block.into(),
+                hash: Cell::new(None),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+
+    #[test]
+    fn test_block_double_hash() {
+        for block in crate::test_utils::TEST_BLOCKS.iter() {
+            let solution: UniqueSolution = block.into();
+
+            // test lazy evaluated hash
+            let hash = solution.hash();
+            assert_eq!(block.hash, hash);
+
+            // test if hash is the same when it is called second time
+            let hash = solution.hash();
+            assert_eq!(block.hash, hash);
         }
     }
 }

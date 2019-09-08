@@ -23,7 +23,6 @@
 use ii_logging::macros::*;
 
 use super::*;
-use crate::hal;
 
 use futures::channel::mpsc;
 
@@ -44,7 +43,7 @@ impl Solver {
     /// Construct new work solver from engine receiver and associated channel to send the results
     pub fn new(
         engine_receiver: EngineReceiver,
-        solution_queue_tx: mpsc::UnboundedSender<hal::UniqueMiningWorkSolution>,
+        solution_queue_tx: mpsc::UnboundedSender<UniqueSolution>,
     ) -> Self {
         Self {
             work_generator: Generator::new(engine_receiver),
@@ -100,10 +99,10 @@ impl Generator {
 /// This struct is to be passed to the underlying mining backend. It allows submission of
 /// `UniqueMiningWorkSolution`
 #[derive(Clone)]
-pub struct SolutionSender(mpsc::UnboundedSender<hal::UniqueMiningWorkSolution>);
+pub struct SolutionSender(mpsc::UnboundedSender<UniqueSolution>);
 
 impl SolutionSender {
-    pub fn send(&self, solution: hal::UniqueMiningWorkSolution) {
+    pub fn send(&self, solution: UniqueSolution) {
         self.0
             .unbounded_send(solution)
             .expect("solution queue send failed");

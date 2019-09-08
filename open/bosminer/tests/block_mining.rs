@@ -31,7 +31,7 @@ use ii_logging::macros::*;
 use ii_bitcoin::HashTrait;
 
 use bosminer::config;
-use bosminer::hal::{self, UniqueMiningWorkSolution};
+use bosminer::hal;
 use bosminer::job::Bitcoin;
 use bosminer::runtime_config;
 use bosminer::shutdown;
@@ -55,12 +55,12 @@ use std::sync::Arc;
 /// The `model_solution` is a "template" after which this work is modeled.
 #[derive(Clone)]
 struct Problem {
-    model_solution: UniqueMiningWorkSolution,
+    model_solution: work::UniqueSolution,
     target_midstate: usize,
 }
 
 impl Problem {
-    fn new(model_solution: UniqueMiningWorkSolution, target_midstate: usize) -> Self {
+    fn new(model_solution: work::UniqueSolution, target_midstate: usize) -> Self {
         Self {
             model_solution,
             target_midstate,
@@ -115,12 +115,12 @@ impl From<Problem> for work::Assignment {
 /// `Solution` represents a valid solution from hardware in a given index.
 #[derive(Clone)]
 struct Solution {
-    solution: UniqueMiningWorkSolution,
+    solution: work::UniqueSolution,
     midstate_idx: usize,
 }
 
 impl Solution {
-    fn new(solution: UniqueMiningWorkSolution, midstate_idx: usize) -> Self {
+    fn new(solution: work::UniqueSolution, midstate_idx: usize) -> Self {
         Self {
             solution,
             midstate_idx,
@@ -134,8 +134,8 @@ impl std::fmt::Debug for Solution {
     }
 }
 
-impl From<UniqueMiningWorkSolution> for Solution {
-    fn from(solution: UniqueMiningWorkSolution) -> Self {
+impl From<work::UniqueSolution> for Solution {
+    fn from(solution: work::UniqueSolution) -> Self {
         let midstate_idx = solution.midstate_idx();
         Self::new(solution, midstate_idx)
     }
@@ -244,7 +244,7 @@ impl Registry {
 /// - build a solver and connect everything to it
 fn build_solvers() -> (
     work::EngineSender,
-    mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
+    mpsc::UnboundedReceiver<work::UniqueSolution>,
     mpsc::UnboundedReceiver<work::DynEngine>,
     work::Solver,
 ) {
@@ -265,7 +265,7 @@ fn build_solvers() -> (
 }
 
 async fn collect_solutions(
-    mut solution_queue_rx: mpsc::UnboundedReceiver<hal::UniqueMiningWorkSolution>,
+    mut solution_queue_rx: mpsc::UnboundedReceiver<work::UniqueSolution>,
     registry: Arc<Mutex<Registry>>,
 ) {
     while let Some(solution) = await!(solution_queue_rx.next()) {
@@ -354,8 +354,8 @@ fn test_block_mining() {
 #[test]
 fn test_registry() {
     let mut registry = Registry::new();
-    let block1: hal::UniqueMiningWorkSolution = (&test_utils::TEST_BLOCKS[0]).into();
-    let block2: hal::UniqueMiningWorkSolution = (&test_utils::TEST_BLOCKS[1]).into();
+    let block1: work::UniqueSolution = (&test_utils::TEST_BLOCKS[0]).into();
+    let block2: work::UniqueSolution = (&test_utils::TEST_BLOCKS[1]).into();
 
     // problem can be inserted only once
     assert!(registry.add_problem(Problem::new(block1.clone(), 2)));

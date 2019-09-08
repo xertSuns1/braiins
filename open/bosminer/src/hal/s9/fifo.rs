@@ -23,6 +23,7 @@
 /// This module provides thin API to access memory-mapped FPGA registers
 /// and associated interrupts.
 /// Exports FIFO management/send/receive and register access.
+use super::*;
 use std::marker::PhantomData;
 use std::ops;
 use std::time::Duration;
@@ -30,7 +31,6 @@ use std::time::Duration;
 use ii_fpga_io_am1_s9::hchainio0;
 
 use super::error::{self, ErrorKind};
-use crate::hal::{self, s9};
 use crate::work;
 use failure::ResultExt;
 
@@ -195,14 +195,12 @@ impl HChainFifo {
         Ok(work_id)
     }
 
-    pub async fn recv_solution(
-        mut self,
-    ) -> Result<(Self, hal::MiningWorkSolution), failure::Error> {
+    pub async fn recv_solution(mut self) -> Result<(Self, work::Solution), failure::Error> {
         let nonce = await!(self.async_read_from_work_rx_fifo())?;
         let word2 = await!(self.async_read_from_work_rx_fifo())?;
         let solution_id = s9::SolutionId::from_reg(word2, self.midstate_count);
 
-        let solution = hal::MiningWorkSolution {
+        let solution = work::Solution {
             nonce,
             ntime: None,
             midstate_idx: solution_id.midstate_idx,

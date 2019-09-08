@@ -23,7 +23,6 @@
 use ii_logging::macros::*;
 
 use super::*;
-use crate::hal;
 use crate::work;
 
 use std::time::{Duration, Instant};
@@ -61,7 +60,7 @@ fn prepare_test_work(midstate_count: usize) -> work::Assignment {
 /// Task that receives solutions from hardware and sends them to channel
 async fn receiver_task(
     h_chain_ctl: Arc<Mutex<HChainCtl>>,
-    solution_sender: mpsc::UnboundedSender<hal::MiningWorkSolution>,
+    solution_sender: mpsc::UnboundedSender<work::Solution>,
 ) {
     let mut rx_fifo = await!(h_chain_ctl.lock())
         .work_rx_fifo
@@ -99,7 +98,7 @@ async fn sender_task(
 
 async fn send_and_receive_test_workloads<'a>(
     work_sender: &'a mpsc::UnboundedSender<work::Assignment>,
-    solution_receiver: &'a mut mpsc::UnboundedReceiver<hal::MiningWorkSolution>,
+    solution_receiver: &'a mut mpsc::UnboundedReceiver<work::Solution>,
     n_send: usize,
     expected_solution_count: usize,
 ) {
