@@ -20,33 +20,40 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-#![feature(await_macro, async_await, duration_float)]
+use futures::channel::mpsc;
+use futures::stream::StreamExt;
 
-pub mod client;
-pub mod config;
-pub mod error;
-pub mod hal;
-pub mod runtime_config;
-pub mod shutdown;
-pub mod stats;
-pub mod work;
+/// Message used for shutdown synchronization
+pub type ShutdownMsg = &'static str;
 
-pub mod test_utils;
+/// Sender side of shutdown messenger
+#[derive(Clone)]
+pub struct Sender(mpsc::UnboundedSender<ShutdownMsg>);
 
-#[cfg(not(feature = "backend_selected"))]
-compile_error!(
-    "Backend \"antminer_s9\" or \"erupter\" must be selected with parameter '--features'."
-);
+impl Sender {
+    pub fn send(&self, msg: ShutdownMsg) {
+        self.0.unbounded_send(msg).expect("shutdown send failed");
+    }
+}
 
-#[cfg(all(
-    feature = "antminer_s9",
-    not(all(
-        target_arch = "arm",
-        target_vendor = "unknown",
-        target_os = "linux",
-        target_env = "musl"
-    ))
-))]
-compile_error!(
-    "Target \"arm-unknown-linux-musleabi\" for \"antminer_s9\" must be selected with parameter '--target'."
-);
+/// Receiver side of shutdown messenger
+pub struct Receiver(mpsc::UnboundedReceiver<ShutdownMsg>);
+
+impl Receiver {
+    pub async fn receive(&mut self) -> ShutdownMsg {
+        let reply = await!(self.0.next());
+
+        // TODO: do we have to handle all these cases?
+        let msg = match reply {
+            None => "all hchains died",
+            Some(m) => m,
+        };
+        msg
+    }
+}
+
+/// Shutdown messenger channel
+pub fn channel() -> (Sender, Receiver) {
+    let (shutdown_tx, shutdown_rx) = mpsc::unbounded();
+    (Sender(shutdown_tx), Receiver(shutdown_rx))
+}

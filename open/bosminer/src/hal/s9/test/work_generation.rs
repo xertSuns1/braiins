@@ -23,8 +23,7 @@
 use ii_logging::macros::*;
 
 use super::*;
-
-use crate::hal::s9::{self, power};
+use crate::hal;
 
 use std::time::{Duration, Instant};
 
