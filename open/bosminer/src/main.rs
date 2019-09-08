@@ -25,6 +25,7 @@
 use bosminer::client::stratum_v2;
 use bosminer::hal;
 use bosminer::runtime_config;
+use bosminer::shutdown;
 use bosminer::stats;
 use bosminer::work;
 
@@ -54,7 +55,7 @@ async fn main_task(stratum_addr: String, user: String) {
     // create job and work solvers
     let (job_solver, work_solver) = work::Hub::build_solvers();
     // create shutdown channel
-    let (shutdown_sender, _shutdown_receiver) = hal::Shutdown::new().split();
+    let (shutdown_sender, _shutdown_receiver) = shutdown::channel();
     // create mining stats
     let mining_stats = Arc::new(Mutex::new(stats::Mining::new()));
 

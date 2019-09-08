@@ -33,8 +33,9 @@ pub mod test;
 
 use ii_logging::macros::*;
 
-use crate::hal::{self, s9};
+use crate::hal::s9;
 use crate::runtime_config;
+use crate::shutdown;
 use crate::stats;
 
 // TODO: remove thread specific components
@@ -726,7 +727,7 @@ where
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
         work_generator: work::Generator,
-        shutdown: hal::ShutdownSender,
+        shutdown: shutdown::Sender,
     ) {
         ii_async_compat::spawn(async move {
             let mut tx_fifo = await!(h_chain_ctl.lock())
@@ -779,7 +780,7 @@ impl HChain {
         &self,
         work_solver: work::Solver,
         mining_stats: Arc<Mutex<stats::Mining>>,
-        shutdown: hal::ShutdownSender,
+        shutdown: shutdown::Sender,
         midstate_count: usize,
     ) -> Arc<
         Mutex<
@@ -838,7 +839,7 @@ impl HChain {
 pub fn run(
     work_solver: work::Solver,
     mining_stats: Arc<Mutex<stats::Mining>>,
-    shutdown: hal::ShutdownSender,
+    shutdown: shutdown::Sender,
 ) {
     // Create one chain
     let chain = HChain::new();

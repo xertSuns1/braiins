@@ -41,9 +41,6 @@ pub use s9::{
 
 use ii_bitcoin::{HashTrait, MeetsTarget};
 
-use futures::channel::mpsc;
-use futures::stream::StreamExt;
-
 use std::cell::Cell;
 use std::convert::TryInto;
 use std::fmt::{self, Debug};
@@ -291,48 +288,6 @@ impl Debug for UniqueMiningWorkSolution {
             self.solution.nonce,
             self.solution.midstate_idx
         )
-    }
-}
-
-/// Message used for shutdown synchronization
-pub type ShutdownMsg = &'static str;
-
-/// Sender side of shutdown messanger
-#[derive(Clone)]
-pub struct ShutdownSender(mpsc::UnboundedSender<ShutdownMsg>);
-
-impl ShutdownSender {
-    pub fn send(&self, msg: ShutdownMsg) {
-        self.0.unbounded_send(msg).expect("shutdown send failed");
-    }
-}
-
-/// Receiver side of shutdown messanger
-pub struct ShutdownReceiver(mpsc::UnboundedReceiver<ShutdownMsg>);
-
-impl ShutdownReceiver {
-    pub async fn receive(&mut self) -> ShutdownMsg {
-        let reply = await!(self.0.next());
-
-        // TODO: do we have to handle all these cases?
-        let msg = match reply {
-            None => "all hchains died",
-            Some(m) => m,
-        };
-        msg
-    }
-}
-
-/// Shutdown messanger constructor & splitter
-pub struct Shutdown(ShutdownSender, ShutdownReceiver);
-
-impl Shutdown {
-    pub fn new() -> Self {
-        let (shutdown_tx, shutdown_rx) = mpsc::unbounded();
-        Self(ShutdownSender(shutdown_tx), ShutdownReceiver(shutdown_rx))
-    }
-    pub fn split(self) -> (ShutdownSender, ShutdownReceiver) {
-        (self.0, self.1)
     }
 }
 

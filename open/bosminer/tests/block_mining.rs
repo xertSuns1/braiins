@@ -33,6 +33,7 @@ use ii_bitcoin::HashTrait;
 use bosminer::config;
 use bosminer::hal::{self, BitcoinJob, MiningWork, UniqueMiningWorkSolution};
 use bosminer::runtime_config;
+use bosminer::shutdown;
 use bosminer::stats;
 use bosminer::test_utils;
 use bosminer::work;
@@ -282,7 +283,7 @@ async fn collect_solutions(
 #[test]
 fn test_block_mining() {
     // create shutdown channel
-    let (shutdown_sender, shutdown_receiver) = hal::Shutdown::new().split();
+    let (shutdown_sender, shutdown_receiver) = shutdown::channel();
 
     // this is a small miner core: we generate work, collect solutions, and we pair them together
     // we expect all (generated) problems to be solved
