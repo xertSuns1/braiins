@@ -48,42 +48,6 @@ use std::fmt::{self, Debug};
 use std::sync::Arc;
 use std::time::SystemTime;
 
-pub enum WorkLoop<T> {
-    /// Mining work is exhausted
-    Exhausted,
-    /// Returning latest work (subsequent call will return Exhausted)
-    Break(T),
-    /// Mining work generation will continue
-    Continue(T),
-}
-
-impl<T> WorkLoop<T> {
-    pub fn unwrap(self) -> T {
-        match self {
-            WorkLoop::Break(val) => val,
-            WorkLoop::Continue(val) => val,
-            _ => panic!("called `WorkLoop::unwrap()` on a `None` value"),
-        }
-    }
-
-    #[inline]
-    pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> WorkLoop<U> {
-        use WorkLoop::{Break, Continue, Exhausted};
-
-        match self {
-            Exhausted => Exhausted,
-            Break(x) => Break(f(x)),
-            Continue(x) => Continue(f(x)),
-        }
-    }
-}
-
-pub trait WorkEngine: Debug + Send + Sync {
-    fn is_exhausted(&self) -> bool;
-
-    fn next_work(&self) -> WorkLoop<MiningWork>;
-}
-
 #[derive(Clone, Debug)]
 pub struct Midstate {
     /// Version field used for calculating the midstate

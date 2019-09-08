@@ -36,19 +36,56 @@ use futures::channel::mpsc;
 use tokio::prelude::*;
 use tokio::sync::watch;
 
+use std::fmt::Debug;
 use std::sync::Arc;
 
+pub enum LoopState<T> {
+    /// Mining work is exhausted
+    Exhausted,
+    /// Returning latest work (subsequent call will return Exhausted)
+    Break(T),
+    /// Mining work generation will continue
+    Continue(T),
+}
+
+impl<T> LoopState<T> {
+    pub fn unwrap(self) -> T {
+        match self {
+            LoopState::Break(val) => val,
+            LoopState::Continue(val) => val,
+            _ => panic!("called `LoopState::unwrap()` on a `None` value"),
+        }
+    }
+
+    #[inline]
+    pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> LoopState<U> {
+        use LoopState::{Break, Continue, Exhausted};
+
+        match self {
+            Exhausted => Exhausted,
+            Break(x) => Break(f(x)),
+            Continue(x) => Continue(f(x)),
+        }
+    }
+}
+
+pub trait Engine: Debug + Send + Sync {
+    fn is_exhausted(&self) -> bool;
+
+    fn next_work(&self) -> LoopState<hal::MiningWork>;
+}
+
 /// Shared work engine type
-pub type DynWorkEngine = Arc<dyn hal::WorkEngine>;
+pub type DynEngine = Arc<dyn Engine>;
 
 /// Builds a WorkEngine broadcasting channel. The broadcast channel requires an initial value. We
 /// use the empty work engine that signals 'exhausted' state all the time.
 /// You can optionally pass a channel `reschedule_sender` that will be used to return all exhausted
 /// engines. This way you can track what engines are "done".
 pub fn engine_channel(
-    reschedule_sender: Option<mpsc::UnboundedSender<DynWorkEngine>>,
+    reschedule_sender: Option<mpsc::UnboundedSender<DynEngine>>,
 ) -> (EngineSender, EngineReceiver) {
-    let work_engine: DynWorkEngine = Arc::new(engine::ExhaustedWork);
+    let work_engine: DynEngine = Arc::new(engine::ExhaustedWork);
     let (sender, receiver) = watch::channel(work_engine);
     (
         EngineSender::new(sender),
@@ -59,17 +96,17 @@ pub fn engine_channel(
 /// Sender is responsible for broadcasting a new WorkEngine to all mining
 /// backends
 pub struct EngineSender {
-    inner: watch::Sender<DynWorkEngine>,
+    inner: watch::Sender<DynEngine>,
 }
 
 impl EngineSender {
-    fn new(watch_sender: watch::Sender<DynWorkEngine>) -> Self {
+    fn new(watch_sender: watch::Sender<DynEngine>) -> Self {
         Self {
             inner: watch_sender,
         }
     }
 
-    pub fn broadcast(&mut self, engine: DynWorkEngine) {
+    pub fn broadcast(&mut self, engine: DynEngine) {
         self.inner
             .broadcast(engine)
             .expect("cannot broadcast work engine")
@@ -80,17 +117,17 @@ impl EngineSender {
 #[derive(Clone)]
 pub struct EngineReceiver {
     /// Broadcast channel that is used to distribute current `WorkEngine`
-    watch_receiver: watch::Receiver<DynWorkEngine>,
+    watch_receiver: watch::Receiver<DynEngine>,
     /// A channel that is (if present) used to send back exhausted engines
     /// to be "recycled" or just so that engine sender is notified that all work
     /// has been generated from them
-    reschedule_sender: Option<mpsc::UnboundedSender<DynWorkEngine>>,
+    reschedule_sender: Option<mpsc::UnboundedSender<DynEngine>>,
 }
 
 impl EngineReceiver {
     fn new(
-        watch_receiver: watch::Receiver<DynWorkEngine>,
-        reschedule_sender: Option<mpsc::UnboundedSender<DynWorkEngine>>,
+        watch_receiver: watch::Receiver<DynEngine>,
+        reschedule_sender: Option<mpsc::UnboundedSender<DynEngine>>,
     ) -> Self {
         Self {
             watch_receiver,
@@ -100,7 +137,7 @@ impl EngineReceiver {
 
     /// Provides the most recent WorkEngine as long as the engine is able to provide any work.
     /// Otherwise, it sleeps and waits for a new
-    pub async fn get_engine(&mut self) -> Option<DynWorkEngine> {
+    pub async fn get_engine(&mut self) -> Option<DynEngine> {
         let mut engine = self.watch_receiver.get_ref().clone();
         loop {
             if !engine.is_exhausted() {

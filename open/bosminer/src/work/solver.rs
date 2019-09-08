@@ -82,11 +82,11 @@ impl Generator {
                 // try to gen new work engine
                 // NOTE: this can happen simultaneously for multiple parallel generators because
                 // only one can win the last work and so there should not be included any logging
-                hal::WorkLoop::Exhausted => continue,
+                LoopState::Exhausted => continue,
                 // consecutive call of work engine may return new work
-                hal::WorkLoop::Continue(value) => value,
+                LoopState::Continue(value) => value,
                 // tha last work is returned from work engine (the work is exhausted)
-                hal::WorkLoop::Break(value) => {
+                LoopState::Break(value) => {
                     warn!("No more work available for current job!");
                     // inform the 'WorkHub' for rescheduling a new work
                     self.engine_receiver.reschedule();
