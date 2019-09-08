@@ -345,7 +345,7 @@ impl<'a> Iterator for BlockErupterSolver<'a> {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::hal::BitcoinJob;
+    use crate::job::Bitcoin;
     use crate::test_utils;
 
     use std::ops::{Deref, DerefMut};

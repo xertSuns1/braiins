@@ -22,7 +22,8 @@
 
 use ii_bitcoin::HashTrait;
 
-use crate::hal::{self, BitcoinJob};
+use crate::hal;
+use crate::job::{self, Bitcoin};
 
 use std::sync::Arc;
 
@@ -53,7 +54,7 @@ impl NullJob {
     }
 }
 
-impl hal::BitcoinJob for NullJob {
+impl job::Bitcoin for NullJob {
     fn version(&self) -> u32 {
         self.version
     }

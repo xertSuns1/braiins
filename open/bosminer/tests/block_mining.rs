@@ -31,7 +31,8 @@ use ii_logging::macros::*;
 use ii_bitcoin::HashTrait;
 
 use bosminer::config;
-use bosminer::hal::{self, BitcoinJob, MiningWork, UniqueMiningWorkSolution};
+use bosminer::hal::{self, MiningWork, UniqueMiningWorkSolution};
+use bosminer::job::Bitcoin;
 use bosminer::runtime_config;
 use bosminer::shutdown;
 use bosminer::stats;

@@ -39,54 +39,14 @@ pub use s9::{
     run,
 };
 
+use crate::job::{self, Bitcoin};
+
 use ii_bitcoin::{HashTrait, MeetsTarget};
 
 use std::cell::Cell;
-use std::convert::TryInto;
 use std::fmt::{self, Debug};
-use std::mem;
 use std::sync::Arc;
 use std::time::SystemTime;
-
-use downcast_rs::{impl_downcast, Downcast};
-
-/// Represents interface for Bitcoin job with access to block header from which the new work will be
-/// generated. The trait is bound to Downcast which enables connect work solution with original job
-/// and hide protocol specific details.
-pub trait BitcoinJob: Debug + Downcast + Send + Sync {
-    /// Original version field that reflects the current network consensus
-    fn version(&self) -> u32;
-    /// Bit-mask with general purpose bits which can be freely manipulated (specified by BIP320)
-    fn version_mask(&self) -> u32;
-    /// Double SHA256 hash of the previous block header
-    fn previous_hash(&self) -> &ii_bitcoin::DHash;
-    /// Double SHA256 hash based on all of the transactions in the block
-    fn merkle_root(&self) -> &ii_bitcoin::DHash;
-    /// Current block timestamp as seconds since 1970-01-01T00:00 UTC
-    fn time(&self) -> u32;
-    /// Maximal timestamp for current block as seconds since 1970-01-01T00:00 UTC
-    fn max_time(&self) -> u32 {
-        self.time()
-    }
-    /// Current target in compact format (network difficulty)
-    /// https://en.bitcoin.it/wiki/Difficulty
-    fn bits(&self) -> u32;
-    /// Checks if job is still valid for mining
-    fn is_valid(&self) -> bool;
-
-    /// Extract least-significant word of merkle root that goes to chunk2 of SHA256
-    /// The word is interpreted as a little endian number.
-    #[inline]
-    fn merkle_root_tail(&self) -> u32 {
-        let merkle_root = self.merkle_root().into_inner();
-        u32::from_le_bytes(
-            merkle_root[merkle_root.len() - mem::size_of::<u32>()..]
-                .try_into()
-                .expect("slice with incorrect length"),
-        )
-    }
-}
-impl_downcast!(BitcoinJob);
 
 pub enum WorkLoop<T> {
     /// Mining work is exhausted
@@ -138,7 +98,7 @@ pub struct Midstate {
 #[derive(Clone, Debug)]
 pub struct MiningWork {
     /// Bitcoin job shared with initial network protocol and work solution
-    job: Arc<dyn BitcoinJob>,
+    job: Arc<dyn job::Bitcoin>,
     /// Multiple midstates can be generated for each work
     pub midstates: Vec<Midstate>,
     /// Start value for nTime, hardware may roll nTime further
@@ -146,7 +106,7 @@ pub struct MiningWork {
 }
 
 impl MiningWork {
-    pub fn new(job: Arc<dyn BitcoinJob>, midstates: Vec<Midstate>, ntime: u32) -> Self {
+    pub fn new(job: Arc<dyn job::Bitcoin>, midstates: Vec<Midstate>, ntime: u32) -> Self {
         Self {
             job,
             midstates,
@@ -209,7 +169,7 @@ impl UniqueMiningWorkSolution {
         }
     }
 
-    pub fn job<T: BitcoinJob>(&self) -> &T {
+    pub fn job<T: job::Bitcoin>(&self) -> &T {
         self.work
             .job
             .downcast_ref::<T>()

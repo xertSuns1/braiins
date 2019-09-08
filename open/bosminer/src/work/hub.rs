@@ -24,6 +24,7 @@ use ii_logging::macros::*;
 
 use super::*;
 use crate::hal;
+use crate::job;
 use crate::runtime_config;
 use crate::stats;
 use crate::work;
@@ -103,7 +104,7 @@ impl JobSender {
             .expect("cannot write to shared current target") = target;
     }
 
-    pub fn send(&mut self, job: Arc<dyn hal::BitcoinJob>) {
+    pub fn send(&mut self, job: Arc<dyn job::Bitcoin>) {
         info!("--- broadcasting new job ---");
         let engine = Arc::new(engine::VersionRolling::new(
             job,

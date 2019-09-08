@@ -23,6 +23,7 @@
 //! Provides work engines that are capable for converting Jobs to actual work suitable for mining
 //! backend processing
 use crate::hal;
+use crate::job;
 
 use ii_bitcoin::HashTrait;
 
@@ -124,7 +125,7 @@ impl AtomicRange {
 /// range is full exhausted
 #[derive(Debug, Clone)]
 pub struct VersionRolling {
-    job: Arc<dyn hal::BitcoinJob>,
+    job: Arc<dyn job::Bitcoin>,
     /// Number of midstates that each generated work covers
     midstate_count: usize,
     /// Current range of the rolled part of the version (before BIP320 shift)
@@ -134,7 +135,7 @@ pub struct VersionRolling {
 }
 
 impl VersionRolling {
-    pub fn new(job: Arc<dyn hal::BitcoinJob>, midstate_count: usize) -> Self {
+    pub fn new(job: Arc<dyn job::Bitcoin>, midstate_count: usize) -> Self {
         let base_version = job.version() & !ii_bitcoin::BIP320_VERSION_MASK;
         Self {
             job,
@@ -202,8 +203,8 @@ impl hal::WorkEngine for VersionRolling {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::hal::BitcoinJob;
     use crate::hal::WorkEngine;
+    use crate::job::Bitcoin;
     use crate::test_utils;
 
     fn compare_range(start: u32, stop: u32, step: u32) {
