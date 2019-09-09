@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "bosminer",
+    "bosminer-am1-s9",
+    "bosminer-erupter",
+]

@@ -20,14 +20,12 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-#![feature(await_macro, async_await)]
-
-use bosminer::client::stratum_v2;
-use bosminer::hal;
-use bosminer::hub;
-use bosminer::runtime_config;
-use bosminer::shutdown;
-use bosminer::stats;
+use crate::client::stratum_v2;
+use crate::hal;
+use crate::hub;
+use crate::runtime_config;
+use crate::shutdown;
+use crate::stats;
 
 use futures::lock::Mutex;
 
@@ -67,7 +65,7 @@ async fn main_task(stratum_addr: String, user: String) {
     await!(stratum_v2::run(job_solver, stratum_addr, user));
 }
 
-fn main() {
+pub fn main() {
     let _log_guard = ii_logging::setup_for_app();
 
     let args = clap::App::new("bosminer")
