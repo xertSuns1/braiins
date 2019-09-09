@@ -36,7 +36,7 @@ use std::sync::Arc;
 use ii_stratum::v2::framing::codec::Framing;
 use ii_stratum::v2::messages::{
     NewMiningJob, OpenChannel, OpenChannelError, OpenChannelSuccess, SetNewPrevHash, SetTarget,
-    SetupMiningConnection, SetupMiningConnectionError, SetupMiningConnectionSuccess, SubmitShares,
+    SetupConnection, SetupConnectionError, SetupConnectionSuccess, SubmitShares,
     SubmitSharesSuccess,
 };
 use ii_stratum::v2::types::DeviceInfo;
@@ -207,18 +207,18 @@ impl Handler for StratumEventHandler {
         self.update_target(target_msg.max_target);
     }
 
-    fn visit_setup_mining_connection_success(
+    fn visit_setup_connection_success(
         &mut self,
         _msg: &Message<Protocol>,
-        _success_msg: &SetupMiningConnectionSuccess,
+        _success_msg: &SetupConnectionSuccess,
     ) {
         self.status = Ok(());
     }
 
-    fn visit_setup_mining_connection_error(
+    fn visit_setup_connection_error(
         &mut self,
         _msg: &Message<Protocol>,
-        _error_msg: &SetupMiningConnectionError,
+        _error_msg: &SetupConnectionError,
     ) {
         self.status = Err(());
     }
@@ -286,13 +286,17 @@ impl StratumSolutionHandler {
 async fn setup_mining_connection<'a>(
     connection: &'a mut Connection<Framing>,
     event_handler: &'a mut StratumEventHandler,
-    stratum_addr: String,
+    endpoint_hostname: String,
+    endpoint_port: usize,
 ) -> Result<(), ()> {
-    let setup_msg = SetupMiningConnection {
-        protocol_version: 0,
-        connection_url: Str0_255::from_string(stratum_addr),
-        /// header only mining
-        required_extranonce_size: 0,
+    let setup_msg = SetupConnection {
+        max_version: 0,
+        min_version: 0,
+        flags: 0,
+        // TODO-DOC: Pubkey spec not finalized yet
+        expected_pubkey: PubKey::new(),
+        endpoint_hostname: Str0_255::from_string(endpoint_hostname),
+        endpoint_port: endpoint_port as u16,
     };
     await!(connection.send(setup_msg)).expect("Cannot send stratum setup mining connection");
     let response_msg = await!(connection.next())
@@ -346,18 +350,18 @@ impl StringifyV2 {
 }
 
 impl Handler for StringifyV2 {
-    fn visit_setup_mining_connection(
+    fn visit_setup_connection(
         &mut self,
         _msg: &ii_wire::Message<Protocol>,
-        payload: &SetupMiningConnection,
+        payload: &SetupConnection,
     ) {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_setup_mining_connection_success(
+    fn visit_setup_connection_success(
         &mut self,
         _msg: &ii_wire::Message<Protocol>,
-        payload: &SetupMiningConnectionSuccess,
+        payload: &SetupConnectionSuccess,
     ) {
         self.0 = Some(format!("{:?}", payload));
     }
@@ -427,7 +431,8 @@ pub async fn run(job_solver: job::Solver, stratum_addr: String, user: String) {
     await!(setup_mining_connection(
         &mut connection,
         &mut event_handler,
-        stratum_addr
+        stratum_addr,
+        socket_addr.port() as usize,
     ))
     .expect("Cannot setup stratum mining connection");
     await!(open_channel(&mut connection, &mut event_handler, user))
