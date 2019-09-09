@@ -35,9 +35,9 @@ use std::sync::Arc;
 
 use ii_stratum::v2::framing::codec::Framing;
 use ii_stratum::v2::messages::{
-    NewMiningJob, OpenChannel, OpenChannelError, OpenChannelSuccess, SetNewPrevHash, SetTarget,
-    SetupConnection, SetupConnectionError, SetupConnectionSuccess, SubmitShares,
-    SubmitSharesSuccess,
+    NewMiningJob, OpenMiningChannel, OpenMiningChannelError, OpenMiningChannelSuccess,
+    SetNewPrevHash, SetTarget, SetupConnection, SetupConnectionError, SetupConnectionSuccess,
+    SubmitShares, SubmitSharesSuccess,
 };
 use ii_stratum::v2::types::DeviceInfo;
 use ii_stratum::v2::types::*;
@@ -223,19 +223,19 @@ impl Handler for StratumEventHandler {
         self.status = Err(());
     }
 
-    fn visit_open_channel_success(
+    fn visit_open_mining_channel_success(
         &mut self,
         _msg: &Message<Protocol>,
-        success_msg: &OpenChannelSuccess,
+        success_msg: &OpenMiningChannelSuccess,
     ) {
         self.update_target(success_msg.init_target);
         self.status = Ok(());
     }
 
-    fn visit_open_channel_error(
+    fn visit_open_mining_channel_error(
         &mut self,
         _msg: &Message<Protocol>,
-        _error_msg: &OpenChannelError,
+        _error_msg: &OpenMiningChannelError,
     ) {
         self.status = Err(());
     }
@@ -312,7 +312,7 @@ async fn open_channel<'a>(
     event_handler: &'a mut StratumEventHandler,
     user: String,
 ) -> Result<(), ()> {
-    let channel_msg = OpenChannel {
+    let channel_msg = OpenMiningChannel {
         req_id: 10,
         user: user.try_into()?,
         extended: false,
@@ -324,7 +324,8 @@ async fn open_channel<'a>(
         },
         nominal_hashrate: 1e9,
         // Maximum bitcoin target is 0xffff << 208 (= difficulty 1 share)
-        max_target_nbits: 0x1d00ffff,
+        max_target: ii_bitcoin::Target::default().into(),
+        min_extranonce_size: 0,
         aggregated_device_count: 1,
     };
     await!(connection.send(channel_msg)).expect("Cannot send stratum open channel");
@@ -366,14 +367,18 @@ impl Handler for StringifyV2 {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_open_channel(&mut self, _msg: &ii_wire::Message<Protocol>, payload: &OpenChannel) {
+    fn visit_open_mining_channel(
+        &mut self,
+        _msg: &ii_wire::Message<Protocol>,
+        payload: &OpenMiningChannel,
+    ) {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_open_channel_success(
+    fn visit_open_mining_channel_success(
         &mut self,
         _msg: &ii_wire::Message<Protocol>,
-        payload: &OpenChannelSuccess,
+        payload: &OpenMiningChannelSuccess,
     ) {
         self.0 = Some(format!("{:?}", payload));
     }
