@@ -20,24 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-#![feature(await_macro, async_await, duration_float)]
-
-pub mod client;
-pub mod config;
-pub mod error;
-pub mod hal;
-pub mod hub;
-pub mod job;
-pub mod runtime_config;
-pub mod shutdown;
-pub mod stats;
-pub mod work;
-
-pub mod test_utils;
-
-#[cfg(feature = "backend_selected")]
-pub mod entry;
-
-// reexport main function from `entry` module
-#[cfg(feature = "backend_selected")]
-pub use entry::main;
+#[test]
+fn block_mining() {
+    bosminer::test_utils::block_mining::run(bosminer::hal::BackendImpl);
+}

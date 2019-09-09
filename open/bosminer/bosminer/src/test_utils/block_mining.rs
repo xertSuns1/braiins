@@ -24,20 +24,18 @@
 //! This test is deterministic - we know hardware can mine all the test blocks in `test_utils`,
 //! and we want to verify that we receive correct solution for each block (which tests
 //! that all work has been correctly defined and sent to hardware).
-#![feature(await_macro, async_await)]
 
 use ii_logging::macros::*;
 
 use ii_bitcoin::HashTrait;
 
-use bosminer::config;
-use bosminer::hal;
-use bosminer::job::Bitcoin;
-use bosminer::runtime_config;
-use bosminer::shutdown;
-use bosminer::stats;
-use bosminer::test_utils;
-use bosminer::work;
+use crate::hal;
+use crate::job::Bitcoin;
+use crate::runtime_config;
+use crate::shutdown;
+use crate::stats;
+use crate::test_utils;
+use crate::work;
 
 use std::time::{Duration, Instant};
 use tokio::timer::Delay;
@@ -281,14 +279,13 @@ async fn collect_solutions(
     }
 }
 
-#[test]
-fn test_block_mining() {
+pub fn run<T: hal::Backend>(backend: T) {
     // create shutdown channel
     let (shutdown_sender, shutdown_receiver) = shutdown::channel();
 
     // this is a small miner core: we generate work, collect solutions, and we pair them together
     // we expect all (generated) problems to be solved
-    ii_async_compat::run_main_exits(async {
+    ii_async_compat::run_main_exits(async move {
         // read config
         let midstate_count = runtime_config::get_midstate_count();
 
@@ -303,7 +300,7 @@ fn test_block_mining() {
         let registry = Arc::new(Mutex::new(Registry::new()));
 
         // start HW backend for selected target
-        hal::run(work_solver, mining_stats.clone(), shutdown_sender);
+        backend.run(work_solver, mining_stats.clone(), shutdown_sender);
 
         // start task to collect solutions and put them to registry
         ii_async_compat::spawn(collect_solutions(solution_queue_rx, registry.clone()));
@@ -335,7 +332,7 @@ fn test_block_mining() {
 
         // wait for hw to finish computation
         let timeout_started = Instant::now();
-        while timeout_started.elapsed() < config::JOB_TIMEOUT {
+        while timeout_started.elapsed() < T::JOB_TIMEOUT {
             await!(Delay::new(Instant::now() + Duration::from_secs(1)).compat()).unwrap();
             if await!(registry.lock()).check_everything_solved(false) {
                 break;
