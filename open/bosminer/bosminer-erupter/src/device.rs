@@ -194,7 +194,7 @@ pub struct BlockErupterSolver<'a> {
     work_start: SystemTime,
     curr_work: Option<work::Assignment>,
     next_solution: Option<work::UniqueSolution>,
-    solution_id: u32,
+    hardware_id: u32,
     stop_reason: RefCell<error::Result<()>>,
 }
 
@@ -206,7 +206,7 @@ impl<'a> BlockErupterSolver<'a> {
             work_start: SystemTime::UNIX_EPOCH,
             curr_work: None,
             next_solution: None,
-            solution_id: 0,
+            hardware_id: 0,
             stop_reason: RefCell::new(Ok(())),
         }
     }
@@ -259,7 +259,7 @@ impl<'a> BlockErupterSolver<'a> {
         work: work::Assignment,
         nonce: u32,
         timestamp: SystemTime,
-        solution_id: u32,
+        hardware_id: u32,
     ) -> work::UniqueSolution {
         work::UniqueSolution::new(
             work,
@@ -268,7 +268,7 @@ impl<'a> BlockErupterSolver<'a> {
                 ntime: None,
                 midstate_idx: 0,
                 solution_idx: 0,
-                solution_id,
+                hardware_id,
             },
             Some(timestamp),
         )
@@ -299,10 +299,10 @@ impl<'a> Iterator for BlockErupterSolver<'a> {
                         work.clone(),
                         nonce,
                         timestamp,
-                        self.solution_id,
+                        self.hardware_id,
                     );
                     // increment counter for next solution id
-                    self.solution_id = self.solution_id.checked_add(1).expect("too much solutions");
+                    self.hardware_id = self.hardware_id.checked_add(1).expect("too many solutions");
                     return Some(match prev_work.take() {
                         None => solution,
                         // when solution has been found very quickly then it is possible that the
@@ -324,7 +324,7 @@ impl<'a> Iterator for BlockErupterSolver<'a> {
                 }
             }
 
-            prev_work = self.curr_work.take().map(|work| (work, self.solution_id));
+            prev_work = self.curr_work.take().map(|work| (work, self.hardware_id));
             match ii_async_compat::block_on(self.work_generator.generate()) {
                 // end of stream
                 None => break,
@@ -332,7 +332,7 @@ impl<'a> Iterator for BlockErupterSolver<'a> {
                 Some(work) => {
                     self.send_work(&work);
                     self.curr_work = Some(work);
-                    self.solution_id = 0;
+                    self.hardware_id = 0;
                 }
             };
         }

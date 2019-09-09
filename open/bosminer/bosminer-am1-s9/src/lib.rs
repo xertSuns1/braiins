@@ -683,7 +683,7 @@ where
             let (rx_fifo_out, solution) =
                 await!(rx_fifo.recv_solution()).expect("recv solution failed");
             rx_fifo = rx_fifo_out;
-            let solution_id = SolutionId::from_reg(solution.solution_id, rx_fifo.midstate_count);
+            let solution_id = SolutionId::from_reg(solution.hardware_id, rx_fifo.midstate_count);
             let work_id = solution_id.work_id;
             let mut stats = await!(mining_stats.lock());
             let mut work_registry = await!(work_registry.lock());
