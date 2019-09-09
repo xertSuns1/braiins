@@ -20,6 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+pub mod block_mining;
+
 use crate::job;
 use crate::work;
 

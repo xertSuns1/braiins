@@ -28,4 +28,8 @@
 ///
 /// If you get UNRESOLVED IMPORT here, it probably means someone added
 /// configuration option for one architecture but not for all of them.
+#[cfg(feature = "backend_selected")]
 pub use crate::hal::config::{ASIC_DIFFICULTY, DEFAULT_MIDSTATE_COUNT, JOB_TIMEOUT};
+
+#[cfg(not(feature = "backend_selected"))]
+pub const DEFAULT_MIDSTATE_COUNT: usize = 1;

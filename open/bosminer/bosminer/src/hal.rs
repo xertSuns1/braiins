@@ -38,3 +38,41 @@ pub use s9::{
     error::{Error, ErrorKind},
     run,
 };
+
+use crate::shutdown;
+use crate::stats;
+use crate::work;
+
+use futures::lock::Mutex;
+
+use std::sync::Arc;
+use std::time::Duration;
+
+/// Minimal interface for running compatible backend with bOSminer crate
+pub trait Backend: Send + Sync + 'static {
+    const JOB_TIMEOUT: Duration;
+
+    fn run(
+        &self,
+        work_solver: work::Solver,
+        mining_stats: Arc<Mutex<stats::Mining>>,
+        shutdown: shutdown::Sender,
+    );
+}
+
+#[cfg(feature = "backend_selected")]
+pub struct BackendImpl;
+
+#[cfg(feature = "backend_selected")]
+impl Backend for BackendImpl {
+    const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
+
+    fn run(
+        &self,
+        work_solver: work::Solver,
+        mining_stats: Arc<Mutex<stats::Mining>>,
+        shutdown: shutdown::Sender,
+    ) {
+        run(work_solver, mining_stats, shutdown);
+    }
+}
