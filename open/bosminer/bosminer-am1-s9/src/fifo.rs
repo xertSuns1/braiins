@@ -205,7 +205,7 @@ impl HChainFifo {
             ntime: None,
             midstate_idx: solution_id.midstate_idx,
             solution_idx: solution_id.solution_idx,
-            solution_id: word2,
+            hardware_id: word2,
         };
 
         Ok((self, solution))

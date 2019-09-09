@@ -124,8 +124,8 @@ pub struct Solution {
     pub midstate_idx: usize,
     /// index of a solution (if multiple were found)
     pub solution_idx: usize,
-    /// unique solution identifier
-    pub solution_id: u32,
+    /// hardware specific solution identifier
+    pub hardware_id: u32,
 }
 
 /// Container with mining work and a corresponding solution received at a particular time
@@ -360,7 +360,7 @@ pub mod test_utils {
                 ntime: None,
                 midstate_idx: 0,
                 solution_idx: 0,
-                solution_id: 0,
+                hardware_id: 0,
             }
         }
     }
