@@ -44,8 +44,9 @@ CARGO_TARGET:=arm-unknown-linux-musleabi
 CARGO_OUTPUT_DIR:=$(PKG_BUILD_DIR)/target/$(CARGO_TARGET)/release
 
 BOSMINER_BACKEND:=\
-	$(if $(CONFIG_BOSMINER_BACKEND_antminer_s9),antminer_s9,\
+	$(if $(CONFIG_BOSMINER_BACKEND_antminer_s9),am1-s9,\
 	$(if $(CONFIG_BOSMINER_BACKEND_erupter),erupter))
+BOSMINER_NAME:=bosminer-$(BOSMINER_BACKEND)
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -65,14 +66,14 @@ define Package/bosminer/config
 endef
 
 define Build/Compile
-	( cd $(PKG_BUILD_DIR); CROSS_COMPILE=$(TARGET_CROSS) \
-	  cargo build --release --features $(BOSMINER_BACKEND) --target $(CARGO_TARGET))
-	$(TARGET_CROSS)strip $(CARGO_OUTPUT_DIR)/$(PKG_NAME)
+	( cd $(PKG_BUILD_DIR)/$(BOSMINER_NAME); CROSS_COMPILE=$(TARGET_CROSS) \
+	  cargo build --release --target $(CARGO_TARGET))
+	$(TARGET_CROSS)strip $(CARGO_OUTPUT_DIR)/$(BOSMINER_NAME)
 endef
 
 define Package/bosminer/install
 	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(CARGO_OUTPUT_DIR)/$(PKG_NAME) $(1)/usr/bin/
+	$(INSTALL_BIN) $(CARGO_OUTPUT_DIR)/$(BOSMINER_NAME) $(1)/usr/bin/
 	$(INSTALL_BIN) ./files/set_fan.sh $(1)/usr/bin/set_fan
 endef
 
