@@ -87,9 +87,6 @@ impl Drop for UioMapping {
     }
 }
 
-unsafe impl Send for UioMapping {}
-unsafe impl Sync for UioMapping {}
-
 /// Reference-like type holding a memory map created using UioMapping
 /// Used to hold a typed memory mapping.
 /// The idea is that there's no other way to access the mapped memory than
@@ -118,6 +115,9 @@ impl UioMapping {
         }
     }
 }
+
+unsafe impl<T> Send for UioTypedMapping<T> {}
+unsafe impl<T> Sync for UioTypedMapping<T> {}
 
 pub struct UioDevice {
     uio_num: usize,

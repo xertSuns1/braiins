@@ -25,8 +25,8 @@
 mod bm1387;
 pub mod config;
 pub mod error;
-pub mod fifo;
 pub mod gpio;
+pub mod io;
 pub mod null_work;
 pub mod power;
 pub mod registry;
@@ -188,13 +188,11 @@ pub struct HChainCtl<VBackend> {
     last_heartbeat_sent: Option<SystemTime>,
     #[allow(dead_code)]
     hashboard_idx: usize,
-    pub cmd_fifo: fifo::HChainFifo,
-    pub work_rx_fifo: Option<fifo::HChainFifo>,
-    pub work_tx_fifo: Option<fifo::HChainFifo>,
+    pub command_io: io::CommandIo,
+    pub config_io: io::ConfigIo,
+    pub work_rx_io: Option<io::WorkRxIo>,
+    pub work_tx_io: Option<io::WorkTxIo>,
 }
-
-unsafe impl<VBackend> Send for HChainCtl<VBackend> {}
-unsafe impl<VBackend> Sync for HChainCtl<VBackend> {}
 
 impl<VBackend> HChainCtl<VBackend>
 where
@@ -237,13 +235,15 @@ where
                 "failed to initialize reset pin".to_string(),
             ))?;
 
-        let mut cmd_fifo = fifo::HChainFifo::new(hashboard_idx, midstate_count)?;
-        let mut work_rx_fifo = fifo::HChainFifo::new(hashboard_idx, midstate_count)?;
-        let mut work_tx_fifo = fifo::HChainFifo::new(hashboard_idx, midstate_count)?;
+        let mut config_io = io::ConfigIo::new(hashboard_idx)?;
+        let mut command_io = io::CommandIo::new(hashboard_idx)?;
+        let mut work_rx_io = io::WorkRxIo::new(hashboard_idx, midstate_count)?;
+        let mut work_tx_io = io::WorkTxIo::new(hashboard_idx, midstate_count)?;
 
-        cmd_fifo.init()?;
-        work_rx_fifo.init()?;
-        work_tx_fifo.init()?;
+        config_io.init()?;
+        command_io.init()?;
+        work_rx_io.init()?;
+        work_tx_io.init()?;
 
         Ok(Self {
             chip_count: 0,
@@ -256,9 +256,10 @@ where
             last_heartbeat_sent: None,
             // TODO: implement setting me
             pll_frequency: DEFAULT_S9_PLL_FREQUENCY,
-            cmd_fifo: cmd_fifo,
-            work_rx_fifo: Some(work_rx_fifo),
-            work_tx_fifo: Some(work_tx_fifo),
+            config_io,
+            command_io,
+            work_rx_io: Some(work_rx_io),
+            work_tx_io: Some(work_tx_io),
         })
     }
     /// Calculate work_time for this instance of HChain
@@ -275,14 +276,15 @@ where
     /// Helper method that initializes the FPGA IP core
     fn ip_core_init(&mut self) -> error::Result<()> {
         // Disable ip core
-        self.cmd_fifo.disable_ip_core();
-        self.cmd_fifo.enable_ip_core();
+        self.config_io.hw.disable_ip_core();
+        self.config_io.hw.enable_ip_core();
 
         self.set_ip_core_baud_rate(INIT_CHIP_BAUD_RATE)?;
         let work_time = self.calculate_work_time();
         trace!("Using work time: {}", work_time);
-        self.cmd_fifo.set_ip_core_work_time(work_time);
-        self.cmd_fifo
+        self.config_io.hw.set_ip_core_work_time(work_time);
+        self.config_io
+            .hw
             .set_ip_core_midstate_count(self.midstate_count.to_reg());
 
         Ok(())
@@ -290,7 +292,7 @@ where
 
     /// Puts the board into reset mode and disables the associated IP core
     fn enter_reset(&mut self) -> error::Result<()> {
-        self.cmd_fifo.disable_ip_core();
+        self.config_io.hw.disable_ip_core();
         // perform reset of the hashboard
         self.rst_pin.set_low()?;
         Ok(())
@@ -299,7 +301,7 @@ where
     /// Leaves reset mode
     fn exit_reset(&mut self) -> error::Result<()> {
         self.rst_pin.set_high()?;
-        self.cmd_fifo.enable_ip_core();
+        self.config_io.hw.enable_ip_core();
         Ok(())
     }
 
@@ -508,7 +510,7 @@ where
             baud, actual_baud_rate, baud_clock_div
         );
 
-        self.cmd_fifo.set_baud_clock_div(baud_clock_div as u32);
+        self.config_io.hw.set_baud_clock_div(baud_clock_div as u32);
         Ok(())
     }
 
@@ -524,12 +526,11 @@ where
         );
         trace!("Sending Control Command {:x?}", cmd);
         for chunk in cmd.chunks(4) {
-            self.cmd_fifo
-                .write_to_cmd_tx_fifo(LittleEndian::read_u32(chunk));
+            self.command_io.hw.write(LittleEndian::read_u32(chunk));
         }
         // TODO busy waiting has to be replaced once asynchronous processing is in place
         if wait {
-            self.cmd_fifo.wait_cmd_tx_fifo_empty();
+            self.command_io.hw.wait_tx_empty();
         }
     }
 
@@ -544,12 +545,12 @@ where
 
         // TODO: to be refactored once we have asynchronous handling in place
         // fetch command response from IP core's fifo
-        match self.cmd_fifo.read_from_cmd_rx_fifo()? {
+        match self.command_io.hw.read()? {
             None => return Ok(None),
             Some(resp_word) => LittleEndian::write_u32(&mut cmd_resp[..4], resp_word),
         }
         // All errors from reading the second word are propagated
-        match self.cmd_fifo.read_from_cmd_rx_fifo()? {
+        match self.command_io.hw.read()? {
             None => {
                 return Err(ErrorKind::Fifo(
                     error::Fifo::TimedOut,
@@ -575,8 +576,9 @@ where
 
     /// Initialize cores by sending open-core work with correct nbits to each core
     async fn send_init_work(
+        h_chain_ctl: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
-        tx_fifo: &mut fifo::HChainFifo,
+        tx_fifo: &mut io::WorkTxIo,
     ) {
         // Each core gets one work
         const NUM_WORK: usize = bm1387::NUM_CORES_ON_CHIP;
@@ -584,29 +586,23 @@ where
             "Sending out {} pieces of dummy work to initialize chips",
             NUM_WORK
         );
+        let midstate_count = await!(h_chain_ctl.lock()).midstate_count.to_count();
         for _ in 0..NUM_WORK {
-            let work = &null_work::prepare_opencore(true, tx_fifo.midstate_count.to_count());
+            let work = &null_work::prepare_opencore(true, midstate_count);
             let work_id = await!(work_registry.lock()).store_work(work.clone());
-            await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
+            await!(tx_fifo.wait_for_room()).expect("wait for tx room");
             tx_fifo.send_work(&work, work_id).expect("send work");
         }
     }
 
-    /// Generates enough testing work until the work FIFO becomes full
-    /// The work is made unique by specifying a unique midstate.
-    ///
-    /// As the next step the method starts collecting solutions, eliminating duplicates and extracting
-    /// valid solutions for further processing
-    ///
-    /// Returns the amount of work generated during this run
-    async fn async_send_work(
+    async fn work_tx_task(
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
-        mut tx_fifo: fifo::HChainFifo,
+        mut tx_fifo: io::WorkTxIo,
         mut work_generator: work::Generator,
     ) {
         loop {
-            await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
+            await!(tx_fifo.wait_for_room()).expect("wait for tx room");
             let work = await!(work_generator.generate());
             match work {
                 None => return,
@@ -616,17 +612,16 @@ where
                     // send work is synchronous
                     tx_fifo.send_work(&work, work_id).expect("send work");
                     let mut stats = await!(mining_stats.lock());
-                    stats.work_generated += tx_fifo.midstate_count.to_count();
-                    drop(stats);
+                    stats.work_generated += work.midstates.len();
                 }
             }
         }
     }
 
-    async fn async_recv_solutions(
+    async fn solution_rx_task(
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
-        mut rx_fifo: fifo::HChainFifo,
+        mut rx_fifo: io::WorkRxIo,
         solution_sender: work::SolutionSender,
     ) {
         // solution receiving/filtering part
@@ -683,12 +678,16 @@ where
     ) {
         ii_async_compat::spawn(async move {
             let mut tx_fifo = await!(h_chain_ctl.lock())
-                .work_tx_fifo
+                .work_tx_io
                 .take()
-                .expect("work-tx fifo missing");
+                .expect("work-tx io missing");
 
-            await!(Self::send_init_work(work_registry.clone(), &mut tx_fifo));
-            await!(Self::async_send_work(
+            await!(Self::send_init_work(
+                h_chain_ctl.clone(),
+                work_registry.clone(),
+                &mut tx_fifo
+            ));
+            await!(Self::work_tx_task(
                 work_registry,
                 mining_stats,
                 tx_fifo,
@@ -706,10 +705,10 @@ where
     ) {
         ii_async_compat::spawn(async move {
             let rx_fifo = await!(h_chain_ctl.lock())
-                .work_rx_fifo
+                .work_rx_io
                 .take()
-                .expect("work-rx fifo missing");
-            await!(Self::async_recv_solutions(
+                .expect("work-rx io missing");
+            await!(Self::solution_rx_task(
                 work_registry,
                 mining_stats,
                 rx_fifo,
@@ -763,9 +762,9 @@ impl HChain {
 
         let work_registry = Arc::new(Mutex::new(registry::MiningWorkRegistry::new(
             h_chain_ctl
-                .work_tx_fifo
+                .work_tx_io
                 .as_ref()
-                .expect("fifo missing")
+                .expect("io missing")
                 .work_id_range(),
         )));
         let h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
