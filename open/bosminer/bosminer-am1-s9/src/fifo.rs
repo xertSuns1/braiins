@@ -21,19 +21,17 @@
 // contact us at opensource@braiins.com.
 
 mod tag;
+mod uio;
 
 /// This module provides thin API to access memory-mapped FPGA registers
 /// and associated interrupts.
 /// Exports FIFO management/send/receive and register access.
 use crate::error::{self, ErrorKind};
-use failure::ResultExt;
 
 use bosminer::work;
 
 use ii_fpga_io_am1_s9::hchainio0;
 
-use std::marker::PhantomData;
-use std::ops;
 use std::time::Duration;
 
 /// How long to wait for RX interrupt
@@ -59,20 +57,6 @@ pub struct HChainFifo {
     work_tx_irq: uio_async::UioDevice,
     work_rx_irq: uio_async::UioDevice,
     cmd_rx_irq: uio_async::UioDevice,
-}
-
-fn open_ip_core_uio(
-    hashboard_idx: usize,
-    uio_type: &'static str,
-) -> error::Result<(uio_async::UioDevice, String)> {
-    let uio_name = format!("chain{}-{}", hashboard_idx - 1, uio_type);
-    Ok((uio_async::UioDevice::open_by_name(&uio_name)?, uio_name))
-}
-
-/// Performs IRQ mapping of IP core's block
-fn map_irq(hashboard_idx: usize, irq_type: &'static str) -> error::Result<uio_async::UioDevice> {
-    let (uio, _uio_name) = open_ip_core_uio(hashboard_idx, irq_type)?;
-    Ok(uio)
 }
 
 /// This is common implementation
@@ -306,15 +290,13 @@ impl HChainFifo {
     }
 
     pub fn new(hashboard_idx: usize, midstate_count: crate::MidstateCount) -> error::Result<Self> {
-        let hash_chain_io = unsafe { map_irq(hashboard_idx, "mem")?.map_mapping(0)?.into_typed() };
-
         let fifo = Self {
-            hash_chain_io,
+            hash_chain_io: uio::Device::open(hashboard_idx, "mem")?.map()?,
             midstate_count,
             tag_manager: tag::TagManager::new(midstate_count),
-            work_tx_irq: map_irq(hashboard_idx, "work-tx")?,
-            work_rx_irq: map_irq(hashboard_idx, "work-rx")?,
-            cmd_rx_irq: map_irq(hashboard_idx, "cmd-rx")?,
+            work_tx_irq: uio::Device::open(hashboard_idx, "work-tx")?.uio,
+            work_rx_irq: uio::Device::open(hashboard_idx, "work-tx")?.uio,
+            cmd_rx_irq: uio::Device::open(hashboard_idx, "cmd-rx")?.uio,
         };
         Ok(fifo)
     }
@@ -323,85 +305,13 @@ impl HChainFifo {
 #[cfg(test)]
 mod test {
     use super::*;
-
     /// Index of chain for testing (must exist and be defined in DTS)
     const TEST_CHAIN_INDEX: usize = 8;
-
-    /// Try opening UIO device.
-    /// This test needs properly configured UIO devices for hash-chain 8 in
-    /// device-tree so that we have something to open.
-    #[test]
-    fn test_lookup_uio() {
-        let name = String::from("chain7-mem");
-        uio_async::UioDevice::open_by_name(&name).unwrap();
-    }
-
-    /// Try opening non-existent UIO device.
-    #[test]
-    fn test_lookup_uio_notfound() {
-        let name = String::from("chain7-nonsense");
-        let uio = uio_async::UioDevice::open_by_name(&name);
-        assert!(
-            uio.is_err(),
-            "Found UIO device {} that shouldn't really be there"
-        );
-    }
-
-    /// Try mapping memory from UIO device.
-    #[test]
-    fn test_map_uio() {
-        unsafe {
-            let _m: Mmap<u8> = Mmap::new(TEST_CHAIN_INDEX).unwrap();
-        }
-    }
-
-    /// Try to map memory twice.
-    /// This is to check that the UioMapping Drop trait is working: Drop
-    /// does perform unmap which drops the Uio fd lock.
-    #[test]
-    fn test_map_uio_twice_checklock() {
-        unsafe {
-            let _m: Mmap<u8> = Mmap::new(TEST_CHAIN_INDEX).unwrap();
-            let _m: Mmap<u8> = Mmap::new(TEST_CHAIN_INDEX).unwrap();
-        }
-    }
 
     /// Test that we are able to construct HChainFifo instance
     #[test]
     fn test_fifo_construction() {
         let _fifo = HChainFifo::new(TEST_CHAIN_INDEX, crate::MidstateCount::new(1))
             .expect("fifo construction failed");
-    }
-
-    /// Try to map IRQ.
-    #[test]
-    fn test_map_irq() {
-        map_irq(TEST_CHAIN_INDEX, "cmd-rx").unwrap();
-    }
-
-    /// Test that we get IRQ.
-    /// Test it on empty tx queue (IRQ always asserted).
-    #[test]
-    fn test_get_irq() {
-        let irq = map_irq(TEST_CHAIN_INDEX, "work-tx").unwrap();
-        irq.irq_enable().unwrap();
-        let res = irq.irq_wait_timeout(FIFO_READ_TIMEOUT);
-        assert!(res.unwrap().is_some(), "expected interrupt");
-    }
-
-    /// Test that we get timeout when waiting for IRQ.
-    /// Test it on empty rx queue (IRQ always deasserted).
-    #[test]
-    fn test_get_irq_timeout() {
-        let mut fifo = HChainFifo::new(TEST_CHAIN_INDEX, crate::MidstateCount::new(1))
-            .expect("fifo construction failed");
-        // fifo initialization flushes all received responses
-        fifo.init().expect("fifo initialization failed");
-        drop(fifo);
-        // work rx fifo now shouldn't get any interrupts (it's empty)
-        let irq = map_irq(TEST_CHAIN_INDEX, "work-rx").unwrap();
-        irq.irq_enable().unwrap();
-        let res = irq.irq_wait_timeout(FIFO_READ_TIMEOUT);
-        assert!(res.unwrap().is_none(), "expected timeout");
     }
 }
