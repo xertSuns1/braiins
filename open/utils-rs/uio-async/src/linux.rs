@@ -6,7 +6,9 @@ use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::prelude::*;
+use std::marker::PhantomData;
 use std::num::ParseIntError;
+use std::ops;
 use std::os::unix::prelude::AsRawFd;
 use std::time::{Duration, Instant};
 use timeout_readwrite::TimeoutReader;
@@ -85,14 +87,43 @@ impl Drop for UioMapping {
     }
 }
 
+unsafe impl Send for UioMapping {}
+unsafe impl Sync for UioMapping {}
+
+/// Reference-like type holding a memory map created using UioMapping
+/// Used to hold a typed memory mapping.
+/// The idea is that there's no other way to access the mapped memory than
+/// via the `Deref` trait, which guarantees that the `UioMapping` doesn't
+/// get freed while we hold reference to the internal data.
+pub struct UioTypedMapping<T = u8> {
+    map: UioMapping,
+    _marker: PhantomData<*const T>,
+}
+
+impl<T> ops::Deref for UioTypedMapping<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        let ptr = self.map.ptr as *const T;
+        unsafe { &*ptr }
+    }
+}
+
+/// Conversion function that consumes the original mapping
+impl UioMapping {
+    pub fn into_typed<T>(self) -> UioTypedMapping<T> {
+        UioTypedMapping {
+            map: self,
+            _marker: PhantomData,
+        }
+    }
+}
+
 pub struct UioDevice {
     uio_num: usize,
     //path: &'static str,
     devfile: File,
 }
-
-unsafe impl Send for UioMapping {}
-unsafe impl Sync for UioMapping {}
 
 impl UioDevice {
     /// Creates a new UIO device for Linux.
