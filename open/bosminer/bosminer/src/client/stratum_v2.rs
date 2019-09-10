@@ -53,8 +53,6 @@ const VERSION_MASK: u32 = 0x1fffe000;
 struct StratumJob {
     id: u32,
     channel_id: u32,
-    block_height: u32,
-    current_block_height: Arc<AtomicU32>,
     version: u32,
     prev_hash: ii_bitcoin::DHash,
     merkle_root: ii_bitcoin::DHash,
@@ -69,12 +67,9 @@ impl StratumJob {
         prevhash_msg: &SetNewPrevHash,
         current_block_height: Arc<AtomicU32>,
     ) -> Self {
-        assert_eq!(job_msg.block_height, prevhash_msg.block_height);
         Self {
             id: job_msg.job_id,
             channel_id: job_msg.channel_id,
-            block_height: job_msg.block_height,
-            current_block_height,
             version: job_msg.version,
             prev_hash: ii_bitcoin::DHash::from_slice(prevhash_msg.prev_hash.as_ref()).unwrap(),
             merkle_root: ii_bitcoin::DHash::from_slice(job_msg.merkle_root.as_ref()).unwrap(),
@@ -115,7 +110,11 @@ impl job::Bitcoin for StratumJob {
     }
 
     fn is_valid(&self) -> bool {
-        self.block_height >= self.current_block_height.load(Ordering::Relaxed)
+        // TODO: currently there is no easy way to detect the job is valid -> we have to check
+        //  its presence in the registry. The inequality below was possible in the previous
+        //  iteration of the protocol
+        // self.block_height >= self.current_block_height.load(Ordering::Relaxed)
+        true
     }
 }
 
@@ -157,7 +156,7 @@ impl Handler for StratumEventHandler {
     // The rules for prevhash/mining job pairing are (currently) as follows:
     //  - when mining job comes
     //      - store it (by id)
-    //      - start mining it if it's at the same blockheight
+    //      - start mining it if it doesn't have the future_job flag set
     //  - when prevhash message comes
     //      - replace it
     //      - start mining the job it references (by job id)
@@ -165,42 +164,34 @@ impl Handler for StratumEventHandler {
 
     fn visit_new_mining_job(&mut self, _msg: &Message<Protocol>, job_msg: &NewMiningJob) {
         // all jobs since last `prevmsg` have to be stored in job table
-        // TODO: use job ID instead of block_height
-        self.all_jobs.insert(job_msg.block_height, job_msg.clone());
+        self.all_jobs.insert(job_msg.job_id, job_msg.clone());
         // TODO: close connection when maximal capacity of `all_jobs` has been reached
 
-        // already solving this blockheight?
-        if job_msg.block_height == self.current_block_height.load(Ordering::Relaxed)
-            && self.current_prevhash_msg.is_some()
-        {
-            // ... yes, switch jobs straight away
-            // also: there's an invariant: current_block_height == current_prevhash_msg.block_height
+        // When not marked as future job, we can start mining on it right away
+        if !job_msg.future_job {
             self.update_job(job_msg);
         }
     }
 
     fn visit_set_new_prev_hash(&mut self, _msg: &Message<Protocol>, prevhash_msg: &SetNewPrevHash) {
-        let current_block_height = prevhash_msg.block_height;
-        // immediately update current block height which is propagated to currently solved jobs
-        self.current_block_height
-            .store(current_block_height, Ordering::Relaxed);
         self.current_prevhash_msg.replace(prevhash_msg.clone());
 
-        // find a job with ID referenced in prevhash_msg
-        // TODO: really use the job id, not just block_height
-        let (_, job_msg) = self
+        // find the future job with ID referenced in prevhash_msg
+        let (_, mut future_job_msg) = self
             .all_jobs
-            .remove_entry(&current_block_height)
-            .expect("requested jobid not found");
+            .remove_entry(&prevhash_msg.job_id)
+            .expect("requested job ID not found");
 
         // remove all other jobs (they are now invalid)
         self.all_jobs.retain(|_, _| true);
-
+        // turn the job into an immediate job
+        future_job_msg.future_job = false;
         // reinsert the job
-        self.all_jobs.insert(job_msg.block_height, job_msg.clone());
+        self.all_jobs
+            .insert(future_job_msg.job_id, future_job_msg.clone());
 
         // and start immediately solving it
-        self.update_job(&job_msg);
+        self.update_job(&future_job_msg);
     }
 
     fn visit_set_target(&mut self, _msg: &Message<Protocol>, target_msg: &SetTarget) {
