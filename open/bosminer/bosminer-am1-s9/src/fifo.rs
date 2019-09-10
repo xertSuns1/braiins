@@ -42,40 +42,6 @@ const FIFO_READ_TIMEOUT: Duration = Duration::from_millis(5);
 unsafe impl Send for HChainFifo {}
 unsafe impl Sync for HChainFifo {}
 
-/// Reference-like type holding a memory map created using UioMapping
-/// Used to hold a memory mapping of IP core's register block
-pub struct Mmap<T = u8> {
-    map: uio_async::UioMapping,
-    _marker: PhantomData<*const T>,
-}
-
-impl<T> Mmap<T> {
-    /// Create a new memory mapping
-    /// * `hashboard_idx` is the number of chain (numbering must match in device-tree)
-    ///
-    /// Marked `unsafe` because we can't check whether `T` is sized correctly and makes sense
-    unsafe fn new(hashboard_idx: usize) -> error::Result<Self> {
-        let (uio, uio_name) = open_ip_core_uio(hashboard_idx, "mem")?;
-        let map = uio.map_mapping(0).with_context(|_| {
-            ErrorKind::UioDevice(uio_name, "cannot map uio device".to_string())
-        })?;
-
-        Ok(Self {
-            map,
-            _marker: PhantomData,
-        })
-    }
-}
-
-impl<T> ops::Deref for Mmap<T> {
-    type Target = T;
-
-    fn deref(&self) -> &T {
-        let ptr = self.map.ptr as *const T;
-        unsafe { &*ptr }
-    }
-}
-
 /// How big is FIFO queue? (in u32 words)
 const FIFO_WORK_TX_SIZE: u32 = 2048;
 /// How big is the absolute biggest "work"? (again, in u32 words)
@@ -87,7 +53,7 @@ const FIFO_WORK_TX_THRESHOLD: u32 = FIFO_WORK_TX_SIZE - FIFO_WORK_MAX_SIZE;
 const EXPECTED_BITSTREAM_BUILD_ID: u32 = 0x5D5E7158;
 
 pub struct HChainFifo {
-    pub hash_chain_io: Mmap<hchainio0::RegisterBlock>,
+    pub hash_chain_io: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
     pub midstate_count: crate::MidstateCount,
     tag_manager: tag::TagManager,
     work_tx_irq: uio_async::UioDevice,
@@ -340,7 +306,7 @@ impl HChainFifo {
     }
 
     pub fn new(hashboard_idx: usize, midstate_count: crate::MidstateCount) -> error::Result<Self> {
-        let hash_chain_io = unsafe { Mmap::new(hashboard_idx)? };
+        let hash_chain_io = unsafe { map_irq(hashboard_idx, "mem")?.map_mapping(0)?.into_typed() };
 
         let fifo = Self {
             hash_chain_io,
