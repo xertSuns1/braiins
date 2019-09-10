@@ -21,17 +21,14 @@
 // contact us at opensource@braiins.com.
 
 use bosminer::work;
-
-/// Maximum length of pending work list corresponds with the work ID range supported by the FPGA
-const MAX_WORK_LIST_COUNT: usize = 65536;
+use std::iter::Iterator;
 
 /// Mining registry item contains work and solutions
 #[derive(Clone)]
 pub struct MiningWorkRegistryItem {
     work: work::Assignment,
     /// Each slot in the vector is associated with particular solution index as reported by
-    /// the chips. Generally, hash board may fail to send a preceding solution due to
-    /// corrupted communication frames. Therefore, each solution slot is optional.
+    /// the chips.
     solutions: std::vec::Vec<work::Solution>,
 }
 
@@ -85,72 +82,73 @@ pub struct InsertSolutionStatus {
     pub unique_solution: Option<work::UniqueSolution>,
 }
 
-/// Simple mining work registry that stores each work in a slot denoted by its work ID.
+/// Simple work registry with `work_id` allocator
 ///
-/// The slots are handled in circular fashion, when storing new work, any work older than
-/// MAX_WORK_LIST_COUNT/2 sequence ID's in the past is to be retired.
+/// Registry is responsible for associating `work` with `work_id` and managing
+/// this relation for the lifetime of the work.
+/// The `work_id` is allocated in circular fashion from the range `[0, registry_size - 1]`.
+/// The lifetime of work is set to `registry_size / 2` - after this much new work
+/// has been inserted after some particular work, the work is retired.
+///
+/// The idea behind this registry is that we manage `registry_size` of slots and
+/// we assign work to them (under `work_id` we generate for each inserted work), but
+/// we always keep at least `registry_size / 2` slots free, so that we can detect
+/// stale work.
 pub struct MiningWorkRegistry {
+    /// Number of elements in registry. Determines `work_id` range
+    registry_size: usize,
+    /// Next id that is to be assigned to work, this increases modulo `registry_size`
+    next_work_id: usize,
     /// Current pending work list Each work item has a list of associated work solutions
     pending_work_list: std::vec::Vec<Option<MiningWorkRegistryItem>>,
-    /// Keeps track of the ID, so that we can identify stale solutions
-    last_work_id: Option<usize>,
-    /// Number of midstates by which the `last_work_id` increments
-    midstate_count: usize,
 }
 
 impl MiningWorkRegistry {
-    pub fn new(midstate_count: usize) -> Self {
+    /// Create new registry with `registry_size` slots
+    pub fn new(registry_size: usize) -> Self {
         Self {
-            pending_work_list: vec![None; MAX_WORK_LIST_COUNT],
-            last_work_id: None,
-            midstate_count,
+            registry_size,
+            next_work_id: 0,
+            pending_work_list: vec![None; registry_size],
         }
     }
 
-    /// Helper method that performs modulo subtraction on the indices of the vector.
-    /// This enables circular buffer arithmetic
-    #[inline]
-    fn index_sub(x: usize, y: usize) -> usize {
-        x.wrapping_sub(y).wrapping_add(MAX_WORK_LIST_COUNT) % MAX_WORK_LIST_COUNT
+    /// Allocate next `work_id`. IDs are assigned in circular fashion.
+    /// This function is internal to the registry
+    fn alloc_next_work_id(&mut self) -> usize {
+        let work_id = self.next_work_id;
+
+        // advance next work_id and wrap it manually
+        self.next_work_id = (work_id + 1) % self.registry_size;
+
+        // return next work id
+        work_id
     }
 
-    /// Stores new work in the registry and retires (removes) any stale work with ID
-    /// older than 1/2 of MAX_WORK_LIST_COUNT
-    /// * `id` - identifies the work
-    /// * `work` - new work to be stored
-    pub fn store_work(&mut self, id: usize, work: work::Assignment) {
-        // The slot must be empty
-        assert!(
-            self.pending_work_list[id].is_none(),
-            "Slot at index {} is not empty",
-            id
-        );
-        // and the new work has to be sequenced
-        if let Some(last_work_id) = self.last_work_id {
-            assert_eq!(
-                Self::index_sub(id, last_work_id),
-                self.midstate_count,
-                "Work id is out of sequence {}",
-                id
-            )
-        }
+    /// Store new work to work registry and generate `work_id` for it
+    /// As a side effect, retire stale work.
+    /// Returns: new `work_id`
+    pub fn store_work(&mut self, work: work::Assignment) -> usize {
+        let work_id = self.alloc_next_work_id();
 
-        self.last_work_id = Some(id);
+        // retire stale work
+        let retire_id = (work_id + self.registry_size / 2) % self.registry_size;
+        self.pending_work_list[retire_id] = None;
 
-        self.pending_work_list[id] = Some(MiningWorkRegistryItem {
+        // put new work into registry
+        self.pending_work_list[work_id] = Some(MiningWorkRegistryItem {
             work,
             solutions: std::vec::Vec::new(),
         });
 
-        // retire old work that is not expected to have any solution => work with ID older than
-        // MAX_WORK_LIST_COUNT/2 is marked obsolete
-        let retire_id = Self::index_sub(id, MAX_WORK_LIST_COUNT / 2);
-
-        self.pending_work_list[retire_id] = None;
+        // return assigned work id
+        work_id
     }
 
-    pub fn find_work(&mut self, id: usize) -> &mut Option<MiningWorkRegistryItem> {
-        &mut self.pending_work_list[id]
+    /// Look-up work id
+    pub fn find_work(&mut self, work_id: usize) -> &mut Option<MiningWorkRegistryItem> {
+        assert!(work_id < self.registry_size);
+        &mut self.pending_work_list[work_id]
     }
 }
 
@@ -159,69 +157,57 @@ mod test {
     use super::super::null_work;
     use super::*;
 
+    /// Test that it's possible to store work
     #[test]
-    fn test_store_work_start() {
-        let mut registry = MiningWorkRegistry::new(1);
-        let work = null_work::prepare(0);
-
-        registry.store_work(0, work);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_store_work_out_of_sequence_work_id() {
-        let mut registry = MiningWorkRegistry::new(1);
+    fn test_store_work() {
+        let mut registry = MiningWorkRegistry::new(4);
         let work1 = null_work::prepare(0);
         let work2 = null_work::prepare(1);
-        // store initial work
-        registry.store_work(0, work1);
-        // this should trigger a panic
-        registry.store_work(2, work2);
+
+        assert_eq!(registry.store_work(work1), 0);
+        assert_eq!(registry.store_work(work2), 1);
+        assert!(registry.find_work(0).is_some());
+        assert!(registry.find_work(1).is_some());
+        assert!(registry.find_work(2).is_none());
     }
 
-    #[test]
-    fn test_store_work_id_two_midstates() {
-        let mut registry = MiningWorkRegistry::new(2);
-        let work1 = null_work::prepare(0);
-        let work2 = null_work::prepare(1);
-        // store initial work
-        registry.store_work(0, work1);
-        // should not panic, we increment by # of midstates
-        registry.store_work(2, work2);
-    }
-
+    /// Test that old work retires correctly and in order
     #[test]
     fn test_store_work_retiring() {
-        let mut registry = MiningWorkRegistry::new(1);
-        // after exhausting the full work list count, the first half of the slots must be retired
-        for id in 0..MAX_WORK_LIST_COUNT {
-            let work = null_work::prepare(id as u64);
-            registry.store_work(id, work);
-        }
-        // verify the first half being empty
-        for id in 0..MAX_WORK_LIST_COUNT / 2 {
-            assert!(
-                registry.pending_work_list[0].is_none(),
-                "Work at id {} was expected to be retired!",
-                id
-            );
-        }
-        // verify the second half being non-empty
-        for id in MAX_WORK_LIST_COUNT / 2..MAX_WORK_LIST_COUNT {
-            assert!(
-                registry.pending_work_list[id].is_some(),
-                "Work at id {} was expected to be defined!",
-                id
-            );
+        const REGISTRY_SIZE: usize = 8;
+        const NUM_WORK_ITEMS: usize = REGISTRY_SIZE * 2 + REGISTRY_SIZE / 2 + 1;
+        let mut registry = MiningWorkRegistry::new(REGISTRY_SIZE);
+
+        // we store more than REGISTRY_SIZE items so it has to roll over
+        for i in 0..NUM_WORK_ITEMS {
+            let work = null_work::prepare(i as u64);
+            assert_eq!(registry.store_work(work), i % REGISTRY_SIZE);
         }
 
-        // store one more item should retire work at index MAX_WORK_LIST_COUNT/2
-        let retire_idx_half = MAX_WORK_LIST_COUNT / 2;
-        registry.store_work(0, null_work::prepare(0));
-        assert!(
-            registry.pending_work_list[retire_idx_half].is_none(),
-            "Work at {} was expected to be retired (after overwriting idx 0)",
-            retire_idx_half
-        );
+        // verify that half of registry is empty, half used
+        let num_used_slots: usize = registry
+            .pending_work_list
+            .iter()
+            .map(|x| x.is_some() as usize)
+            .sum();
+        assert_eq!(num_used_slots, REGISTRY_SIZE / 2);
+
+        // verify which items are present
+        for i in (NUM_WORK_ITEMS - REGISTRY_SIZE / 2)..NUM_WORK_ITEMS {
+            assert!(registry.find_work(i % REGISTRY_SIZE).is_some());
+        }
+    }
+
+    /// Test that `work_id` counter wraps around
+    #[test]
+    fn test_work_id_wrap_around() {
+        const REGISTRY_SIZE: usize = 4;
+        let mut registry = MiningWorkRegistry::new(REGISTRY_SIZE);
+        let work = null_work::prepare(0);
+        assert_eq!(registry.store_work(work.clone()), 0);
+        assert_eq!(registry.store_work(work.clone()), 1);
+        assert_eq!(registry.store_work(work.clone()), 2);
+        assert_eq!(registry.store_work(work.clone()), 3);
+        assert_eq!(registry.store_work(work.clone()), 0);
     }
 }

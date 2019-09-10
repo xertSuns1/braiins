@@ -20,6 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+mod tag;
+
 /// This module provides thin API to access memory-mapped FPGA registers
 /// and associated interrupts.
 /// Exports FIFO management/send/receive and register access.
@@ -87,6 +89,7 @@ const EXPECTED_BITSTREAM_BUILD_ID: u32 = 0x5D5E7158;
 pub struct HChainFifo {
     pub hash_chain_io: Mmap<hchainio0::RegisterBlock>,
     pub midstate_count: crate::MidstateCount,
+    tag_manager: tag::TagManager,
     work_tx_irq: uio_async::UioDevice,
     work_rx_irq: uio_async::UioDevice,
     cmd_rx_irq: uio_async::UioDevice,
@@ -172,17 +175,13 @@ impl HChainFifo {
     pub fn send_work(
         &mut self,
         work: &work::Assignment,
-        work_id: u32,
-    ) -> Result<u32, failure::Error> {
-        let hw_midstate_count = self.midstate_count.to_count();
-        let expected_midstate_count = work.midstates.len();
-        assert_eq!(
-            expected_midstate_count, hw_midstate_count,
-            "Expected {} midstates, but S9 is configured for {} midstates!",
-            expected_midstate_count, hw_midstate_count,
-        );
+        work_id: usize,
+    ) -> Result<(), failure::Error> {
+        let input_tag = self
+            .tag_manager
+            .make_input_tag(work_id, work.midstates.len());
 
-        self.write_to_work_tx_fifo(work_id.to_le())?;
+        self.write_to_work_tx_fifo(input_tag.to_le())?;
         self.write_to_work_tx_fifo(work.bits().to_le())?;
         self.write_to_work_tx_fifo(work.ntime.to_le())?;
         self.write_to_work_tx_fifo(work.merkle_root_tail().to_le())?;
@@ -192,23 +191,27 @@ impl HChainFifo {
                 self.write_to_work_tx_fifo(midstate_word.to_be())?;
             }
         }
-        Ok(work_id)
+        Ok(())
     }
 
     pub async fn recv_solution(mut self) -> Result<(Self, work::Solution), failure::Error> {
         let nonce = await!(self.async_read_from_work_rx_fifo())?;
         let word2 = await!(self.async_read_from_work_rx_fifo())?;
-        let solution_id = crate::SolutionId::from_reg(word2, self.midstate_count);
+        let output_tag = self.tag_manager.parse_output_tag(word2);
 
         let solution = work::Solution {
             nonce,
             ntime: None,
-            midstate_idx: solution_id.midstate_idx,
-            solution_idx: solution_id.solution_idx,
-            hardware_id: word2,
+            midstate_idx: output_tag.midstate_idx,
+            solution_idx: output_tag.solution_idx,
+            hardware_id: output_tag.work_id as u32,
         };
 
         Ok((self, solution))
+    }
+
+    pub fn work_id_range(&self) -> usize {
+        self.tag_manager.work_id_range()
     }
 
     /// Return the value of last work ID send to ASICs
@@ -342,6 +345,7 @@ impl HChainFifo {
         let fifo = Self {
             hash_chain_io,
             midstate_count,
+            tag_manager: tag::TagManager::new(midstate_count),
             work_tx_irq: map_irq(hashboard_idx, "work-tx")?,
             work_rx_irq: map_irq(hashboard_idx, "work-rx")?,
             cmd_rx_irq: map_irq(hashboard_idx, "cmd-rx")?,

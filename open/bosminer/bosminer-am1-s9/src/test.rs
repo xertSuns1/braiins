@@ -110,68 +110,6 @@ fn test_hchain_ctl_init() {
     );
 }
 
-/// This test verifies correct parsing of mining work solution for all multi-midstate
-/// configurations.
-/// The solution_word represents the second word of data provided that follows the nonce as
-/// provided by the FPGA IP core
-#[test]
-fn test_get_solution_word_attributes() {
-    let solution_word = 0x98123502;
-    struct ExpectedSolutionData {
-        work_id: usize,
-        midstate_idx: usize,
-        solution_idx: usize,
-        midstate_count: MidstateCount,
-    };
-    let expected_solution_data = [
-        ExpectedSolutionData {
-            work_id: 0x1235,
-            midstate_idx: 0,
-            solution_idx: 2,
-            midstate_count: MidstateCount::new(1),
-        },
-        ExpectedSolutionData {
-            work_id: 0x1234,
-            midstate_idx: 1,
-            solution_idx: 2,
-            midstate_count: MidstateCount::new(2),
-        },
-        ExpectedSolutionData {
-            work_id: 0x1234,
-            midstate_idx: 1,
-            solution_idx: 2,
-            midstate_count: MidstateCount::new(4),
-        },
-    ];
-    for (i, expected_solution_data) in expected_solution_data.iter().enumerate() {
-        // The midstate configuration (ctrl_reg::MIDSTATE_CNT_W) doesn't implement a debug
-        // trait. Therefore, we extract only those parts that can be easily displayed when a
-        // test failed.
-        let expected_data = (
-            expected_solution_data.work_id,
-            expected_solution_data.midstate_idx,
-            expected_solution_data.solution_idx,
-        );
-        let solution_id =
-            SolutionId::from_reg(solution_word, expected_solution_data.midstate_count);
-
-        assert_eq!(
-            solution_id.work_id, expected_solution_data.work_id,
-            "Invalid work ID, iteration: {}, test data: {:#06x?}",
-            i, expected_data
-        );
-        assert_eq!(
-            solution_id.midstate_idx, expected_solution_data.midstate_idx,
-            "Invalid midstate index, iteration: {}, test data: {:#06x?}",
-            i, expected_data
-        );
-        assert_eq!(
-            solution_id.solution_idx, expected_solution_data.solution_idx,
-            "Invalid solution index, iteration: {}, test data: {:#06x?}",
-            i, expected_data
-        );
-    }
-}
 #[test]
 fn test_calc_baud_div_correct_baud_rate_bm1387() {
     // these are sample baud rates for communicating with BM1387 chips
@@ -218,15 +156,4 @@ fn test_work_time_computation() {
         secs_to_fpga_ticks(calculate_work_delay_for_pll(1, 650_000_000)),
         36296
     );
-}
-
-#[test]
-fn test_work_id_gen() {
-    let mut work_id_gen = WorkIdGen::new(MidstateCount::new(2));
-    assert_eq!(work_id_gen.next(), 0);
-    assert_eq!(work_id_gen.next(), 2);
-    assert_eq!(work_id_gen.next(), 4);
-    work_id_gen.work_id = 0xfffe;
-    assert_eq!(work_id_gen.next(), 0xfffe);
-    assert_eq!(work_id_gen.next(), 0);
 }

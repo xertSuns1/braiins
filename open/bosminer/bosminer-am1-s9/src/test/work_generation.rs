@@ -88,13 +88,14 @@ async fn sender_task(
         .work_tx_fifo
         .take()
         .expect("work-tx fifo missing");
+    let mut work_registry = registry::MiningWorkRegistry::new(tx_fifo.work_id_range());
 
     loop {
         await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
         let work = await!(work_receiver.next()).expect("failed receiving work");
-        let work_id = await!(h_chain_ctl.lock()).work_id_gen.next();
+        let work_id = work_registry.store_work(work.clone());
         // send work is synchronous
-        tx_fifo.send_work(&work, work_id as u32).expect("send work");
+        tx_fifo.send_work(&work, work_id).expect("send work");
     }
 }
 
