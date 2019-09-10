@@ -64,14 +64,14 @@ async fn receiver_task(
     h_chain_ctl: Arc<Mutex<HChainCtl>>,
     solution_sender: mpsc::UnboundedSender<work::Solution>,
 ) {
-    let mut rx_fifo = await!(h_chain_ctl.lock())
-        .work_rx_fifo
+    let mut rx_io = await!(h_chain_ctl.lock())
+        .work_rx_io
         .take()
         .expect("work-rx fifo missing");
 
     loop {
-        let (rx_fifo_out, solution) = await!(rx_fifo.recv_solution()).expect("recv solution");
-        rx_fifo = rx_fifo_out;
+        let (rx_io_out, solution) = await!(rx_io.recv_solution()).expect("recv solution");
+        rx_io = rx_io_out;
 
         solution_sender
             .unbounded_send(solution)
@@ -84,18 +84,18 @@ async fn sender_task(
     h_chain_ctl: Arc<Mutex<HChainCtl>>,
     mut work_receiver: mpsc::UnboundedReceiver<work::Assignment>,
 ) {
-    let mut tx_fifo = await!(h_chain_ctl.lock())
-        .work_tx_fifo
+    let mut tx_io = await!(h_chain_ctl.lock())
+        .work_tx_io
         .take()
         .expect("work-tx fifo missing");
-    let mut work_registry = registry::MiningWorkRegistry::new(tx_fifo.work_id_range());
+    let mut work_registry = registry::MiningWorkRegistry::new(tx_io.work_id_range());
 
     loop {
-        await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
+        await!(tx_io.wait_for_room()).expect("wait for tx room");
         let work = await!(work_receiver.next()).expect("failed receiving work");
         let work_id = work_registry.store_work(work.clone());
         // send work is synchronous
-        tx_fifo.send_work(&work, work_id).expect("send work");
+        tx_io.send_work(&work, work_id).expect("send work");
     }
 }
 

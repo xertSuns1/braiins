@@ -50,7 +50,7 @@ impl Device {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{fifo, MidstateCount};
+    use crate::{io, MidstateCount};
 
     /// Index of chain for testing (must exist and be defined in DTS)
     const TEST_CHAIN_INDEX: usize = 8;
@@ -110,7 +110,7 @@ mod test {
             .uio;
         uio.irq_enable().expect("irq enable failed");
         let res = uio
-            .irq_wait_timeout(fifo::FIFO_READ_TIMEOUT)
+            .irq_wait_timeout(io::FIFO_READ_TIMEOUT)
             .expect("waiting for timeout failed");
         assert!(res.is_some(), "expected interrupt");
     }
@@ -121,18 +121,18 @@ mod test {
     fn test_get_irq_timeout() {
         // TODO: replace this with call to flush or something more meaningful
         // create fifo to flush interrupts
-        let mut fifo = fifo::HChainFifo::new(TEST_CHAIN_INDEX, MidstateCount::new(1))
-            .expect("fifo construction failed");
+        let mut io = io::WorkRxIo::new(TEST_CHAIN_INDEX, MidstateCount::new(1))
+            .expect("WorkRxIo construction failed");
         // fifo initialization flushes all received responses
-        fifo.init().expect("fifo initialization failed");
-        drop(fifo);
+        io.init().expect("WorkRxIo initialization failed");
+        drop(io);
         // work rx fifo now shouldn't get any interrupts (it's empty)
         let uio = Device::open(TEST_CHAIN_INDEX, "work-rx")
             .expect("uio open failed")
             .uio;
         uio.irq_enable().expect("irq enable failed");
         let res = uio
-            .irq_wait_timeout(fifo::FIFO_READ_TIMEOUT)
+            .irq_wait_timeout(io::FIFO_READ_TIMEOUT)
             .expect("waiting for timeout failed");
         assert!(res.is_none(), "expected timeout");
     }

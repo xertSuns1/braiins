@@ -174,3 +174,10 @@ fn test_input_tag() {
 fn test_input_tag_fail() {
     TagManager::new(MidstateCount::new(2)).make_input_tag(0x8765, 2);
 }
+
+/// Test that midstate count and tagged work midstat count match
+#[test]
+#[should_panic]
+fn test_input_tag_fail2() {
+    TagManager::new(MidstateCount::new(1)).make_input_tag(0x8765, 4);
+}
