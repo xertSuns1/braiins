@@ -156,58 +156,6 @@ impl MidstateCount {
     }
 }
 
-/// `SolutionId` provides parsing and representation of "solution id" part of
-/// chip response read as second word from FPGA FIFO.
-#[derive(Debug, Clone)]
-struct SolutionId {
-    pub work_id: usize,
-    pub midstate_idx: usize,
-    pub solution_idx: usize,
-}
-
-impl SolutionId {
-    /// Bit position where work ID starts in the second word provided by the IP core with mining work
-    /// solution
-    const WORK_ID_OFFSET: usize = 8;
-
-    /// Extract fields of "solution id" word into Self
-    pub fn from_reg(solution_reg: u32, midstate_count: MidstateCount) -> Self {
-        let solution_id = (solution_reg & 0xffffff) as usize;
-        let work_id_ext = solution_id >> Self::WORK_ID_OFFSET;
-        Self {
-            solution_idx: solution_id & ((1 << Self::WORK_ID_OFFSET) - 1),
-            work_id: work_id_ext & !midstate_count.to_mask(),
-            midstate_idx: work_id_ext & midstate_count.to_mask(),
-        }
-    }
-}
-
-/// `WorkIdGen` represents a wrapping 16-bit counter used for `work_id` generation.
-/// The counter increments by number of midstates.
-#[derive(Debug, Clone)]
-struct WorkIdGen {
-    midstate_count: MidstateCount,
-    work_id: u16,
-}
-
-impl WorkIdGen {
-    pub fn new(midstate_count: MidstateCount) -> Self {
-        Self {
-            midstate_count,
-            work_id: 0,
-        }
-    }
-
-    pub fn next(&mut self) -> usize {
-        let retval = self.work_id as usize;
-        // compiler has to know that work ID rolls over regularly
-        self.work_id = self
-            .work_id
-            .wrapping_add(self.midstate_count.to_count() as u16);
-        retval
-    }
-}
-
 /// Hash Chain Controller provides abstraction of the FPGA interface for operating hashing boards.
 /// It is the user-space driver for the IP Core
 ///
@@ -218,8 +166,6 @@ impl WorkIdGen {
 /// TODO: implement drop trait (results in unmap)
 /// TODO: rename to HashBoardCtrl and get rid of the hash_chain identifiers + array
 pub struct HChainCtl<VBackend> {
-    /// Current work ID once it rolls over, we can start retiring old jobs
-    work_id_gen: WorkIdGen,
     /// Number of chips that have been detected
     chip_count: usize,
     /// Eliminates the need to query the IP core about the current number of configured midstates
@@ -300,7 +246,6 @@ where
         work_tx_fifo.init()?;
 
         Ok(Self {
-            work_id_gen: WorkIdGen::new(midstate_count),
             chip_count: 0,
             midstate_count,
             asic_difficulty,
@@ -629,7 +574,10 @@ where
     }
 
     /// Initialize cores by sending open-core work with correct nbits to each core
-    async fn send_init_work(h_chain_ctl: Arc<Mutex<Self>>, tx_fifo: &mut fifo::HChainFifo) {
+    async fn send_init_work(
+        work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
+        tx_fifo: &mut fifo::HChainFifo,
+    ) {
         // Each core gets one work
         const NUM_WORK: usize = bm1387::NUM_CORES_ON_CHIP;
         trace!(
@@ -638,10 +586,9 @@ where
         );
         for _ in 0..NUM_WORK {
             let work = &null_work::prepare_opencore(true, tx_fifo.midstate_count.to_count());
-            let work_id = await!(h_chain_ctl.lock()).work_id_gen.next();
+            let work_id = await!(work_registry.lock()).store_work(work.clone());
             await!(tx_fifo.async_wait_for_work_tx_room()).expect("wait for tx room");
-            // TODO: remember work_id assignment in registry
-            tx_fifo.send_work(&work, work_id as u32).expect("send work");
+            tx_fifo.send_work(&work, work_id).expect("send work");
         }
     }
 
@@ -653,7 +600,6 @@ where
     ///
     /// Returns the amount of work generated during this run
     async fn async_send_work(
-        h_chain_ctl: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
         mut tx_fifo: fifo::HChainFifo,
@@ -665,10 +611,10 @@ where
             match work {
                 None => return,
                 Some(work) => {
-                    let work_id = await!(h_chain_ctl.lock()).work_id_gen.next();
+                    // assign `work_id` to `work`
+                    let work_id = await!(work_registry.lock()).store_work(work.clone());
                     // send work is synchronous
-                    tx_fifo.send_work(&work, work_id as u32).expect("send work");
-                    await!(work_registry.lock()).store_work(work_id as usize, work);
+                    tx_fifo.send_work(&work, work_id).expect("send work");
                     let mut stats = await!(mining_stats.lock());
                     stats.work_generated += tx_fifo.midstate_count.to_count();
                     drop(stats);
@@ -678,7 +624,6 @@ where
     }
 
     async fn async_recv_solutions(
-        _h_chain_ctl: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
         mut rx_fifo: fifo::HChainFifo,
@@ -689,12 +634,11 @@ where
             let (rx_fifo_out, solution) =
                 await!(rx_fifo.recv_solution()).expect("recv solution failed");
             rx_fifo = rx_fifo_out;
-            let solution_id = SolutionId::from_reg(solution.hardware_id, rx_fifo.midstate_count);
-            let work_id = solution_id.work_id;
+            let work_id = solution.hardware_id;
             let mut stats = await!(mining_stats.lock());
             let mut work_registry = await!(work_registry.lock());
 
-            let work = work_registry.find_work(work_id);
+            let work = work_registry.find_work(work_id as usize);
             match work {
                 Some(work_item) => {
                     let status = work_item.insert_solution(solution);
@@ -743,9 +687,8 @@ where
                 .take()
                 .expect("work-tx fifo missing");
 
-            await!(Self::send_init_work(h_chain_ctl.clone(), &mut tx_fifo));
+            await!(Self::send_init_work(work_registry.clone(), &mut tx_fifo));
             await!(Self::async_send_work(
-                h_chain_ctl,
                 work_registry,
                 mining_stats,
                 tx_fifo,
@@ -767,7 +710,6 @@ where
                 .take()
                 .expect("work-rx fifo missing");
             await!(Self::async_recv_solutions(
-                h_chain_ctl,
                 work_registry,
                 mining_stats,
                 rx_fifo,
@@ -820,7 +762,11 @@ impl HChain {
         info!("Hash chain controller initialized");
 
         let work_registry = Arc::new(Mutex::new(registry::MiningWorkRegistry::new(
-            midstate_count,
+            h_chain_ctl
+                .work_tx_fifo
+                .as_ref()
+                .expect("fifo missing")
+                .work_id_range(),
         )));
         let h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
         let (work_generator, work_solution) = work_solver.split();
