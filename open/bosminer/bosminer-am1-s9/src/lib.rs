@@ -143,6 +143,12 @@ impl MidstateCount {
         1 << self.log2
     }
 
+    /// Return log2 of midstate count
+    #[inline]
+    fn to_bits(&self) -> usize {
+        self.log2
+    }
+
     /// Return midstate count mask (to get midstate_idx bits from `work_id`)
     #[inline]
     fn to_mask(&self) -> usize {
