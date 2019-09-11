@@ -20,6 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+#![feature(await_macro, async_await, duration_float)]
+
 mod bm1387;
 pub mod config;
 pub mod error;
@@ -28,15 +30,17 @@ pub mod gpio;
 pub mod null_work;
 pub mod power;
 pub mod registry;
+
 #[cfg(test)]
 pub mod test;
 
 use ii_logging::macros::*;
 
-use crate::hal::s9;
-use crate::runtime_config;
-use crate::shutdown;
-use crate::stats;
+use bosminer::hal;
+use bosminer::runtime_config;
+use bosminer::shutdown;
+use bosminer::stats;
+use bosminer::work;
 
 // TODO: remove thread specific components
 use std::sync::Arc;
@@ -48,8 +52,6 @@ use std::time::{Duration, SystemTime};
 
 use error::ErrorKind;
 use failure::ResultExt;
-
-use crate::work;
 
 use futures::lock::Mutex;
 
@@ -784,18 +786,18 @@ impl HChain {
         midstate_count: usize,
     ) -> Arc<
         Mutex<
-            s9::HChainCtl<
+            HChainCtl<
                 power::VoltageCtrlI2cSharedBlockingBackend<power::VoltageCtrlI2cBlockingBackend>,
             >,
         >,
     > {
-        use s9::power::VoltageCtrlBackend;
+        use power::VoltageCtrlBackend;
 
         let gpio_mgr = gpio::ControlPinManager::new();
         let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
         let voltage_ctrl_backend =
             power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
-        let mut h_chain_ctl = s9::HChainCtl::new(
+        let mut h_chain_ctl = HChainCtl::new(
             &gpio_mgr,
             voltage_ctrl_backend.clone(),
             config::S9_HASHBOARD_INDEX,
@@ -835,20 +837,27 @@ impl HChain {
     }
 }
 
-/// Entry point for running the hardware backend
-pub fn run(
-    work_solver: work::Solver,
-    mining_stats: Arc<Mutex<stats::Mining>>,
-    shutdown: shutdown::Sender,
-) {
-    // Create one chain
-    let chain = HChain::new();
-    chain.start_h_chain(
-        work_solver,
-        mining_stats,
-        shutdown,
-        runtime_config::get_midstate_count(),
-    );
+pub struct Backend;
+
+impl hal::Backend for Backend {
+    const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;
+    const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
+
+    fn run(
+        &self,
+        work_solver: work::Solver,
+        mining_stats: Arc<Mutex<stats::Mining>>,
+        shutdown: shutdown::Sender,
+    ) {
+        // Create one chain
+        let chain = HChain::new();
+        chain.start_h_chain(
+            work_solver,
+            mining_stats,
+            shutdown,
+            runtime_config::get_midstate_count(),
+        );
+    }
 }
 
 /// Helper method that calculates baud rate clock divisor value for the specified baud rate.

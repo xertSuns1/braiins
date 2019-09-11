@@ -23,7 +23,8 @@
 use ii_logging::macros::*;
 
 use super::*;
-use crate::work;
+
+use bosminer::work;
 
 use std::time::{Duration, Instant};
 
@@ -40,7 +41,7 @@ use ii_async_compat::{timeout_future, TimeoutResult};
 
 /// Our local abbreviation
 type HChainCtl =
-    s9::HChainCtl<power::VoltageCtrlI2cSharedBlockingBackend<power::VoltageCtrlI2cBlockingBackend>>;
+crate::HChainCtl<power::VoltageCtrlI2cSharedBlockingBackend<power::VoltageCtrlI2cBlockingBackend>>;
 
 /// Prepares sample work with empty midstates
 /// NOTE: this work has 2 valid nonces:
@@ -142,11 +143,11 @@ fn start_hchain() -> HChainCtl {
     let voltage_ctrl_backend =
         power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
 
-    let mut h_chain_ctl = s9::HChainCtl::new(
+    let mut h_chain_ctl = crate::HChainCtl::new(
         &gpio_mgr,
         voltage_ctrl_backend.clone(),
         config::S9_HASHBOARD_INDEX,
-        s9::MidstateCount::new(1),
+        crate::MidstateCount::new(1),
         1,
     )
     .unwrap();
