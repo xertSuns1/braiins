@@ -304,7 +304,7 @@ where
     }
 
     /// Configures difficulty globally on all chips within the hashchain
-    fn set_asic_diff(&self, difficulty: usize) -> error::Result<()> {
+    async fn set_asic_diff(&self, difficulty: usize) -> error::Result<()> {
         let tm_reg = bm1387::TicketMaskReg::new(difficulty as u32)?;
         trace!(
             "Setting ticket mask register for difficulty {}, value {:#010x?}",
@@ -313,18 +313,18 @@ where
         );
         let cmd = bm1387::SetConfigCmd::new(0, true, bm1387::TICKET_MASK_REG, tm_reg.into());
         // wait until all commands have been sent
-        self.send_ctl_cmd(&cmd.pack(), true);
+        await!(self.send_ctl_cmd(cmd.pack().to_vec(), true));
 
         // Verify we were able to set the difficulty on all chips correctly
         let get_tm_cmd = bm1387::GetStatusCmd::new(0, true, bm1387::TICKET_MASK_REG).pack();
-        self.send_ctl_cmd(&get_tm_cmd, true);
+        await!(self.send_ctl_cmd(get_tm_cmd.to_vec(), true));
         // TODO: verify reply equals to value we set
         // TODO: implement async mechanism to send/wait for commands
         Ok(())
     }
 
     /// Initializes the complete hashboard including enumerating all chips
-    pub fn init(&mut self) -> error::Result<()> {
+    pub async fn init(&mut self) -> error::Result<()> {
         self.ip_core_init()?;
         info!("Hashboard IP core initialized");
         self.voltage_ctrl.reset()?;
@@ -366,28 +366,28 @@ where
         //                io::ErrorKind::Other, format!("Detected voltage {}", voltage)));
         //        }
         info!("Starting chip enumeration");
-        self.enumerate_chips()?;
+        await!(self.enumerate_chips())?;
         info!("Discovered {} chips", self.chip_count);
 
         // set PLL
-        self.set_pll()?;
+        await!(self.set_pll())?;
 
         // configure the hashing chain to operate at desired baud rate. Note that gate block is
         // enabled to allow continuous start of chips in the chain
-        self.configure_hash_chain(TARGET_CHIP_BAUD_RATE, false, true)?;
+        await!(self.configure_hash_chain(TARGET_CHIP_BAUD_RATE, false, true))?;
         self.set_ip_core_baud_rate(TARGET_CHIP_BAUD_RATE)?;
 
-        self.set_asic_diff(self.asic_difficulty)?;
+        await!(self.set_asic_diff(self.asic_difficulty))?;
         Ok(())
     }
 
     /// Detects the number of chips on the hashing chain and assigns an address to each chip
-    fn enumerate_chips(&mut self) -> error::Result<()> {
+    async fn enumerate_chips(&mut self) -> error::Result<()> {
         // Enumerate all chips (broadcast read address register request)
         let get_addr_cmd = bm1387::GetStatusCmd::new(0, true, bm1387::GET_ADDRESS_REG).pack();
-        self.send_ctl_cmd(&get_addr_cmd, true);
+        await!(self.send_ctl_cmd(get_addr_cmd.to_vec(), true));
         self.chip_count = 0;
-        while let Some(addr_reg) = self.recv_ctl_cmd_resp::<bm1387::GetAddressReg>()? {
+        while let Some(addr_reg) = await!(self.recv_ctl_cmd_resp::<bm1387::GetAddressReg>())? {
             if addr_reg.chip_rev != bm1387::ChipRev::Bm1387 {
                 Err(ErrorKind::Hashchip(format!(
                     "unexpected revision of chip {} (expected: {:?} received: {:?})",
@@ -415,14 +415,14 @@ where
         let inactivate_from_chain_cmd = bm1387::InactivateFromChainCmd::new().pack();
         // make sure all chips receive inactivation request
         for _ in 0..3 {
-            self.send_ctl_cmd(&inactivate_from_chain_cmd, false);
+            await!(self.send_ctl_cmd(inactivate_from_chain_cmd.to_vec(), false));
             thread::sleep(Duration::from_millis(INACTIVATE_FROM_CHAIN_DELAY_MS));
         }
 
         // Assign address to each chip
         for addr in self.chip_iter() {
             let cmd = bm1387::SetChipAddressCmd::new(addr);
-            self.send_ctl_cmd(&cmd.pack(), false);
+            await!(self.send_ctl_cmd(cmd.pack().to_vec(), false));
         }
 
         Ok(())
@@ -436,12 +436,12 @@ where
     }
 
     /// Loads PLL register with a starting value
-    fn set_pll(&self) -> error::Result<()> {
+    async fn set_pll(&self) -> error::Result<()> {
         for addr in self.chip_iter() {
             // TODO: fix endianity of this register so it matches datasheet
             let cmd =
                 bm1387::SetConfigCmd::new(addr, false, bm1387::PLL_PARAM_REG, DEFAULT_PLL_CONFIG);
-            self.send_ctl_cmd(&cmd.pack(), false);
+            await!(self.send_ctl_cmd(cmd.pack().to_vec(), false));
         }
         Ok(())
     }
@@ -458,7 +458,7 @@ where
     ///
     /// Returns actual baud rate that has been set on the chips or an error
     /// @todo Research the exact use case of 'not_set_baud' in conjunction with gate_block
-    fn configure_hash_chain(
+    async fn configure_hash_chain(
         &self,
         baud_rate: usize,
         not_set_baud: bool,
@@ -480,7 +480,7 @@ where
         // eliminate the register address in this place
         let cmd = bm1387::SetConfigCmd::new(0, true, bm1387::MISC_CONTROL_REG, ctl_reg.into());
         // wait until all commands have been sent
-        self.send_ctl_cmd(&cmd.pack(), true);
+        await!(self.send_ctl_cmd(cmd.pack().to_vec(), true));
         Ok(actual_baud_rate)
     }
 
@@ -506,7 +506,7 @@ where
     /// Serializes command into 32-bit words and submits it to the command TX FIFO
     ///
     /// * `wait` - when true, wait until all commands are sent
-    fn send_ctl_cmd(&self, cmd: &[u8], wait: bool) {
+    async fn send_ctl_cmd(&self, cmd: Vec<u8>, wait: bool) {
         // invariant required by the IP core
         assert_eq!(
             cmd.len() & 0x3,
@@ -529,7 +529,7 @@ where
     /// - A timeout when reading the first word is converted into an empty response.
     ///   The method propagates any error other than timeout
     /// - An error that occurs during reading the second word from the FIFO is propagated.
-    fn recv_ctl_cmd_resp<T: PackedStructSlice>(&mut self) -> error::Result<Option<T>> {
+    async fn recv_ctl_cmd_resp<T: PackedStructSlice>(&mut self) -> error::Result<Option<T>> {
         let mut cmd_resp = [0u8; 8];
 
         // TODO: to be refactored once we have asynchronous handling in place
@@ -707,14 +707,14 @@ where
     }
 }
 
-pub struct HChain {}
+pub struct HChain;
 
 impl HChain {
     pub fn new() -> Self {
         Self {}
     }
 
-    pub fn start_h_chain(
+    async fn start_h_chain(
         &self,
         work_solver: work::Solver,
         mining_stats: Arc<Mutex<stats::Mining>>,
@@ -746,7 +746,7 @@ impl HChain {
             "Initializing hash chain controller for (midstate count {})",
             midstate_count,
         );
-        h_chain_ctl.init().unwrap();
+        await!(h_chain_ctl.init()).unwrap();
         info!("Hash chain controller initialized");
 
         let work_registry = Arc::new(Mutex::new(registry::MiningWorkRegistry::new(
@@ -775,6 +775,18 @@ impl HChain {
 
         h_chain_ctl
     }
+
+    pub fn start(
+        self,
+        work_solver: work::Solver,
+        mining_stats: Arc<Mutex<stats::Mining>>,
+        shutdown: shutdown::Sender,
+        midstate_count: usize,
+    ) {
+        ii_async_compat::spawn(async move {
+            await!(self.start_h_chain(work_solver, mining_stats, shutdown, midstate_count));
+        });
+    }
 }
 
 pub struct Backend;
@@ -797,7 +809,7 @@ impl hal::Backend for Backend {
     ) {
         // Create one chain
         let chain = HChain::new();
-        chain.start_h_chain(
+        chain.start(
             work_solver,
             mining_stats,
             shutdown,
