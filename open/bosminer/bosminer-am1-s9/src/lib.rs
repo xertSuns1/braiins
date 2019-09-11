@@ -519,7 +519,7 @@ where
         }
         // TODO busy waiting has to be replaced once asynchronous processing is in place
         if wait {
-            self.command_io.hw.wait_tx_empty();
+            await!(self.command_io.hw.wait_tx_empty());
         }
     }
 
