@@ -20,18 +20,9 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-#[cfg(feature = "erupter")]
-pub mod erupter;
 #[cfg(feature = "antminer_s9")]
 pub mod s9;
 
-/// Reexport HAL entry point for selected target to unify interface
-#[cfg(feature = "erupter")]
-pub use erupter::{
-    config,
-    error::{Error, ErrorKind},
-    run,
-};
 #[cfg(feature = "antminer_s9")]
 pub use s9::{
     config,
@@ -60,10 +51,10 @@ pub trait Backend: Send + Sync + 'static {
     );
 }
 
-#[cfg(feature = "backend_selected")]
+#[cfg(feature = "antminer_s9")]
 pub struct BackendImpl;
 
-#[cfg(feature = "backend_selected")]
+#[cfg(feature = "antminer_s9")]
 impl Backend for BackendImpl {
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
