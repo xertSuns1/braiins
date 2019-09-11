@@ -260,13 +260,11 @@ impl CommandHw {
 
     /// Wait fro command FIFO to become empty.
     /// Uses polling.
-    pub fn wait_tx_empty(&self) {
-        // TODO busy waiting has to be replaced once asynchronous processing is in place
-        // jho: Not really, there's no IRQ for cmd tx fifo becomming "empty". The best we
-        // can do is run this in a separate thread with timeout polling.
-        // But we usually want to wait for cmd to be empty before we issue other commands,
-        // so it's not really worth it to pursue asynchronicity vehemently in this case.
-        while !self.is_tx_empty() {}
+    pub async fn wait_tx_empty(&self) {
+        // async "busy-wait", since there's no command TX interrupt
+        while !self.is_tx_empty() {
+            await!(ii_async_compat::sleep(Duration::from_millis(2)));
+        }
     }
 
     /// Try to write command to cmd tx fifo.
