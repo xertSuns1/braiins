@@ -55,7 +55,6 @@ use failure::ResultExt;
 
 use futures::lock::Mutex;
 
-use byteorder::{ByteOrder, LittleEndian};
 use packed_struct::{PackedStruct, PackedStructSlice};
 
 use embedded_hal::digital::v2::InputPin;
@@ -387,7 +386,7 @@ where
         let get_addr_cmd = bm1387::GetStatusCmd::new(0, true, bm1387::GET_ADDRESS_REG).pack();
         await!(self.send_ctl_cmd(get_addr_cmd.to_vec(), true));
         self.chip_count = 0;
-        while let Some(addr_reg) = await!(self.recv_ctl_cmd_resp::<bm1387::GetAddressReg>())? {
+        while let Some(addr_reg) = await!(self.recv_cmd_resp::<bm1387::GetAddressReg>())? {
             if addr_reg.chip_rev != bm1387::ChipRev::Bm1387 {
                 Err(ErrorKind::Hashchip(format!(
                     "unexpected revision of chip {} (expected: {:?} received: {:?})",
@@ -503,60 +502,22 @@ where
         Ok(())
     }
 
-    /// Serializes command into 32-bit words and submits it to the command TX FIFO
-    ///
-    /// * `wait` - when true, wait until all commands are sent
-    async fn send_ctl_cmd(&self, cmd: Vec<u8>, wait: bool) {
-        // invariant required by the IP core
-        assert_eq!(
-            cmd.len() & 0x3,
-            0,
-            "Control command length not aligned to 4 byte boundary!"
-        );
-        trace!("Sending Control Command {:x?}", cmd);
-        for chunk in cmd.chunks(4) {
-            self.command_io.hw.write(LittleEndian::read_u32(chunk));
-        }
-        // TODO busy waiting has to be replaced once asynchronous processing is in place
-        if wait {
-            await!(self.command_io.hw.wait_tx_empty());
+    /// Receive command response and unpack it into struct T
+    async fn recv_cmd_resp<T: PackedStructSlice>(&mut self) -> error::Result<Option<T>> {
+        match await!(self.command_io.recv_response())? {
+            Some(cmd_resp) => {
+                let resp = T::unpack_from_slice(&cmd_resp).context(format!(
+                    "control command unpacking error! {:#04x?}",
+                    cmd_resp
+                ))?;
+                Ok(Some(resp))
+            }
+            None => Ok(None),
         }
     }
 
-    /// Command responses are always 7 bytes long including checksum. Therefore, the reception
-    /// has to be done in 2 steps with the following error handling:
-    ///
-    /// - A timeout when reading the first word is converted into an empty response.
-    ///   The method propagates any error other than timeout
-    /// - An error that occurs during reading the second word from the FIFO is propagated.
-    async fn recv_ctl_cmd_resp<T: PackedStructSlice>(&mut self) -> error::Result<Option<T>> {
-        let mut cmd_resp = [0u8; 8];
-
-        // TODO: to be refactored once we have asynchronous handling in place
-        // fetch command response from IP core's fifo
-        match self.command_io.hw.read()? {
-            None => return Ok(None),
-            Some(resp_word) => LittleEndian::write_u32(&mut cmd_resp[..4], resp_word),
-        }
-        // All errors from reading the second word are propagated
-        match self.command_io.hw.read()? {
-            None => {
-                return Err(ErrorKind::Fifo(
-                    error::Fifo::TimedOut,
-                    "work RX fifo empty".to_string(),
-                ))?;
-            }
-            Some(resp_word) => LittleEndian::write_u32(&mut cmd_resp[4..], resp_word),
-        }
-
-        // build the response instance - drop the extra byte due to FIFO being 32-bit word based
-        // and drop the checksum
-        // TODO: optionally verify the checksum (use debug_assert?)
-        let resp = T::unpack_from_slice(&cmd_resp[..6]).context(format!(
-            "control command unpacking error! {:#04x?}",
-            cmd_resp
-        ))?;
-        Ok(Some(resp))
+    async fn send_ctl_cmd(&self, cmd: Vec<u8>, wait: bool) {
+        await!(self.command_io.send_command(cmd, wait));
     }
 
     pub fn get_chip_count(&self) -> usize {
