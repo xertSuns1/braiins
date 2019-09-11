@@ -172,6 +172,18 @@ name = "bosminer-erupter"
 version = "0.1.0"
 dependencies = [
  "bosminer 0.1.0",
+ "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures-preview 0.3.0-alpha.16 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ii-async-compat 0.1.0",
+ "ii-bitcoin 0.1.0",
+ "ii-logging 0.1.0",
+ "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libusb 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "packed_struct 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "packed_struct_codegen 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio 0.1.19 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-threadpool 0.1.15 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

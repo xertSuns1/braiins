@@ -22,5 +22,5 @@
 
 #[test]
 fn block_mining() {
-    bosminer::test_utils::block_mining::run(bosminer::hal::BackendImpl);
+    bosminer::test_utils::block_mining::run(bosminer_erupter::Backend);
 }

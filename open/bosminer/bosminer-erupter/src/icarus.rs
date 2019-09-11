@@ -84,8 +84,8 @@ impl WorkPayload {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::job::Bitcoin;
-    use crate::test_utils;
+    use bosminer::job::Bitcoin;
+    use bosminer::test_utils;
 
     #[test]
     fn test_work_payload() {

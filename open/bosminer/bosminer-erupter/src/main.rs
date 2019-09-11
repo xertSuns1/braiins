@@ -20,6 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+#![feature(await_macro, async_await, duration_float)]
+
 fn main() {
-    bosminer::main();
+    bosminer::main(bosminer_erupter::Backend);
 }

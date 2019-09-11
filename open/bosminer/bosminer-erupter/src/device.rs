@@ -26,7 +26,7 @@
 use super::error::{self, ErrorKind};
 use super::icarus;
 
-use crate::work;
+use bosminer::work;
 
 use failure::{Fail, ResultExt};
 
@@ -344,8 +344,8 @@ impl<'a> Iterator for BlockErupterSolver<'a> {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::job::Bitcoin;
-    use crate::test_utils;
+    use bosminer::job::Bitcoin;
+    use bosminer::test_utils;
 
     use std::ops::{Deref, DerefMut};
     use std::sync;

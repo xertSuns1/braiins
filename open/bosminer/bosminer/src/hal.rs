@@ -41,6 +41,9 @@ use std::time::Duration;
 
 /// Minimal interface for running compatible backend with bOSminer crate
 pub trait Backend: Send + Sync + 'static {
+    /// Number of midstates
+    const DEFAULT_MIDSTATE_COUNT: usize;
+    /// Maximum time it takes to compute one job under normal circumstances
     const JOB_TIMEOUT: Duration;
 
     fn run(
@@ -56,6 +59,7 @@ pub struct BackendImpl;
 
 #[cfg(feature = "antminer_s9")]
 impl Backend for BackendImpl {
+    const DEFAULT_MIDSTATE_COUNT: usize = crate::hal::config::DEFAULT_MIDSTATE_COUNT;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
     fn run(

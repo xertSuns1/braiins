@@ -123,33 +123,63 @@ impl From<Context<String>> for Error {
     }
 }
 
-#[cfg(feature = "backend_selected")]
+pub trait ResultExt<T, E> {
+    fn context<D>(self, context: D) -> std::result::Result<T, Context<ErrorKind>>
+    where
+        D: Display + Send + Sync + 'static;
+
+    fn with_context<F, D>(self, f: F) -> std::result::Result<T, Context<ErrorKind>>
+    where
+        F: FnOnce(&E) -> D,
+        D: Display + Send + Sync + 'static;
+}
+
 pub mod backend {
-    use super::*;
-    use crate::hal;
+    pub use super::ResultExt;
+    use super::{Error, ErrorKind};
 
-    impl From<hal::Error> for Error {
-        fn from(hal_error: hal::Error) -> Self {
-            let msg = hal_error.to_string();
-            Self {
-                inner: hal_error.context(ErrorKind::Backend(msg)),
-            }
+    use failure::{Context, Fail};
+    use std::fmt::Display;
+
+    pub fn from_error<T: Fail>(error: T) -> Error {
+        let msg = error.to_string();
+        Error {
+            inner: error.context(ErrorKind::Backend(msg)),
         }
     }
 
-    impl From<hal::ErrorKind> for Error {
-        fn from(kind: hal::ErrorKind) -> Self {
-            Self {
-                inner: Context::new(ErrorKind::Backend(kind.to_string())),
-            }
+    pub fn from_error_kind<T: ToString>(kind: T) -> Error {
+        Error {
+            inner: Context::new(ErrorKind::Backend(kind.to_string())),
         }
     }
 
-    impl From<Context<hal::ErrorKind>> for Error {
-        fn from(context: Context<hal::ErrorKind>) -> Self {
-            Self {
-                inner: context.map(|info| ErrorKind::Backend(info.to_string())),
-            }
+    impl<T, E> ResultExt<T, E> for Result<T, E>
+    where
+        E: Fail,
+    {
+        fn context<D>(self, context: D) -> Result<T, Context<ErrorKind>>
+        where
+            D: Display + Send + Sync + 'static,
+        {
+            self.map_err(|failure| {
+                failure
+                    .context(context)
+                    .map(|info| ErrorKind::Backend(info.to_string()))
+            })
+        }
+
+        fn with_context<F, D>(self, f: F) -> Result<T, Context<ErrorKind>>
+        where
+            F: FnOnce(&E) -> D,
+            D: Display + Send + Sync + 'static,
+        {
+            self.map_err(|failure| {
+                let context = f(&failure);
+                failure
+                    .context(context)
+                    .map(|info| ErrorKind::Backend(info.to_string()))
+            })
         }
     }
 }

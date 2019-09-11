@@ -85,5 +85,17 @@ impl From<Context<ErrorKind>> for Error {
     }
 }
 
+impl From<Error> for bosminer::error::Error {
+    fn from(error: Error) -> Self {
+        bosminer::error::backend::from_error(error)
+    }
+}
+
+impl From<ErrorKind> for bosminer::error::Error {
+    fn from(kind: ErrorKind) -> Self {
+        bosminer::error::backend::from_error_kind(kind)
+    }
+}
+
 /// A specialized `Result` type bound to [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
