@@ -420,39 +420,30 @@ where
         }
 
         // Assign address to each chip
-        self.for_all_chips(|addr| {
+        for addr in self.chip_iter() {
             let cmd = bm1387::SetChipAddressCmd::new(addr);
             self.send_ctl_cmd(&cmd.pack(), false);
-            Ok(())
-        })?;
+        }
 
         Ok(())
     }
 
-    /// Helper method that applies a function to all detected chips on the chain
-    fn for_all_chips<F, R>(&self, f: F) -> error::Result<R>
-    where
-        F: Fn(u8) -> error::Result<R>,
-    {
-        let mut result = Err(ErrorKind::Hashchip("no chips to iterate".to_string()).into());
-        for addr in (0..self.chip_count * 4).step_by(4) {
-            // the enumeration takes care that address always fits into 8 bits.
-            // Therefore, we can truncate the bits here.
-            result = Ok(f(addr as u8)?);
-        }
-        // Result of last iteration
-        result
+    /// Returns iterator over all chips (yield their u8 addresses)
+    fn chip_iter(&self) -> impl Iterator<Item = u8> {
+        // make sure there is not too many chips
+        assert!(self.chip_count * 4 < 256);
+        (0..(self.chip_count as u8 * 4)).step_by(4)
     }
 
     /// Loads PLL register with a starting value
     fn set_pll(&self) -> error::Result<()> {
-        self.for_all_chips(|addr| {
+        for addr in self.chip_iter() {
             // TODO: fix endianity of this register so it matches datasheet
             let cmd =
                 bm1387::SetConfigCmd::new(addr, false, bm1387::PLL_PARAM_REG, DEFAULT_PLL_CONFIG);
             self.send_ctl_cmd(&cmd.pack(), false);
-            Ok(())
-        })
+        }
+        Ok(())
     }
 
     /// Configure all chips in the hash chain
