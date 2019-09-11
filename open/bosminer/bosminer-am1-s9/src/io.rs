@@ -84,7 +84,8 @@ pub struct WorkTxIo {
 }
 
 pub struct ConfigIo {
-    pub hw: ConfigHw,
+    hw: ConfigHw,
+    midstate_count: MidstateCount,
 }
 
 /// TODO: make `hw` private
@@ -410,15 +411,37 @@ impl ConfigIo {
         Ok(())
     }
 
+    pub fn set_midstate_count(&self) {
+        self.hw
+            .set_ip_core_midstate_count(self.midstate_count.to_reg());
+    }
+
+    pub fn enable_ip_core(&self) {
+        self.hw.enable_ip_core();
+    }
+
+    pub fn disable_ip_core(&self) {
+        self.hw.disable_ip_core();
+    }
+
+    pub fn set_ip_core_work_time(&self, work_time: u32) {
+        self.hw.set_ip_core_work_time(work_time);
+    }
+
+    pub fn set_baud_clock_div(&self, baud_clock_div: u32) {
+        self.hw.set_baud_clock_div(baud_clock_div);
+    }
+
     pub fn init(&mut self) -> error::Result<()> {
         self.hw.init()?;
         self.check_build_id()?;
         Ok(())
     }
 
-    pub fn new(hashboard_idx: usize) -> error::Result<Self> {
+    pub fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
         Ok(Self {
             hw: ConfigHw::new(hashboard_idx)?,
+            midstate_count,
         })
     }
 }
@@ -432,7 +455,7 @@ mod test {
     /// Test that we are able to construct HChainFifo instance
     #[test]
     fn test_fifo_construction() {
-        let _io = ConfigIo::new(TEST_CHAIN_INDEX).expect("ConfigIo failed");
+        let _io = ConfigIo::new(TEST_CHAIN_INDEX, MidstateCount::new(1)).expect("ConfigIo failed");
         let _io = CommandIo::new(TEST_CHAIN_INDEX).expect("CommandIo failed");
         let _io = WorkRxIo::new(TEST_CHAIN_INDEX, MidstateCount::new(1)).expect("WorkRxIo failed");
         let _io = WorkTxIo::new(TEST_CHAIN_INDEX, MidstateCount::new(4)).expect("WorkTxIo failed");
