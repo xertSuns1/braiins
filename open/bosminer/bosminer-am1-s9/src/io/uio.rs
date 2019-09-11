@@ -119,14 +119,17 @@ mod test {
     /// Test it on empty rx queue (IRQ always deasserted).
     #[test]
     fn test_get_irq_timeout() {
-        // TODO: replace this with call to flush or something more meaningful
-        // create fifo to flush interrupts
-        let mut io = io::WorkRxIo::new(TEST_CHAIN_INDEX, MidstateCount::new(1))
-            .expect("WorkRxIo construction failed");
-        // fifo initialization flushes all received responses
-        io.init().expect("WorkRxIo initialization failed");
-        drop(io);
-        // work rx fifo now shouldn't get any interrupts (it's empty)
+        // initialize `Io`s to flush interrupts
+        io::WorkTxIo::new(TEST_CHAIN_INDEX, MidstateCount::new(1))
+            .unwrap()
+            .init()
+            .unwrap();
+        io::WorkRxIo::new(TEST_CHAIN_INDEX, MidstateCount::new(1))
+            .unwrap()
+            .init()
+            .unwrap();
+
+        // cmd rx fifo now shouldn't get any interrupts (it's empty)
         let uio = Device::open(TEST_CHAIN_INDEX, "work-rx")
             .expect("uio open failed")
             .uio;
