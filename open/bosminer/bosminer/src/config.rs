@@ -20,15 +20,6 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-/// This module holds bOSminer configuration until better solution comes around.
-
-/// We re-export individually each config option to avoid creating
-/// multiple independent (global) configuration schemas. Having a per-platform
-/// (local) option is OK but it shouldn't leak outside platform module.
-///
-/// If you get UNRESOLVED IMPORT here, it probably means someone added
-/// configuration option for one architecture but not for all of them.
-#[cfg(feature = "antminer_s9")]
-pub use crate::hal::config::{ASIC_DIFFICULTY, JOB_TIMEOUT};
+//! This module holds bOSminer configuration until better solution comes around.
 
 pub const DEFAULT_MIDSTATE_COUNT: usize = 1;

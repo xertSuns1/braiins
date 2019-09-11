@@ -20,16 +20,6 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-#[cfg(feature = "antminer_s9")]
-pub mod s9;
-
-#[cfg(feature = "antminer_s9")]
-pub use s9::{
-    config,
-    error::{Error, ErrorKind},
-    run,
-};
-
 use crate::shutdown;
 use crate::stats;
 use crate::work;
@@ -52,22 +42,4 @@ pub trait Backend: Send + Sync + 'static {
         mining_stats: Arc<Mutex<stats::Mining>>,
         shutdown: shutdown::Sender,
     );
-}
-
-#[cfg(feature = "antminer_s9")]
-pub struct BackendImpl;
-
-#[cfg(feature = "antminer_s9")]
-impl Backend for BackendImpl {
-    const DEFAULT_MIDSTATE_COUNT: usize = crate::hal::config::DEFAULT_MIDSTATE_COUNT;
-    const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
-
-    fn run(
-        &self,
-        work_solver: work::Solver,
-        mining_stats: Arc<Mutex<stats::Mining>>,
-        shutdown: shutdown::Sender,
-    ) {
-        run(work_solver, mining_stats, shutdown);
-    }
 }
