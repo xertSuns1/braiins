@@ -20,8 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use bosminer::hal::s9::gpio;
-use bosminer::hal::s9::power;
+use bosminer_am1_s9::gpio;
+use bosminer_am1_s9::power;
 
 use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;

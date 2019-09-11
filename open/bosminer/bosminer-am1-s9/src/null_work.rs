@@ -22,8 +22,8 @@
 
 use ii_bitcoin::HashTrait;
 
-use crate::job::{self, Bitcoin};
-use crate::work;
+use bosminer::job::{self, Bitcoin};
+use bosminer::work;
 
 use std::sync::Arc;
 

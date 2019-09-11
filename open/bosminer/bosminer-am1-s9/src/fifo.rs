@@ -23,16 +23,16 @@
 /// This module provides thin API to access memory-mapped FPGA registers
 /// and associated interrupts.
 /// Exports FIFO management/send/receive and register access.
-use super::*;
-use std::marker::PhantomData;
-use std::ops;
-use std::time::Duration;
+use crate::error::{self, ErrorKind};
+use failure::ResultExt;
+
+use bosminer::work;
 
 use ii_fpga_io_am1_s9::hchainio0;
 
-use super::error::{self, ErrorKind};
-use crate::work;
-use failure::ResultExt;
+use std::marker::PhantomData;
+use std::ops;
+use std::time::Duration;
 
 /// How long to wait for RX interrupt
 const FIFO_READ_TIMEOUT: Duration = Duration::from_millis(5);
@@ -86,7 +86,7 @@ const EXPECTED_BITSTREAM_BUILD_ID: u32 = 0x5D5E7158;
 
 pub struct HChainFifo {
     pub hash_chain_io: Mmap<hchainio0::RegisterBlock>,
-    pub midstate_count: s9::MidstateCount,
+    pub midstate_count: crate::MidstateCount,
     work_tx_irq: uio_async::UioDevice,
     work_rx_irq: uio_async::UioDevice,
     cmd_rx_irq: uio_async::UioDevice,
@@ -198,7 +198,7 @@ impl HChainFifo {
     pub async fn recv_solution(mut self) -> Result<(Self, work::Solution), failure::Error> {
         let nonce = await!(self.async_read_from_work_rx_fifo())?;
         let word2 = await!(self.async_read_from_work_rx_fifo())?;
-        let solution_id = s9::SolutionId::from_reg(word2, self.midstate_count);
+        let solution_id = crate::SolutionId::from_reg(word2, self.midstate_count);
 
         let solution = work::Solution {
             nonce,
@@ -336,7 +336,7 @@ impl HChainFifo {
         Ok(())
     }
 
-    pub fn new(hashboard_idx: usize, midstate_count: s9::MidstateCount) -> error::Result<Self> {
+    pub fn new(hashboard_idx: usize, midstate_count: crate::MidstateCount) -> error::Result<Self> {
         let hash_chain_io = unsafe { Mmap::new(hashboard_idx)? };
 
         let fifo = Self {
@@ -399,7 +399,7 @@ mod test {
     /// Test that we are able to construct HChainFifo instance
     #[test]
     fn test_fifo_construction() {
-        let _fifo = HChainFifo::new(TEST_CHAIN_INDEX, s9::MidstateCount::new(1))
+        let _fifo = HChainFifo::new(TEST_CHAIN_INDEX, crate::MidstateCount::new(1))
             .expect("fifo construction failed");
     }
 
@@ -423,7 +423,7 @@ mod test {
     /// Test it on empty rx queue (IRQ always deasserted).
     #[test]
     fn test_get_irq_timeout() {
-        let mut fifo = HChainFifo::new(TEST_CHAIN_INDEX, s9::MidstateCount::new(1))
+        let mut fifo = HChainFifo::new(TEST_CHAIN_INDEX, crate::MidstateCount::new(1))
             .expect("fifo construction failed");
         // fifo initialization flushes all received responses
         fifo.init().expect("fifo initialization failed");
