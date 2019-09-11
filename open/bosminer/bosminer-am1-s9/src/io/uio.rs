@@ -51,6 +51,10 @@ impl Device {
 mod test {
     use super::*;
     use crate::{io, MidstateCount};
+    use std::time::Duration;
+
+    /// Read timeout
+    const FIFO_READ_TIMEOUT: Duration = Duration::from_millis(5);
 
     /// Index of chain for testing (must exist and be defined in DTS)
     const TEST_CHAIN_INDEX: usize = 8;
@@ -110,7 +114,7 @@ mod test {
             .uio;
         uio.irq_enable().expect("irq enable failed");
         let res = uio
-            .irq_wait_timeout(io::FIFO_READ_TIMEOUT)
+            .irq_wait_timeout(FIFO_READ_TIMEOUT)
             .expect("waiting for timeout failed");
         assert!(res.is_some(), "expected interrupt");
     }
@@ -135,7 +139,7 @@ mod test {
             .uio;
         uio.irq_enable().expect("irq enable failed");
         let res = uio
-            .irq_wait_timeout(io::FIFO_READ_TIMEOUT)
+            .irq_wait_timeout(FIFO_READ_TIMEOUT)
             .expect("waiting for timeout failed");
         assert!(res.is_none(), "expected timeout");
     }

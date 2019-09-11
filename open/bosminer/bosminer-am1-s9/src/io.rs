@@ -35,14 +35,16 @@ use crate::error::{self, ErrorKind};
 use crate::MidstateCount;
 
 use bosminer::work;
+use byteorder::{ByteOrder, LittleEndian};
 use std::time::Duration;
 
+use ii_async_compat::{sleep, timeout_future, TimeoutResult};
 use ii_fpga_io_am1_s9::hchainio0;
+
+use ii_logging::macros::*;
 
 /// What bitstream version do we expect
 const EXPECTED_BITSTREAM_BUILD_ID: u32 = 0x5D5E7158;
-/// How long to wait for RX interrupt
-const FIFO_READ_TIMEOUT: Duration = Duration::from_millis(5);
 
 /// XXX: this function will be gone once DTS is fixed.
 fn map_mem_regs<T>(
@@ -145,9 +147,10 @@ impl WorkRxHw {
     /// Try to read from work rx fifo.
     /// Performs blocking read with timeout. Uses IRQ.
     #[inline]
-    pub fn read(&mut self) -> error::Result<Option<u32>> {
+    #[allow(dead_code)]
+    pub fn read(&mut self, timeout: Option<Duration>) -> error::Result<Option<u32>> {
         let cond = || !self.fifo_empty();
-        let got_irq = self.uio.irq_wait_cond(cond, Some(FIFO_READ_TIMEOUT))?;
+        let got_irq = self.uio.irq_wait_cond(cond, timeout)?;
         Ok(got_irq.and_then(|_| Some(self.regs.work_rx_fifo.read().bits())))
     }
 
@@ -200,6 +203,7 @@ impl WorkTxHw {
 
     /// Return the value of last work ID send to ASICs
     #[inline]
+    #[allow(dead_code)]
     pub fn get_last_work_id(&mut self) -> u32 {
         self.regs.last_work_id.read().bits()
     }
@@ -258,37 +262,63 @@ impl CommandHw {
         self.regs.stat_reg.read().cmd_tx_empty().bit()
     }
 
-    /// Wait fro command FIFO to become empty.
-    /// Uses polling.
+    #[inline]
+    pub fn is_tx_full(&self) -> bool {
+        self.regs.stat_reg.read().cmd_tx_full().bit()
+    }
+
+    /// Wait for command FIFO to become empty
+    /// Uses timed polling
     pub async fn wait_tx_empty(&self) {
-        // async "busy-wait", since there's no command TX interrupt
         while !self.is_tx_empty() {
-            await!(ii_async_compat::sleep(Duration::from_millis(2)));
+            await!(sleep(Duration::from_millis(1)));
         }
     }
 
-    /// Try to write command to cmd tx fifo.
-    /// Performs blocking write without timeout. Uses polling.
-    /// TODO get rid of busy waiting, prepare for non-blocking API
+    /// Write command to cmd tx fifo.
+    /// Uses timed polling
     #[inline]
-    pub fn write(&self, item: u32) {
-        while self.regs.stat_reg.read().cmd_tx_full().bit() {}
+    pub async fn write(&self, item: u32) {
+        // wait for space in queue
+        while self.is_tx_full() {
+            await!(sleep(Duration::from_millis(1)));
+        }
+        // write command word
         self.regs.cmd_tx_fifo.write(|w| unsafe { w.bits(item) });
     }
 
     /// Try to read command from cmd rx fifo.
     /// Performs blocking read with timeout. Uses IRQ.
     #[inline]
-    pub fn read(&mut self) -> error::Result<Option<u32>> {
+    pub fn read(&mut self, timeout: Option<Duration>) -> error::Result<Option<u32>> {
         let cond = || !self.is_rx_empty();
-        let got_irq = self.uio.irq_wait_cond(cond, Some(FIFO_READ_TIMEOUT))?;
+        let got_irq = self.uio.irq_wait_cond(cond, timeout)?;
         Ok(got_irq.and_then(|_| Some(self.regs.cmd_rx_fifo.read().bits())))
     }
 
+    /// Read command from cmd rx fifo
+    /// Async variant. Uses IRQ.
     pub async fn async_read(&mut self) -> error::Result<u32> {
         let cond = || !self.is_rx_empty();
         await!(self.uio.async_irq_wait_cond(cond))?;
         Ok(self.regs.cmd_rx_fifo.read().bits())
+    }
+
+    /// Read command from cmd rx fifo with timeout
+    /// Async variant. Uses IRQ.
+    /// Returns:
+    ///     * `Ok(None)` on timeout
+    ///     * `Ok(Some(_))` if something was received
+    ///     * `Err(_)` if error occured
+    pub async fn async_read_with_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> error::Result<Option<u32>> {
+        match await!(timeout_future(self.async_read(), timeout,)) {
+            TimeoutResult::Error => panic!("timeout error"),
+            TimeoutResult::TimedOut => return Ok(None),
+            TimeoutResult::Returned(word) => return Ok(Some(word?)),
+        }
     }
 
     pub fn init(&mut self) -> error::Result<()> {
@@ -384,6 +414,60 @@ impl WorkTxIo {
 }
 
 impl CommandIo {
+    /// Timeout for waiting for command
+    const COMMAND_READ_TIMEOUT: Duration = Duration::from_millis(100);
+
+    /// Serializes command into 32-bit words and submits it to the command TX FIFO
+    ///
+    /// * `wait` - when true, wait until all commands are sent
+    pub async fn send_command(&self, cmd: Vec<u8>, wait: bool) {
+        // invariant required by the IP core
+        assert_eq!(
+            cmd.len() & 0x3,
+            0,
+            "Control command length not aligned to 4 byte boundary!"
+        );
+        trace!("Sending Control Command {:x?}", cmd);
+        for chunk in cmd.chunks(4) {
+            await!(self.hw.write(LittleEndian::read_u32(chunk)));
+        }
+        if wait {
+            await!(self.hw.wait_tx_empty());
+        }
+    }
+
+    /// Receive command response.
+    /// Command responses are always 7 bytes long including checksum. Therefore, the reception
+    /// has to be done in 2 steps with the following error handling:
+    ///
+    /// - A timeout when reading the first word is converted into an empty response.
+    ///   The method propagates any error other than timeout
+    /// - An error that occurs during reading the second word from the FIFO is propagated.
+    pub async fn recv_response(&mut self) -> error::Result<Option<Vec<u8>>> {
+        // assembled response
+        let mut cmd_resp = [0u8; 8];
+
+        // fetch first word of command response from IP core's fifo
+        match await!(self.hw.async_read_with_timeout(Self::COMMAND_READ_TIMEOUT))? {
+            None => return Ok(None),
+            Some(word) => LittleEndian::write_u32(&mut cmd_resp[..4], word),
+        }
+
+        // fetch second word: getting timeout here is a hardware error
+        match await!(self.hw.async_read_with_timeout(Self::COMMAND_READ_TIMEOUT))? {
+            None => Err(ErrorKind::Fifo(
+                error::Fifo::TimedOut,
+                "cmd RX fifo framing error".to_string(),
+            ))?,
+            Some(word2) => LittleEndian::write_u32(&mut cmd_resp[4..], word2),
+        }
+
+        // build the response vector - drop the extra byte due to FIFO being 32-bit word based
+        // and drop the checksum
+        // TODO: optionally verify the checksum (use debug_assert?)
+        Ok(Some(cmd_resp[..6].to_vec()))
+    }
+
     pub fn init(&mut self) -> error::Result<()> {
         self.hw.init()?;
         Ok(())
