@@ -137,7 +137,7 @@ async fn send_and_receive_test_workloads<'a>(
     );
 }
 
-fn start_hchain() -> HChainCtl {
+async fn start_hchain() -> HChainCtl {
     use power::VoltageCtrlBackend;
 
     let gpio_mgr = gpio::ControlPinManager::new();
@@ -153,7 +153,7 @@ fn start_hchain() -> HChainCtl {
         1,
     )
     .unwrap();
-    h_chain_ctl.init().expect("h_chain init failed");
+    await!(h_chain_ctl.init()).expect("h_chain init failed");
     h_chain_ctl
 }
 
@@ -177,7 +177,7 @@ fn test_work_generation() {
 
     ii_async_compat::run_main_exits(async move {
         // Start HW
-        let h_chain_ctl = Arc::new(Mutex::new(start_hchain()));
+        let h_chain_ctl = Arc::new(Mutex::new(await!(start_hchain())));
 
         // start HW receiver
         ii_async_compat::spawn(receiver_task(h_chain_ctl.clone(), solution_sender));
