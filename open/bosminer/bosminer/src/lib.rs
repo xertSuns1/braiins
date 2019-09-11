@@ -24,6 +24,7 @@
 
 pub mod client;
 pub mod config;
+pub mod entry;
 pub mod error;
 pub mod hal;
 pub mod hub;
@@ -35,9 +36,5 @@ pub mod work;
 
 pub mod test_utils;
 
-#[cfg(feature = "backend_selected")]
-pub mod entry;
-
 // reexport main function from `entry` module
-#[cfg(feature = "backend_selected")]
 pub use entry::main;

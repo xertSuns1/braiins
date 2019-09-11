@@ -20,6 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+#![feature(await_macro, async_await, duration_float)]
+
 pub mod config;
 pub mod device;
 pub mod error;
@@ -27,7 +29,12 @@ pub mod icarus;
 
 use ii_logging::macros::*;
 
-use crate::{shutdown, stats, work};
+use bosminer::error::backend::ResultExt;
+use bosminer::hal;
+use bosminer::shutdown;
+use bosminer::stats;
+use bosminer::work;
+
 use error::ErrorKind;
 
 use tokio_threadpool::blocking;
@@ -36,17 +43,17 @@ use tokio_threadpool::blocking;
 use futures::lock::Mutex;
 use futures_01::future::poll_fn;
 
-use failure::ResultExt;
 use std::sync::Arc;
+use std::time::Duration;
 
 fn main_task(
     work_solver: work::Solver,
     mining_stats: Arc<Mutex<stats::Mining>>,
     _shutdown: shutdown::Sender,
-) -> crate::error::Result<()> {
+) -> bosminer::error::Result<()> {
     info!("Block Erupter: finding device in USB...");
     let usb_context =
-        libusb::Context::new().with_context(|_| ErrorKind::Usb("cannot create USB context"))?;
+        libusb::Context::new().context(ErrorKind::Usb("cannot create USB context"))?;
     let mut device = device::BlockErupter::find(&usb_context)
         .ok_or_else(|| ErrorKind::Usb("cannot find Block Erupter device"))?;
 
@@ -69,30 +76,37 @@ fn main_task(
     Ok(())
 }
 
-/// Entry point for running the hardware backend
-pub fn run(
-    work_solver: work::Solver,
-    mining_stats: Arc<Mutex<stats::Mining>>,
-    shutdown: shutdown::Sender,
-) {
-    // wrap `main_task` parameters to Option to overcome FnOnce closure inside FnMut
-    let mut args = Some((work_solver, mining_stats, shutdown));
+pub struct Backend;
 
-    // spawn future in blocking context which guarantees that the task is run in separate thread
-    tokio::spawn(
-        // Because `blocking` returns `Poll`, it is intended to be used from the context of
-        // a `Future` implementation. Since we don't have a complicated requirement, we can use
-        // `poll_fn` in this case.
-        poll_fn(move || {
-            blocking(|| {
-                let (work_solver, mining_stats, shutdown) = args
-                    .take()
-                    .expect("`tokio_threadpool::blocking` called FnOnce more than once");
-                if let Err(e) = main_task(work_solver, mining_stats, shutdown) {
-                    error!("{}", e);
-                }
-            })
-            .map_err(|_| panic!("the threadpool shut down"))
-        }),
-    );
+impl hal::Backend for Backend {
+    const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;
+    const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
+
+    fn run(
+        &self,
+        work_solver: work::Solver,
+        mining_stats: Arc<Mutex<stats::Mining>>,
+        shutdown: shutdown::Sender,
+    ) {
+        // wrap `main_task` parameters to Option to overcome FnOnce closure inside FnMut
+        let mut args = Some((work_solver, mining_stats, shutdown));
+
+        // spawn future in blocking context which guarantees that the task is run in separate thread
+        tokio::spawn(
+            // Because `blocking` returns `Poll`, it is intended to be used from the context of
+            // a `Future` implementation. Since we don't have a complicated requirement, we can use
+            // `poll_fn` in this case.
+            poll_fn(move || {
+                blocking(|| {
+                    let (work_solver, mining_stats, shutdown) = args
+                        .take()
+                        .expect("`tokio_threadpool::blocking` called FnOnce more than once");
+                    if let Err(e) = main_task(work_solver, mining_stats, shutdown) {
+                        error!("{}", e);
+                    }
+                })
+                .map_err(|_| panic!("the threadpool shut down"))
+            }),
+        );
+    }
 }

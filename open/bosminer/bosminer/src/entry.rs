@@ -49,7 +49,7 @@ fn start_mining_stats_task(_mining_stats: Arc<Mutex<stats::Mining>>) {
     ii_async_compat::spawn(stats::hashrate_meter_task());
 }
 
-async fn main_task(stratum_addr: String, user: String) {
+async fn main_task<T: hal::Backend>(backend: T, stratum_addr: String, user: String) {
     // create job and work solvers
     let (job_solver, work_solver) = hub::build_solvers();
     // create shutdown channel
@@ -58,14 +58,14 @@ async fn main_task(stratum_addr: String, user: String) {
     let mining_stats = Arc::new(Mutex::new(stats::Mining::new()));
 
     // start HW backend for selected target
-    hal::run(work_solver, mining_stats.clone(), shutdown_sender);
+    backend.run(work_solver, mining_stats.clone(), shutdown_sender);
     // start statistics processing
     start_mining_stats_task(mining_stats);
     // start stratum V2 client
     await!(stratum_v2::run(job_solver, stratum_addr, user));
 }
 
-pub fn main() {
+pub fn main<T: hal::Backend>(backend: T) {
     let _log_guard = ii_logging::setup_for_app();
 
     let args = clap::App::new("bosminer")
@@ -100,10 +100,18 @@ pub fn main() {
     let user = args.value_of("user").unwrap();
 
     // Set just 1 midstate if user requested disabling asicboost
-    if args.is_present("disable-asic-boost") {
-        let mut config = runtime_config::CONFIG.lock().expect("config lock failed");
-        config.midstate_count = 1;
-    }
+    runtime_config::CONFIG
+        .lock()
+        .expect("config lock failed")
+        .midstate_count = if args.is_present("disable-asic-boost") {
+        1
+    } else {
+        T::DEFAULT_MIDSTATE_COUNT
+    };
 
-    ii_async_compat::run(main_task(stratum_addr.to_string(), user.to_string()));
+    ii_async_compat::run(main_task(
+        backend,
+        stratum_addr.to_string(),
+        user.to_string(),
+    ));
 }
