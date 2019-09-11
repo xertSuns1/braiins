@@ -26,18 +26,15 @@ use super::*;
 
 use bosminer::work;
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use std::sync::Arc;
 
 use futures::channel::mpsc;
-use futures::compat::Future01CompatExt;
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
 
-use tokio::timer::Delay;
-
-use ii_async_compat::{timeout_future, TimeoutResult};
+use ii_async_compat::{sleep, timeout_future, TimeoutResult};
 
 /// Our local abbreviation
 type HChainCtl = crate::HChainCtl<
@@ -117,7 +114,8 @@ async fn send_and_receive_test_workloads<'a>(
         // wait time to send out work + to compute work
         // TODO: come up with a formula instead of fixed time interval
         // wait = work_time * number_of_chips + time_to_send_out_a_jov
-        await!(Delay::new(Instant::now() + Duration::from_millis(100)).compat()).unwrap();
+
+        await!(sleep(Duration::from_millis(100)));
     }
     let mut returned_solution_count = 0;
     loop {

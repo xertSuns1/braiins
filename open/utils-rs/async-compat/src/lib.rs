@@ -89,6 +89,11 @@ pub enum TimeoutResult<R> {
     Returned(R),
 }
 
+/// Sleep for a given duration
+pub async fn sleep(duration: Duration) {
+    await!(Delay::new(Instant::now() + duration).compat()).unwrap();
+}
+
 /// Wait for future with timeout
 pub async fn timeout_future<O>(
     future: impl StdFuture<Output = O> + Send,
