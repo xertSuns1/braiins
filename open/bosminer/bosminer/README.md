@@ -52,36 +52,16 @@ eval $(./bb.py toolchain 2>/dev/null)
 - build:
 
 ```shell
-cd to/bosminer
-cargo build --target <TARGET> --features <BACKEND>
+# build of Antminer S9 (the target is automaticaly set to 'arm-unknown-linux-musleabi')
+cd to/bosminer-am1-s9
+cargo build
+
+# build of Block Erupter
+cd to/bosminer-erupter
+cargo build
 ```
 
 The resulting binary is in: ```target/<TARGET>/debug/bosminer```. Currently, all musl targets are being statically linked - see here for details: https://github.com/japaric/rust-cross
-
-### Backend and Target Selection
-
-The correct backend and target platform must be selected for building miner. The following backends are supported:
-
-- _erupter_: Block Erupter
-- _antminer_s9_: Antminer S9 (_arm-unknown-linux-musleabi_)
-
-```shell
-# build for Bitmain's Antminer S9
-cargo build --target "arm-unknown-linux-musleabi" --features "antminer_s9"
-
-# build for Block Erupter USB miner compatible with host target
-cargo build --features "erupter"
-```
-
-#### Override Target Default Configuration
-
-Cargo can also be configured through environment variables and it is possible to set target and then use only `cargo build` without additional parameters.
-
-```shell
-export CARGO_BUILD_TARGET=arm-unknown-linux-musleabi
-
-cargo build --features "antminer_s9"
-```
 
 # Implementation Notes
 
