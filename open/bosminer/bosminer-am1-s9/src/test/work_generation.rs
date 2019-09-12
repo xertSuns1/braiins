@@ -36,8 +36,10 @@ use futures::stream::StreamExt;
 
 use ii_async_compat::{sleep, timeout_future, TimeoutResult};
 
+use power::VoltageCtrlBackend;
+
 /// Our local abbreviation
-type HChainCtl = crate::HChainCtl<
+type HashChain = crate::HashChain<
     power::VoltageCtrlI2cSharedBlockingBackend<power::VoltageCtrlI2cBlockingBackend>,
 >;
 
@@ -58,10 +60,10 @@ fn prepare_test_work(midstate_count: usize) -> work::Assignment {
 
 /// Task that receives solutions from hardware and sends them to channel
 async fn receiver_task(
-    h_chain_ctl: Arc<Mutex<HChainCtl>>,
+    hash_chain: Arc<Mutex<HashChain>>,
     solution_sender: mpsc::UnboundedSender<work::Solution>,
 ) {
-    let mut rx_io = await!(h_chain_ctl.lock())
+    let mut rx_io = await!(hash_chain.lock())
         .work_rx_io
         .take()
         .expect("work-rx fifo missing");
@@ -78,10 +80,10 @@ async fn receiver_task(
 
 /// Task that receives work from channel and sends it to HW
 async fn sender_task(
-    h_chain_ctl: Arc<Mutex<HChainCtl>>,
+    hash_chain: Arc<Mutex<HashChain>>,
     mut work_receiver: mpsc::UnboundedReceiver<work::Assignment>,
 ) {
-    let mut tx_io = await!(h_chain_ctl.lock())
+    let mut tx_io = await!(hash_chain.lock())
         .work_tx_io
         .take()
         .expect("work-tx fifo missing");
@@ -135,15 +137,13 @@ async fn send_and_receive_test_workloads<'a>(
     );
 }
 
-async fn start_hchain() -> HChainCtl {
-    use power::VoltageCtrlBackend;
-
+async fn start_hchain() -> HashChain {
     let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
     let voltage_ctrl_backend =
         power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
 
-    let mut h_chain_ctl = crate::HChainCtl::new(
+    let mut hash_chain = crate::HashChain::new(
         &gpio_mgr,
         voltage_ctrl_backend.clone(),
         config::S9_HASHBOARD_INDEX,
@@ -151,8 +151,8 @@ async fn start_hchain() -> HChainCtl {
         1,
     )
     .unwrap();
-    await!(h_chain_ctl.init()).expect("h_chain init failed");
-    h_chain_ctl
+    await!(hash_chain.init()).expect("h_chain init failed");
+    hash_chain
 }
 
 /// Verifies work generation for a hash chain
@@ -175,13 +175,13 @@ fn test_work_generation() {
 
     ii_async_compat::run_main_exits(async move {
         // Start HW
-        let h_chain_ctl = Arc::new(Mutex::new(await!(start_hchain())));
+        let hash_chain = Arc::new(Mutex::new(await!(start_hchain())));
 
         // start HW receiver
-        ii_async_compat::spawn(receiver_task(h_chain_ctl.clone(), solution_sender));
+        ii_async_compat::spawn(receiver_task(hash_chain.clone(), solution_sender));
 
         // start HW sender
-        ii_async_compat::spawn(sender_task(h_chain_ctl.clone(), work_receiver));
+        ii_async_compat::spawn(sender_task(hash_chain.clone(), work_receiver));
 
         // the first 3 work loads don't produce any solutions, these are merely to initialize the input
         // queue of each hashing chip
@@ -195,7 +195,7 @@ fn test_work_generation() {
         // submit 2 more work items, since we are intentionally being slow all chips should send a
         // solution for the submitted work
         let more_work_count = 2usize;
-        let chip_count = await!(h_chain_ctl.lock()).get_chip_count();
+        let chip_count = await!(hash_chain.lock()).get_chip_count();
         let expected_solution_count = more_work_count * chip_count;
 
         await!(send_and_receive_test_workloads(

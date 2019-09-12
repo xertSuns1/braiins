@@ -50,14 +50,16 @@ fn test_midstate_count_conversion() {
 fn test_hchain_ctl_instance() {
     let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
-    let h_chain_ctl = HChainCtl::new(
+    let voltage_ctrl_backend =
+        power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
+    let hash_chain = HashChain::new(
         &gpio_mgr,
         voltage_ctrl_backend,
         config::S9_HASHBOARD_INDEX,
         MidstateCount::new(1),
         config::ASIC_DIFFICULTY,
     );
-    match h_chain_ctl {
+    match hash_chain {
         Ok(_) => assert!(true),
         Err(e) => assert!(false, "Failed to instantiate hash chain, error: {}", e),
     }
@@ -67,7 +69,9 @@ fn test_hchain_ctl_instance() {
 fn test_hchain_ctl_init() {
     let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
-    let mut h_chain_ctl = HChainCtl::new(
+    let voltage_ctrl_backend =
+        power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
+    let mut hash_chain = HashChain::new(
         &gpio_mgr,
         voltage_ctrl_backend,
         config::S9_HASHBOARD_INDEX,
@@ -77,30 +81,30 @@ fn test_hchain_ctl_init() {
     .expect("Failed to create hash board instance");
 
     assert!(
-        h_chain_ctl.ip_core_init().is_ok(),
+        hash_chain.ip_core_init().is_ok(),
         "Failed to initialize IP core"
     );
 
     /* FIXME : can't access internal registers
     // verify sane register values
     assert_eq!(
-        h_chain_ctl.cmd_fifo.io.regs.work_time.read().bits(),
+        hash_chain.cmd_fifo.io.regs.work_time.read().bits(),
         36296,
         "Unexpected work time value"
     );
     assert_eq!(
-        h_chain_ctl.cmd_fifo.io.regs.baud_reg.read().bits(),
+        hash_chain.cmd_fifo.io.regs.baud_reg.read().bits(),
         0x1a,
         "Unexpected baud rate register value for {} baud",
         INIT_CHIP_BAUD_RATE
     );
     assert_eq!(
-        h_chain_ctl.cmd_fifo.io.regs.stat_reg.read().bits(),
+        hash_chain.cmd_fifo.io.regs.stat_reg.read().bits(),
         0x855,
         "Unexpected status register value"
     );
     assert!(
-        h_chain_ctl
+        hash_chain
             .cmd_fifo
             .io
             .regs

@@ -62,6 +62,8 @@ use ii_fpga_io_am1_s9::hchainio0::ctrl_reg::MIDSTATE_CNT_A;
 
 use ii_async_compat::sleep;
 
+use power::VoltageCtrlBackend;
+
 /// Timing constants
 const INACTIVATE_FROM_CHAIN_DELAY_MS: u64 = 100;
 /// Base delay quantum during hashboard initialization
@@ -164,7 +166,7 @@ impl MidstateCount {
 ///
 /// TODO: implement drop trait (results in unmap)
 /// TODO: rename to HashBoardCtrl and get rid of the hash_chain identifiers + array
-pub struct HChainCtl<VBackend> {
+pub struct HashChain<VBackend> {
     /// Number of chips that have been detected
     chip_count: usize,
     /// Eliminates the need to query the IP core about the current number of configured midstates
@@ -193,7 +195,7 @@ pub struct HChainCtl<VBackend> {
     pub work_tx_io: Option<io::WorkTxIo>,
 }
 
-impl<VBackend> HChainCtl<VBackend>
+impl<VBackend> HashChain<VBackend>
 where
     VBackend: 'static + Send + Sync + power::VoltageCtrlBackend,
 {
@@ -526,7 +528,7 @@ where
 
     /// Initialize cores by sending open-core work with correct nbits to each core
     async fn send_init_work(
-        h_chain_ctl: Arc<Mutex<Self>>,
+        hash_chain: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         tx_fifo: &mut io::WorkTxIo,
     ) {
@@ -536,7 +538,7 @@ where
             "Sending out {} pieces of dummy work to initialize chips",
             NUM_WORK
         );
-        let midstate_count = await!(h_chain_ctl.lock()).midstate_count.to_count();
+        let midstate_count = await!(hash_chain.lock()).midstate_count.to_count();
         for _ in 0..NUM_WORK {
             let work = &null_work::prepare_opencore(true, midstate_count);
             let work_id = await!(work_registry.lock()).store_work(work.clone());
@@ -620,20 +622,20 @@ where
     }
 
     fn spawn_tx_task(
-        h_chain_ctl: Arc<Mutex<Self>>,
+        hash_chain: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
         work_generator: work::Generator,
         shutdown: shutdown::Sender,
     ) {
         ii_async_compat::spawn(async move {
-            let mut tx_fifo = await!(h_chain_ctl.lock())
+            let mut tx_fifo = await!(hash_chain.lock())
                 .work_tx_io
                 .take()
                 .expect("work-tx io missing");
 
             await!(Self::send_init_work(
-                h_chain_ctl.clone(),
+                hash_chain.clone(),
                 work_registry.clone(),
                 &mut tx_fifo
             ));
@@ -648,13 +650,13 @@ where
     }
 
     fn spawn_rx_task(
-        h_chain_ctl: Arc<Mutex<Self>>,
+        hash_chain: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
         solution_sender: work::SolutionSender,
     ) {
         ii_async_compat::spawn(async move {
-            let rx_fifo = await!(h_chain_ctl.lock())
+            let rx_fifo = await!(hash_chain.lock())
                 .work_rx_io
                 .take()
                 .expect("work-rx io missing");
@@ -683,18 +685,16 @@ impl HChain {
         midstate_count: usize,
     ) -> Arc<
         Mutex<
-            HChainCtl<
+            HashChain<
                 power::VoltageCtrlI2cSharedBlockingBackend<power::VoltageCtrlI2cBlockingBackend>,
             >,
         >,
     > {
-        use power::VoltageCtrlBackend;
-
         let gpio_mgr = gpio::ControlPinManager::new();
         let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
         let voltage_ctrl_backend =
             power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
-        let mut h_chain_ctl = HChainCtl::new(
+        let mut hash_chain = HashChain::new(
             &gpio_mgr,
             voltage_ctrl_backend.clone(),
             config::S9_HASHBOARD_INDEX,
@@ -707,34 +707,34 @@ impl HChain {
             "Initializing hash chain controller for (midstate count {})",
             midstate_count,
         );
-        await!(h_chain_ctl.init()).unwrap();
+        await!(hash_chain.init()).unwrap();
         info!("Hash chain controller initialized");
 
         let work_registry = Arc::new(Mutex::new(registry::MiningWorkRegistry::new(
-            h_chain_ctl
+            hash_chain
                 .work_tx_io
                 .as_ref()
                 .expect("io missing")
                 .work_id_range(),
         )));
-        let h_chain_ctl = Arc::new(Mutex::new(h_chain_ctl));
+        let hash_chain = Arc::new(Mutex::new(hash_chain));
         let (work_generator, work_solution) = work_solver.split();
 
-        HChainCtl::spawn_tx_task(
-            h_chain_ctl.clone(),
+        HashChain::spawn_tx_task(
+            hash_chain.clone(),
             work_registry.clone(),
             mining_stats.clone(),
             work_generator,
             shutdown.clone(),
         );
-        HChainCtl::spawn_rx_task(
-            h_chain_ctl.clone(),
+        HashChain::spawn_rx_task(
+            hash_chain.clone(),
             work_registry.clone(),
             mining_stats.clone(),
             work_solution,
         );
 
-        h_chain_ctl
+        hash_chain
     }
 
     pub fn start(
