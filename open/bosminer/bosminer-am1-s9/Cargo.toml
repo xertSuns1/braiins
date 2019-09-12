@@ -8,7 +8,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bosminer = { path = "../bosminer", features = ["antminer_s9"] }
+bosminer = { path = "../bosminer" }
 ii-async-compat = { path = "../../utils-rs/async-compat" }
 ii-bitcoin = { path = "../../coins/bitcoin" }
 ii-fpga-io-am1-s9 = { path = "../../hw/zynq-io-am1-s9/fpga-io" }

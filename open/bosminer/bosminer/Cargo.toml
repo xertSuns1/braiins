@@ -20,9 +20,3 @@ futures-01 = { version = "0.1.27", package = "futures" }
 downcast-rs = "1.0.4"
 clap = "2.33.0"
 hex = "0.3.1"
-
-[features]
-default = []
-backend_selected = []
-antminer_s9 = ["backend_selected"]
-erupter = ["backend_selected"]
