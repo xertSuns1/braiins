@@ -36,6 +36,10 @@ pub trait Backend: Send + Sync + 'static {
     /// Maximum time it takes to compute one job under normal circumstances
     const JOB_TIMEOUT: Duration;
 
+    /// TODO: This function is to be removed once we replace the stats module with a more robust
+    /// solution
+    fn start_mining_stats_task(mining_stats: Arc<Mutex<stats::Mining>>);
+
     fn run(
         &self,
         work_solver: work::Solver,

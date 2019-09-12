@@ -82,6 +82,11 @@ impl hal::Backend for Backend {
     const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
+    /// Starts statistics tasks specific for block erupter
+    fn start_mining_stats_task(_mining_stats: Arc<Mutex<stats::Mining>>) {
+        ii_async_compat::spawn(stats::hashrate_meter_task());
+    }
+
     fn run(
         &self,
         work_solver: work::Solver,

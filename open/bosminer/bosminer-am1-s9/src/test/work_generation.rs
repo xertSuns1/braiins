@@ -40,8 +40,9 @@ use tokio::timer::Delay;
 use ii_async_compat::{timeout_future, TimeoutResult};
 
 /// Our local abbreviation
-type HChainCtl =
-crate::HChainCtl<power::VoltageCtrlI2cSharedBlockingBackend<power::VoltageCtrlI2cBlockingBackend>>;
+type HChainCtl = crate::HChainCtl<
+    power::VoltageCtrlI2cSharedBlockingBackend<power::VoltageCtrlI2cBlockingBackend>,
+>;
 
 /// Prepares sample work with empty midstates
 /// NOTE: this work has 2 valid nonces:
