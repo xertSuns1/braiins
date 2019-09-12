@@ -30,7 +30,6 @@ use crate::work;
 use tokio::prelude::*;
 
 use std::net::ToSocketAddrs;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use ii_stratum::v2::framing::codec::Framing;
@@ -65,7 +64,6 @@ impl StratumJob {
     pub fn new(
         job_msg: &NewMiningJob,
         prevhash_msg: &SetNewPrevHash,
-        current_block_height: Arc<AtomicU32>,
     ) -> Self {
         Self {
             id: job_msg.job_id,
@@ -122,7 +120,6 @@ struct StratumEventHandler {
     status: Result<(), ()>,
     job_sender: job::Sender,
     all_jobs: HashMap<u32, NewMiningJob>,
-    current_block_height: Arc<AtomicU32>,
     current_prevhash_msg: Option<SetNewPrevHash>,
 }
 
@@ -132,7 +129,6 @@ impl StratumEventHandler {
             status: Err(()),
             job_sender,
             all_jobs: Default::default(),
-            current_block_height: Arc::new(AtomicU32::new(0)),
             current_prevhash_msg: None,
         }
     }
@@ -140,7 +136,6 @@ impl StratumEventHandler {
         let job = StratumJob::new(
             job_msg,
             self.current_prevhash_msg.as_ref().expect("no prevhash"),
-            self.current_block_height.clone(),
         );
         self.job_sender.send(Arc::new(job));
     }
