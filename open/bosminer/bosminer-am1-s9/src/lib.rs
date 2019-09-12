@@ -42,9 +42,7 @@ use bosminer::shutdown;
 use bosminer::stats;
 use bosminer::work;
 
-// TODO: remove thread specific components
 use std::sync::Arc;
-use std::thread;
 
 use lazy_static::lazy_static;
 
@@ -61,6 +59,8 @@ use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
 
 use ii_fpga_io_am1_s9::hchainio0::ctrl_reg::MIDSTATE_CNT_A;
+
+use ii_async_compat::sleep;
 
 /// Timing constants
 const INACTIVATE_FROM_CHAIN_DELAY_MS: u64 = 100;
@@ -352,13 +352,13 @@ where
         self.enter_reset()?;
         // disable voltage
         self.voltage_ctrl.disable_voltage()?;
-        thread::sleep(Duration::from_millis(INIT_DELAY_MS));
+        await!(sleep(Duration::from_millis(INIT_DELAY_MS)));
         self.voltage_ctrl.enable_voltage()?;
-        thread::sleep(Duration::from_millis(2 * INIT_DELAY_MS));
+        await!(sleep(Duration::from_millis(2 * INIT_DELAY_MS)));
 
         // TODO consider including a delay
         self.exit_reset()?;
-        thread::sleep(Duration::from_millis(INIT_DELAY_MS));
+        await!(sleep(Duration::from_millis(INIT_DELAY_MS)));
         //        let voltage = self.voltage_ctrl.get_voltage()?;
         //        if voltage != 0 {
         //            return Err(io::Error::new(
@@ -415,7 +415,7 @@ where
         // make sure all chips receive inactivation request
         for _ in 0..3 {
             await!(self.send_ctl_cmd(inactivate_from_chain_cmd.to_vec(), false));
-            thread::sleep(Duration::from_millis(INACTIVATE_FROM_CHAIN_DELAY_MS));
+            await!(sleep(Duration::from_millis(INACTIVATE_FROM_CHAIN_DELAY_MS)));
         }
 
         // Assign address to each chip
