@@ -310,6 +310,7 @@ where
 
     /// Initializes the complete hashboard including enumerating all chips
     pub async fn init(&mut self) -> error::Result<()> {
+        info!("Initializing hash chain {}", self.hashboard_idx);
         self.ip_core_init()?;
         info!("Hashboard IP core initialized");
         self.voltage_ctrl.reset()?;
@@ -651,49 +652,20 @@ where
             ));
         });
     }
-}
 
-pub struct HChain;
-
-impl HChain {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    async fn start_h_chain(
-        &self,
+    pub fn start(
+        self,
         work_solver: work::Solver,
         mining_stats: Arc<Mutex<stats::Mining>>,
         shutdown: shutdown::Sender,
-        midstate_count: usize,
-    ) -> Arc<Mutex<HashChain<power::SharedBackend<power::I2cBackend>>>> {
-        let gpio_mgr = gpio::ControlPinManager::new();
-        let voltage_ctrl_backend = power::I2cBackend::new(0);
-        let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
-        let mut hash_chain = HashChain::new(
-            &gpio_mgr,
-            voltage_ctrl_backend.clone(),
-            config::S9_HASHBOARD_INDEX,
-            MidstateCount::new(midstate_count),
-            config::ASIC_DIFFICULTY,
-        )
-        .unwrap();
-
-        info!(
-            "Initializing hash chain controller for (midstate count {})",
-            midstate_count,
-        );
-        await!(hash_chain.init()).unwrap();
-        info!("Hash chain controller initialized");
-
+    ) -> Arc<Mutex<Self>> {
         let work_registry = Arc::new(Mutex::new(registry::WorkRegistry::new(
-            hash_chain
-                .work_tx_io
+            self.work_tx_io
                 .as_ref()
                 .expect("io missing")
                 .work_id_range(),
         )));
-        let hash_chain = Arc::new(Mutex::new(hash_chain));
+        let hash_chain = Arc::new(Mutex::new(self));
         let (work_generator, work_solution) = work_solver.split();
 
         HashChain::spawn_tx_task(
@@ -712,17 +684,42 @@ impl HChain {
 
         hash_chain
     }
+}
 
-    pub fn start(
-        self,
-        work_solver: work::Solver,
-        mining_stats: Arc<Mutex<stats::Mining>>,
-        shutdown: shutdown::Sender,
-        midstate_count: usize,
-    ) {
-        ii_async_compat::spawn(async move {
-            await!(self.start_h_chain(work_solver, mining_stats, shutdown, midstate_count));
-        });
+async fn start_miner(
+    enabled_chains: Vec<usize>,
+    work_solver: work::Solver,
+    mining_stats: Arc<Mutex<stats::Mining>>,
+    shutdown: shutdown::Sender,
+    midstate_count: usize,
+) {
+    let gpio_mgr = gpio::ControlPinManager::new();
+    let voltage_ctrl_backend = power::I2cBackend::new(0);
+    let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
+    let mut hash_chains = Vec::new();
+    info!(
+        "Initializing miner, enabled_chains={:?}, midstate_count={}",
+        enabled_chains, midstate_count,
+    );
+    // instantiate hash chains
+    for hashboard_idx in enabled_chains.iter() {
+        let hash_chain = HashChain::new(
+            &gpio_mgr,
+            voltage_ctrl_backend.clone(),
+            *hashboard_idx,
+            MidstateCount::new(midstate_count),
+            config::ASIC_DIFFICULTY,
+        )
+        .unwrap();
+        hash_chains.push(hash_chain);
+    }
+    // initialize hash chains (sequentially)
+    for hash_chain in hash_chains.iter_mut() {
+        await!(hash_chain.init()).expect("miner initialization failed");
+    }
+    // spawn worker tasks for each hash chain and start mining
+    for hash_chain in hash_chains.drain(..) {
+        hash_chain.start(work_solver.clone(), mining_stats.clone(), shutdown.clone());
     }
 }
 
@@ -744,14 +741,13 @@ impl hal::Backend for Backend {
         mining_stats: Arc<Mutex<stats::Mining>>,
         shutdown: shutdown::Sender,
     ) {
-        // Create one chain
-        let chain = HChain::new();
-        chain.start(
+        ii_async_compat::spawn(start_miner(
+            vec![config::S9_HASHBOARD_INDEX],
             work_solver,
             mining_stats,
             shutdown,
             runtime_config::get_midstate_count(),
-        );
+        ));
     }
 }
 

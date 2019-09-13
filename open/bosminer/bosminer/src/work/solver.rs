@@ -28,6 +28,7 @@ use futures::channel::mpsc;
 
 /// Compound object that is supposed to be sent down to the mining backend that can in turn solve
 /// any generated work and submit solutions.
+#[derive(Clone)]
 pub struct Solver {
     /// Work generator for sourcing `MiningWork`
     work_generator: Generator,
