@@ -356,11 +356,11 @@ impl WorkRxIo {
         Ok((self, solution))
     }
 
-    pub fn init(&mut self) -> error::Result<()> {
+    fn init(&mut self) -> error::Result<()> {
         self.hw.init()
     }
 
-    pub fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
+    fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
         Ok(Self {
             hw: WorkRxHw::new(hashboard_idx)?,
             tag_manager: tag::TagManager::new(midstate_count),
@@ -401,11 +401,11 @@ impl WorkTxIo {
         self.tag_manager.work_id_range()
     }
 
-    pub fn init(&mut self) -> error::Result<()> {
+    fn init(&mut self) -> error::Result<()> {
         self.hw.init()
     }
 
-    pub fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
+    fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
         Ok(Self {
             hw: WorkTxHw::new(hashboard_idx)?,
             tag_manager: tag::TagManager::new(midstate_count),
@@ -468,12 +468,12 @@ impl CommandIo {
         Ok(Some(cmd_resp[..6].to_vec()))
     }
 
-    pub fn init(&mut self) -> error::Result<()> {
+    fn init(&mut self) -> error::Result<()> {
         self.hw.init()?;
         Ok(())
     }
 
-    pub fn new(hashboard_idx: usize) -> error::Result<Self> {
+    fn new(hashboard_idx: usize) -> error::Result<Self> {
         Ok(Self {
             hw: CommandHw::new(hashboard_idx)?,
         })
@@ -514,17 +514,58 @@ impl ConfigIo {
         self.hw.set_baud_clock_div(baud_clock_div);
     }
 
-    pub fn init(&mut self) -> error::Result<()> {
+    fn init(&mut self) -> error::Result<()> {
         self.hw.init()?;
         self.check_build_id()?;
         Ok(())
     }
 
-    pub fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
+    fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
         Ok(Self {
             hw: ConfigHw::new(hashboard_idx)?,
             midstate_count,
         })
+    }
+}
+
+/// Represents the whole IP core
+pub struct Core {
+    config_io: ConfigIo,
+    command_io: CommandIo,
+    work_rx_io: WorkRxIo,
+    work_tx_io: WorkTxIo,
+}
+
+impl Core {
+    /// Build a new IP core
+    pub fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
+        Ok(Self {
+            config_io: ConfigIo::new(hashboard_idx, midstate_count)?,
+            command_io: CommandIo::new(hashboard_idx)?,
+            work_rx_io: WorkRxIo::new(hashboard_idx, midstate_count)?,
+            work_tx_io: WorkTxIo::new(hashboard_idx, midstate_count)?,
+        })
+    }
+
+    /// Initialize the IP core and split it into components
+    /// That way it's not possible to access un-initialized IO blocks
+    pub fn init_and_split(mut self) -> error::Result<(ConfigIo, CommandIo, WorkRxIo, WorkTxIo)> {
+        // Reset IP core
+        self.config_io.init()?;
+        self.config_io.disable_ip_core();
+        self.config_io.enable_ip_core();
+
+        // Initialize fifos
+        self.command_io.init()?;
+        self.work_rx_io.init()?;
+        self.work_tx_io.init()?;
+
+        Ok((
+            self.config_io,
+            self.command_io,
+            self.work_rx_io,
+            self.work_tx_io,
+        ))
     }
 }
 
@@ -536,10 +577,33 @@ mod test {
 
     /// Test that we are able to construct HChainFifo instance
     #[test]
-    fn test_fifo_construction() {
-        let _io = ConfigIo::new(TEST_CHAIN_INDEX, MidstateCount::new(1)).expect("ConfigIo failed");
-        let _io = CommandIo::new(TEST_CHAIN_INDEX).expect("CommandIo failed");
-        let _io = WorkRxIo::new(TEST_CHAIN_INDEX, MidstateCount::new(1)).expect("WorkRxIo failed");
-        let _io = WorkTxIo::new(TEST_CHAIN_INDEX, MidstateCount::new(4)).expect("WorkTxIo failed");
+    fn test_fifo_initialization() {
+        let core =
+            Core::new(TEST_CHAIN_INDEX, MidstateCount::new(1)).expect("fifo construction failed");
+        core.init_and_split().expect("fifo initialization failed");
+    }
+}
+
+#[cfg(test)]
+pub mod test_utils {
+    use super::*;
+
+    /// Represents configuration of ConfigIo block
+    pub struct ConfigRegs {
+        pub work_time: u32,
+        pub baud_reg: u32,
+        pub stat_reg: u32,
+        pub midstate_cnt: u32,
+    }
+
+    impl ConfigRegs {
+        pub fn new(io: &ConfigIo) -> Self {
+            Self {
+                work_time: io.hw.regs.work_time.read().bits(),
+                baud_reg: io.hw.regs.baud_reg.read().bits(),
+                stat_reg: io.hw.regs.stat_reg.read().bits(),
+                midstate_cnt: 1u32 << io.hw.regs.ctrl_reg.read().midstate_cnt().bits(),
+            }
+        }
     }
 }

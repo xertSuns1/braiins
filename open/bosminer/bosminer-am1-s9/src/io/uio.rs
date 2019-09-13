@@ -105,10 +105,19 @@ mod test {
         Device::open(TEST_CHAIN_INDEX, "cmd-rx").expect("uio open failed");
     }
 
+    fn flush_interrupts() {
+        // Flush interrupts by IP core re-init
+        io::Core::new(TEST_CHAIN_INDEX, MidstateCount::new(1))
+            .unwrap()
+            .init_and_split()
+            .unwrap();
+    }
+
     /// Test that we get IRQ.
     /// Test it on empty tx queue (IRQ always asserted).
     #[test]
     fn test_get_irq() {
+        flush_interrupts();
         let uio = Device::open(TEST_CHAIN_INDEX, "work-tx")
             .expect("uio open failed")
             .uio;
@@ -123,15 +132,7 @@ mod test {
     /// Test it on empty rx queue (IRQ always deasserted).
     #[test]
     fn test_get_irq_timeout() {
-        // initialize `Io`s to flush interrupts
-        io::WorkTxIo::new(TEST_CHAIN_INDEX, MidstateCount::new(1))
-            .unwrap()
-            .init()
-            .unwrap();
-        io::WorkRxIo::new(TEST_CHAIN_INDEX, MidstateCount::new(1))
-            .unwrap()
-            .init()
-            .unwrap();
+        flush_interrupts();
 
         // cmd rx fifo now shouldn't get any interrupts (it's empty)
         let uio = Device::open(TEST_CHAIN_INDEX, "work-rx")
