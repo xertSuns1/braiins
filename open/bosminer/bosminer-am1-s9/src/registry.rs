@@ -154,8 +154,8 @@ impl MiningWorkRegistry {
 
 #[cfg(test)]
 mod test {
-    use super::super::null_work;
     use super::*;
+    use crate::null_work;
 
     /// Test that it's possible to store work
     #[test]
