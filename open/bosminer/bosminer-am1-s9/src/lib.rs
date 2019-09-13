@@ -234,15 +234,9 @@ where
                 "failed to initialize reset pin".to_string(),
             ))?;
 
-        let mut config_io = io::ConfigIo::new(hashboard_idx, midstate_count)?;
-        let mut command_io = io::CommandIo::new(hashboard_idx)?;
-        let mut work_rx_io = io::WorkRxIo::new(hashboard_idx, midstate_count)?;
-        let mut work_tx_io = io::WorkTxIo::new(hashboard_idx, midstate_count)?;
-
-        config_io.init()?;
-        command_io.init()?;
-        work_rx_io.init()?;
-        work_tx_io.init()?;
+        let core = io::Core::new(hashboard_idx, midstate_count)?;
+        // Unfortunately, we have to do IP core re-init here (but it should be OK, it's synchronous)
+        let (config_io, command_io, work_rx_io, work_tx_io) = core.init_and_split()?;
 
         Ok(Self {
             chip_count: 0,
@@ -274,10 +268,7 @@ where
 
     /// Helper method that initializes the FPGA IP core
     fn ip_core_init(&mut self) -> error::Result<()> {
-        // Disable ip core
-        self.config_io.disable_ip_core();
-        self.config_io.enable_ip_core();
-
+        // Configure IP core
         self.set_ip_core_baud_rate(INIT_CHIP_BAUD_RATE)?;
         let work_time = self.calculate_work_time();
         trace!("Using work time: {}", work_time);

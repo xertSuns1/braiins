@@ -83,36 +83,16 @@ fn test_hchain_ctl_init() {
         "Failed to initialize IP core"
     );
 
-    /* FIXME : can't access internal registers
+    let regs = io::test_utils::ConfigRegs::new(&hash_chain.config_io);
     // verify sane register values
+    assert_eq!(regs.work_time, 36296, "Unexpected work time value");
     assert_eq!(
-        hash_chain.cmd_fifo.io.regs.work_time.read().bits(),
-        36296,
-        "Unexpected work time value"
-    );
-    assert_eq!(
-        hash_chain.cmd_fifo.io.regs.baud_reg.read().bits(),
-        0x1a,
+        regs.baud_reg, 0x1a,
         "Unexpected baud rate register value for {} baud",
         INIT_CHIP_BAUD_RATE
     );
-    assert_eq!(
-        hash_chain.cmd_fifo.io.regs.stat_reg.read().bits(),
-        0x855,
-        "Unexpected status register value"
-    );
-    assert!(
-        hash_chain
-            .cmd_fifo
-            .io
-            .regs
-            .ctrl_reg
-            .read()
-            .midstate_cnt()
-            .is_one(),
-        "Unexpected midstate count"
-    );
-    */
+    assert_eq!(regs.stat_reg, 0x855, "Unexpected status register value");
+    assert_eq!(regs.midstate_cnt, 1, "Unexpected midstate count");
 }
 
 #[test]
