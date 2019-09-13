@@ -527,7 +527,7 @@ where
     /// Initialize cores by sending open-core work with correct nbits to each core
     async fn send_init_work(
         hash_chain: Arc<Mutex<Self>>,
-        work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
+        work_registry: Arc<Mutex<registry::WorkRegistry>>,
         tx_fifo: &mut io::WorkTxIo,
     ) {
         // Each core gets one work
@@ -546,7 +546,7 @@ where
     }
 
     async fn work_tx_task(
-        work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
+        work_registry: Arc<Mutex<registry::WorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
         mut tx_fifo: io::WorkTxIo,
         mut work_generator: work::Generator,
@@ -569,7 +569,7 @@ where
     }
 
     async fn solution_rx_task(
-        work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
+        work_registry: Arc<Mutex<registry::WorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
         mut rx_fifo: io::WorkRxIo,
         solution_sender: work::SolutionSender,
@@ -621,7 +621,7 @@ where
 
     fn spawn_tx_task(
         hash_chain: Arc<Mutex<Self>>,
-        work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
+        work_registry: Arc<Mutex<registry::WorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
         work_generator: work::Generator,
         shutdown: shutdown::Sender,
@@ -649,7 +649,7 @@ where
 
     fn spawn_rx_task(
         hash_chain: Arc<Mutex<Self>>,
-        work_registry: Arc<Mutex<registry::MiningWorkRegistry>>,
+        work_registry: Arc<Mutex<registry::WorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
         solution_sender: work::SolutionSender,
     ) {
@@ -708,7 +708,7 @@ impl HChain {
         await!(hash_chain.init()).unwrap();
         info!("Hash chain controller initialized");
 
-        let work_registry = Arc::new(Mutex::new(registry::MiningWorkRegistry::new(
+        let work_registry = Arc::new(Mutex::new(registry::WorkRegistry::new(
             hash_chain
                 .work_tx_io
                 .as_ref()
