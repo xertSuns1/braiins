@@ -214,7 +214,7 @@ impl Handler for StratumEventHandler {
         _msg: &Message<Protocol>,
         success_msg: &OpenMiningChannelSuccess,
     ) {
-        self.update_target(success_msg.init_target);
+        self.update_target(success_msg.target);
         self.status = Ok(());
     }
 
