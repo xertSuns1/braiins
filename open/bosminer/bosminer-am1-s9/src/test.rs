@@ -49,9 +49,8 @@ fn test_midstate_count_conversion() {
 #[test]
 fn test_hchain_ctl_instance() {
     let gpio_mgr = gpio::ControlPinManager::new();
-    let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
-    let voltage_ctrl_backend =
-        power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
+    let voltage_ctrl_backend = power::I2cBackend::new(0);
+    let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
     let hash_chain = HashChain::new(
         &gpio_mgr,
         voltage_ctrl_backend,
@@ -68,9 +67,8 @@ fn test_hchain_ctl_instance() {
 #[test]
 fn test_hchain_ctl_init() {
     let gpio_mgr = gpio::ControlPinManager::new();
-    let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
-    let voltage_ctrl_backend =
-        power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
+    let voltage_ctrl_backend = power::I2cBackend::new(0);
+    let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
     let mut hash_chain = HashChain::new(
         &gpio_mgr,
         voltage_ctrl_backend,

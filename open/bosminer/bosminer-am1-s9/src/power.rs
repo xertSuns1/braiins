@@ -120,7 +120,7 @@ impl Voltage {
 }
 
 /// Describes a voltage controller backend interface
-pub trait VoltageCtrlBackend {
+pub trait Backend {
     /// Sends a Write transaction for a voltage controller on a particular hashboard
     /// * `data` - payload of the command
     fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()>;
@@ -132,11 +132,11 @@ pub trait VoltageCtrlBackend {
 /// Newtype that represents an I2C voltage controller communication backend
 /// S9 devices have a single I2C master that manages the voltage controllers on all hashboards.
 /// Therefore, this will be a single communication instance
-pub struct VoltageCtrlI2cBlockingBackend {
+pub struct I2cBackend {
     inner: I2cdev,
 }
 
-impl VoltageCtrlI2cBlockingBackend {
+impl I2cBackend {
     /// Calculates I2C address of the controller based on hashboard index.
     fn get_i2c_address(hashboard_idx: usize) -> u8 {
         PIC_BASE_ADDRESS + hashboard_idx as u8 - 1
@@ -152,7 +152,7 @@ impl VoltageCtrlI2cBlockingBackend {
     }
 }
 
-impl VoltageCtrlBackend for VoltageCtrlI2cBlockingBackend {
+impl Backend for I2cBackend {
     fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()> {
         let command_bytes = [&[PIC_COMMAND_1, PIC_COMMAND_2, command], data].concat();
         self.inner
@@ -175,20 +175,20 @@ impl VoltageCtrlBackend for VoltageCtrlI2cBlockingBackend {
     }
 }
 
-pub struct VoltageCtrlI2cSharedBlockingBackend<T>(Arc<Mutex<T>>);
+pub struct SharedBackend<T>(Arc<Mutex<T>>);
 
-impl<T> VoltageCtrlI2cSharedBlockingBackend<T>
+impl<T> SharedBackend<T>
 where
-    T: VoltageCtrlBackend,
+    T: Backend,
 {
     pub fn new(backend: T) -> Self {
-        VoltageCtrlI2cSharedBlockingBackend(Arc::new(Mutex::new(backend)))
+        SharedBackend(Arc::new(Mutex::new(backend)))
     }
 }
 
-impl<T> VoltageCtrlBackend for VoltageCtrlI2cSharedBlockingBackend<T>
+impl<T> Backend for SharedBackend<T>
 where
-    T: VoltageCtrlBackend,
+    T: Backend,
 {
     fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()> {
         self.0
@@ -205,24 +205,24 @@ where
     }
 }
 
-impl<T> Clone for VoltageCtrlI2cSharedBlockingBackend<T> {
+impl<T> Clone for SharedBackend<T> {
     fn clone(&self) -> Self {
-        VoltageCtrlI2cSharedBlockingBackend(self.0.clone())
+        SharedBackend(self.0.clone())
     }
 }
 
 /// Represents a voltage controller for a particular hashboard
 #[derive(Clone)]
-pub struct VoltageCtrl<T> {
+pub struct Control<T> {
     // Backend that carries out the operation
     backend: T,
     /// Identifies the hashboard
     hashboard_idx: usize,
 }
 
-impl<T> VoltageCtrl<T>
+impl<T> Control<T>
 where
-    T: 'static + VoltageCtrlBackend + Send + Clone,
+    T: 'static + Backend + Send + Clone,
 {
     fn read(&mut self, command: u8, length: u8) -> error::Result<Vec<u8>> {
         self.backend.read(self.hashboard_idx, command, length)
@@ -340,7 +340,7 @@ mod test {
 
     #[test]
     fn test_get_address() {
-        let addr = VoltageCtrlI2cBlockingBackend::get_i2c_address(8);
+        let addr = I2cBackend::get_i2c_address(8);
         let expected_addr = 0x57u8;
         assert_eq!(addr, expected_addr, "Unexpected hashboard I2C address");
     }

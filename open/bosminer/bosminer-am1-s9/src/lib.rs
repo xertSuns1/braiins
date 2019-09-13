@@ -176,7 +176,7 @@ pub struct HashChain<VBackend> {
     /// Voltage controller on this hashboard
     /// TODO: consider making voltage ctrl a shared instance so that heartbeat and regular
     /// processing can use it. More: the backend should also become shared instance?
-    voltage_ctrl: power::VoltageCtrl<VBackend>,
+    voltage_ctrl: power::Control<VBackend>,
     /// Plug pin that indicates the hashboard is present
     #[allow(dead_code)]
     plug_pin: gpio::PinIn,
@@ -195,7 +195,7 @@ pub struct HashChain<VBackend> {
 
 impl<VBackend> HashChain<VBackend>
 where
-    VBackend: 'static + Send + Sync + Clone + power::VoltageCtrlBackend,
+    VBackend: 'static + Send + Sync + Clone + power::Backend,
 {
     /// Creates a new hashboard controller with memory mapped FPGA IP core
     ///
@@ -248,7 +248,7 @@ where
             chip_count: 0,
             midstate_count,
             asic_difficulty,
-            voltage_ctrl: power::VoltageCtrl::new(voltage_ctrl_backend, hashboard_idx),
+            voltage_ctrl: power::Control::new(voltage_ctrl_backend, hashboard_idx),
             plug_pin,
             rst_pin,
             hashboard_idx,
@@ -681,17 +681,10 @@ impl HChain {
         mining_stats: Arc<Mutex<stats::Mining>>,
         shutdown: shutdown::Sender,
         midstate_count: usize,
-    ) -> Arc<
-        Mutex<
-            HashChain<
-                power::VoltageCtrlI2cSharedBlockingBackend<power::VoltageCtrlI2cBlockingBackend>,
-            >,
-        >,
-    > {
+    ) -> Arc<Mutex<HashChain<power::SharedBackend<power::I2cBackend>>>> {
         let gpio_mgr = gpio::ControlPinManager::new();
-        let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
-        let voltage_ctrl_backend =
-            power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
+        let voltage_ctrl_backend = power::I2cBackend::new(0);
+        let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
         let mut hash_chain = HashChain::new(
             &gpio_mgr,
             voltage_ctrl_backend.clone(),
