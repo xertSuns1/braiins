@@ -37,9 +37,7 @@ use futures::stream::StreamExt;
 use ii_async_compat::{sleep, timeout_future, TimeoutResult};
 
 /// Our local abbreviation
-type HashChain = crate::HashChain<
-    power::VoltageCtrlI2cSharedBlockingBackend<power::VoltageCtrlI2cBlockingBackend>,
->;
+type HashChain = crate::HashChain<power::SharedBackend<power::I2cBackend>>;
 
 /// Prepares sample work with empty midstates
 /// NOTE: this work has 2 valid nonces:
@@ -137,9 +135,8 @@ async fn send_and_receive_test_workloads<'a>(
 
 async fn start_hchain() -> HashChain {
     let gpio_mgr = gpio::ControlPinManager::new();
-    let voltage_ctrl_backend = power::VoltageCtrlI2cBlockingBackend::new(0);
-    let voltage_ctrl_backend =
-        power::VoltageCtrlI2cSharedBlockingBackend::new(voltage_ctrl_backend);
+    let voltage_ctrl_backend = power::I2cBackend::new(0);
+    let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
 
     let mut hash_chain = crate::HashChain::new(
         &gpio_mgr,
