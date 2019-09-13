@@ -25,14 +25,14 @@ use std::iter::Iterator;
 
 /// Mining registry item contains work and solutions
 #[derive(Clone)]
-pub struct MiningWorkRegistryItem {
+pub struct WorkRegistryItem {
     work: work::Assignment,
     /// Each slot in the vector is associated with particular solution index as reported by
     /// the chips.
     solutions: std::vec::Vec<work::Solution>,
 }
 
-impl MiningWorkRegistryItem {
+impl WorkRegistryItem {
     /// Associates a specified solution with mining work, accounts for duplicates and nonce
     /// mismatches
     /// * `solution` - solution to be inserted
@@ -75,7 +75,7 @@ impl MiningWorkRegistryItem {
 pub struct InsertSolutionStatus {
     /// Nonce of the solution at a given index doesn't match the existing nonce
     pub mismatched_nonce: bool,
-    /// Solution is duplicate (given MiningWorkRegistryItem) already has it
+    /// Solution is duplicate (given WorkRegistryItem) already has it
     pub duplicate: bool,
     /// actual solution (defined if the above 2 are false)
     /// TODO: rename `unique_solution` to solution
@@ -94,16 +94,16 @@ pub struct InsertSolutionStatus {
 /// we assign work to them (under `work_id` we generate for each inserted work), but
 /// we always keep at least `registry_size / 2` slots free, so that we can detect
 /// stale work.
-pub struct MiningWorkRegistry {
+pub struct WorkRegistry {
     /// Number of elements in registry. Determines `work_id` range
     registry_size: usize,
     /// Next id that is to be assigned to work, this increases modulo `registry_size`
     next_work_id: usize,
     /// Current pending work list Each work item has a list of associated work solutions
-    pending_work_list: std::vec::Vec<Option<MiningWorkRegistryItem>>,
+    pending_work_list: std::vec::Vec<Option<WorkRegistryItem>>,
 }
 
-impl MiningWorkRegistry {
+impl WorkRegistry {
     /// Create new registry with `registry_size` slots
     pub fn new(registry_size: usize) -> Self {
         Self {
@@ -136,7 +136,7 @@ impl MiningWorkRegistry {
         self.pending_work_list[retire_id] = None;
 
         // put new work into registry
-        self.pending_work_list[work_id] = Some(MiningWorkRegistryItem {
+        self.pending_work_list[work_id] = Some(WorkRegistryItem {
             work,
             solutions: std::vec::Vec::new(),
         });
@@ -146,7 +146,7 @@ impl MiningWorkRegistry {
     }
 
     /// Look-up work id
-    pub fn find_work(&mut self, work_id: usize) -> &mut Option<MiningWorkRegistryItem> {
+    pub fn find_work(&mut self, work_id: usize) -> &mut Option<WorkRegistryItem> {
         assert!(work_id < self.registry_size);
         &mut self.pending_work_list[work_id]
     }
@@ -160,7 +160,7 @@ mod test {
     /// Test that it's possible to store work
     #[test]
     fn test_store_work() {
-        let mut registry = MiningWorkRegistry::new(4);
+        let mut registry = WorkRegistry::new(4);
         let work1 = null_work::prepare(0);
         let work2 = null_work::prepare(1);
 
@@ -176,7 +176,7 @@ mod test {
     fn test_store_work_retiring() {
         const REGISTRY_SIZE: usize = 8;
         const NUM_WORK_ITEMS: usize = REGISTRY_SIZE * 2 + REGISTRY_SIZE / 2 + 1;
-        let mut registry = MiningWorkRegistry::new(REGISTRY_SIZE);
+        let mut registry = WorkRegistry::new(REGISTRY_SIZE);
 
         // we store more than REGISTRY_SIZE items so it has to roll over
         for i in 0..NUM_WORK_ITEMS {
@@ -202,7 +202,7 @@ mod test {
     #[test]
     fn test_work_id_wrap_around() {
         const REGISTRY_SIZE: usize = 4;
-        let mut registry = MiningWorkRegistry::new(REGISTRY_SIZE);
+        let mut registry = WorkRegistry::new(REGISTRY_SIZE);
         let work = null_work::prepare(0);
         assert_eq!(registry.store_work(work.clone()), 0);
         assert_eq!(registry.store_work(work.clone()), 1);
