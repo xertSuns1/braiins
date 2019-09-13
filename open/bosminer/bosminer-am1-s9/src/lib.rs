@@ -62,8 +62,6 @@ use ii_fpga_io_am1_s9::hchainio0::ctrl_reg::MIDSTATE_CNT_A;
 
 use ii_async_compat::sleep;
 
-use power::VoltageCtrlBackend;
-
 /// Timing constants
 const INACTIVATE_FROM_CHAIN_DELAY_MS: u64 = 100;
 /// Base delay quantum during hashboard initialization
@@ -197,7 +195,7 @@ pub struct HashChain<VBackend> {
 
 impl<VBackend> HashChain<VBackend>
 where
-    VBackend: 'static + Send + Sync + power::VoltageCtrlBackend,
+    VBackend: 'static + Send + Sync + Clone + power::VoltageCtrlBackend,
 {
     /// Creates a new hashboard controller with memory mapped FPGA IP core
     ///
