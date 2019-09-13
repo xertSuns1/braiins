@@ -36,8 +36,6 @@ use futures::stream::StreamExt;
 
 use ii_async_compat::{sleep, timeout_future, TimeoutResult};
 
-use power::VoltageCtrlBackend;
-
 /// Our local abbreviation
 type HashChain = crate::HashChain<
     power::VoltageCtrlI2cSharedBlockingBackend<power::VoltageCtrlI2cBlockingBackend>,

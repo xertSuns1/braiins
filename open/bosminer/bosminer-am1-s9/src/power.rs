@@ -127,10 +127,6 @@ pub trait VoltageCtrlBackend {
     /// Sends a Read transaction for a voltage controller on a particular hashboard
     /// * `length` - size of the expected response in bytes
     fn read(&mut self, hashboard_idx: usize, command: u8, length: u8) -> error::Result<Vec<u8>>;
-
-    /// Custom clone implementation
-    /// TODO: review how this could be eliminated
-    fn clone(&self) -> Self;
 }
 
 /// Newtype that represents an I2C voltage controller communication backend
@@ -177,10 +173,6 @@ impl VoltageCtrlBackend for VoltageCtrlI2cBlockingBackend {
             .with_context(|e| ErrorKind::I2c(e.to_string()))?;
         Ok(result)
     }
-
-    fn clone(&self) -> Self {
-        unimplemented!();
-    }
 }
 
 pub struct VoltageCtrlI2cSharedBlockingBackend<T>(Arc<Mutex<T>>);
@@ -194,7 +186,10 @@ where
     }
 }
 
-impl VoltageCtrlBackend for VoltageCtrlI2cSharedBlockingBackend<VoltageCtrlI2cBlockingBackend> {
+impl<T> VoltageCtrlBackend for VoltageCtrlI2cSharedBlockingBackend<T>
+where
+    T: VoltageCtrlBackend,
+{
     fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()> {
         self.0
             .lock()
@@ -208,18 +203,16 @@ impl VoltageCtrlBackend for VoltageCtrlI2cSharedBlockingBackend<VoltageCtrlI2cBl
             .expect("locking failed")
             .read(hashboard_idx, command, length)
     }
+}
 
-    /// Custom clone implementation that clones the atomic reference counting instance (Arc) only is
-    /// needed so that we can share the backend instance. Unfortunately, we cannot implement the
-    /// std::clone::Clone trait for now as it transitively puts additional requirements on the
-    /// backend type parameter 'T'.
-    /// TODO: review how this could be eliminated
+impl<T> Clone for VoltageCtrlI2cSharedBlockingBackend<T> {
     fn clone(&self) -> Self {
         VoltageCtrlI2cSharedBlockingBackend(self.0.clone())
     }
 }
 
 /// Represents a voltage controller for a particular hashboard
+#[derive(Clone)]
 pub struct VoltageCtrl<T> {
     // Backend that carries out the operation
     backend: T,
@@ -229,7 +222,7 @@ pub struct VoltageCtrl<T> {
 
 impl<T> VoltageCtrl<T>
 where
-    T: 'static + VoltageCtrlBackend + Send,
+    T: 'static + VoltageCtrlBackend + Send + Clone,
 {
     fn read(&mut self, command: u8, length: u8) -> error::Result<Vec<u8>> {
         self.backend.read(self.hashboard_idx, command, length)
