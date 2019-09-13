@@ -90,9 +90,8 @@ pub struct ConfigIo {
     midstate_count: MidstateCount,
 }
 
-/// TODO: make `hw` private
 pub struct CommandIo {
-    pub hw: CommandHw,
+    hw: CommandHw,
 }
 
 impl ConfigHw {

@@ -161,9 +161,6 @@ impl MidstateCount {
 /// Main responsibilities:
 /// - memory mapping of the FPGA control interface
 /// - mining work submission and solution processing
-///
-/// TODO: implement drop trait (results in unmap)
-/// TODO: rename to HashBoardCtrl and get rid of the hash_chain identifiers + array
 pub struct HashChain<VBackend> {
     /// Number of chips that have been detected
     chip_count: usize,
@@ -174,8 +171,6 @@ pub struct HashChain<VBackend> {
     /// PLL frequency
     pll_frequency: u64,
     /// Voltage controller on this hashboard
-    /// TODO: consider making voltage ctrl a shared instance so that heartbeat and regular
-    /// processing can use it. More: the backend should also become shared instance?
     voltage_ctrl: power::Control<VBackend>,
     /// Plug pin that indicates the hashboard is present
     #[allow(dead_code)]
@@ -203,7 +198,7 @@ where
     /// * `voltage_ctrl_backend` - communication backend for the voltage controller
     /// * `hashboard_idx` - index of this hashboard determines which FPGA IP core is to be mapped
     /// * `midstate_count` - see Self
-    /// TODO: asic_difficulty
+    /// * `asic_difficulty` - to what difficulty set the hardware target filter
     pub fn new(
         gpio_mgr: &gpio::ControlPinManager,
         voltage_ctrl_backend: VBackend,
@@ -325,7 +320,6 @@ where
         info!("Voltage controller firmware version {:#04x}", version);
         // TODO accept multiple
         if version != power::EXPECTED_VOLTAGE_CTRL_VERSION {
-            // TODO: error!("{}", err_msg);
             Err(ErrorKind::UnexpectedVersion(
                 "voltage controller firmware".to_string(),
                 version.to_string(),
