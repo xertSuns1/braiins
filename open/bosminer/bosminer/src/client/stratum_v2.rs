@@ -34,7 +34,8 @@ use std::sync::Arc;
 
 use ii_stratum::v2::framing::codec::Framing;
 use ii_stratum::v2::messages::{
-    NewMiningJob, OpenMiningChannel, OpenMiningChannelError, OpenMiningChannelSuccess,
+    NewMiningJob, OpenStandardMiningChannelError, OpenStandardMiningChannelSuccess,
+    OpenStandardMiningChannel,
     SetNewPrevHash, SetTarget, SetupConnection, SetupConnectionError, SetupConnectionSuccess,
     SubmitShares, SubmitSharesSuccess,
 };
@@ -61,10 +62,7 @@ struct StratumJob {
 }
 
 impl StratumJob {
-    pub fn new(
-        job_msg: &NewMiningJob,
-        prevhash_msg: &SetNewPrevHash,
-    ) -> Self {
+    pub fn new(job_msg: &NewMiningJob, prevhash_msg: &SetNewPrevHash) -> Self {
         Self {
             id: job_msg.job_id,
             channel_id: job_msg.channel_id,
@@ -209,19 +207,19 @@ impl Handler for StratumEventHandler {
         self.status = Err(());
     }
 
-    fn visit_open_mining_channel_success(
+    fn visit_open_standard_mining_channel_success(
         &mut self,
         _msg: &Message<Protocol>,
-        success_msg: &OpenMiningChannelSuccess,
+        success_msg: &OpenStandardMiningChannelSuccess,
     ) {
         self.update_target(success_msg.target);
         self.status = Ok(());
     }
 
-    fn visit_open_mining_channel_error(
+    fn visit_open_standard_mining_channel_error(
         &mut self,
         _msg: &Message<Protocol>,
-        _error_msg: &OpenMiningChannelError,
+        _error_msg: &OpenStandardMiningChannelError,
     ) {
         self.status = Err(());
     }
@@ -281,8 +279,14 @@ async fn setup_mining_connection<'a>(
         flags: 0,
         // TODO-DOC: Pubkey spec not finalized yet
         expected_pubkey: PubKey::new(),
-        endpoint_hostname: Str0_255::from_string(endpoint_hostname),
+        endpoint_host: Str0_255::from_string(endpoint_hostname),
         endpoint_port: endpoint_port as u16,
+        device: DeviceInfo {
+            vendor: "Braiins".try_into()?,
+            hw_rev: "1".try_into()?,
+            fw_ver: "Braiins OS 2019-06-05".try_into()?,
+            dev_id: "xyz".try_into()?,
+        },
     };
     await!(connection.send(setup_msg)).expect("Cannot send stratum setup mining connection");
     let response_msg = await!(connection.next())
@@ -298,21 +302,12 @@ async fn open_channel<'a>(
     event_handler: &'a mut StratumEventHandler,
     user: String,
 ) -> Result<(), ()> {
-    let channel_msg = OpenMiningChannel {
+    let channel_msg = OpenStandardMiningChannel {
         req_id: 10,
         user: user.try_into()?,
-        extended: false,
-        device: DeviceInfo {
-            vendor: "Braiins".try_into()?,
-            hw_rev: "1".try_into()?,
-            fw_ver: "Braiins OS 2019-06-05".try_into()?,
-            dev_id: "xyz".try_into()?,
-        },
         nominal_hashrate: 1e9,
         // Maximum bitcoin target is 0xffff << 208 (= difficulty 1 share)
         max_target: ii_bitcoin::Target::default().into(),
-        min_extranonce_size: 0,
-        aggregated_device_count: 1,
     };
     await!(connection.send(channel_msg)).expect("Cannot send stratum open channel");
     let response_msg = await!(connection.next())
@@ -353,18 +348,18 @@ impl Handler for StringifyV2 {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_open_mining_channel(
+    fn visit_open_standard_mining_channel(
         &mut self,
         _msg: &ii_wire::Message<Protocol>,
-        payload: &OpenMiningChannel,
+        payload: &OpenStandardMiningChannel,
     ) {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_open_mining_channel_success(
+    fn visit_open_standard_mining_channel_success(
         &mut self,
         _msg: &ii_wire::Message<Protocol>,
-        payload: &OpenMiningChannelSuccess,
+        payload: &OpenStandardMiningChannelSuccess,
     ) {
         self.0 = Some(format!("{:?}", payload));
     }
