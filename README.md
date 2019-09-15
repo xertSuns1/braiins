@@ -14,7 +14,7 @@ components.
 
 Stratum protocol implementation including V1 and V2 in Rust programming
 language. Additionally, there is a stratum protocol simulator written in Python
-available [`sim`](open/protocols/stratum/sim/README.md) subdirectory.
+available in the [`sim`](open/protocols/stratum/sim/README.md) subdirectory.
 
 
 ## [`open/stratum-proxy`](open/stratum-proxy/README.md)
@@ -29,8 +29,8 @@ The bOSminer suite is a Bitcoin mining software written in Rust programming lang
 
 # How to build individual components
 
-Eventhough, each component has its own self-contained README. This section
-provides common instructions to setup all environments.
+Although each component has its own self-contained README, this section
+provides common instructions to setup all of the environments.
 
 
 ## Rust applications/libraries
