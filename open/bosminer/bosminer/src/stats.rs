@@ -94,16 +94,19 @@ pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<Mining>>) {
 
         let hashing_time = last_stat_time.elapsed().as_secs_f64();
 
-        info!(
-            "Hash rate @ ASIC difficulty: {:.2} Gh/s",
-            shares_to_giga_hashes(solved_shares as u128) / hashing_time,
-        );
-        trace!(
-            "Hash rate of generated work: {:.2} Gh/s",
-            shares_to_giga_hashes(work_generated as u128) / hashing_time,
-        );
+        if solved_shares > 0 {
+            info!(
+                "Hash rate @ ASIC difficulty: {:.2} Gh/s",
+                shares_to_giga_hashes(solved_shares as u128) / hashing_time,
+            );
+        }
         if work_generated == 0 {
             trace!("No work is being generated!");
+        } else {
+            trace!(
+                "Hash rate of generated work: {:.2} Gh/s",
+                shares_to_giga_hashes(work_generated as u128) / hashing_time,
+            );
         }
         if unique_solutions == 0 {
             trace!("No work is being solved!");
@@ -142,9 +145,11 @@ pub async fn hashrate_meter_task() {
             .expect("stats delay wait failed");
         total_shares += SUBMITTED_SHARE_COUNTER.swap(0, Ordering::SeqCst) as u128;
         let total_hashing_time = hashing_started.elapsed();
-        info!(
-            "Hash rate @ pool difficulty: {:.2} Gh/s",
-            shares_to_giga_hashes(total_shares) / total_hashing_time.as_secs_f64(),
-        );
+        if total_shares > 0 {
+            info!(
+                "Hash rate @ pool difficulty: {:.2} Gh/s",
+                shares_to_giga_hashes(total_shares) / total_hashing_time.as_secs_f64(),
+            );
+        }
     }
 }
