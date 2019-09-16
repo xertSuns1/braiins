@@ -91,7 +91,7 @@ const DEFAULT_S9_PLL_FREQUENCY: u64 = 650_000_000;
 const INITIAL_VOLTAGE: power::Voltage = power::Voltage::from_volts(9.4);
 
 /// Default PLL value (650 MHz)
-const DEFAULT_PLL_CONFIG: u32 = 0x21026800;
+const DEFAULT_PLL_CONFIG: u32 = 0x680221;
 
 lazy_static! {
     /// What is our target?
@@ -423,7 +423,6 @@ where
     /// Loads PLL register with a starting value
     async fn set_pll(&self) -> error::Result<()> {
         for addr in self.chip_iter() {
-            // TODO: fix endianity of this register so it matches datasheet
             let cmd =
                 bm1387::SetConfigCmd::new(addr, false, bm1387::PLL_PARAM_REG, DEFAULT_PLL_CONFIG);
             await!(self.send_ctl_cmd(cmd.pack().to_vec(), false));

@@ -111,7 +111,7 @@ impl CmdHeader {
 
 /// Sets configuration register
 #[derive(PackedStruct, Debug)]
-#[packed_struct(endian = "lsb")]
+#[packed_struct(endian = "msb")]
 pub struct SetConfigCmd {
     #[packed_field(element_size_bytes = "3")]
     pub header: CmdHeader,
@@ -133,7 +133,7 @@ impl SetConfigCmd {
 }
 
 #[derive(PackedStruct, Debug)]
-#[packed_struct(endian = "lsb")]
+#[packed_struct(endian = "msb")]
 pub struct GetStatusCmd {
     #[packed_field(element_size_bytes = "3")]
     header: CmdHeader,
@@ -149,7 +149,7 @@ impl GetStatusCmd {
 }
 
 #[derive(PackedStruct, Debug)]
-#[packed_struct(endian = "lsb")]
+#[packed_struct(endian = "msb")]
 pub struct SetChipAddressCmd {
     #[packed_field(element_size_bytes = "3")]
     pub header: CmdHeader,
@@ -168,7 +168,7 @@ impl SetChipAddressCmd {
 }
 
 #[derive(PackedStruct, Debug)]
-#[packed_struct(endian = "lsb")]
+#[packed_struct(endian = "msb")]
 pub struct InactivateFromChainCmd {
     #[packed_field(element_size_bytes = "3")]
     header: CmdHeader,
@@ -187,9 +187,9 @@ impl InactivateFromChainCmd {
 }
 
 #[derive(PackedStruct, Default, Debug)]
-#[packed_struct(endian = "lsb", size_bytes = "6")]
+#[packed_struct(endian = "msb", size_bytes = "6")]
 pub struct GetAddressReg {
-    #[packed_field(endian = "msb", ty = "enum", element_size_bytes = "2")]
+    #[packed_field(ty = "enum", element_size_bytes = "2")]
     pub chip_rev: ChipRev,
     _reserved1: u8,
     pub addr: u8,
@@ -212,7 +212,7 @@ impl Default for ChipRev {
 ///
 /// The chip will provide only solutions that are <= target based on this difficulty
 #[derive(PackedStruct, Debug)]
-#[packed_struct(size_bytes = "4", endian = "lsb")]
+#[packed_struct(size_bytes = "4", endian = "msb")]
 pub struct TicketMaskReg {
     /// stores difficulty - 1
     diff: u32,
@@ -255,32 +255,27 @@ impl Into<u32> for TicketMaskReg {
 pub struct MiscCtrlReg {
     /// Exact meaning of this field is unknown, when setting baud rate, it is 0, when
     /// initializing the chain it is 1
-    /// bit 6
-    #[packed_field(bits = "6")]
+    #[packed_field(bits = "30")]
     pub not_set_baud: bool,
 
     /// Invert clock pin -> used on S9's
-    /// bit 13
-    #[packed_field(bits = "13")]
+    #[packed_field(bits = "21")]
     pub inv_clock: bool,
 
     /// baudrate divisor - maximum divisor is 26. To calculate the divisor:
     /// baud_div = min(OSC/8*baud - 1, 26)
     /// Oscillator frequency is 25 MHz
-    /// bit 20:16
-    #[packed_field(bits = "20:16")]
+    #[packed_field(bits = "12:8")]
     pub baud_div: Integer<u8, packed_bits::Bits5>,
 
     /// This field causes all blocks of the hashing chip to ignore any incoming
     /// work and allows enabling the blocks one-by-one when a mining work with bit[0] set to 1
     /// arrives
-    /// bit 23
-    #[packed_field(bits = "23")]
+    #[packed_field(bits = "15")]
     pub gate_block: bool,
 
     /// Enable multi midstate processing = "AsicBoost"
-    /// bit 31
-    #[packed_field(bits = "31")]
+    #[packed_field(bits = "7")]
     pub mmen: bool,
 }
 
@@ -322,12 +317,11 @@ mod test {
 
     #[test]
     /// Builds a sample set_config command (here the PLL register @ 0x0c with a value of
-    /// 0x21026800 that corresponds to
+    /// 0x00680221 that corresponds to
     /// and verifies correct serialization
-    fn build_set_config_cmd() {
-        let cmd = SetConfigCmd::new(0x24, false, PLL_PARAM_REG, 0x21026800);
+    fn build_set_config_cmd_pll() {
+        let cmd = SetConfigCmd::new(0x24, false, PLL_PARAM_REG, 0x680221);
         let expected_cmd_with_padding = [0x48u8, 0x09, 0x24, PLL_PARAM_REG, 0x00, 0x68, 0x02, 0x21];
-        //        let expected_cmd_with_padding = u8_as_fpga_slice(&expected_cmd_with_padding);
         let cmd_bytes = cmd.pack();
         assert_eq!(
             cmd_bytes, expected_cmd_with_padding,
@@ -343,6 +337,22 @@ mod test {
         let reg = TicketMaskReg::new(64).expect("Cannot build difficulty register");
         let cmd = SetConfigCmd::new(0x00, true, TICKET_MASK_REG, reg.into());
         let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x18, 0x00, 0x00, 0x00, 0x3f];
+        let cmd_bytes = cmd.pack();
+        assert_eq!(cmd_bytes, expected_cmd_with_padding);
+    }
+
+    #[test]
+    // Verify serialization of SetConfig(MISC_CONTROL(...)) command
+    fn build_set_config_misc_control() {
+        let reg = MiscCtrlReg {
+            not_set_baud: true,
+            inv_clock: true,
+            baud_div: 26.into(),
+            gate_block: true,
+            mmen: true,
+        };
+        let cmd = SetConfigCmd::new(0x00, true, MISC_CONTROL_REG, reg.into());
+        let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x1c, 0x40, 0x20, 0x9a, 0x80];
         let cmd_bytes = cmd.pack();
         assert_eq!(cmd_bytes, expected_cmd_with_padding);
     }
@@ -432,8 +442,7 @@ mod test {
             gate_block: true,
             mmen: true,
         };
-        let expected_reg_msb = [0x80u8, 0x9a, 0x20, 0x40];
-
+        let expected_reg_msb = [0x40u8, 0x20, 0x9a, 0x80];
         let reg_bytes = reg.pack();
 
         assert_eq!(
@@ -453,7 +462,7 @@ mod test {
             gate_block: true,
             mmen: true,
         };
-        let expected_reg_value = 0x809a2040u32;
+        let expected_reg_value = 0x40209a80u32;
         let reg_value: u32 = reg.into();
         assert_eq!(
             reg_value, expected_reg_value,
@@ -472,7 +481,7 @@ mod test {
     fn test_ticket_mask_reg_to_u32() {
         let reg = TicketMaskReg::new(64).expect("Cannot build difficulty register");
 
-        let expected_reg_value = 0x3f00_0000u32;
+        let expected_reg_value = 0x3fu32;
         let reg_value: u32 = reg.into();
         assert_eq!(
             reg_value, expected_reg_value,
