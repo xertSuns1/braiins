@@ -20,6 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+#![feature(await_macro, async_await, duration_float)]
+
 use bosminer_am1_s9::gpio;
 use bosminer_am1_s9::power;
 
@@ -32,7 +34,7 @@ use embedded_hal::digital::v2::OutputPin;
 ///
 /// * `ctrl_pin_manager` - provides accesss to  GPIO control pins connected to the hashboard
 /// * `idx` - index of the hashboard
-fn test_voltage_ctrl_on_1_hashboard(idx: usize, ctrl_pin_manager: &gpio::ControlPinManager) {
+async fn test_voltage_ctrl_on_1_hashboard(idx: usize, ctrl_pin_manager: &gpio::ControlPinManager) {
     let mut reset = ctrl_pin_manager
         .get_pin_out(gpio::PinOutName::Rst(idx))
         .unwrap();
@@ -45,8 +47,8 @@ fn test_voltage_ctrl_on_1_hashboard(idx: usize, ctrl_pin_manager: &gpio::Control
     let backend = power::SharedBackend::new(backend);
     let mut voltage_ctrl = power::Control::new(backend, idx);
 
-    voltage_ctrl.reset().unwrap();
-    voltage_ctrl.jump_from_loader_to_app().unwrap();
+    await!(voltage_ctrl.reset()).unwrap();
+    await!(voltage_ctrl.jump_from_loader_to_app()).unwrap();
 
     let version = voltage_ctrl.get_version().unwrap();
     let expected_version: u8 = 3;
@@ -59,8 +61,7 @@ fn test_voltage_ctrl_on_1_hashboard(idx: usize, ctrl_pin_manager: &gpio::Control
 
 /// Attempts to run voltage controller test for all hashboards. A minimum of one hashboard is
 /// required to be present in the miner
-#[test]
-fn test_voltage_ctrl_all_hashboards() {
+async fn test_voltage_ctrl_all_hashboards() {
     let ctrl_pin_manager = gpio::ControlPinManager::new();
     let mut tested_hashboards: usize = 0;
     let expected_tested_hashboards: usize = 1;
@@ -71,7 +72,10 @@ fn test_voltage_ctrl_all_hashboards() {
             .unwrap();
 
         if plug.is_high().unwrap() {
-            test_voltage_ctrl_on_1_hashboard(hashboard_idx, &ctrl_pin_manager);
+            await!(test_voltage_ctrl_on_1_hashboard(
+                hashboard_idx,
+                &ctrl_pin_manager
+            ));
             tested_hashboards += 1;
         }
     }
@@ -81,4 +85,9 @@ fn test_voltage_ctrl_all_hashboards() {
         tested_hashboards,
         expected_tested_hashboards
     );
+}
+
+#[test]
+fn test_voltage_ctrl_all_hashboards_runner() {
+    ii_async_compat::run_main_exits(test_voltage_ctrl_all_hashboards())
 }

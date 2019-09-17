@@ -36,11 +36,10 @@ use byteorder::{BigEndian, ByteOrder};
 use embedded_hal::blocking::i2c::{Read, Write};
 use linux_embedded_hal::I2cdev;
 
+use ii_async_compat::sleep;
+
 /// Voltage controller requires periodic heart beat messages to be sent
 const VOLTAGE_CTRL_HEART_BEAT_PERIOD: Duration = Duration::from_millis(1000);
-
-/// Default timeout required for I2C transactions to succeed
-const I2C_TIMEOUT_MS: u64 = 500;
 
 const PIC_BASE_ADDRESS: u8 = 0x50;
 
@@ -158,9 +157,6 @@ impl Backend for I2cBackend {
         self.inner
             .write(Self::get_i2c_address(hashboard_idx), &command_bytes)
             .with_context(|e| ErrorKind::I2c(e.to_string()))?;
-        // I2C transactions require a delay, so that the Linux driver processes them properly
-        // TODO: investigate this topic
-        thread::sleep(Duration::from_millis(I2C_TIMEOUT_MS));
         Ok(())
     }
 
@@ -212,6 +208,19 @@ impl<T> Clone for SharedBackend<T> {
 }
 
 /// Represents a voltage controller for a particular hashboard
+///
+/// NOTE: Some I2C PIC commands require explicit wait time before issuing new
+/// commands.
+///
+/// For example, `reset` command requires to wait approx 500ms, because while
+/// the PIC is booting up, it doesn't respond to I2C ACK when addressed.
+/// This condition (NAK) manifests itself as Linux I2C driver returning error
+/// (EIO) from write syscall.
+///
+/// Most of commands implemented bellow have correct timeout included,
+/// but if you implement some new commands be sure to include timeout where
+/// necessary (`SET_HOST_MAC_ADDRESS` requires one etc., check bmminer
+/// sources).
 #[derive(Clone)]
 pub struct Control<T> {
     // Backend that carries out the operation
@@ -224,6 +233,13 @@ impl<T> Control<T>
 where
     T: 'static + Backend + Send + Clone,
 {
+    /// How long does it take to reset the PIC controller.
+    const RESET_DELAY: Duration = Duration::from_millis(500);
+
+    /// This constant is from `bmminer` sources and it works.
+    /// I have no deeper insight on how was this constant determined.
+    const BMMINER_DELAY: Duration = Duration::from_millis(100);
+
     fn read(&mut self, command: u8, length: u8) -> error::Result<Vec<u8>> {
         self.backend.read(self.hashboard_idx, command, length)
     }
@@ -232,12 +248,16 @@ where
         self.backend.write(self.hashboard_idx, command, data)
     }
 
-    pub fn reset(&mut self) -> error::Result<()> {
-        self.write(RESET_PIC, &[])
+    pub async fn reset(&mut self) -> error::Result<()> {
+        self.write(RESET_PIC, &[])?;
+        await!(sleep(Self::RESET_DELAY));
+        Ok(())
     }
 
-    pub fn jump_from_loader_to_app(&mut self) -> error::Result<()> {
-        self.write(JUMP_FROM_LOADER_TO_APP, &[])
+    pub async fn jump_from_loader_to_app(&mut self) -> error::Result<()> {
+        self.write(JUMP_FROM_LOADER_TO_APP, &[])?;
+        await!(sleep(Self::BMMINER_DELAY));
+        Ok(())
     }
 
     pub fn get_version(&mut self) -> error::Result<u8> {
@@ -270,9 +290,11 @@ where
         self.write(ENABLE_VOLTAGE, &[false as u8])
     }
 
-    pub fn set_voltage(&mut self, voltage: Voltage) -> error::Result<()> {
+    pub async fn set_voltage(&mut self, voltage: Voltage) -> error::Result<()> {
         trace!("Setting voltage to {}", voltage.as_volts());
-        self.write(SET_VOLTAGE, &[voltage.as_pic_value()?])
+        self.write(SET_VOLTAGE, &[voltage.as_pic_value()?])?;
+        await!(sleep(Self::BMMINER_DELAY));
+        Ok(())
     }
 
     pub fn get_voltage(&mut self) -> error::Result<u8> {
