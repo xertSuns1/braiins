@@ -313,9 +313,9 @@ where
         info!("Initializing hash chain {}", self.hashboard_idx);
         self.ip_core_init()?;
         info!("Hashboard IP core initialized");
-        self.voltage_ctrl.reset()?;
+        await!(self.voltage_ctrl.reset())?;
         info!("Voltage controller reset");
-        self.voltage_ctrl.jump_from_loader_to_app()?;
+        await!(self.voltage_ctrl.jump_from_loader_to_app())?;
         info!("Voltage controller application started");
         let version = self.voltage_ctrl.get_version()?;
         info!("Voltage controller firmware version {:#04x}", version);
@@ -327,13 +327,14 @@ where
                 power::EXPECTED_VOLTAGE_CTRL_VERSION.to_string(),
             ))?
         }
+        await!(self.voltage_ctrl.set_voltage(INITIAL_VOLTAGE))?;
+        self.voltage_ctrl.enable_voltage()?;
+
         // Voltage controller successfully initialized at this point, we should start sending
         // heart beats to it. Otherwise, it would shut down in about 10 seconds.
         info!("Starting voltage controller heart beat task");
         let _ = self.voltage_ctrl.start_heart_beat_task();
 
-        self.voltage_ctrl.set_voltage(INITIAL_VOLTAGE)?;
-        self.voltage_ctrl.enable_voltage()?;
         info!("Resetting hash board");
         self.enter_reset()?;
         // disable voltage
