@@ -50,7 +50,7 @@ impl TagManager {
     /// Bit position where work ID starts in the second word provided by the IP core with mining work
     /// solution
     const ID_OFFSET: usize = 8;
-    const ID_RANGE: usize = 1 << 16;
+    const ID_LIMIT: usize = 1 << 16;
 
     pub fn new(midstate_count: MidstateCount) -> Self {
         Self { midstate_count }
@@ -58,7 +58,7 @@ impl TagManager {
 
     /// Extract fields of "solution id" word into OutputTag
     pub fn parse_output_tag(&self, reg: u32) -> OutputTag {
-        let id = (reg as usize >> Self::ID_OFFSET) & (Self::ID_RANGE - 1);
+        let id = (reg as usize >> Self::ID_OFFSET) & (Self::ID_LIMIT - 1);
         OutputTag {
             solution_idx: reg as usize & ((1 << Self::ID_OFFSET) - 1),
             work_id: id >> self.midstate_count.to_bits(),
@@ -78,13 +78,13 @@ impl TagManager {
             self.midstate_count.to_count(),
         );
         // Check `work_id` is within range
-        assert!(work_id < (Self::ID_RANGE >> self.midstate_count.to_bits()));
+        assert!(work_id < (Self::ID_LIMIT >> self.midstate_count.to_bits()));
         // Generate `InputTag`
-        ((work_id << self.midstate_count.to_bits()) & (Self::ID_RANGE - 1)) as u32
+        ((work_id << self.midstate_count.to_bits()) & (Self::ID_LIMIT - 1)) as u32
     }
 
-    pub fn work_id_range(&self) -> usize {
-        Self::ID_RANGE >> self.midstate_count.to_bits()
+    pub fn work_id_limit(&self) -> usize {
+        Self::ID_LIMIT >> self.midstate_count.to_bits()
     }
 }
 
