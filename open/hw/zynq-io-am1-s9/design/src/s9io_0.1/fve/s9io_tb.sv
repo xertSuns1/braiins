@@ -134,6 +134,7 @@ module s9io_v0_1_tb();
         // testcase 2 - test of work send (1 and 4 midstates)
         tc_send_work_midstate1();
         tc_send_work_midstate4();
+        tc_send_cmd_after_work();
 
         // testcase 3 - test of receive of command and work response
         tc_cmd_response();
@@ -396,6 +397,44 @@ module s9io_v0_1_tb();
 
         fifo_write_work(fifo_data1);
         uart_read_and_compare(uart_data1);
+    endtask
+
+    // ---------------------------------------------------------------------------------------------
+    // send command immediate after work
+    task tc_send_cmd_after_work();
+        // Tx FIFO data
+        static logic[31:0] fifo_data1[$] = {32'h00000554};
+        static logic[31:0] fifo_data2[$] = {
+            32'h00000000, 32'hffffffff, 32'hffffffff, 32'hffffffff, 32'h00000000, 32'h00000000,
+            32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000
+        };
+        static logic[31:0] fifo_data3[$] = {32'h00000555};
+
+        // reference data send out through UART
+        static logic[7:0] uart_data1[$] = {8'h54, 8'h05, 8'h00, 8'h00, 8'h19};
+        static logic[7:0] uart_data2[$] = {
+            8'h21, 8'h36, 8'h00, 8'h01, 8'h00, 8'h00, 8'h00, 8'h00, 8'hff, 8'hff, 8'hff, 8'hff,
+            8'hff, 8'hff, 8'hff, 8'hff, 8'hff, 8'hff, 8'hff, 8'hff, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h5f, 8'hd3
+        };
+        static logic[7:0] uart_data3[$] = {8'h55, 8'h05, 8'h00, 8'h00, 8'h10};
+
+        $display("Testcase 2c: send command after work");
+
+        // set 1 midstate mode
+        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+
+        // first send command "to dirty" CRC engine
+        fifo_write_cmd(fifo_data1);
+        uart_read_and_compare(uart_data1);
+
+        // next send work request and another command immediate after work
+        fifo_write_work(fifo_data2);
+        fifo_write_cmd(fifo_data3);
+        uart_read_and_compare(uart_data2);
+        uart_read_and_compare(uart_data3);
     endtask
 
 
