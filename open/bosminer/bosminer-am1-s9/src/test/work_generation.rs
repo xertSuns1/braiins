@@ -83,7 +83,7 @@ async fn sender_task(
         .work_tx_io
         .take()
         .expect("work-tx fifo missing");
-    let mut work_registry = registry::WorkRegistry::new(tx_io.work_id_limit());
+    let mut work_registry = registry::WorkRegistry::new(tx_io.work_id_count());
 
     loop {
         await!(tx_io.wait_for_room()).expect("wait for tx room");

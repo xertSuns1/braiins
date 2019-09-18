@@ -28,11 +28,12 @@
 //!   * `Control` layer knows about chip configuration (number of midstates)
 //!     and implements few higher-level functions to read/write work
 
-mod tag;
+mod ext_work_id;
 mod uio;
 
 use crate::error::{self, ErrorKind};
 use crate::MidstateCount;
+use ext_work_id::ExtWorkId;
 
 use bosminer::work;
 use byteorder::{ByteOrder, LittleEndian};
@@ -323,23 +324,50 @@ impl CommandRxTxFifos {
     }
 }
 
+/// This structure represents mining solution response as read from
+/// `WORK_RX_FIFO` in FPGA.
+#[derive(Debug, Clone)]
+struct WorkRxResponse {
+    pub nonce: u32,
+    pub work_id: usize,
+    pub midstate_idx: usize,
+    pub solution_idx: usize,
+}
+
+impl WorkRxResponse {
+    /// Parse from FPGA response
+    /// The format is dependent on current `MidstateCount` settings
+    pub fn from_hw(midstate_count: MidstateCount, word1: u32, word2: u32) -> Self {
+        // NOTE: there's a CRC field in word2 that we ignore, because it's checked by FPGA core
+        let solution_idx = word2 & 0xff;
+        let ext_work_id = (word2 >> 8) & 0xffff;
+        let ext_work_id = ExtWorkId::from_hw(midstate_count, ext_work_id);
+        Self {
+            nonce: word1,
+            solution_idx: solution_idx as usize,
+            work_id: ext_work_id.work_id,
+            midstate_idx: ext_work_id.midstate_idx,
+        }
+    }
+}
+
 pub struct WorkRx {
     hw: WorkRxFifo,
-    tag_manager: tag::TagManager,
+    midstate_count: MidstateCount,
 }
 
 impl WorkRx {
     pub async fn recv_solution(mut self) -> Result<(Self, work::Solution), failure::Error> {
-        let nonce = await!(self.hw.async_read())?;
+        let word1 = await!(self.hw.async_read())?;
         let word2 = await!(self.hw.async_read())?;
-        let output_tag = self.tag_manager.parse_output_tag(word2);
+        let resp = WorkRxResponse::from_hw(self.midstate_count, word1, word2);
 
         let solution = work::Solution {
-            nonce,
+            nonce: resp.nonce,
             ntime: None,
-            midstate_idx: output_tag.midstate_idx,
-            solution_idx: output_tag.solution_idx,
-            hardware_id: output_tag.work_id as u32,
+            midstate_idx: resp.midstate_idx,
+            solution_idx: resp.solution_idx,
+            hardware_id: resp.work_id as u32,
         };
 
         Ok((self, solution))
@@ -352,14 +380,14 @@ impl WorkRx {
     fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
         Ok(Self {
             hw: WorkRxFifo::new(hashboard_idx)?,
-            tag_manager: tag::TagManager::new(midstate_count),
+            midstate_count,
         })
     }
 }
 
 pub struct WorkTx {
     hw: WorkTxFifo,
-    tag_manager: tag::TagManager,
+    midstate_count: MidstateCount,
 }
 
 impl WorkTx {
@@ -367,16 +395,26 @@ impl WorkTx {
         await!(self.hw.async_wait_for_room())
     }
 
+    pub fn assert_midstate_count(&self, expected_midstate_count: usize) {
+        assert_eq!(
+            expected_midstate_count,
+            self.midstate_count.to_count(),
+            "Outgoing work has {} midstates, but miner is configured for {} midstates!",
+            expected_midstate_count,
+            self.midstate_count.to_count(),
+        );
+    }
+
     pub fn send_work(
         &mut self,
         work: &work::Assignment,
         work_id: usize,
     ) -> Result<(), failure::Error> {
-        let input_tag = self
-            .tag_manager
-            .make_input_tag(work_id, work.midstates.len());
+        self.assert_midstate_count(work.midstates.len());
+        let ext_work_id = ExtWorkId::new(work_id, 0);
 
-        self.hw.write(input_tag.to_le())?;
+        self.hw
+            .write(ext_work_id.to_hw(self.midstate_count).to_le())?;
         self.hw.write(work.bits().to_le())?;
         self.hw.write(work.ntime.to_le())?;
         self.hw.write(work.merkle_root_tail().to_le())?;
@@ -391,8 +429,8 @@ impl WorkTx {
 
     /// Return upper bound for `work_id`
     /// Determines how big the work registry has to be
-    pub fn work_id_limit(&self) -> usize {
-        self.tag_manager.work_id_limit()
+    pub fn work_id_count(&self) -> usize {
+        ExtWorkId::get_work_id_count(self.midstate_count)
     }
 
     fn init(&mut self) -> error::Result<()> {
@@ -402,7 +440,7 @@ impl WorkTx {
     fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
         Ok(Self {
             hw: WorkTxFifo::new(hashboard_idx)?,
-            tag_manager: tag::TagManager::new(midstate_count),
+            midstate_count,
         })
     }
 }
@@ -609,4 +647,69 @@ pub mod test_utils {
             }
         }
     }
+
+    /// This test verifies correct parsing of mining work solution for all multi-midstate
+    /// configurations.
+    /// The solution_word represents the second word of data provided that follows the nonce as
+    /// provided by the FPGA IP core
+    #[test]
+    fn test_work_rx_response() {
+        let word1 = 0xdead0666;
+        let word2 = 0x98123502;
+        struct ExpectedSolutionData {
+            work_id: usize,
+            midstate_idx: usize,
+            solution_idx: usize,
+            midstate_count: MidstateCount,
+        };
+        let expected_solution_data = [
+            ExpectedSolutionData {
+                work_id: 0x1235,
+                midstate_idx: 0,
+                solution_idx: 2,
+                midstate_count: MidstateCount::new(1),
+            },
+            ExpectedSolutionData {
+                work_id: 0x091a,
+                midstate_idx: 1,
+                solution_idx: 2,
+                midstate_count: MidstateCount::new(2),
+            },
+            ExpectedSolutionData {
+                work_id: 0x048d,
+                midstate_idx: 1,
+                solution_idx: 2,
+                midstate_count: MidstateCount::new(4),
+            },
+        ];
+        for (i, expected_solution_data) in expected_solution_data.iter().enumerate() {
+            // The midstate configuration (ctrl_reg::MIDSTATE_CNT_W) doesn't implement a debug
+            // trait. Therefore, we extract only those parts that can be easily displayed when a
+            // test failed.
+            let expected_data = (
+                expected_solution_data.work_id,
+                expected_solution_data.midstate_idx,
+                expected_solution_data.solution_idx,
+            );
+            let resp = WorkRxResponse::from_hw(expected_solution_data.midstate_count, word1, word2);
+
+            assert_eq!(resp.nonce, word1);
+            assert_eq!(
+                resp.work_id, expected_solution_data.work_id,
+                "Invalid work ID, iteration: {}, test data: {:#06x?}",
+                i, expected_data
+            );
+            assert_eq!(
+                resp.midstate_idx, expected_solution_data.midstate_idx,
+                "Invalid midstate index, iteration: {}, test data: {:#06x?}",
+                i, expected_data
+            );
+            assert_eq!(
+                resp.solution_idx, expected_solution_data.solution_idx,
+                "Invalid solution index, iteration: {}, test data: {:#06x?}",
+                i, expected_data
+            );
+        }
+    }
+
 }
