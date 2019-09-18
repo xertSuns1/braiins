@@ -182,10 +182,10 @@ pub struct HashChain<VBackend> {
     last_heartbeat_sent: Option<SystemTime>,
     #[allow(dead_code)]
     hashboard_idx: usize,
-    pub command_io: io::CommandIo,
-    pub config_io: io::ConfigIo,
-    pub work_rx_io: Option<io::WorkRxIo>,
-    pub work_tx_io: Option<io::WorkTxIo>,
+    pub command_io: io::CommandRxTx,
+    pub config_io: io::Config,
+    pub work_rx_io: Option<io::WorkRx>,
+    pub work_tx_io: Option<io::WorkTx>,
 }
 
 impl<VBackend> HashChain<VBackend>
@@ -514,7 +514,7 @@ where
     async fn send_init_work(
         hash_chain: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        tx_fifo: &mut io::WorkTxIo,
+        tx_fifo: &mut io::WorkTx,
     ) {
         // Each core gets one work
         const NUM_WORK: usize = bm1387::NUM_CORES_ON_CHIP;
@@ -531,10 +531,15 @@ where
         }
     }
 
+    /// This task picks up work from frontend (via generator), saves it to
+    /// registry (to pair with `Assignment` later) and sends it out to hw.
+    /// It makes sure that TX fifo is empty before requesting work from
+    /// generator.
+    /// It exits when generator returns `None`.
     async fn work_tx_task(
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
-        mut tx_fifo: io::WorkTxIo,
+        mut tx_fifo: io::WorkTx,
         mut work_generator: work::Generator,
     ) {
         loop {
@@ -554,10 +559,17 @@ where
         }
     }
 
+    /// This task receives solutions from hardware, looks up `Assignment` in
+    /// registry (under `work_id` got from FPGA), pairs them together and
+    /// sends them back to frontend (via `solution_sender`).
+    /// If solution is duplicated, it gets dropped (and errors stats incremented).
+    /// It prints warnings when solution doesn't hit ASIC target.
+    /// TODO: this task is not very platform dependent, maybe move it somewhere else?
+    /// TODO: figure out when and how to stop this task
     async fn solution_rx_task(
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
-        mut rx_fifo: io::WorkRxIo,
+        mut rx_fifo: io::WorkRx,
         solution_sender: work::SolutionSender,
     ) {
         // solution receiving/filtering part
@@ -663,7 +675,7 @@ where
             self.work_tx_io
                 .as_ref()
                 .expect("io missing")
-                .work_id_range(),
+                .work_id_limit(),
         )));
         let hash_chain = Arc::new(Mutex::new(self));
         let (work_generator, work_solution) = work_solver.split();

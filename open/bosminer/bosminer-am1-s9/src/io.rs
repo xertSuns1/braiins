@@ -60,40 +60,6 @@ pub struct ConfigHw {
     regs: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
 }
 
-struct WorkRxHw {
-    regs: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
-    uio: uio_async::UioDevice,
-}
-
-struct WorkTxHw {
-    regs: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
-    uio: uio_async::UioDevice,
-}
-
-pub struct CommandHw {
-    regs: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
-    uio: uio_async::UioDevice,
-}
-
-pub struct WorkRxIo {
-    hw: WorkRxHw,
-    tag_manager: tag::TagManager,
-}
-
-pub struct WorkTxIo {
-    hw: WorkTxHw,
-    tag_manager: tag::TagManager,
-}
-
-pub struct ConfigIo {
-    hw: ConfigHw,
-    midstate_count: MidstateCount,
-}
-
-pub struct CommandIo {
-    hw: CommandHw,
-}
-
 impl ConfigHw {
     /// Return build id (unix timestamp) of s9-hw FPGA bitstream
     #[inline]
@@ -137,7 +103,12 @@ impl ConfigHw {
     }
 }
 
-impl WorkRxHw {
+struct WorkRxFifo {
+    regs: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
+    uio: uio_async::UioDevice,
+}
+
+impl WorkRxFifo {
     #[inline]
     pub fn fifo_empty(&self) -> bool {
         self.regs.stat_reg.read().work_rx_empty().bit()
@@ -145,8 +116,8 @@ impl WorkRxHw {
 
     /// Try to read from work rx fifo.
     /// Performs blocking read with timeout. Uses IRQ.
-    #[inline]
     #[allow(dead_code)]
+    #[inline]
     pub fn read(&mut self, timeout: Option<Duration>) -> error::Result<Option<u32>> {
         let cond = || !self.fifo_empty();
         let got_irq = self.uio.irq_wait_cond(cond, timeout)?;
@@ -179,7 +150,12 @@ impl WorkRxHw {
     }
 }
 
-impl WorkTxHw {
+struct WorkTxFifo {
+    regs: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
+    uio: uio_async::UioDevice,
+}
+
+impl WorkTxFifo {
     /// How big is FIFO queue? (in u32 words)
     const FIFO_WORK_TX_SIZE: u32 = 2048;
 
@@ -250,7 +226,16 @@ impl WorkTxHw {
     }
 }
 
-impl CommandHw {
+/// This object drives both FIFOs, because we handle command responses
+/// in a task synchronously.
+///
+/// TODO: Split this FIFO into two FIFOs.
+pub struct CommandRxTxFifos {
+    regs: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
+    uio: uio_async::UioDevice,
+}
+
+impl CommandRxTxFifos {
     #[inline]
     pub fn is_rx_empty(&self) -> bool {
         self.regs.stat_reg.read().cmd_rx_empty().bit()
@@ -338,7 +323,12 @@ impl CommandHw {
     }
 }
 
-impl WorkRxIo {
+pub struct WorkRx {
+    hw: WorkRxFifo,
+    tag_manager: tag::TagManager,
+}
+
+impl WorkRx {
     pub async fn recv_solution(mut self) -> Result<(Self, work::Solution), failure::Error> {
         let nonce = await!(self.hw.async_read())?;
         let word2 = await!(self.hw.async_read())?;
@@ -361,13 +351,18 @@ impl WorkRxIo {
 
     fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
         Ok(Self {
-            hw: WorkRxHw::new(hashboard_idx)?,
+            hw: WorkRxFifo::new(hashboard_idx)?,
             tag_manager: tag::TagManager::new(midstate_count),
         })
     }
 }
 
-impl WorkTxIo {
+pub struct WorkTx {
+    hw: WorkTxFifo,
+    tag_manager: tag::TagManager,
+}
+
+impl WorkTx {
     pub async fn wait_for_room(&self) -> error::Result<()> {
         await!(self.hw.async_wait_for_room())
     }
@@ -396,8 +391,8 @@ impl WorkTxIo {
 
     /// Return upper bound for `work_id`
     /// Determines how big the work registry has to be
-    pub fn work_id_range(&self) -> usize {
-        self.tag_manager.work_id_range()
+    pub fn work_id_limit(&self) -> usize {
+        self.tag_manager.work_id_limit()
     }
 
     fn init(&mut self) -> error::Result<()> {
@@ -406,13 +401,17 @@ impl WorkTxIo {
 
     fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
         Ok(Self {
-            hw: WorkTxHw::new(hashboard_idx)?,
+            hw: WorkTxFifo::new(hashboard_idx)?,
             tag_manager: tag::TagManager::new(midstate_count),
         })
     }
 }
 
-impl CommandIo {
+pub struct CommandRxTx {
+    hw: CommandRxTxFifos,
+}
+
+impl CommandRxTx {
     /// Timeout for waiting for command
     const COMMAND_READ_TIMEOUT: Duration = Duration::from_millis(100);
 
@@ -474,12 +473,17 @@ impl CommandIo {
 
     fn new(hashboard_idx: usize) -> error::Result<Self> {
         Ok(Self {
-            hw: CommandHw::new(hashboard_idx)?,
+            hw: CommandRxTxFifos::new(hashboard_idx)?,
         })
     }
 }
 
-impl ConfigIo {
+pub struct Config {
+    hw: ConfigHw,
+    midstate_count: MidstateCount,
+}
+
+impl Config {
     fn check_build_id(&mut self) -> error::Result<()> {
         let build_id = self.hw.get_build_id();
         if build_id != EXPECTED_BITSTREAM_BUILD_ID {
@@ -529,26 +533,26 @@ impl ConfigIo {
 
 /// Represents the whole IP core
 pub struct Core {
-    config_io: ConfigIo,
-    command_io: CommandIo,
-    work_rx_io: WorkRxIo,
-    work_tx_io: WorkTxIo,
+    config_io: Config,
+    command_io: CommandRxTx,
+    work_rx_io: WorkRx,
+    work_tx_io: WorkTx,
 }
 
 impl Core {
     /// Build a new IP core
     pub fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
         Ok(Self {
-            config_io: ConfigIo::new(hashboard_idx, midstate_count)?,
-            command_io: CommandIo::new(hashboard_idx)?,
-            work_rx_io: WorkRxIo::new(hashboard_idx, midstate_count)?,
-            work_tx_io: WorkTxIo::new(hashboard_idx, midstate_count)?,
+            config_io: Config::new(hashboard_idx, midstate_count)?,
+            command_io: CommandRxTx::new(hashboard_idx)?,
+            work_rx_io: WorkRx::new(hashboard_idx, midstate_count)?,
+            work_tx_io: WorkTx::new(hashboard_idx, midstate_count)?,
         })
     }
 
     /// Initialize the IP core and split it into components
     /// That way it's not possible to access un-initialized IO blocks
-    pub fn init_and_split(mut self) -> error::Result<(ConfigIo, CommandIo, WorkRxIo, WorkTxIo)> {
+    pub fn init_and_split(mut self) -> error::Result<(Config, CommandRxTx, WorkRx, WorkTx)> {
         // Reset IP core
         self.config_io.init()?;
         self.config_io.disable_ip_core();
@@ -587,7 +591,7 @@ mod test {
 pub mod test_utils {
     use super::*;
 
-    /// Represents configuration of ConfigIo block
+    /// Represents configuration of Config block
     pub struct ConfigRegs {
         pub work_time: u32,
         pub baud_reg: u32,
@@ -596,7 +600,7 @@ pub mod test_utils {
     }
 
     impl ConfigRegs {
-        pub fn new(io: &ConfigIo) -> Self {
+        pub fn new(io: &Config) -> Self {
             Self {
                 work_time: io.hw.regs.work_time.read().bits(),
                 baud_reg: io.hw.regs.baud_reg.read().bits(),
