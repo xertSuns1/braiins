@@ -45,7 +45,11 @@ impl Engine for ExhaustedWork {
 
 /// BIP320 specifies sixteen bits in block header nVersion field
 /// The maximal index represent the range which is excluded so it must be incremented by 1.
-const BIP320_MAX_INDEX: u32 = ii_bitcoin::BIP320_VERSION_MAX + 1;
+const BIP320_UPPER_BOUND_EXCLUSIVE_INDEX: u32 = ii_bitcoin::BIP320_VERSION_MAX + 1;
+/// Once we exhaust the version we roll, we have to roll ntime.
+/// The current limit gives us support for miners with speed up to 2.4 PH/s
+/// hash_space * roll_ntime_seconds / new_stratum_job_every_sec = 2**(32 + 16) * 256 / 30 = 2.4e15
+const ROLL_NTIME_SECONDS: u32 = 256;
 
 /// Primitive for atomic range counter
 /// This structure can be freely shared among parallel processes and each range is returned only to
@@ -122,13 +126,20 @@ impl AtomicRange {
 
 /// Version rolling implements WorkEngine trait and represents a shared source of work for mining
 /// backends. Each instance takes care of atomically allocating version field ranges until the
-/// range is full exhausted
+/// range is full exhausted. After version has been rolled over, ntime is incremented and version
+/// resetted to 0. The limit of `ntime` range is determined by `ROLL_NTIME_SECONDS`.
+///
+/// TODO: Rolling ntime together with version IS A HACK. This needs to be fixed properly by raising
+/// `ntime` in sync with real-time clock.
 #[derive(Debug, Clone)]
 pub struct VersionRolling {
     job: Arc<dyn job::Bitcoin>,
     /// Number of midstates that each generated work covers
     midstate_count: usize,
     /// Current range of the rolled part of the version (before BIP320 shift)
+    /// We keep current version in lower 16 bits and `ntime_offset`
+    /// in upper 8 bits. When version overflows, the ntime_offset gets
+    /// automatically incremented.
     curr_range: AtomicRange,
     /// Base Bitcoin block header version with BIP320 bits cleared
     base_version: u32,
@@ -137,10 +148,19 @@ pub struct VersionRolling {
 impl VersionRolling {
     pub fn new(job: Arc<dyn job::Bitcoin>, midstate_count: usize) -> Self {
         let base_version = job.version() & !ii_bitcoin::BIP320_VERSION_MASK;
+        // we have to be sure we have no "leftover" midstates when we roll
+        assert_eq!(
+            BIP320_UPPER_BOUND_EXCLUSIVE_INDEX % (midstate_count as u32),
+            0
+        );
         Self {
             job,
             midstate_count,
-            curr_range: AtomicRange::new(0, BIP320_MAX_INDEX, midstate_count as u32),
+            curr_range: AtomicRange::new(
+                0,
+                BIP320_UPPER_BOUND_EXCLUSIVE_INDEX * ROLL_NTIME_SECONDS,
+                midstate_count as u32,
+            ),
             base_version,
         }
     }
@@ -148,8 +168,17 @@ impl VersionRolling {
     /// Convert the allocated index to a block version as per BIP320
     #[inline]
     fn get_block_version(&self, index: u32) -> u32 {
-        assert!(index <= ii_bitcoin::BIP320_VERSION_MAX);
-        self.base_version | (index << ii_bitcoin::BIP320_VERSION_SHIFT)
+        let version = index % BIP320_UPPER_BOUND_EXCLUSIVE_INDEX;
+        assert!(version <= ii_bitcoin::BIP320_VERSION_MAX);
+        self.base_version | (version << ii_bitcoin::BIP320_VERSION_SHIFT)
+    }
+
+    /// Convert the allocated index to a ntime offset
+    #[inline]
+    fn get_ntime_offset(&self, index: u32) -> u32 {
+        let ntime_offset = index / BIP320_UPPER_BOUND_EXCLUSIVE_INDEX;
+        assert!(ntime_offset < ROLL_NTIME_SECONDS);
+        ntime_offset
     }
 }
 
@@ -189,7 +218,14 @@ impl Engine for VersionRolling {
             })
         }
 
-        let work = Assignment::new(self.job.clone(), midstates, self.job.time());
+        // Once we exhaust version-rolling-space, we start rolling ntime.
+        // We can be sure ntime offset is common for all blocks, because `midstate_count`
+        // divides the size of range we roll.
+        // ntime offset is common for all midstates.
+        let ntime_offset = self.get_ntime_offset(current);
+        assert_eq!(ntime_offset, self.get_ntime_offset(next - 1));
+
+        let work = Assignment::new(self.job.clone(), midstates, self.job.time() + ntime_offset);
         if self.curr_range.is_exhausted(next) {
             // when the whole version space has been exhausted then mark the generated work as
             // a last one (the next call of this method will return 'Exhausted')
@@ -220,6 +256,11 @@ pub mod test {
         compare_range(
             ii_bitcoin::BIP320_VERSION_MAX - 1,
             ii_bitcoin::BIP320_VERSION_MAX,
+            1,
+        );
+        compare_range(
+            BIP320_UPPER_BOUND_EXCLUSIVE_INDEX * ROLL_NTIME_SECONDS - 1,
+            BIP320_UPPER_BOUND_EXCLUSIVE_INDEX * ROLL_NTIME_SECONDS,
             1,
         );
         compare_range(std::u32::MAX - 1, std::u32::MAX, 1);
@@ -257,8 +298,55 @@ pub mod test {
         }
     }
 
-    fn get_block_version(job: &Arc<test_utils::TestBlock>, index: u32) -> u32 {
-        job.version() | (index << ii_bitcoin::BIP320_VERSION_SHIFT)
+    fn get_block_version(job: &Arc<test_utils::TestBlock>, version_index: u32) -> u32 {
+        job.version() | (version_index << ii_bitcoin::BIP320_VERSION_SHIFT)
+    }
+
+    fn get_ntime(job: &Arc<test_utils::TestBlock>, ntime_index: u32) -> u32 {
+        job.time() + ntime_index
+    }
+
+    fn make_compound_index(ntime_index: u32, version_index: u32) -> u32 {
+        assert!(ntime_index < ROLL_NTIME_SECONDS);
+        assert!(version_index <= ii_bitcoin::BIP320_VERSION_MAX);
+        ntime_index * BIP320_UPPER_BOUND_EXCLUSIVE_INDEX + version_index
+    }
+
+    #[test]
+    fn test_ntime_increment() {
+        // use first test block for job
+        let job = Arc::new(test_utils::TEST_BLOCKS[0]);
+        let engine = VersionRolling::new(job.clone(), 1);
+
+        // position ourselves to end of first version range
+        const START_VERSION_INDEX: u32 = ii_bitcoin::BIP320_VERSION_MAX;
+        const START_NTIME_INDEX: u32 = 0;
+        engine.curr_range.curr_index.store(
+            make_compound_index(START_NTIME_INDEX, START_VERSION_INDEX),
+            Ordering::Relaxed,
+        );
+        assert!(!engine.is_exhausted());
+
+        match engine.next_work() {
+            LoopState::Continue(work) => {
+                assert_eq!(
+                    get_block_version(&job, START_VERSION_INDEX),
+                    work.midstates[0].version
+                );
+                assert_eq!(get_ntime(&job, START_NTIME_INDEX), work.ntime);
+            }
+            _ => panic!("expected 'LoopState::Continue'"),
+        }
+        assert!(!engine.is_exhausted());
+
+        match engine.next_work() {
+            LoopState::Continue(work) => {
+                assert_eq!(get_block_version(&job, 0), work.midstates[0].version);
+                assert_eq!(get_ntime(&job, START_NTIME_INDEX + 1), work.ntime);
+            }
+            _ => panic!("expected 'LoopState::Continue'"),
+        }
+        assert!(!engine.is_exhausted());
     }
 
     #[test]
@@ -269,27 +357,34 @@ pub mod test {
 
         // modify current version counter to decrease the search space
         // adn test only boundary values
-        const START_INDEX: u32 = ii_bitcoin::BIP320_VERSION_MAX - 1;
-        engine
-            .curr_range
-            .curr_index
-            .store(START_INDEX, Ordering::Relaxed);
+        const START_VERSION_INDEX: u32 = ii_bitcoin::BIP320_VERSION_MAX - 1;
+        const START_NTIME_INDEX: u32 = ROLL_NTIME_SECONDS - 1;
+        engine.curr_range.curr_index.store(
+            make_compound_index(START_NTIME_INDEX, START_VERSION_INDEX),
+            Ordering::Relaxed,
+        );
         assert!(!engine.is_exhausted());
 
         match engine.next_work() {
-            LoopState::Continue(work) => assert_eq!(
-                get_block_version(&job, START_INDEX),
-                work.midstates[0].version
-            ),
+            LoopState::Continue(work) => {
+                assert_eq!(
+                    get_block_version(&job, START_VERSION_INDEX),
+                    work.midstates[0].version
+                );
+                assert_eq!(get_ntime(&job, START_NTIME_INDEX), work.ntime);
+            }
             _ => panic!("expected 'LoopState::Continue'"),
         }
         assert!(!engine.is_exhausted());
 
         match engine.next_work() {
-            LoopState::Break(work) => assert_eq!(
-                get_block_version(&job, ii_bitcoin::BIP320_VERSION_MAX),
-                work.midstates[0].version
-            ),
+            LoopState::Break(work) => {
+                assert_eq!(
+                    get_block_version(&job, ii_bitcoin::BIP320_VERSION_MAX),
+                    work.midstates[0].version
+                );
+                assert_eq!(get_ntime(&job, START_NTIME_INDEX), work.ntime);
+            }
             _ => panic!("expected 'LoopState::Break'"),
         }
         assert!(engine.is_exhausted());
