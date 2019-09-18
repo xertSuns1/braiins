@@ -675,7 +675,7 @@ where
             self.work_tx_io
                 .as_ref()
                 .expect("io missing")
-                .work_id_limit(),
+                .work_id_count(),
         )));
         let hash_chain = Arc::new(Mutex::new(self));
         let (work_generator, work_solution) = work_solver.split();
