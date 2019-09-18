@@ -393,7 +393,6 @@ begin
                     crc16_clear <= '1';
                 elsif (cmd_tx_fifo_empty = '0') then  -- control has lower priority
                     fsm_d <= st_cmd_read;
-                    crc5_tx_clear <= '1';
                 else
                     fsm_d <= st_wait_sync;
                 end if;
@@ -546,6 +545,7 @@ begin
 
             when st_cmd_read =>
                 fsm_d <= st_cmd_check;
+                crc5_tx_clear <= '1';
                 cmd_tx_fifo_rd <= '1';
 
             when st_cmd_check =>
