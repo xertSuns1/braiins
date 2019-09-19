@@ -315,10 +315,10 @@ impl Into<u32> for MiscCtrlReg {
 mod test {
     use super::*;
 
-    #[test]
     /// Builds a sample set_config command (here the PLL register @ 0x0c with a value of
     /// 0x00680221 that corresponds to
     /// and verifies correct serialization
+    #[test]
     fn build_set_config_cmd_pll() {
         let cmd = SetConfigCmd::new(0x24, false, PLL_PARAM_REG, 0x680221);
         let expected_cmd_with_padding = [0x48u8, 0x09, 0x24, PLL_PARAM_REG, 0x00, 0x68, 0x02, 0x21];
@@ -331,8 +331,8 @@ mod test {
         );
     }
 
+    /// Verify serialization of SetConfig(TICKET_MASK(0x3f)) command
     #[test]
-    // Verify serialization of SetConfig(TICKET_MASK(0x3f)) command
     fn build_set_config_ticket_mask() {
         let reg = TicketMaskReg::new(64).expect("Cannot build difficulty register");
         let cmd = SetConfigCmd::new(0x00, true, TICKET_MASK_REG, reg.into());
@@ -341,8 +341,8 @@ mod test {
         assert_eq!(cmd_bytes, expected_cmd_with_padding);
     }
 
+    /// Verify serialization of SetConfig(MISC_CONTROL(...)) command
     #[test]
-    // Verify serialization of SetConfig(MISC_CONTROL(...)) command
     fn build_set_config_misc_control() {
         let reg = MiscCtrlReg {
             not_set_baud: true,
@@ -357,8 +357,8 @@ mod test {
         assert_eq!(cmd_bytes, expected_cmd_with_padding);
     }
 
-    #[test]
     /// Builds a get status command to read chip address of all chips
+    #[test]
     fn build_get_status_cmd() {
         let cmd = GetStatusCmd::new(0x00, true, GET_ADDRESS_REG);
         let expected_cmd_with_padding = [0x54u8, 0x05, 0x00, 0x00];

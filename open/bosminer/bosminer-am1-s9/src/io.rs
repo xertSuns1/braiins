@@ -36,7 +36,7 @@ use crate::MidstateCount;
 use ext_work_id::ExtWorkId;
 
 use bosminer::work;
-use byteorder::{ByteOrder, LittleEndian};
+use std::convert::TryInto;
 use std::time::Duration;
 
 use ii_async_compat::{sleep, timeout_future, TimeoutResult};
@@ -65,7 +65,7 @@ struct WorkRxFifo {
 
 impl WorkRxFifo {
     #[inline]
-    pub fn fifo_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.regs.stat_reg.read().work_rx_empty().bit()
     }
 
@@ -74,7 +74,7 @@ impl WorkRxFifo {
     #[allow(dead_code)]
     #[inline]
     pub fn read(&mut self, timeout: Option<Duration>) -> error::Result<Option<u32>> {
-        let cond = || !self.fifo_empty();
+        let cond = || !self.is_empty();
         let got_irq = self.uio.irq_wait_cond(cond, timeout)?;
         Ok(got_irq.and_then(|_| Some(self.regs.work_rx_fifo.read().bits())))
     }
@@ -82,7 +82,7 @@ impl WorkRxFifo {
     /// Try to read from work rx fifo.
     /// Async variant. Uses IRQ.
     pub async fn async_read(&mut self) -> error::Result<u32> {
-        let cond = || !self.fifo_empty();
+        let cond = || !self.is_empty();
         await!(self.uio.async_irq_wait_cond(cond))?;
         Ok(self.regs.work_rx_fifo.read().bits())
     }
@@ -111,18 +111,18 @@ struct WorkTxFifo {
 }
 
 impl WorkTxFifo {
-    /// How big is FIFO queue? (in u32 words)
-    const FIFO_WORK_TX_SIZE: u32 = 2048;
+    /// FIFO size (in u32 words)
+    const FIFO_SIZE: u32 = 2048;
 
-    /// How big is the absolute biggest "work"? (again, in u32 words)
-    const FIFO_WORK_MAX_SIZE: u32 = 200;
+    /// Bigget work size (in u32 words)
+    const BIGGEST_WORK: u32 = 200;
 
     /// Threshold for number of entries in FIFO queue under which we recon we could
     /// fit one more work.
-    const FIFO_WORK_TX_THRESHOLD: u32 = Self::FIFO_WORK_TX_SIZE - Self::FIFO_WORK_MAX_SIZE;
+    const FIFO_THRESHOLD: u32 = Self::FIFO_SIZE - Self::BIGGEST_WORK;
 
     #[inline]
-    pub fn is_fifo_full(&self) -> bool {
+    pub fn is_full(&self) -> bool {
         self.regs.stat_reg.read().work_tx_full().bit()
     }
 
@@ -141,11 +141,10 @@ impl WorkTxFifo {
     /// Try to write work item to work TX FIFO.
     /// Performs blocking write without timeout. Uses IRQ.
     /// The idea is that you don't call this function until you are sure you
-    /// can fit in all the entries you want - for example
-    /// `hash_work_tx_space_for_one_job`.
+    /// can fit in all the entries you want.
     #[inline]
     pub fn write(&mut self, item: u32) -> error::Result<()> {
-        let cond = || !self.is_fifo_full();
+        let cond = || !self.is_full();
         self.uio.irq_wait_cond(cond, None)?;
         self.regs.work_tx_fifo.write(|w| unsafe { w.bits(item) });
         Ok(())
@@ -163,7 +162,7 @@ impl WorkTxFifo {
         // at least one job.
         self.regs
             .irq_fifo_thr
-            .write(|w| unsafe { w.bits(Self::FIFO_WORK_TX_THRESHOLD) });
+            .write(|w| unsafe { w.bits(Self::FIFO_THRESHOLD) });
         // reset output FIFO
         self.regs
             .ctrl_reg
@@ -216,7 +215,6 @@ impl CommandRxTxFifos {
 
     /// Write command to cmd tx fifo.
     /// Uses timed polling
-    #[inline]
     pub async fn write(&self, item: u32) {
         // wait for space in queue
         while self.is_tx_full() {
@@ -226,18 +224,9 @@ impl CommandRxTxFifos {
         self.regs.cmd_tx_fifo.write(|w| unsafe { w.bits(item) });
     }
 
-    /// Try to read command from cmd rx fifo.
-    /// Performs blocking read with timeout. Uses IRQ.
-    #[inline]
-    pub fn read(&mut self, timeout: Option<Duration>) -> error::Result<Option<u32>> {
-        let cond = || !self.is_rx_empty();
-        let got_irq = self.uio.irq_wait_cond(cond, timeout)?;
-        Ok(got_irq.and_then(|_| Some(self.regs.cmd_rx_fifo.read().bits())))
-    }
-
     /// Read command from cmd rx fifo
     /// Async variant. Uses IRQ.
-    pub async fn async_read(&mut self) -> error::Result<u32> {
+    pub async fn read(&mut self) -> error::Result<u32> {
         let cond = || !self.is_rx_empty();
         await!(self.uio.async_irq_wait_cond(cond))?;
         Ok(self.regs.cmd_rx_fifo.read().bits())
@@ -249,11 +238,8 @@ impl CommandRxTxFifos {
     ///     * `Ok(None)` on timeout
     ///     * `Ok(Some(_))` if something was received
     ///     * `Err(_)` if error occured
-    pub async fn async_read_with_timeout(
-        &mut self,
-        timeout: Duration,
-    ) -> error::Result<Option<u32>> {
-        match await!(timeout_future(self.async_read(), timeout,)) {
+    pub async fn read_with_timeout(&mut self, timeout: Duration) -> error::Result<Option<u32>> {
+        match await!(timeout_future(self.read(), timeout,)) {
             TimeoutResult::Error => panic!("timeout error"),
             TimeoutResult::TimedOut => return Ok(None),
             TimeoutResult::Returned(word) => return Ok(Some(word?)),
@@ -419,7 +405,9 @@ impl CommandRxTx {
         );
         trace!("Sending Control Command {:x?}", cmd);
         for chunk in cmd.chunks(4) {
-            await!(self.fifo.write(LittleEndian::read_u32(chunk)));
+            await!(self.fifo.write(u32::from_le_bytes(
+                chunk.try_into().expect("slice with incorrect length")
+            )));
         }
         if wait {
             await!(self.fifo.wait_tx_empty());
@@ -435,38 +423,31 @@ impl CommandRxTx {
     /// - An error that occurs during reading the second word from the FIFO is propagated.
     pub async fn recv_response(&mut self) -> error::Result<Option<Vec<u8>>> {
         // assembled response
-        let mut cmd_resp = [0u8; 8];
+        let mut cmd_resp = Vec::new();
 
         // fetch first word of command response from IP core's fifo
-        match await!(self
-            .fifo
-            .async_read_with_timeout(Self::COMMAND_READ_TIMEOUT))?
-        {
+        match await!(self.fifo.read_with_timeout(Self::COMMAND_READ_TIMEOUT))? {
             None => return Ok(None),
-            Some(word) => LittleEndian::write_u32(&mut cmd_resp[..4], word),
+            Some(word1) => cmd_resp.extend_from_slice(&u32::to_le_bytes(word1)),
         }
 
         // fetch second word: getting timeout here is a hardware error
-        match await!(self
-            .fifo
-            .async_read_with_timeout(Self::COMMAND_READ_TIMEOUT))?
-        {
+        match await!(self.fifo.read_with_timeout(Self::COMMAND_READ_TIMEOUT))? {
             None => Err(ErrorKind::Fifo(
                 error::Fifo::TimedOut,
                 "cmd RX fifo framing error".to_string(),
             ))?,
-            Some(word2) => LittleEndian::write_u32(&mut cmd_resp[4..], word2),
+            Some(word2) => cmd_resp.extend_from_slice(&u32::to_le_bytes(word2)),
         }
 
         // build the response vector - drop the extra byte due to FIFO being 32-bit word based
         // and drop the checksum
-        // TODO: optionally verify the checksum (use debug_assert?)
-        Ok(Some(cmd_resp[..6].to_vec()))
+        cmd_resp.truncate(6);
+        Ok(Some(cmd_resp))
     }
 
     fn init(&mut self) -> error::Result<()> {
-        self.fifo.init()?;
-        Ok(())
+        self.fifo.init()
     }
 
     fn new(hashboard_idx: usize) -> error::Result<Self> {
@@ -488,18 +469,22 @@ impl Config {
         self.regs.build_id.read().bits()
     }
 
+    #[inline]
     pub fn enable_ip_core(&self) {
         self.regs.ctrl_reg.modify(|_, w| w.enable().bit(true));
     }
 
+    #[inline]
     pub fn disable_ip_core(&self) {
         self.regs.ctrl_reg.modify(|_, w| w.enable().bit(false));
     }
 
+    #[inline]
     pub fn set_ip_core_work_time(&self, work_time: u32) {
         self.regs.work_time.write(|w| unsafe { w.bits(work_time) });
     }
 
+    #[inline]
     pub fn set_baud_clock_div(&self, baud_clock_div: u32) {
         self.regs
             .baud_reg
@@ -509,6 +494,7 @@ impl Config {
     /// XXX: not sure if we should leak the `ctrl_reg` type here
     /// (of course we shouldn't but who is the responsible for the translation?)
     /// Note: this function is not public because you ought to use `set_midstate_count`
+    #[inline]
     fn set_ip_core_midstate_count(&self, value: hchainio0::ctrl_reg::MIDSTATE_CNT_A) {
         self.regs
             .ctrl_reg
@@ -601,31 +587,6 @@ mod test {
             Core::new(TEST_CHAIN_INDEX, MidstateCount::new(1)).expect("fifo construction failed");
         core.init_and_split().expect("fifo initialization failed");
     }
-}
-
-#[cfg(test)]
-pub mod test_utils {
-    use super::*;
-
-    /// Represents configuration of Config block
-    pub struct ConfigRegs {
-        pub work_time: u32,
-        pub baud_reg: u32,
-        pub stat_reg: u32,
-        pub midstate_cnt: u32,
-    }
-
-    impl ConfigRegs {
-        pub fn new(io: &Config) -> Self {
-            Self {
-                work_time: io.regs.work_time.read().bits(),
-                baud_reg: io.regs.baud_reg.read().bits(),
-                stat_reg: io.regs.stat_reg.read().bits(),
-                midstate_cnt: 1u32 << io.regs.ctrl_reg.read().midstate_cnt().bits(),
-            }
-        }
-    }
-
     /// This test verifies correct parsing of mining work solution for all multi-midstate
     /// configurations.
     /// The solution_word represents the second word of data provided that follows the nonce as
@@ -689,5 +650,28 @@ pub mod test_utils {
             );
         }
     }
+}
 
+#[cfg(test)]
+pub mod test_utils {
+    use super::*;
+
+    /// Represents configuration of Config block
+    pub struct ConfigRegs {
+        pub work_time: u32,
+        pub baud_reg: u32,
+        pub stat_reg: u32,
+        pub midstate_cnt: u32,
+    }
+
+    impl ConfigRegs {
+        pub fn new(io: &Config) -> Self {
+            Self {
+                work_time: io.regs.work_time.read().bits(),
+                baud_reg: io.regs.baud_reg.read().bits(),
+                stat_reg: io.regs.stat_reg.read().bits(),
+                midstate_cnt: 1u32 << io.regs.ctrl_reg.read().midstate_cnt().bits(),
+            }
+        }
+    }
 }
