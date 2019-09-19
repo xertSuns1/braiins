@@ -352,14 +352,14 @@ impl WorkRxResponse {
 }
 
 pub struct WorkRx {
-    hw: WorkRxFifo,
+    fifo: WorkRxFifo,
     midstate_count: MidstateCount,
 }
 
 impl WorkRx {
     pub async fn recv_solution(mut self) -> Result<(Self, work::Solution), failure::Error> {
-        let word1 = await!(self.hw.async_read())?;
-        let word2 = await!(self.hw.async_read())?;
+        let word1 = await!(self.fifo.async_read())?;
+        let word2 = await!(self.fifo.async_read())?;
         let resp = WorkRxResponse::from_hw(self.midstate_count, word1, word2);
 
         let solution = work::Solution {
@@ -374,25 +374,25 @@ impl WorkRx {
     }
 
     fn init(&mut self) -> error::Result<()> {
-        self.hw.init()
+        self.fifo.init()
     }
 
     fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
         Ok(Self {
-            hw: WorkRxFifo::new(hashboard_idx)?,
+            fifo: WorkRxFifo::new(hashboard_idx)?,
             midstate_count,
         })
     }
 }
 
 pub struct WorkTx {
-    hw: WorkTxFifo,
+    fifo: WorkTxFifo,
     midstate_count: MidstateCount,
 }
 
 impl WorkTx {
     pub async fn wait_for_room(&self) -> error::Result<()> {
-        await!(self.hw.async_wait_for_room())
+        await!(self.fifo.async_wait_for_room())
     }
 
     pub fn assert_midstate_count(&self, expected_midstate_count: usize) {
@@ -413,15 +413,15 @@ impl WorkTx {
         self.assert_midstate_count(work.midstates.len());
         let ext_work_id = ExtWorkId::new(work_id, 0);
 
-        self.hw
+        self.fifo
             .write(ext_work_id.to_hw(self.midstate_count).to_le())?;
-        self.hw.write(work.bits().to_le())?;
-        self.hw.write(work.ntime.to_le())?;
-        self.hw.write(work.merkle_root_tail().to_le())?;
+        self.fifo.write(work.bits().to_le())?;
+        self.fifo.write(work.ntime.to_le())?;
+        self.fifo.write(work.merkle_root_tail().to_le())?;
 
         for mid in work.midstates.iter() {
             for midstate_word in mid.state.words::<u32>().rev() {
-                self.hw.write(midstate_word.to_be())?;
+                self.fifo.write(midstate_word.to_be())?;
             }
         }
         Ok(())
@@ -434,19 +434,19 @@ impl WorkTx {
     }
 
     fn init(&mut self) -> error::Result<()> {
-        self.hw.init()
+        self.fifo.init()
     }
 
     fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
         Ok(Self {
-            hw: WorkTxFifo::new(hashboard_idx)?,
+            fifo: WorkTxFifo::new(hashboard_idx)?,
             midstate_count,
         })
     }
 }
 
 pub struct CommandRxTx {
-    hw: CommandRxTxFifos,
+    fifo: CommandRxTxFifos,
 }
 
 impl CommandRxTx {
@@ -465,10 +465,10 @@ impl CommandRxTx {
         );
         trace!("Sending Control Command {:x?}", cmd);
         for chunk in cmd.chunks(4) {
-            await!(self.hw.write(LittleEndian::read_u32(chunk)));
+            await!(self.fifo.write(LittleEndian::read_u32(chunk)));
         }
         if wait {
-            await!(self.hw.wait_tx_empty());
+            await!(self.fifo.wait_tx_empty());
         }
     }
 
@@ -484,13 +484,19 @@ impl CommandRxTx {
         let mut cmd_resp = [0u8; 8];
 
         // fetch first word of command response from IP core's fifo
-        match await!(self.hw.async_read_with_timeout(Self::COMMAND_READ_TIMEOUT))? {
+        match await!(self
+            .fifo
+            .async_read_with_timeout(Self::COMMAND_READ_TIMEOUT))?
+        {
             None => return Ok(None),
             Some(word) => LittleEndian::write_u32(&mut cmd_resp[..4], word),
         }
 
         // fetch second word: getting timeout here is a hardware error
-        match await!(self.hw.async_read_with_timeout(Self::COMMAND_READ_TIMEOUT))? {
+        match await!(self
+            .fifo
+            .async_read_with_timeout(Self::COMMAND_READ_TIMEOUT))?
+        {
             None => Err(ErrorKind::Fifo(
                 error::Fifo::TimedOut,
                 "cmd RX fifo framing error".to_string(),
@@ -505,13 +511,13 @@ impl CommandRxTx {
     }
 
     fn init(&mut self) -> error::Result<()> {
-        self.hw.init()?;
+        self.fifo.init()?;
         Ok(())
     }
 
     fn new(hashboard_idx: usize) -> error::Result<Self> {
         Ok(Self {
-            hw: CommandRxTxFifos::new(hashboard_idx)?,
+            fifo: CommandRxTxFifos::new(hashboard_idx)?,
         })
     }
 }
