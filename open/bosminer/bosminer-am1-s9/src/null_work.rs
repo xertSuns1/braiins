@@ -27,8 +27,6 @@ use bosminer::work;
 
 use std::sync::Arc;
 
-use byteorder::{ByteOrder, LittleEndian};
-
 /// NullJob to be used for chip initialization and tests
 #[derive(Debug, Copy, Clone)]
 pub struct NullJob {
@@ -90,7 +88,7 @@ pub fn prepare(i: u64) -> work::Assignment {
     let time = job.time();
 
     let mut midstate_bytes = [0u8; ii_bitcoin::SHA256_DIGEST_SIZE];
-    LittleEndian::write_u64(&mut midstate_bytes, i);
+    midstate_bytes[..std::mem::size_of::<u64>()].copy_from_slice(&u64::to_le_bytes(i));
 
     let mid = work::Midstate {
         version: 0,

@@ -34,10 +34,9 @@ use std::sync::Arc;
 
 use ii_stratum::v2::framing::codec::Framing;
 use ii_stratum::v2::messages::{
-    NewMiningJob, OpenStandardMiningChannelError, OpenStandardMiningChannelSuccess,
-    OpenStandardMiningChannel,
-    SetNewPrevHash, SetTarget, SetupConnection, SetupConnectionError, SetupConnectionSuccess,
-    SubmitShares, SubmitSharesSuccess,
+    NewMiningJob, OpenStandardMiningChannel, OpenStandardMiningChannelError,
+    OpenStandardMiningChannelSuccess, SetNewPrevHash, SetTarget, SetupConnection,
+    SetupConnectionError, SetupConnectionSuccess, SubmitShares, SubmitSharesSuccess,
 };
 use ii_stratum::v2::types::DeviceInfo;
 use ii_stratum::v2::types::*;

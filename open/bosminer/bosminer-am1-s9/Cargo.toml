@@ -13,7 +13,6 @@ ii-async-compat = { path = "../../utils-rs/async-compat" }
 ii-bitcoin = { path = "../../coins/bitcoin" }
 ii-fpga-io-am1-s9 = { path = "../../hw/zynq-io-am1-s9/fpga-io" }
 ii-logging = { path = "../../utils-rs/logging" }
-byteorder = "1.2.7"
 failure = "0.1.5"
 lazy_static = "1.3"
 packed_struct="0.3"
