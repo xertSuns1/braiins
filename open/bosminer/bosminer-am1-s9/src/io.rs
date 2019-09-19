@@ -57,53 +57,6 @@ fn map_mem_regs<T>(
     Ok((regs, uio))
 }
 
-pub struct ConfigHw {
-    regs: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
-}
-
-impl ConfigHw {
-    /// Return build id (unix timestamp) of s9-hw FPGA bitstream
-    #[inline]
-    pub fn get_build_id(&mut self) -> u32 {
-        self.regs.build_id.read().bits()
-    }
-
-    pub fn init(&self) -> error::Result<()> {
-        Ok(())
-    }
-
-    pub fn enable_ip_core(&self) {
-        self.regs.ctrl_reg.modify(|_, w| w.enable().bit(true));
-    }
-
-    pub fn disable_ip_core(&self) {
-        self.regs.ctrl_reg.modify(|_, w| w.enable().bit(false));
-    }
-
-    pub fn set_ip_core_work_time(&self, work_time: u32) {
-        self.regs.work_time.write(|w| unsafe { w.bits(work_time) });
-    }
-
-    pub fn set_baud_clock_div(&self, baud_clock_div: u32) {
-        self.regs
-            .baud_reg
-            .write(|w| unsafe { w.bits(baud_clock_div) });
-    }
-
-    /// XXX: not sure if we should leak the `ctrl_reg` type here
-    /// (of course we shouldn't but who is the responsible for the translation?)
-    pub fn set_ip_core_midstate_count(&self, value: hchainio0::ctrl_reg::MIDSTATE_CNT_A) {
-        self.regs
-            .ctrl_reg
-            .modify(|_, w| w.midstate_cnt().variant(value));
-    }
-
-    pub fn new(hashboard_idx: usize) -> error::Result<Self> {
-        let regs = uio::Device::open(hashboard_idx, "mem")?.map()?;
-        Ok(Self { regs })
-    }
-}
-
 struct WorkRxFifo {
     regs: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
     uio: uio_async::UioDevice,
@@ -523,16 +476,49 @@ impl CommandRxTx {
 }
 
 pub struct Config {
-    hw: ConfigHw,
+    regs: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
     midstate_count: MidstateCount,
 }
 
 impl Config {
+    /// Return build id (unix timestamp) of s9-io FPGA bitstream
+    #[inline]
+    pub fn get_build_id(&mut self) -> u32 {
+        self.regs.build_id.read().bits()
+    }
+
+    pub fn enable_ip_core(&self) {
+        self.regs.ctrl_reg.modify(|_, w| w.enable().bit(true));
+    }
+
+    pub fn disable_ip_core(&self) {
+        self.regs.ctrl_reg.modify(|_, w| w.enable().bit(false));
+    }
+
+    pub fn set_ip_core_work_time(&self, work_time: u32) {
+        self.regs.work_time.write(|w| unsafe { w.bits(work_time) });
+    }
+
+    pub fn set_baud_clock_div(&self, baud_clock_div: u32) {
+        self.regs
+            .baud_reg
+            .write(|w| unsafe { w.bits(baud_clock_div) });
+    }
+
+    /// XXX: not sure if we should leak the `ctrl_reg` type here
+    /// (of course we shouldn't but who is the responsible for the translation?)
+    /// Note: this function is not public because you ought to use `set_midstate_count`
+    fn set_ip_core_midstate_count(&self, value: hchainio0::ctrl_reg::MIDSTATE_CNT_A) {
+        self.regs
+            .ctrl_reg
+            .modify(|_, w| w.midstate_cnt().variant(value));
+    }
+
     fn check_build_id(&mut self) -> error::Result<()> {
-        let build_id = self.hw.get_build_id();
+        let build_id = self.get_build_id();
         if build_id != EXPECTED_BITSTREAM_BUILD_ID {
             Err(ErrorKind::UnexpectedVersion(
-                "s9-hw bitstream".to_string(),
+                "s9-io bitstream".to_string(),
                 format!("0x{:08x}", build_id),
                 format!("0x{:08x}", EXPECTED_BITSTREAM_BUILD_ID),
             ))?
@@ -541,35 +527,22 @@ impl Config {
     }
 
     pub fn set_midstate_count(&self) {
-        self.hw
-            .set_ip_core_midstate_count(self.midstate_count.to_reg());
-    }
-
-    pub fn enable_ip_core(&self) {
-        self.hw.enable_ip_core();
-    }
-
-    pub fn disable_ip_core(&self) {
-        self.hw.disable_ip_core();
-    }
-
-    pub fn set_ip_core_work_time(&self, work_time: u32) {
-        self.hw.set_ip_core_work_time(work_time);
-    }
-
-    pub fn set_baud_clock_div(&self, baud_clock_div: u32) {
-        self.hw.set_baud_clock_div(baud_clock_div);
+        self.set_ip_core_midstate_count(self.midstate_count.to_reg());
     }
 
     fn init(&mut self) -> error::Result<()> {
-        self.hw.init()?;
+        // reset ip core
+        self.disable_ip_core();
+        self.enable_ip_core();
+        // check version
         self.check_build_id()?;
         Ok(())
     }
 
     fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
+        let regs = uio::Device::open(hashboard_idx, "mem")?.map()?;
         Ok(Self {
-            hw: ConfigHw::new(hashboard_idx)?,
+            regs,
             midstate_count,
         })
     }
@@ -597,10 +570,8 @@ impl Core {
     /// Initialize the IP core and split it into components
     /// That way it's not possible to access un-initialized IO blocks
     pub fn init_and_split(mut self) -> error::Result<(Config, CommandRxTx, WorkRx, WorkTx)> {
-        // Reset IP core
+        // config_io has to go first to reset the IP core
         self.config_io.init()?;
-        self.config_io.disable_ip_core();
-        self.config_io.enable_ip_core();
 
         // Initialize fifos
         self.command_io.init()?;
@@ -646,10 +617,10 @@ pub mod test_utils {
     impl ConfigRegs {
         pub fn new(io: &Config) -> Self {
             Self {
-                work_time: io.hw.regs.work_time.read().bits(),
-                baud_reg: io.hw.regs.baud_reg.read().bits(),
-                stat_reg: io.hw.regs.stat_reg.read().bits(),
-                midstate_cnt: 1u32 << io.hw.regs.ctrl_reg.read().midstate_cnt().bits(),
+                work_time: io.regs.work_time.read().bits(),
+                baud_reg: io.regs.baud_reg.read().bits(),
+                stat_reg: io.regs.stat_reg.read().bits(),
+                midstate_cnt: 1u32 << io.regs.ctrl_reg.read().midstate_cnt().bits(),
             }
         }
     }
