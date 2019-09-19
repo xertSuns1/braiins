@@ -72,7 +72,7 @@ Address map of registers available through AXI interface:
 
 | Address | Name             | Access | Reset Value | Description                     |
 | :-----: | ---------------- | :----: | :---------: | ------------------------------- |
-| 0x0000  | VERSION          | R      | 0x00090002  | IP Core Version Register        |
+| 0x0000  | VERSION          | R      | 0x00900200  | IP Core Version Register        |
 | 0x0004  | BUILD_ID         | R      | BUILD_ID    | Build ID Register               |
 | 0x0008  | CTRL_REG         | RW     | 0x0000      | Control Register                |
 | 0x000C  | STAT_REG         | R      | 0x0000      | Status Register - reserved      |
@@ -97,11 +97,12 @@ Address map of registers available through AXI interface:
 
 ### IP Core Version Register (VERSION)
 Register contains verson of the IP core. Value is divided into following parts:
-- bits 31..24 - miner type (00 = Antminer)
-- bits 23..16 - IP core model (09 = S9)
-- bits 15..8 - reserved
-- bits 7..4 - IP core major version
-- bits 3..0 - IP core minor version
+- bits 31..28 - miner type (0 = Antminer)
+- bits 27..20 - IP core model (0x09 = S9)
+- bits 19..16 - reserved
+- bits 15..12 - IP core major version
+- bits 11..8 - IP core minor version
+- bits 7..0 - IP core patch version
 
 Register is 32-bit width and it is read-only.
 

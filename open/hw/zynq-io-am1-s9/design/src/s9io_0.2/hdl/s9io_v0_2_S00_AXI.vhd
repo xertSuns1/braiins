@@ -517,7 +517,7 @@ begin
         case loc_addr is
             -- IP Core Version Register
             when VERSION =>
-                reg_data_out <= X"00090002";
+                reg_data_out <= X"00900200";
             -- Build ID Register
             when BUILD_ID =>
                 reg_data_out <= slv_build_id;
