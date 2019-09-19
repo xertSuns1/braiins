@@ -23,6 +23,7 @@
 use ii_logging::macros::*;
 
 // TODO remove thread specific code
+use std::convert::TryInto;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
@@ -30,8 +31,6 @@ use std::time::{Duration, SystemTime};
 
 use super::error::{self, ErrorKind};
 use failure::ResultExt;
-
-use byteorder::{BigEndian, ByteOrder};
 
 use embedded_hal::blocking::i2c::{Read, Write};
 use linux_embedded_hal::I2cdev;
@@ -265,14 +264,17 @@ where
     }
 
     pub fn set_flash_pointer(&mut self, address: u16) -> error::Result<()> {
-        let mut address_bytes = [0; 2];
-        BigEndian::write_u16(&mut address_bytes, address);
-        self.write(SET_PIC_FLASH_POINTER, &[address_bytes[0], address_bytes[1]])
+        self.write(SET_PIC_FLASH_POINTER, &u16::to_be_bytes(address))
     }
 
     pub fn get_flash_pointer(&mut self) -> error::Result<u16> {
-        let address_bytes = self.read(GET_PIC_FLASH_POINTER, 1)?;
-        Ok(BigEndian::read_u16(&address_bytes))
+        let address_bytes = self.read(GET_PIC_FLASH_POINTER, 2)?;
+        Ok(u16::from_be_bytes(
+            address_bytes
+                .as_slice()
+                .try_into()
+                .expect("incorrect slice length"),
+        ))
     }
 
     pub fn read_data_from_iic(&mut self) -> error::Result<[u8; 16]> {
@@ -307,7 +309,12 @@ where
 
     pub fn get_temperature_offset(&mut self) -> error::Result<u64> {
         let offset = self.read(RD_TEMP_OFFSET_VALUE, 8)?;
-        Ok(BigEndian::read_u64(&offset))
+        Ok(u64::from_be_bytes(
+            offset
+                .as_slice()
+                .try_into()
+                .expect("incorrect slice length"),
+        ))
     }
 
     /// Creates a new voltage controller
