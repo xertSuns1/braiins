@@ -50,10 +50,11 @@ const EXPECTED_BITSTREAM_BUILD_ID: u32 = 0x5D5E7158;
 /// XXX: this function will be gone once DTS is fixed.
 fn map_mem_regs<T>(
     hashboard_idx: usize,
-    name: &'static str,
+    uio_type: uio::Type,
 ) -> error::Result<(uio_async::UioTypedMapping<T>, uio_async::UioDevice)> {
-    let regs: uio_async::UioTypedMapping<T> = uio::Device::open(hashboard_idx, "mem")?.map()?;
-    let uio = uio::Device::open(hashboard_idx, name)?.uio;
+    let regs: uio_async::UioTypedMapping<T> =
+        uio::Device::open(hashboard_idx, uio::Type::Mem)?.map()?;
+    let uio = uio::Device::open(hashboard_idx, uio_type)?.uio;
     Ok((regs, uio))
 }
 
@@ -99,7 +100,7 @@ impl WorkRxFifo {
     }
 
     pub fn new(hashboard_idx: usize) -> error::Result<Self> {
-        let (regs, uio) = map_mem_regs(hashboard_idx, "work-rx")?;
+        let (regs, uio) = map_mem_regs(hashboard_idx, uio::Type::WorkRx)?;
         Ok(Self { regs, uio })
     }
 }
@@ -175,7 +176,7 @@ impl WorkTxFifo {
     }
 
     pub fn new(hashboard_idx: usize) -> error::Result<Self> {
-        let (regs, uio) = map_mem_regs(hashboard_idx, "work-tx")?;
+        let (regs, uio) = map_mem_regs(hashboard_idx, uio::Type::WorkTx)?;
         Ok(Self { regs, uio })
     }
 }
@@ -272,7 +273,7 @@ impl CommandRxTxFifos {
     }
 
     pub fn new(hashboard_idx: usize) -> error::Result<Self> {
-        let (regs, uio) = map_mem_regs(hashboard_idx, "cmd-rx")?;
+        let (regs, uio) = map_mem_regs(hashboard_idx, uio::Type::CmdRx)?;
         Ok(Self { regs, uio })
     }
 }
@@ -540,7 +541,7 @@ impl Config {
     }
 
     fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
-        let regs = uio::Device::open(hashboard_idx, "mem")?.map()?;
+        let regs = uio::Device::open(hashboard_idx, uio::Type::Mem)?.map()?;
         Ok(Self {
             regs,
             midstate_count,

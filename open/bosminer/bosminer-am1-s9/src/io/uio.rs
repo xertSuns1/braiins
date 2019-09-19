@@ -31,14 +31,45 @@ pub struct Device {
     uio_name: String,
 }
 
+pub enum Type {
+    Mem,
+    WorkRx,
+    WorkTx,
+    CmdRx,
+}
+
+/// Trait for representing type as a string
+pub trait AsStr {
+    /// Get string representation of a type
+    fn as_str(&self) -> &str;
+}
+
+impl AsStr for Type {
+    fn as_str(&self) -> &str {
+        match self {
+            &Type::Mem => "mem",
+            &Type::WorkRx => "work-rx",
+            &Type::WorkTx => "work-tx",
+            &Type::CmdRx => "cmd-rx",
+        }
+    }
+}
+
 impl Device {
-    pub fn open(hashboard_idx: usize, uio_type: &'static str) -> error::Result<Self> {
-        let uio_name = format!("chain{}-{}", hashboard_idx - 1, uio_type);
+    /// Open UIO device of given type for given hashboard
+    ///
+    /// * `hashboard_idx` - one-based hashboard index (same as connector number:
+    ///   connector J8 means `hashboard_idx=8`)
+    /// * `uio_type` - type of uio device, determines what IO block to map
+    pub fn open(hashboard_idx: usize, uio_type: Type) -> error::Result<Self> {
+        assert!(hashboard_idx > 0);
+        let uio_name = format!("chain{}-{}", hashboard_idx - 1, uio_type.as_str());
         let uio = uio_async::UioDevice::open_by_name(&uio_name).with_context(|_| {
             ErrorKind::UioDevice(uio_name.clone(), "cannot find uio device".to_string())
         })?;
         Ok(Self { uio, uio_name })
     }
+
     pub fn map<T>(&self) -> error::Result<uio_async::UioTypedMapping<T>> {
         let map = self.uio.map_mapping(0).with_context(|_| {
             ErrorKind::UioDevice(self.uio_name.clone(), "cannot map uio device".to_string())
@@ -64,20 +95,13 @@ mod test {
     /// device-tree so that we have something to open.
     #[test]
     fn test_lookup_uio() {
-        Device::open(TEST_CHAIN_INDEX, "mem").expect("uio open failed");
-    }
-
-    /// Try opening non-existent UIO device.
-    #[test]
-    #[should_panic]
-    fn test_lookup_uio_notfound() {
-        Device::open(TEST_CHAIN_INDEX, "nonsense").unwrap();
+        Device::open(TEST_CHAIN_INDEX, Type::Mem).expect("uio open failed");
     }
 
     /// Try mapping memory from UIO device.
     #[test]
     fn test_map_uio() {
-        let _mem: uio_async::UioTypedMapping<u8> = Device::open(TEST_CHAIN_INDEX, "mem")
+        let _mem: uio_async::UioTypedMapping<u8> = Device::open(TEST_CHAIN_INDEX, Type::Mem)
             .expect("uio open failed")
             .map()
             .expect("mapping failed");
@@ -89,11 +113,11 @@ mod test {
     #[test]
     fn test_map_uio_twice_checklock() {
         // haha! this should fail
-        let _: uio_async::UioTypedMapping<u8> = Device::open(TEST_CHAIN_INDEX, "mem")
+        let _: uio_async::UioTypedMapping<u8> = Device::open(TEST_CHAIN_INDEX, Type::Mem)
             .expect("uio open failed")
             .map()
             .expect("mapping failed");
-        let _: uio_async::UioTypedMapping<u8> = Device::open(TEST_CHAIN_INDEX, "mem")
+        let _: uio_async::UioTypedMapping<u8> = Device::open(TEST_CHAIN_INDEX, Type::Mem)
             .expect("uio open failed")
             .map()
             .expect("mapping failed");
@@ -102,7 +126,7 @@ mod test {
     /// Try to map IRQ.
     #[test]
     fn test_map_irq() {
-        Device::open(TEST_CHAIN_INDEX, "cmd-rx").expect("uio open failed");
+        Device::open(TEST_CHAIN_INDEX, Type::CmdRx).expect("uio open failed");
     }
 
     fn flush_interrupts() {
@@ -118,7 +142,7 @@ mod test {
     #[test]
     fn test_get_irq() {
         flush_interrupts();
-        let uio = Device::open(TEST_CHAIN_INDEX, "work-tx")
+        let uio = Device::open(TEST_CHAIN_INDEX, Type::WorkTx)
             .expect("uio open failed")
             .uio;
         uio.irq_enable().expect("irq enable failed");
@@ -135,7 +159,7 @@ mod test {
         flush_interrupts();
 
         // cmd rx fifo now shouldn't get any interrupts (it's empty)
-        let uio = Device::open(TEST_CHAIN_INDEX, "work-rx")
+        let uio = Device::open(TEST_CHAIN_INDEX, Type::WorkRx)
             .expect("uio open failed")
             .uio;
         uio.irq_enable().expect("irq enable failed");
