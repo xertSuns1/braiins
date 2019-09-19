@@ -20,8 +20,8 @@
   <name>braiins</name>
   <!-- device series the device belongs to -->
   <series>S9</series>
-  <!-- version of this description, adding CMSIS-SVD 1.1 tags -->
-  <version>1.2</version>
+  <!-- should match s9-io IP core version -->
+  <version>0.2.0</version>
   <description>S9 I/O</description>
   <!-- this license text will appear in header file. \n force line breaks -->
   <licenseText>
@@ -42,182 +42,57 @@
   <!-- by default all 32Bits of the registers are used -->
   <resetMask>0xFFFFFFFF</resetMask>
   <peripherals>
-    <!-- Timer 0 -->
     <peripheral>
-      <name>HCHAINIO0</name>
-      <version>1.0</version>
-      <description>Hashing Chain I/O module</description>
+      <name>COMMON</name>
+      <description>Hashing Chain I/O module, common and config registers</description>
       <groupName>HASHCHAIN</groupName>
       <baseAddress>0</baseAddress>
       <size>32</size>
       <access>read-write</access>
-
       <addressBlock>
         <offset>0</offset>
-        <size>0x40</size>
+        <size>0x1c</size>
         <usage>registers</usage>
       </addressBlock>
-
       <registers>
         <register>
-          <name>CMD_RX_FIFO</name>
-          <description>FIFO for responses from commands</description>
+          <name>VERSION</name>
+          <description>IP Core Version Register</description>
           <addressOffset>0x00</addressOffset>
           <size>32</size>
           <access>read-only</access>
-          <resetValue>0x00000000</resetValue>
+          <resetValue>0x00090002</resetValue>
           <resetMask>0xffffffff</resetMask>
         </register>
         <register>
-          <name>CMD_TX_FIFO</name>
-          <description>FIFO for sending commands to the hash chain</description>
+          <name>BUILD_ID</name>
+          <description>Build ID Register</description>
           <addressOffset>0x04</addressOffset>
           <size>32</size>
-          <access>write-only</access>
-          <resetValue>0x00000000</resetValue>
-          <resetMask>0xffffffff</resetMask>
-        </register>
-        <register>
-          <name>WORK_RX_FIFO</name>
-          <description>FIFO for receiving successfully found nonces and
-            details like work ID</description>
-          <addressOffset>0x08</addressOffset>
-          <size>32</size>
           <access>read-only</access>
-          <resetValue>0x00000000</resetValue>
-          <resetMask>0xffffffff</resetMask>
-        </register>
-        <register>
-          <name>WORK_TX_FIFO</name>
-          <description>FIFO for submitting mining work</description>
-          <addressOffset>0x0c</addressOffset>
-          <size>32</size>
-          <access>write-only</access>
           <resetValue>0x00000000</resetValue>
           <resetMask>0xffffffff</resetMask>
         </register>
         <register>
           <name>CTRL_REG</name>
-          <description>Control register</description>
-          <addressOffset>0x10</addressOffset>
+          <description>Control Register</description>
+          <addressOffset>0x08</addressOffset>
           <size>32</size>
           <access>read-write</access>
           <resetValue>0x00000000</resetValue>
-          <resetMask>0x0000f81f</resetMask>
+          <resetMask>0x0000000f</resetMask>
           <fields>
             <field>
-              <name>RST_CMD_RX_FIFO</name>
-              <access>write-only</access>
-              <description>Reset command RX FIFO</description>
-              <bitRange>[0:0]</bitRange>
-              <enumeratedValues>
-                <enumeratedValue>
-                  <name>Reset</name>
-                  <value>1</value>
-                </enumeratedValue>
-              </enumeratedValues>
-            </field>
-            <field>
-              <name>RST_CMD_TX_FIFO</name>
-              <access>write-only</access>
-              <description>Reset command TX FIFO</description>
-              <bitRange>[1:1]</bitRange>
-              <enumeratedValues>
-                <enumeratedValue>
-                  <name>Reset</name>
-                  <value>1</value>
-                </enumeratedValue>
-              </enumeratedValues>
-            </field>
-            <field>
-              <name>RST_WORK_RX_FIFO</name>
-              <access>write-only</access>
-              <bitRange>[2:2]</bitRange>
-              <enumeratedValues>
-                <enumeratedValue>
-                  <name>Reset</name>
-                  <value>1</value>
-                </enumeratedValue>
-              </enumeratedValues>
-            </field>
-            <field>
-              <name>RST_WORK_TX_FIFO</name>
-              <access>write-only</access>
-              <description>Reset work TX FIFO</description>
+              <name>ENABLE</name>
+              <access>read-write</access>
+              <description>Enable of IP core</description>
               <bitRange>[3:3]</bitRange>
-              <enumeratedValues>
-                <enumeratedValue>
-                  <name>Reset</name>
-                  <value>1</value>
-                </enumeratedValue>
-              </enumeratedValues>
-            </field>
-            <field>
-              <name>ERR_CNT_CLEAR</name>
-              <access>write-only</access>
-              <description>Clear error counter</description>
-              <bitRange>[4:4]</bitRange>
-              <enumeratedValues>
-                <enumeratedValue>
-                  <name>Reset</name>
-                  <value>1</value>
-                </enumeratedValue>
-              </enumeratedValues>
-            </field>
-            <field>
-              <name>IRQ_EN_CMD_RX</name>
-              <access>read-write</access>
-              <description>Enable interrupts from command RX FIFO</description>
-              <bitRange>[10:10]</bitRange>
-              <enumeratedValues>
-                <enumeratedValue>
-                  <name>Disabled</name>
-                  <value>0</value>
-                </enumeratedValue>
-                <enumeratedValue>
-                  <name>Enabled</name>
-                  <value>1</value>
-                </enumeratedValue>
-              </enumeratedValues>
-            </field>
-            <field>
-              <name>IRQ_EN_WORK_TX</name>
-              <access>read-write</access>
-              <description>Enable interrupts from work RX FIFO</description>
-              <bitRange>[11:11]</bitRange>
-              <enumeratedValues>
-                <enumeratedValue>
-                  <name>Disabled</name>
-                  <value>0</value>
-                </enumeratedValue>
-                <enumeratedValue>
-                  <name>Enabled</name>
-                  <value>1</value>
-                </enumeratedValue>
-              </enumeratedValues>
-            </field>
-            <field>
-              <name>IRQ_EN_WORK_RX</name>
-              <access>read-write</access>
-              <description>Enable interrupts from work TX FIFO</description>
-              <bitRange>[12:12]</bitRange>
-              <enumeratedValues>
-                <enumeratedValue>
-                  <name>Disabled</name>
-                  <value>0</value>
-                </enumeratedValue>
-                <enumeratedValue>
-                  <name>Enabled</name>
-                  <value>1</value>
-                </enumeratedValue>
-              </enumeratedValues>
             </field>
             <field>
               <name>MIDSTATE_CNT</name>
               <access>read-write</access>
-              <description>Number of midstate per submitted work in log2
-                units</description>
-              <bitRange>[14:13]</bitRange>
+              <description>Number of midstates per work</description>
+              <bitRange>[2:1]</bitRange>
               <enumeratedValues>
                 <enumeratedValue>
                   <name>one</name>
@@ -234,94 +109,26 @@
               </enumeratedValues>
             </field>
             <field>
-              <name>ENABLE</name>
-              <access>read-write</access>
-              <description>Enable hash chain IP Core</description>
-              <bitRange>[15:15]</bitRange>
-              <enumeratedValues>
-                <enumeratedValue>
-                  <name>Disabled</name>
-                  <value>0</value>
-                </enumeratedValue>
-                <enumeratedValue>
-                  <name>Enabled</name>
-                  <value>1</value>
-                </enumeratedValue>
-              </enumeratedValues>
+              <name>ERR_CNT_CLEAR</name>
+              <access>write-only</access>
+              <description>Clear error counter</description>
+              <bitRange>[0:0]</bitRange>
             </field>
           </fields>
         </register>
         <register>
           <name>STAT_REG</name>
-          <description>Status Register</description>
-          <addressOffset>0x14</addressOffset>
+          <description>Status Register - reserved</description>
+          <addressOffset>0x0c</addressOffset>
           <size>32</size>
           <access>read-only</access>
-          <resetValue>0x00000055</resetValue>
-          <resetMask>0x00001cff</resetMask>
-          <fields>
-            <field>
-              <name>CMD_RX_EMPTY</name>
-              <description>Command Interface Receive FIFO Empty</description>
-              <bitRange>[0:0]</bitRange>
-            </field>
-            <field>
-              <name>CMD_RX_FULL</name>
-              <description>Command Interface Receive FIFO Full</description>
-              <bitRange>[1:1]</bitRange>
-            </field>
-            <field>
-              <name>CMD_TX_EMPTY</name>
-              <description>Command Interface Transmit FIFO Empty</description>
-              <bitRange>[2:2]</bitRange>
-            </field>
-            <field>
-              <name>CMD_TX_FULL</name>
-              <description>Command Interface Transmit FIFO Full</description>
-              <bitRange>[3:3]</bitRange>
-            </field>
-            <field>
-              <name>WORK_RX_EMPTY</name>
-              <description>Work Interface Receive FIFO Empty</description>
-              <bitRange>[4:4]</bitRange>
-            </field>
-            <field>
-              <name>WORK_RX_FULL</name>
-              <description>Work Interface Receive FIFO Full</description>
-              <bitRange>[5:5]</bitRange>
-            </field>
-            <field>
-              <name>WORK_TX_EMPTY</name>
-              <description>Work Interface Transmit FIFO Empty</description>
-              <bitRange>[6:6]</bitRange>
-            </field>
-            <field>
-              <name>WORK_TX_FULL</name>
-              <description>Work Interface Transmit FIFO Full</description>
-              <bitRange>[7:7]</bitRange>
-            </field>
-            <field>
-              <name>IRQ_PEND_CMD_RX</name>
-              <description>Interrupt pending for Command Receive FIFO</description>
-              <bitRange>[10:10]</bitRange>
-            </field>
-            <field>
-              <name>IRQ_PEND_WORK_TX</name>
-              <description>Interrupt pending for Work Receive FIFO</description>
-              <bitRange>[11:11]</bitRange>
-            </field>
-            <field>
-              <name>IRQ_PEND_WORK_RX</name>
-              <description>Interrupt pending for Work Transmit
-                FIFO</description>
-              <bitRange>[12:12]</bitRange>
-            </field>
-          </fields>
+          <resetValue>0x00000000</resetValue>
+          <resetMask>0xffffffff</resetMask>
         </register>
         <register>
           <name>BAUD_REG</name>
-          <description>Baudrate divisor - TBD</description>
-          <addressOffset>0x18</addressOffset>
+          <description>Baudrate Divisor Register</description>
+          <addressOffset>0x10</addressOffset>
           <size>32</size>
           <access>read-write</access>
           <resetValue>0x00000000</resetValue>
@@ -329,46 +136,17 @@
         </register>
         <register>
           <name>WORK_TIME</name>
-          <description>Work Time delay - TBD</description>
-          <addressOffset>0x1c</addressOffset>
+          <description>Work Time Delay Register</description>
+          <addressOffset>0x14</addressOffset>
           <size>32</size>
           <access>read-write</access>
-          <resetValue>0x00000000</resetValue>
-          <resetMask>0xffffffff</resetMask>
-        </register>
-        <register>
-          <name>IRQ_FIFO_THR</name>
-          <description>Threshold for Work Transmit FIFO IRQ - in 32-bit
-            words</description>
-          <addressOffset>0x20</addressOffset>
-          <size>32</size>
-          <access>read-write</access>
-          <resetValue>0x00000000</resetValue>
+          <resetValue>0x00000001</resetValue>
           <resetMask>0xffffffff</resetMask>
         </register>
         <register>
           <name>ERR_COUNTER</name>
-          <description>Counter of dropped frames from ASIC's (CRC mismatch,
-            etc)</description>
-          <addressOffset>0x30</addressOffset>
-          <size>32</size>
-          <access>read-only</access>
-          <resetValue>0x00000000</resetValue>
-          <resetMask>0xffffffff</resetMask>
-        </register>
-        <register>
-          <name>LAST_WORK_ID</name>
-          <description>ID of last work</description>
-          <addressOffset>0x34</addressOffset>
-          <size>32</size>
-          <access>read-only</access>
-          <resetValue>0x00000000</resetValue>
-          <resetMask>0xffffffff</resetMask>
-        </register>
-        <register>
-          <name>BUILD_ID</name>
-          <description>When was this bitstream generated as unix timestamp</description>
-          <addressOffset>0x3c</addressOffset>
+          <description>Error Counter Register</description>
+          <addressOffset>0x18</addressOffset>
           <size>32</size>
           <access>read-only</access>
           <resetValue>0x00000000</resetValue>
@@ -376,14 +154,278 @@
         </register>
       </registers>
     </peripheral>
-
-    <!-- Hashing Chain IO 1 -->
-    <peripheral derivedFrom="HCHAINIO0">
-      <name>HCHAINIO1</name>
-      <baseAddress>0x41210000</baseAddress>
+    <peripheral>
+      <name>COMMAND</name>
+      <description>Hashing Chain I/O module, command FIFOs</description>
+      <groupName>HASHCHAIN</groupName>
+      <baseAddress>0</baseAddress>
+      <size>32</size>
+      <access>read-write</access>
+      <addressBlock>
+        <offset>0</offset>
+        <size>0x10</size>
+        <usage>registers</usage>
+      </addressBlock>
+      <registers>
+        <register>
+          <name>CMD_RX_FIFO</name>
+          <description>Command Receive Interface FIFO</description>
+          <addressOffset>0x00</addressOffset>
+          <size>32</size>
+          <access>read-only</access>
+          <resetValue>0x00000000</resetValue>
+          <resetMask>0xffffffff</resetMask>
+        </register>
+        <register>
+          <name>CMD_TX_FIFO</name>
+          <description>Command Transmit Interface FIFO</description>
+          <addressOffset>0x04</addressOffset>
+          <size>32</size>
+          <access>write-only</access>
+          <resetValue>0x00000000</resetValue>
+          <resetMask>0xffffffff</resetMask>
+        </register>
+        <register>
+          <name>CMD_CTRL_REG</name>
+          <description>Command Control Register</description>
+          <addressOffset>0x08</addressOffset>
+          <size>32</size>
+          <access>read-write</access>
+          <resetValue>0x00000000</resetValue>
+          <resetMask>0x00000007</resetMask>
+          <fields>
+            <field>
+              <name>IRQ_EN</name>
+              <access>read-write</access>
+              <description>Enable interrupt for Command Receive FIFO</description>
+              <bitRange>[2:2]</bitRange>
+            </field>
+            <field>
+              <name>RST_TX_FIFO</name>
+              <access>write-only</access>
+              <description>Reset/clear Command Transmit FIFO</description>
+              <bitRange>[1:1]</bitRange>
+            </field>
+            <field>
+              <name>RST_RX_FIFO</name>
+              <access>write-only</access>
+              <description>Reset/clear Command Receive FIFO</description>
+              <bitRange>[0:0]</bitRange>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>CMD_STAT_REG</name>
+          <description>Command Status Register</description>
+          <addressOffset>0x0c</addressOffset>
+          <size>32</size>
+          <access>read-only</access>
+          <resetValue>0x00000005</resetValue>
+          <resetMask>0x0000001f</resetMask>
+          <fields>
+            <field>
+              <name>IRQ_PEND</name>
+              <access>read-only</access>
+              <description>Interrupt pending for Command Receive FIFO</description>
+              <bitRange>[4:4]</bitRange>
+            </field>
+            <field>
+              <name>TX_FULL</name>
+              <access>read-only</access>
+              <description>Command Interface Transmit FIFO Full</description>
+              <bitRange>[3:3]</bitRange>
+            </field>
+            <field>
+              <name>TX_EMPTY</name>
+              <access>read-only</access>
+              <description>Command Interface Transmit FIFO Empty</description>
+              <bitRange>[2:2]</bitRange>
+            </field>
+            <field>
+              <name>RX_FULL</name>
+              <access>read-only</access>
+              <description>Command Interface Receive FIFO Full</description>
+              <bitRange>[1:1]</bitRange>
+            </field>
+            <field>
+              <name>RX_EMPTY</name>
+              <access>read-only</access>
+              <description>Command Interface Receive FIFO Empty</description>
+              <bitRange>[0:0]</bitRange>
+            </field>
+          </fields>
+        </register>
+      </registers>
     </peripheral>
-
+    <peripheral>
+      <name>WORKRX</name>
+      <description>Hashing Chain I/O module, reception FIFO </description>
+      <groupName>HASHCHAIN</groupName>
+      <baseAddress>0</baseAddress>
+      <size>32</size>
+      <access>read-write</access>
+      <addressBlock>
+        <offset>0</offset>
+        <size>0x10</size>
+        <usage>registers</usage>
+      </addressBlock>
+      <registers>
+        <register>
+          <name>WORK_RX_FIFO</name>
+          <description>Work Receive Interface FIFO</description>
+          <addressOffset>0x00</addressOffset>
+          <size>32</size>
+          <access>read-only</access>
+          <resetValue>0x00000000</resetValue>
+          <resetMask>0xffffffff</resetMask>
+        </register>
+        <register>
+          <name>WORK_RX_CTRL_REG</name>
+          <description>Work Receive Control Register</description>
+          <addressOffset>0x08</addressOffset>
+          <size>32</size>
+          <access>read-write</access>
+          <resetValue>0x00000000</resetValue>
+          <resetMask>0x00000005</resetMask>
+          <fields>
+            <field>
+              <name>IRQ_EN</name>
+              <access>read-write</access>
+              <description>Enable interrupt for Work Receive FIFO</description>
+              <bitRange>[2:2]</bitRange>
+            </field>
+            <field>
+              <name>RST_RX_FIFO</name>
+              <access>write-only</access>
+              <description>Reset/clear Work Receive FIFO</description>
+              <bitRange>[0:0]</bitRange>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>WORK_RX_STAT_REG</name>
+          <description>Work Receive Status Register</description>
+          <addressOffset>0x0c</addressOffset>
+          <size>32</size>
+          <access>read-only</access>
+          <resetValue>0x00000001</resetValue>
+          <resetMask>0x00000013</resetMask>
+          <fields>
+            <field>
+              <name>IRQ_PEND</name>
+              <access>read-only</access>
+              <description>Interrupt pending for Work Receive FIFO</description>
+              <bitRange>[4:4]</bitRange>
+            </field>
+            <field>
+              <name>RX_FULL</name>
+              <access>read-only</access>
+              <description>Work Interface Receive FIFO Full</description>
+              <bitRange>[1:1]</bitRange>
+            </field>
+            <field>
+              <name>RX_EMPTY</name>
+              <access>read-only</access>
+              <description>Work Interface Receive FIFO Empty</description>
+              <bitRange>[0:0]</bitRange>
+            </field>
+          </fields>
+        </register>
+      </registers>
+    </peripheral>
+    <peripheral>
+      <name>WORKTX</name>
+      <description>Hashing Chain I/O module, transmit FIFO</description>
+      <groupName>HASHCHAIN</groupName>
+      <baseAddress>0</baseAddress>
+      <size>32</size>
+      <access>read-write</access>
+      <addressBlock>
+        <offset>0</offset>
+        <size>0x18</size>
+        <usage>registers</usage>
+      </addressBlock>
+      <registers>
+        <register>
+          <name>WORK_TX_FIFO</name>
+          <description>Work Transmit Interface FIFO</description>
+          <addressOffset>0x04</addressOffset>
+          <size>32</size>
+          <access>write-only</access>
+          <resetValue>0x00000000</resetValue>
+          <resetMask>0xffffffff</resetMask>
+        </register>
+        <register>
+          <name>WORK_TX_CTRL_REG</name>
+          <description>Work Transmit Control Register</description>
+          <addressOffset>0x08</addressOffset>
+          <size>32</size>
+          <access>read-write</access>
+          <resetValue>0x00000000</resetValue>
+          <resetMask>0x00000006</resetMask>
+          <fields>
+            <field>
+              <name>IRQ_EN</name>
+              <access>read-write</access>
+              <description>Enable interrupt for Work Transmit FIFO</description>
+              <bitRange>[2:2]</bitRange>
+            </field>
+            <field>
+              <name>RST_TX_FIFO</name>
+              <access>write-only</access>
+              <description>Reset/clear Work Transmit FIFO</description>
+              <bitRange>[1:1]</bitRange>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>WORK_TX_STAT_REG</name>
+          <description>Work Transmit Status Register</description>
+          <addressOffset>0x0c</addressOffset>
+          <size>32</size>
+          <access>read-only</access>
+          <resetValue>0x00000014</resetValue>
+          <resetMask>0x0000001c</resetMask>
+          <fields>
+            <field>
+              <name>IRQ_PEND</name>
+              <access>read-only</access>
+              <description>Interrupt pending for Work Transmit FIFO</description>
+              <bitRange>[4:4]</bitRange>
+            </field>
+            <field>
+              <name>TX_FULL</name>
+              <access>read-only</access>
+              <description>Work Interface Transmit FIFO Full</description>
+              <bitRange>[3:3]</bitRange>
+            </field>
+            <field>
+              <name>TX_EMPTY</name>
+              <access>read-only</access>
+              <description>Work Interface Transmit FIFO Empty</description>
+              <bitRange>[2:2]</bitRange>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <name>WORK_TX_IRQ_THR</name>
+          <description>Work Transmit IRQ Threshold</description>
+          <addressOffset>0x10</addressOffset>
+          <size>32</size>
+          <access>read-write</access>
+          <resetValue>0x00000000</resetValue>
+          <resetMask>0xffffffff</resetMask>
+        </register>
+        <register>
+          <name>WORK_TX_LAST_ID</name>
+          <description>Work Transmit Last Work ID</description>
+          <addressOffset>0x14</addressOffset>
+          <size>32</size>
+          <access>read-only</access>
+          <resetValue>0x00000000</resetValue>
+          <resetMask>0xffffffff</resetMask>
+        </register>
+      </registers>
+    </peripheral>
   </peripherals>
 </device>
-
-

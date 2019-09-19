@@ -39,7 +39,7 @@ fn test_midstate_count_instance_fail() {
 
 #[test]
 fn test_midstate_count_conversion() {
-    use ii_fpga_io_am1_s9::hchainio0::ctrl_reg::MIDSTATE_CNT_A;
+    use ii_fpga_io_am1_s9::common::ctrl_reg::MIDSTATE_CNT_A;
 
     assert_eq!(MidstateCount::new(4).to_mask(), 3);
     assert_eq!(MidstateCount::new(2).to_count(), 2);
@@ -83,7 +83,12 @@ fn test_hchain_ctl_init() {
         "Failed to initialize IP core"
     );
 
-    let regs = io::test_utils::ConfigRegs::new(&hash_chain.config_io);
+    let regs = io::test_utils::Regs::new(
+        &hash_chain.config_io,
+        &hash_chain.command_io,
+        &hash_chain.work_rx_io.as_ref().expect("work rx missing"),
+        &hash_chain.work_tx_io.as_ref().expect("work tx missing"),
+    );
     // verify sane register values
     assert_eq!(regs.work_time, 36296, "Unexpected work time value");
     assert_eq!(
@@ -91,7 +96,18 @@ fn test_hchain_ctl_init() {
         "Unexpected baud rate register value for {} baud",
         INIT_CHIP_BAUD_RATE
     );
-    assert_eq!(regs.stat_reg, 0x855, "Unexpected status register value");
+    assert_eq!(
+        regs.work_rx_stat_reg, 1,
+        "Unexpected work rx status register value"
+    );
+    assert_eq!(
+        regs.work_tx_stat_reg, 0x14,
+        "Unexpected work tx status register value"
+    );
+    assert_eq!(
+        regs.cmd_stat_reg, 5,
+        "Unexpected command status register value"
+    );
     assert_eq!(regs.midstate_cnt, 1, "Unexpected midstate count");
 }
 

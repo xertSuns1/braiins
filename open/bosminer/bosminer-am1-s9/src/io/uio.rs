@@ -32,10 +32,10 @@ pub struct Device {
 }
 
 pub enum Type {
-    Mem,
+    Common,
     WorkRx,
     WorkTx,
-    CmdRx,
+    Command,
 }
 
 /// Trait for representing type as a string
@@ -47,10 +47,10 @@ pub trait AsStr {
 impl AsStr for Type {
     fn as_str(&self) -> &str {
         match self {
-            &Type::Mem => "mem",
+            &Type::Common => "common",
             &Type::WorkRx => "work-rx",
             &Type::WorkTx => "work-tx",
-            &Type::CmdRx => "cmd-rx",
+            &Type::Command => "cmd-rx",
         }
     }
 }
@@ -63,7 +63,7 @@ impl Device {
     /// * `uio_type` - type of uio device, determines what IO block to map
     pub fn open(hashboard_idx: usize, uio_type: Type) -> error::Result<Self> {
         assert!(hashboard_idx > 0);
-        let uio_name = format!("chain{}-{}", hashboard_idx - 1, uio_type.as_str());
+        let uio_name = format!("chain{}-{}", hashboard_idx, uio_type.as_str());
         let uio = uio_async::UioDevice::open_by_name(&uio_name).with_context(|_| {
             ErrorKind::UioDevice(uio_name.clone(), "cannot find uio device".to_string())
         })?;
@@ -95,13 +95,13 @@ mod test {
     /// device-tree so that we have something to open.
     #[test]
     fn test_lookup_uio() {
-        Device::open(TEST_CHAIN_INDEX, Type::Mem).expect("uio open failed");
+        Device::open(TEST_CHAIN_INDEX, Type::Command).expect("uio open failed");
     }
 
     /// Try mapping memory from UIO device.
     #[test]
     fn test_map_uio() {
-        let _mem: uio_async::UioTypedMapping<u8> = Device::open(TEST_CHAIN_INDEX, Type::Mem)
+        let _mem: uio_async::UioTypedMapping<u8> = Device::open(TEST_CHAIN_INDEX, Type::Common)
             .expect("uio open failed")
             .map()
             .expect("mapping failed");
@@ -113,11 +113,11 @@ mod test {
     #[test]
     fn test_map_uio_twice_checklock() {
         // haha! this should fail
-        let _: uio_async::UioTypedMapping<u8> = Device::open(TEST_CHAIN_INDEX, Type::Mem)
+        let _: uio_async::UioTypedMapping<u8> = Device::open(TEST_CHAIN_INDEX, Type::Common)
             .expect("uio open failed")
             .map()
             .expect("mapping failed");
-        let _: uio_async::UioTypedMapping<u8> = Device::open(TEST_CHAIN_INDEX, Type::Mem)
+        let _: uio_async::UioTypedMapping<u8> = Device::open(TEST_CHAIN_INDEX, Type::Common)
             .expect("uio open failed")
             .map()
             .expect("mapping failed");
@@ -126,7 +126,7 @@ mod test {
     /// Try to map IRQ.
     #[test]
     fn test_map_irq() {
-        Device::open(TEST_CHAIN_INDEX, Type::CmdRx).expect("uio open failed");
+        Device::open(TEST_CHAIN_INDEX, Type::Command).expect("uio open failed");
     }
 
     fn flush_interrupts() {

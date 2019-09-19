@@ -40,33 +40,22 @@ use std::convert::TryInto;
 use std::time::Duration;
 
 use ii_async_compat::{sleep, timeout_future, TimeoutResult};
-use ii_fpga_io_am1_s9::hchainio0;
+use ii_fpga_io_am1_s9;
 
 use ii_logging::macros::*;
 
 /// What bitstream version do we expect
-const EXPECTED_BITSTREAM_BUILD_ID: u32 = 0x5D5E7158;
-
-/// XXX: this function will be gone once DTS is fixed.
-fn map_mem_regs<T>(
-    hashboard_idx: usize,
-    uio_type: uio::Type,
-) -> error::Result<(uio_async::UioTypedMapping<T>, uio_async::UioDevice)> {
-    let regs: uio_async::UioTypedMapping<T> =
-        uio::Device::open(hashboard_idx, uio::Type::Mem)?.map()?;
-    let uio = uio::Device::open(hashboard_idx, uio_type)?.uio;
-    Ok((regs, uio))
-}
+const EXPECTED_BITSTREAM_VERSION: u32 = 0x00090002;
 
 struct WorkRxFifo {
-    regs: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
+    regs: uio_async::UioTypedMapping<ii_fpga_io_am1_s9::workrx::RegisterBlock>,
     uio: uio_async::UioDevice,
 }
 
 impl WorkRxFifo {
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.regs.stat_reg.read().work_rx_empty().bit()
+        self.regs.work_rx_stat_reg.read().rx_empty().bit()
     }
 
     /// Try to read from work rx fifo.
@@ -90,23 +79,26 @@ impl WorkRxFifo {
     pub fn init(&mut self) -> error::Result<()> {
         // reset input FIFO
         self.regs
-            .ctrl_reg
-            .modify(|_, w| w.rst_work_rx_fifo().set_bit());
+            .work_rx_ctrl_reg
+            .modify(|_, w| w.rst_rx_fifo().set_bit());
         // enable IRQ_WORK_RX interrupt
         self.regs
-            .ctrl_reg
-            .modify(|_, w| w.irq_en_work_rx().set_bit());
+            .work_rx_ctrl_reg
+            .modify(|_, w| w.irq_en().set_bit());
         Ok(())
     }
 
     pub fn new(hashboard_idx: usize) -> error::Result<Self> {
-        let (regs, uio) = map_mem_regs(hashboard_idx, uio::Type::WorkRx)?;
-        Ok(Self { regs, uio })
+        let uio = uio::Device::open(hashboard_idx, uio::Type::WorkRx)?;
+        Ok(Self {
+            regs: uio.map()?,
+            uio: uio.uio,
+        })
     }
 }
 
 struct WorkTxFifo {
-    regs: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
+    regs: uio_async::UioTypedMapping<ii_fpga_io_am1_s9::worktx::RegisterBlock>,
     uio: uio_async::UioDevice,
 }
 
@@ -123,19 +115,19 @@ impl WorkTxFifo {
 
     #[inline]
     pub fn is_full(&self) -> bool {
-        self.regs.stat_reg.read().work_tx_full().bit()
+        self.regs.work_tx_stat_reg.read().tx_full().bit()
     }
 
     #[inline]
     pub fn has_space_for_one_job(&self) -> bool {
-        self.regs.stat_reg.read().irq_pend_work_tx().bit()
+        self.regs.work_tx_stat_reg.read().irq_pend().bit()
     }
 
     /// Return the value of last work ID send to ASICs
     #[inline]
     #[allow(dead_code)]
     pub fn get_last_work_id(&mut self) -> u32 {
-        self.regs.last_work_id.read().bits()
+        self.regs.work_tx_last_id.read().bits()
     }
 
     /// Try to write work item to work TX FIFO.
@@ -161,22 +153,25 @@ impl WorkTxFifo {
         // Set threshold for work TX so that there's space for
         // at least one job.
         self.regs
-            .irq_fifo_thr
+            .work_tx_irq_thr
             .write(|w| unsafe { w.bits(Self::FIFO_THRESHOLD) });
         // reset output FIFO
         self.regs
-            .ctrl_reg
-            .modify(|_, w| w.rst_work_tx_fifo().set_bit());
+            .work_tx_ctrl_reg
+            .modify(|_, w| w.rst_tx_fifo().set_bit());
         // enable IRQ_WORK_TX interrupt
         self.regs
-            .ctrl_reg
-            .modify(|_, w| w.irq_en_work_tx().set_bit());
+            .work_tx_ctrl_reg
+            .modify(|_, w| w.irq_en().set_bit());
         Ok(())
     }
 
     pub fn new(hashboard_idx: usize) -> error::Result<Self> {
-        let (regs, uio) = map_mem_regs(hashboard_idx, uio::Type::WorkTx)?;
-        Ok(Self { regs, uio })
+        let uio = uio::Device::open(hashboard_idx, uio::Type::WorkTx)?;
+        Ok(Self {
+            regs: uio.map()?,
+            uio: uio.uio,
+        })
     }
 }
 
@@ -185,24 +180,24 @@ impl WorkTxFifo {
 ///
 /// TODO: Split this FIFO into two FIFOs.
 pub struct CommandRxTxFifos {
-    regs: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
+    regs: uio_async::UioTypedMapping<ii_fpga_io_am1_s9::command::RegisterBlock>,
     uio: uio_async::UioDevice,
 }
 
 impl CommandRxTxFifos {
     #[inline]
     pub fn is_rx_empty(&self) -> bool {
-        self.regs.stat_reg.read().cmd_rx_empty().bit()
+        self.regs.cmd_stat_reg.read().rx_empty().bit()
     }
 
     #[inline]
     pub fn is_tx_empty(&self) -> bool {
-        self.regs.stat_reg.read().cmd_tx_empty().bit()
+        self.regs.cmd_stat_reg.read().tx_empty().bit()
     }
 
     #[inline]
     pub fn is_tx_full(&self) -> bool {
-        self.regs.stat_reg.read().cmd_tx_full().bit()
+        self.regs.cmd_stat_reg.read().tx_full().bit()
     }
 
     /// Wait for command FIFO to become empty
@@ -249,18 +244,19 @@ impl CommandRxTxFifos {
     pub fn init(&mut self) -> error::Result<()> {
         // reset input FIFO
         self.regs
-            .ctrl_reg
-            .modify(|_, w| w.rst_cmd_rx_fifo().set_bit().rst_cmd_tx_fifo().set_bit());
+            .cmd_ctrl_reg
+            .modify(|_, w| w.rst_rx_fifo().set_bit().rst_tx_fifo().set_bit());
         // enable IRQ_CMD_RX interrupt
-        self.regs
-            .ctrl_reg
-            .modify(|_, w| w.irq_en_cmd_rx().set_bit());
+        self.regs.cmd_ctrl_reg.modify(|_, w| w.irq_en().set_bit());
         Ok(())
     }
 
     pub fn new(hashboard_idx: usize) -> error::Result<Self> {
-        let (regs, uio) = map_mem_regs(hashboard_idx, uio::Type::CmdRx)?;
-        Ok(Self { regs, uio })
+        let uio = uio::Device::open(hashboard_idx, uio::Type::Command)?;
+        Ok(Self {
+            regs: uio.map()?,
+            uio: uio.uio,
+        })
     }
 }
 
@@ -458,15 +454,21 @@ impl CommandRxTx {
 }
 
 pub struct Config {
-    regs: uio_async::UioTypedMapping<hchainio0::RegisterBlock>,
+    regs: uio_async::UioTypedMapping<ii_fpga_io_am1_s9::common::RegisterBlock>,
     midstate_count: MidstateCount,
 }
 
 impl Config {
-    /// Return build id (unix timestamp) of s9-io FPGA bitstream
+    /// Return build id (unix timestamp) of s9-io bitstream
     #[inline]
     pub fn get_build_id(&mut self) -> u32 {
         self.regs.build_id.read().bits()
+    }
+
+    /// Return version of FPGA bitstream
+    #[inline]
+    pub fn get_version(&mut self) -> u32 {
+        self.regs.version.read().bits()
     }
 
     #[inline]
@@ -495,19 +497,22 @@ impl Config {
     /// (of course we shouldn't but who is the responsible for the translation?)
     /// Note: this function is not public because you ought to use `set_midstate_count`
     #[inline]
-    fn set_ip_core_midstate_count(&self, value: hchainio0::ctrl_reg::MIDSTATE_CNT_A) {
+    fn set_ip_core_midstate_count(
+        &self,
+        value: ii_fpga_io_am1_s9::common::ctrl_reg::MIDSTATE_CNT_A,
+    ) {
         self.regs
             .ctrl_reg
             .modify(|_, w| w.midstate_cnt().variant(value));
     }
 
     fn check_build_id(&mut self) -> error::Result<()> {
-        let build_id = self.get_build_id();
-        if build_id != EXPECTED_BITSTREAM_BUILD_ID {
+        let version = self.get_version();
+        if version != EXPECTED_BITSTREAM_VERSION {
             Err(ErrorKind::UnexpectedVersion(
                 "s9-io bitstream".to_string(),
-                format!("0x{:08x}", build_id),
-                format!("0x{:08x}", EXPECTED_BITSTREAM_BUILD_ID),
+                format!("0x{:08x}", version),
+                format!("0x{:08x}", EXPECTED_BITSTREAM_VERSION),
             ))?
         }
         Ok(())
@@ -527,9 +532,9 @@ impl Config {
     }
 
     fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
-        let regs = uio::Device::open(hashboard_idx, uio::Type::Mem)?.map()?;
+        let uio = uio::Device::open(hashboard_idx, uio::Type::Common)?;
         Ok(Self {
-            regs,
+            regs: uio.map()?,
             midstate_count,
         })
     }
@@ -657,20 +662,29 @@ pub mod test_utils {
     use super::*;
 
     /// Represents configuration of Config block
-    pub struct ConfigRegs {
+    pub struct Regs {
         pub work_time: u32,
         pub baud_reg: u32,
-        pub stat_reg: u32,
+        pub work_rx_stat_reg: u32,
+        pub work_tx_stat_reg: u32,
+        pub cmd_stat_reg: u32,
         pub midstate_cnt: u32,
     }
 
-    impl ConfigRegs {
-        pub fn new(io: &Config) -> Self {
+    impl Regs {
+        pub fn new(
+            config: &Config,
+            command: &CommandRxTx,
+            work_rx: &WorkRx,
+            work_tx: &WorkTx,
+        ) -> Self {
             Self {
-                work_time: io.regs.work_time.read().bits(),
-                baud_reg: io.regs.baud_reg.read().bits(),
-                stat_reg: io.regs.stat_reg.read().bits(),
-                midstate_cnt: 1u32 << io.regs.ctrl_reg.read().midstate_cnt().bits(),
+                work_time: config.regs.work_time.read().bits(),
+                baud_reg: config.regs.baud_reg.read().bits(),
+                work_rx_stat_reg: work_rx.fifo.regs.work_rx_stat_reg.read().bits(),
+                work_tx_stat_reg: work_tx.fifo.regs.work_tx_stat_reg.read().bits(),
+                cmd_stat_reg: command.fifo.regs.cmd_stat_reg.read().bits(),
+                midstate_cnt: 1u32 << config.regs.ctrl_reg.read().midstate_cnt().bits(),
             }
         }
     }

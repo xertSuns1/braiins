@@ -58,7 +58,7 @@ use packed_struct::{PackedStruct, PackedStructSlice};
 use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
 
-use ii_fpga_io_am1_s9::hchainio0::ctrl_reg::MIDSTATE_CNT_A;
+use ii_fpga_io_am1_s9::common::ctrl_reg::MIDSTATE_CNT_A;
 
 use ii_async_compat::sleep;
 
