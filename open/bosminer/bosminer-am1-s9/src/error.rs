@@ -82,6 +82,10 @@ pub enum ErrorKind {
     /// Power controller errors.
     #[fail(display = "Power: {}", _0)]
     Power(String),
+
+    /// PLL conversion error
+    #[fail(display = "PLL: {}", _0)]
+    PLL(String),
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Fail)]
