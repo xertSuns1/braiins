@@ -20,13 +20,13 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use crate::error::{self, ErrorKind};
+
 use packed_struct::prelude::*;
 use packed_struct_codegen::PackedStruct;
 use packed_struct_codegen::{PrimitiveEnum_u16, PrimitiveEnum_u8};
 
 use std::mem::size_of;
-
-use super::error::{self, ErrorKind};
 
 pub const GET_ADDRESS_REG: u8 = 0x00;
 pub const PLL_PARAM_REG: u8 = 0x0c;
@@ -311,9 +311,91 @@ impl Into<u32> for MiscCtrlReg {
     }
 }
 
+/// Structure representing settings of chip PLL divider
+/// It can serialize itself right to register settings
+#[derive(PackedStruct, Debug, PartialEq, Clone)]
+#[packed_struct(bit_numbering = "lsb0", size_bytes = "4", endian = "msb")]
+pub struct Pll {
+    /// Range: 60..=320, but in datasheet table: 32..=128
+    #[packed_field(bits = "23:16")]
+    fbdiv: u8,
+    /// Range: 1..=63, but in datasheet always 2
+    #[packed_field(bits = "11:8")]
+    refdiv: u8,
+    /// Range: 1..=7
+    #[packed_field(bits = "7:4")]
+    postdiv1: u8,
+    /// Range: 1..=7, but in datasheet always 1
+    /// Also must hold: postdiv2 <= postdiv1
+    #[packed_field(bits = "3:0")]
+    postdiv2: u8,
+}
+
+impl Pll {
+    /// Minimum and maximum supported frequency
+    const MIN_FREQ: usize = 100_000_000;
+    const MAX_FREQ: usize = 1_200_000_000;
+
+    fn calc(&self, xtal_freq: usize) -> usize {
+        // we have to do the arithmetic in u64 at least to be sure
+        // there wouldn't be an overflow
+        (xtal_freq as u64 * self.fbdiv as u64
+            / self.refdiv as u64
+            / self.postdiv1 as u64
+            / self.postdiv2 as u64) as usize
+    }
+
+    fn dist(&self, xtal_freq: usize, target_freq: usize) -> usize {
+        (self.calc(xtal_freq) as i64 - target_freq as i64).abs() as usize
+    }
+
+    fn find_divider(xtal_freq: usize, target_freq: usize) -> Self {
+        let mut best = Pll {
+            fbdiv: 0,
+            refdiv: 1,
+            postdiv1: 1,
+            postdiv2: 1,
+        };
+
+        // range of `fbdiv` is supposed to be 60..320, but:
+        // - there are pre-computed entries with `fbdiv` as low as 32
+        // - there are not precomputed entries with `fbdiv` higher than 128
+        // - refdiv and postdiv2 are in tables always fixed
+        for fbdiv in 32..128 {
+            for postdiv1 in 1..=7 {
+                let pll = Pll {
+                    fbdiv,
+                    refdiv: 2,
+                    postdiv1,
+                    postdiv2: 1,
+                };
+                if pll.dist(xtal_freq, target_freq) < best.dist(xtal_freq, target_freq) {
+                    best = pll;
+                }
+            }
+        }
+        best
+    }
+
+    pub fn try_pll_from_freq(xtal_freq: usize, target_freq: usize) -> error::Result<Self> {
+        if target_freq < Self::MIN_FREQ || target_freq > Self::MAX_FREQ {
+            Err(ErrorKind::PLL(format!(
+                "Requested frequency {} out of range!",
+                target_freq
+            )))?
+        }
+        let pll = Self::find_divider(xtal_freq, target_freq);
+        Ok(pll)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::utils::PackedRegister;
+
+    /// Default S9 clock frequency
+    const DEFAULT_XTAL_FREQ: usize = 25_000_000;
 
     /// Builds a sample set_config command (here the PLL register @ 0x0c with a value of
     /// 0x00680221 that corresponds to
@@ -490,4 +572,49 @@ mod test {
         );
     }
 
+    /// Test serialization and evaluation of PLL divider
+    fn try_one_divider(freq: usize, reg: u32, fbdiv: u8, refdiv: u8, postdiv1: u8, postdiv2: u8) {
+        let pll = Pll {
+            fbdiv,
+            refdiv,
+            postdiv1,
+            postdiv2,
+        };
+        let xin = DEFAULT_XTAL_FREQ;
+        assert_eq!(pll.calc(xin), freq);
+        assert_eq!(pll.dist(xin, freq - 500), 500);
+        assert_eq!(pll.to_reg(), reg);
+    }
+
+    #[test]
+    fn test_pll_computation() {
+        try_one_divider(100_000_000, 0x200241, 0x20, 2, 4, 1);
+        try_one_divider(375_000_000, 0x780241, 0x78, 2, 4, 1);
+        try_one_divider(431_250_000, 0x450221, 0x45, 2, 2, 1);
+        try_one_divider(466_666_666, 0x700231, 0x70, 2, 3, 1);
+        try_one_divider(500_000_000, 0x500221, 0x50, 2, 2, 1);
+        try_one_divider(593_750_000, 0x5f0221, 0x5f, 2, 2, 1);
+        try_one_divider(650_000_000, 0x680221, 0x68, 2, 2, 1);
+        try_one_divider(718_750_000, 0x730221, 0x73, 2, 2, 1);
+        try_one_divider(1000_000_000, 0x500211, 0x50, 2, 1, 1);
+        try_one_divider(1175_000_000, 0x5e0211, 0x5e, 2, 1, 1);
+    }
+
+    #[test]
+    fn test_pll_search() {
+        // should fail: too low
+        assert!(Pll::try_pll_from_freq(DEFAULT_XTAL_FREQ, 50_000_000).is_err());
+        // should fail: too high
+        assert!(Pll::try_pll_from_freq(DEFAULT_XTAL_FREQ, 2_000_000_000).is_err());
+        // ok
+        assert_eq!(
+            Pll::try_pll_from_freq(DEFAULT_XTAL_FREQ, 650_000_000).expect("pll is ok"),
+            Pll {
+                fbdiv: 0x34,
+                refdiv: 2,
+                postdiv1: 1,
+                postdiv2: 1
+            }
+        );
+    }
 }

@@ -54,6 +54,7 @@ use failure::ResultExt;
 
 use futures::lock::Mutex;
 
+use crate::utils::PackedRegister;
 use packed_struct::{PackedStruct, PackedStructSlice};
 
 use embedded_hal::digital::v2::InputPin;
@@ -86,13 +87,10 @@ const FPGA_IPCORE_F_CLK_SPEED_HZ: usize = 50_000_000;
 const FPGA_IPCORE_F_CLK_BASE_BAUD_DIV: usize = 16;
 
 /// Default PLL frequency for clocking the chips
-const DEFAULT_S9_PLL_FREQUENCY: u64 = 650_000_000;
+const DEFAULT_S9_PLL_FREQUENCY: usize = 650_000_000;
 
 /// Default initial voltage
 const INITIAL_VOLTAGE: power::Voltage = power::Voltage::from_volts(9.4);
-
-/// Default PLL value (650 MHz)
-const DEFAULT_PLL_CONFIG: u32 = 0x680221;
 
 lazy_static! {
     /// What is our target?
@@ -170,7 +168,7 @@ pub struct HashChain<VBackend> {
     /// ASIC difficulty
     asic_difficulty: usize,
     /// PLL frequency
-    pll_frequency: u64,
+    pll_frequency: usize,
     /// Voltage controller on this hashboard
     voltage_ctrl: power::Control<VBackend>,
     /// Plug pin that indicates the hashboard is present
@@ -243,7 +241,6 @@ where
             rst_pin,
             hashboard_idx,
             last_heartbeat_sent: None,
-            // TODO: implement setting me
             pll_frequency: DEFAULT_S9_PLL_FREQUENCY,
             common_io,
             command_io,
@@ -257,7 +254,7 @@ where
     #[inline]
     fn calculate_work_time(&self) -> u32 {
         secs_to_fpga_ticks(calculate_work_delay_for_pll(
-            self.midstate_count.to_count() as u64,
+            self.midstate_count.to_count(),
             self.pll_frequency,
         ))
     }
@@ -356,8 +353,10 @@ where
         await!(self.enumerate_chips())?;
         info!("Discovered {} chips", self.chip_count);
 
+        // calculate PLL for given frequency
+        let pll = bm1387::Pll::try_pll_from_freq(CHIP_OSC_CLK_HZ, DEFAULT_S9_PLL_FREQUENCY)?;
         // set PLL
-        await!(self.set_pll())?;
+        await!(self.set_pll(pll))?;
 
         // configure the hashing chain to operate at desired baud rate. Note that gate block is
         // enabled to allow continuous start of chips in the chain
@@ -423,10 +422,9 @@ where
     }
 
     /// Loads PLL register with a starting value
-    async fn set_pll(&self) -> error::Result<()> {
+    async fn set_pll(&self, pll: bm1387::Pll) -> error::Result<()> {
         for addr in self.chip_iter() {
-            let cmd =
-                bm1387::SetConfigCmd::new(addr, false, bm1387::PLL_PARAM_REG, DEFAULT_PLL_CONFIG);
+            let cmd = bm1387::SetConfigCmd::new(addr, false, bm1387::PLL_PARAM_REG, pll.to_reg());
             await!(self.send_ctl_cmd(cmd.pack().to_vec(), false));
         }
         Ok(())
@@ -859,9 +857,9 @@ fn calc_baud_clock_div(
 /// delays when sending out/generating work/chips not getting proper work...:
 ///
 ///   work_delay = 0.9 * n_midstates * 2^19 / freq
-fn calculate_work_delay_for_pll(n_midstates: u64, pll_frequency: u64) -> f64 {
+fn calculate_work_delay_for_pll(n_midstates: usize, pll_frequency: usize) -> f64 {
     let space_size_per_core: u64 = 1 << 19;
-    0.9 * (n_midstates * space_size_per_core) as f64 / pll_frequency as f64
+    0.9 * (n_midstates as u64 * space_size_per_core) as f64 / pll_frequency as f64
 }
 
 /// Helper method to convert seconds to FPGA ticks suitable to be written
