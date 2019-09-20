@@ -37,15 +37,101 @@ use ext_work_id::ExtWorkId;
 
 use bosminer::work;
 use std::convert::TryInto;
-use std::time::Duration;
+use std::fmt;
+
+use packed_struct::prelude::*;
+
+use chrono::prelude::DateTime;
+use chrono::Utc;
+use std::time::{Duration, UNIX_EPOCH};
 
 use ii_async_compat::{sleep, timeout_future, TimeoutResult};
-use ii_fpga_io_am1_s9;
+use ii_fpga_io_am1_s9::{self, common::version::MINER_TYPE_A, generic::Variant};
 
 use ii_logging::macros::*;
 
-/// What bitstream version do we expect
-const EXPECTED_BITSTREAM_VERSION: u32 = 0x00090002;
+/// We fail the initialization unless we find this s9-io of this version
+const EXPECTED_S9IO_VERSION: Version = Version {
+    miner_type: MinerType::Known(MINER_TYPE_A::ANTMINER),
+    model: 9,
+    major: 0,
+    minor: 2,
+    patch: 0,
+};
+
+/// Util structure to help us work with enums
+#[derive(Debug, Clone, PartialEq)]
+enum MinerType {
+    Known(MINER_TYPE_A),
+    Unknown(usize),
+}
+
+/// Just an util trait so that we can pack/unpack directly to registers
+trait PackedRegister: Sized {
+    fn from_reg(reg: u32) -> Result<Self, PackingError>;
+    fn to_reg(&self) -> u32;
+}
+
+impl<T> PackedRegister for T
+where
+    T: PackedStruct<[u8; 4]>,
+{
+    /// Take register and unpack (as big endian)
+    fn from_reg(reg: u32) -> Result<Self, PackingError> {
+        Self::unpack(&u32::to_be_bytes(reg))
+    }
+    /// Pack into big-endian register
+    fn to_reg(&self) -> u32 {
+        u32::from_be_bytes(self.pack())
+    }
+}
+
+/// Structure representing the build time from register `BUILD_ID`
+struct BuildId(u32);
+
+impl BuildId {
+    fn seems_legit(&self) -> bool {
+        // bitstream created after 2019 and before 2038
+        self.0 > 1546300800 && self.0 < 0x8000_0000
+    }
+}
+
+impl fmt::Display for BuildId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Creates a new SystemTime from the specified number of whole seconds
+        let d = UNIX_EPOCH + Duration::from_secs(self.0.into());
+        // Create DateTime from SystemTime
+        let datetime = DateTime::<Utc>::from(d);
+        // Formats the combined date and time with the specified format string.
+        write!(f, "{}", datetime.format("%Y-%m-%d %H:%M:%S %Z"))
+    }
+}
+
+/// Structure representing `VERSION` register
+#[derive(Debug, Clone, PartialEq)]
+struct Version {
+    miner_type: MinerType,
+    model: usize,
+    major: usize,
+    minor: usize,
+    patch: usize,
+}
+
+impl fmt::Display for Version {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let model;
+        match self.miner_type {
+            MinerType::Known(MINER_TYPE_A::ANTMINER) => model = format!("Antminer S{}", self.model),
+            MinerType::Unknown(n) => model = format!("Unknown[{}, {}]", n, self.model),
+        }
+
+        write!(
+            f,
+            "{}.{}.{} for {}",
+            self.major, self.minor, self.patch, model
+        )
+    }
+}
 
 struct WorkRxFifo {
     regs: uio_async::UioTypedMapping<ii_fpga_io_am1_s9::workrx::RegisterBlock>,
@@ -456,19 +542,31 @@ impl CommandRxTx {
 pub struct Config {
     regs: uio_async::UioTypedMapping<ii_fpga_io_am1_s9::common::RegisterBlock>,
     midstate_count: MidstateCount,
+    hashboard_idx: usize,
 }
 
 impl Config {
     /// Return build id (unix timestamp) of s9-io bitstream
     #[inline]
-    pub fn get_build_id(&mut self) -> u32 {
-        self.regs.build_id.read().bits()
+    fn get_build_id(&mut self) -> BuildId {
+        BuildId(self.regs.build_id.read().bits())
     }
 
     /// Return version of FPGA bitstream
     #[inline]
-    pub fn get_version(&mut self) -> u32 {
-        self.regs.version.read().bits()
+    fn get_version(&mut self) -> Version {
+        let ver = self.regs.version.read();
+        let miner_type = match ver.miner_type().variant() {
+            Variant::Val(t) => MinerType::Known(t),
+            Variant::Res(i) => MinerType::Unknown(i as usize),
+        };
+        Version {
+            miner_type,
+            model: ver.model().bits() as usize,
+            major: ver.major().bits() as usize,
+            minor: ver.minor().bits() as usize,
+            patch: ver.patch().bits() as usize,
+        }
     }
 
     #[inline]
@@ -506,13 +604,30 @@ impl Config {
             .modify(|_, w| w.midstate_cnt().variant(value));
     }
 
-    fn check_build_id(&mut self) -> error::Result<()> {
+    fn check_version(&mut self) -> error::Result<()> {
         let version = self.get_version();
-        if version != EXPECTED_BITSTREAM_VERSION {
+        let build_id = self.get_build_id();
+
+        // check that there's something
+        if !build_id.seems_legit() {
+            Err(ErrorKind::Hashboard(
+                self.hashboard_idx,
+                "no s9_io bistream found".to_string(),
+            ))?
+        }
+
+        // notify the user
+        info!(
+            "Hashboard {}: s9-io {} built on {}",
+            self.hashboard_idx, version, build_id
+        );
+
+        // check it's the exact version
+        if version != EXPECTED_S9IO_VERSION {
             Err(ErrorKind::UnexpectedVersion(
                 "s9-io bitstream".to_string(),
-                format!("0x{:08x}", version),
-                format!("0x{:08x}", EXPECTED_BITSTREAM_VERSION),
+                version.to_string(),
+                EXPECTED_S9IO_VERSION.to_string(),
             ))?
         }
         Ok(())
@@ -527,7 +642,7 @@ impl Config {
         self.disable_ip_core();
         self.enable_ip_core();
         // check version
-        self.check_build_id()?;
+        self.check_version()?;
         Ok(())
     }
 
@@ -536,6 +651,7 @@ impl Config {
         Ok(Self {
             regs: uio.map()?,
             midstate_count,
+            hashboard_idx,
         })
     }
 }
@@ -654,6 +770,33 @@ mod test {
                 i, expected_data
             );
         }
+    }
+
+    #[test]
+    fn test_version_display() {
+        let version = Version {
+            miner_type: MinerType::Known(MINER_TYPE_A::ANTMINER),
+            model: 9,
+            major: 1,
+            minor: 2,
+            patch: 3,
+        };
+
+        assert_eq!(version.to_string(), "1.2.3 for Antminer S9");
+        let version = Version {
+            miner_type: MinerType::Unknown(10),
+            model: 19,
+            major: 1,
+            minor: 2,
+            patch: 3,
+        };
+        assert_eq!(version.to_string(), "1.2.3 for Unknown[10, 19]");
+    }
+
+    #[test]
+    fn test_build_id_display() {
+        let build_id = BuildId(0x5D8255F0);
+        assert_eq!(build_id.to_string(), "2019-09-18 16:06:08 UTC");
     }
 }
 

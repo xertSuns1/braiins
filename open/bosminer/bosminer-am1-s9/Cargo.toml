@@ -23,6 +23,7 @@ futures-01 = { version = "0.1.27", package = "futures" }
 uio-async = { path = "../../utils-rs/uio-async" }
 linux-embedded-hal = { version = "0.2.0" }
 sysfs_gpio = { version = "0.5.3" }
+chrono = "0.4.9"
 
 [dependencies.embedded-hal]
 version = "0.2.0"
