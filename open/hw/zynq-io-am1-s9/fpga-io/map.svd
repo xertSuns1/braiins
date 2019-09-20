@@ -63,6 +63,50 @@
           <access>read-only</access>
           <resetValue>0x00090002</resetValue>
           <resetMask>0xffffffff</resetMask>
+          <fields>
+            <field>
+              <name>MINER_TYPE</name>
+              <access>read-only</access>
+              <description>miner type</description>
+              <bitRange>[31:28]</bitRange>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>Antminer</name>
+                  <value>0</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>MODEL</name>
+              <access>read-only</access>
+              <description>IP core model</description>
+              <bitRange>[27:20]</bitRange>
+              <enumeratedValues>
+                <enumeratedValue>
+                  <name>S9</name>
+                  <value>9</value>
+                </enumeratedValue>
+              </enumeratedValues>
+            </field>
+            <field>
+              <name>MAJOR</name>
+              <access>read-only</access>
+              <description>IP core major version</description>
+              <bitRange>[15:12]</bitRange>
+            </field>
+            <field>
+              <name>MINOR</name>
+              <access>read-only</access>
+              <description>IP core minor version</description>
+              <bitRange>[11:8]</bitRange>
+            </field>
+            <field>
+              <name>PATCH</name>
+              <access>read-only</access>
+              <description>IP core patch version</description>
+              <bitRange>[7:0]</bitRange>
+            </field>
+          </fields>
         </register>
         <register>
           <name>BUILD_ID</name>
