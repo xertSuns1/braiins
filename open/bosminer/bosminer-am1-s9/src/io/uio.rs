@@ -38,13 +38,7 @@ pub enum Type {
     Command,
 }
 
-/// Trait for representing type as a string
-pub trait AsStr {
-    /// Get string representation of a type
-    fn as_str(&self) -> &str;
-}
-
-impl AsStr for Type {
+impl Type {
     fn as_str(&self) -> &str {
         match self {
             &Type::Common => "common",
