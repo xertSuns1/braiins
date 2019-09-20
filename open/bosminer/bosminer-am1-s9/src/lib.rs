@@ -30,6 +30,7 @@ pub mod io;
 pub mod null_work;
 pub mod power;
 pub mod registry;
+pub mod utils;
 
 #[cfg(test)]
 pub mod test;
