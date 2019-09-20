@@ -40,8 +40,6 @@ use bosminer::work;
 use std::convert::TryInto;
 use std::fmt;
 
-use packed_struct::prelude::*;
-
 use chrono::prelude::DateTime;
 use chrono::Utc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -65,26 +63,6 @@ const EXPECTED_S9IO_VERSION: Version = Version {
 enum MinerType {
     Known(MINER_TYPE_A),
     Unknown(usize),
-}
-
-/// Just an util trait so that we can pack/unpack directly to registers
-trait PackedRegister: Sized {
-    fn from_reg(reg: u32) -> Result<Self, PackingError>;
-    fn to_reg(&self) -> u32;
-}
-
-impl<T> PackedRegister for T
-where
-    T: PackedStruct<[u8; 4]>,
-{
-    /// Take register and unpack (as big endian)
-    fn from_reg(reg: u32) -> Result<Self, PackingError> {
-        Self::unpack(&u32::to_be_bytes(reg))
-    }
-    /// Pack into big-endian register
-    fn to_reg(&self) -> u32 {
-        u32::from_be_bytes(self.pack())
-    }
 }
 
 /// Structure representing the build time from register `BUILD_ID`
