@@ -20,6 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use crate::Solution;
+
 use bosminer::work;
 use std::iter::Iterator;
 
@@ -29,7 +31,7 @@ pub struct WorkRegistryItem {
     work: work::Assignment,
     /// Each slot in the vector is associated with particular solution index as reported by
     /// the chips.
-    solutions: std::vec::Vec<work::Solution>,
+    solutions: std::vec::Vec<Solution>,
 }
 
 impl WorkRegistryItem {
@@ -38,7 +40,7 @@ impl WorkRegistryItem {
     /// * `solution` - solution to be inserted
     /// * `solution_idx` - each work may have multiple valid solutions, this index denotes its
     /// order. The index is reported by the hashing chip
-    pub fn insert_solution(&mut self, new_solution: work::Solution) -> InsertSolutionStatus {
+    pub fn insert_solution(&mut self, new_solution: Solution) -> InsertSolutionStatus {
         let mut status = InsertSolutionStatus {
             duplicate: false,
             mismatched_nonce: false,

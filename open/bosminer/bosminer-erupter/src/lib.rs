@@ -76,6 +76,42 @@ fn main_task(
     Ok(())
 }
 
+/// Represents raw solution from the Block Erupter
+#[derive(Debug)]
+pub struct Solution {
+    /// Actual nonce
+    nonce: u32,
+    /// Index of a solution (if multiple were found)
+    solution_idx: usize,
+}
+
+impl Solution {
+    pub fn new(nonce: u32, solution_idx: usize) -> Self {
+        Self {
+            nonce,
+            solution_idx,
+        }
+    }
+}
+
+impl hal::BackendSolution for Solution {
+    #[inline]
+    fn nonce(&self) -> u32 {
+        self.nonce
+    }
+
+    #[inline]
+    fn midstate_idx(&self) -> usize {
+        // device supports only one midstate
+        0
+    }
+
+    #[inline]
+    fn solution_idx(&self) -> usize {
+        self.solution_idx
+    }
+}
+
 pub struct Backend;
 
 impl hal::Backend for Backend {

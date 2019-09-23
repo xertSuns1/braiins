@@ -26,8 +26,19 @@ use crate::work;
 
 use futures::lock::Mutex;
 
+use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
+
+/// Represents raw solution from the mining hardware
+pub trait BackendSolution: Debug + Send + Sync {
+    /// Actual nonce
+    fn nonce(&self) -> u32;
+    /// Index of a midstate that corresponds to the found nonce
+    fn midstate_idx(&self) -> usize;
+    /// Index of a solution (if multiple were found)
+    fn solution_idx(&self) -> usize;
+}
 
 /// Minimal interface for running compatible backend with bOSminer crate
 pub trait Backend: Send + Sync + 'static {

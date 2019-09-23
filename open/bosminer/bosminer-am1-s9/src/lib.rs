@@ -735,6 +735,36 @@ async fn start_miner(
     }
 }
 
+/// Represents raw solution from the Antminer S9
+#[derive(Clone, Debug)]
+pub struct Solution {
+    /// Actual nonce
+    nonce: u32,
+    /// Index of a midstate that corresponds to the found nonce
+    midstate_idx: usize,
+    /// Index of a solution (if multiple were found)
+    solution_idx: usize,
+    /// Hardware specific solution identifier
+    pub hardware_id: u32,
+}
+
+impl hal::BackendSolution for Solution {
+    #[inline]
+    fn nonce(&self) -> u32 {
+        self.nonce
+    }
+
+    #[inline]
+    fn midstate_idx(&self) -> usize {
+        self.midstate_idx
+    }
+
+    #[inline]
+    fn solution_idx(&self) -> usize {
+        self.solution_idx
+    }
+}
+
 pub struct Backend;
 
 impl hal::Backend for Backend {

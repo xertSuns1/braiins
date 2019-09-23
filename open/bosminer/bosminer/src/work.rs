@@ -26,7 +26,8 @@
 pub mod engine;
 mod solver;
 
-use crate::job::{self, Bitcoin};
+use crate::hal;
+use crate::job::{self, Bitcoin as _};
 
 use ii_bitcoin::{HashTrait, MeetsTarget};
 
@@ -81,14 +82,13 @@ pub struct Midstate {
 
 /// Describes actual mining work for assignment to a hashing hardware.
 /// Starting with merkle_root_tail the data goes to chunk2 of SHA256.
-/// TODO: add ntime limit for supporting hardware that can do nTime rolling on its own
 #[derive(Clone, Debug)]
 pub struct Assignment {
     /// Bitcoin job shared with initial network protocol and work solution
     job: Arc<dyn job::Bitcoin>,
     /// Multiple midstates can be generated for each work
     pub midstates: Vec<Midstate>,
-    /// Start value for nTime, hardware may roll nTime further
+    /// nTime value for current work
     pub ntime: u32,
 }
 
@@ -113,21 +113,6 @@ impl Assignment {
     }
 }
 
-/// Represents raw solution from the mining hardware
-#[derive(Clone, Debug)]
-pub struct Solution {
-    /// actual nonce
-    pub nonce: u32,
-    /// nTime of the solution in case the HW also rolls the nTime field
-    pub ntime: Option<u32>,
-    /// index of a midstate that corresponds to the found nonce
-    pub midstate_idx: usize,
-    /// index of a solution (if multiple were found)
-    pub solution_idx: usize,
-    /// hardware specific solution identifier
-    pub hardware_id: u32,
-}
-
 /// Container with mining work and a corresponding solution received at a particular time
 /// This data structure is used when posting work+solution pairs for further submission upstream.
 #[derive(Clone)]
@@ -137,17 +122,21 @@ pub struct UniqueSolution {
     /// Original mining work associated with this solution
     work: Assignment,
     /// Solution of the PoW puzzle
-    solution: Solution,
+    solution: Arc<dyn hal::BackendSolution>,
     /// Lazy evaluated double hash of this solution
     hash: Cell<Option<ii_bitcoin::DHash>>,
 }
 
 impl UniqueSolution {
-    pub fn new(work: Assignment, solution: Solution, timestamp: Option<SystemTime>) -> Self {
+    pub fn new(
+        work: Assignment,
+        solution: impl hal::BackendSolution + 'static,
+        timestamp: Option<SystemTime>,
+    ) -> Self {
         Self {
             timestamp: timestamp.unwrap_or_else(|| SystemTime::now()),
             work,
-            solution,
+            solution: Arc::new(solution),
             hash: Cell::new(None),
         }
     }
@@ -161,27 +150,23 @@ impl UniqueSolution {
 
     #[inline]
     pub fn nonce(&self) -> u32 {
-        self.solution.nonce
+        self.solution.nonce()
     }
 
     #[inline]
     pub fn time(&self) -> u32 {
-        if let Some(time) = self.solution.ntime {
-            time
-        } else {
-            self.work.ntime
-        }
+        self.work.ntime
     }
 
     #[inline]
     pub fn version(&self) -> u32 {
-        let i = self.solution.midstate_idx;
+        let i = self.midstate_idx();
         self.work.midstates[i].version
     }
 
     #[inline]
     pub fn midstate_idx(&self) -> usize {
-        self.solution.midstate_idx
+        self.solution.midstate_idx()
     }
 
     /// Return double hash of this solution
@@ -228,8 +213,8 @@ impl Debug for UniqueSolution {
             f,
             "{:?} (nonce {:08x}, midstate {})",
             self.hash(),
-            self.solution.nonce,
-            self.solution.midstate_idx
+            self.nonce(),
+            self.midstate_idx()
         )
     }
 }
@@ -335,6 +320,36 @@ pub mod test_utils {
     use super::*;
     use crate::test_utils;
 
+    #[derive(Debug)]
+    struct TestSolution {
+        test_block: test_utils::TestBlock,
+    }
+
+    impl TestSolution {
+        pub fn new(test_block: &test_utils::TestBlock) -> Self {
+            Self {
+                test_block: *test_block,
+            }
+        }
+    }
+
+    impl hal::BackendSolution for TestSolution {
+        #[inline]
+        fn nonce(&self) -> u32 {
+            self.test_block.nonce
+        }
+
+        #[inline]
+        fn midstate_idx(&self) -> usize {
+            0
+        }
+
+        #[inline]
+        fn solution_idx(&self) -> usize {
+            0
+        }
+    }
+
     impl From<&test_utils::TestBlock> for Assignment {
         fn from(test_block: &test_utils::TestBlock) -> Self {
             let job = Arc::new(*test_block);
@@ -353,24 +368,12 @@ pub mod test_utils {
         }
     }
 
-    impl From<&test_utils::TestBlock> for Solution {
-        fn from(test_block: &test_utils::TestBlock) -> Self {
-            Self {
-                nonce: test_block.nonce,
-                ntime: None,
-                midstate_idx: 0,
-                solution_idx: 0,
-                hardware_id: 0,
-            }
-        }
-    }
-
     impl From<&test_utils::TestBlock> for UniqueSolution {
         fn from(test_block: &test_utils::TestBlock) -> Self {
             Self {
                 timestamp: SystemTime::UNIX_EPOCH,
                 work: test_block.into(),
-                solution: test_block.into(),
+                solution: Arc::new(TestSolution::new(test_block)),
                 hash: Cell::new(None),
             }
         }

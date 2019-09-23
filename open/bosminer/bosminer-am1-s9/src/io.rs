@@ -33,6 +33,7 @@ mod uio;
 
 use crate::error::{self, ErrorKind};
 use crate::MidstateCount;
+use crate::Solution;
 use ext_work_id::ExtWorkId;
 
 use bosminer::work;
@@ -379,14 +380,13 @@ pub struct WorkRx {
 }
 
 impl WorkRx {
-    pub async fn recv_solution(mut self) -> Result<(Self, work::Solution), failure::Error> {
+    pub async fn recv_solution(mut self) -> Result<(Self, Solution), failure::Error> {
         let word1 = await!(self.fifo.async_read())?;
         let word2 = await!(self.fifo.async_read())?;
         let resp = WorkRxResponse::from_hw(self.midstate_count, word1, word2);
 
-        let solution = work::Solution {
+        let solution = Solution {
             nonce: resp.nonce,
-            ntime: None,
             midstate_idx: resp.midstate_idx,
             solution_idx: resp.solution_idx,
             hardware_id: resp.work_id as u32,
