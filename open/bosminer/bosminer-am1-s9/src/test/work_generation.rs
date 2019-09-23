@@ -23,6 +23,7 @@
 use ii_logging::macros::*;
 
 use super::*;
+use crate::Solution;
 
 use bosminer::work;
 
@@ -57,7 +58,7 @@ fn prepare_test_work(midstate_count: usize) -> work::Assignment {
 /// Task that receives solutions from hardware and sends them to channel
 async fn receiver_task(
     hash_chain: Arc<Mutex<HashChain>>,
-    solution_sender: mpsc::UnboundedSender<work::Solution>,
+    solution_sender: mpsc::UnboundedSender<Solution>,
 ) {
     let mut rx_io = await!(hash_chain.lock())
         .work_rx_io
@@ -96,7 +97,7 @@ async fn sender_task(
 
 async fn send_and_receive_test_workloads<'a>(
     work_sender: &'a mpsc::UnboundedSender<work::Assignment>,
-    solution_receiver: &'a mut mpsc::UnboundedReceiver<work::Solution>,
+    solution_receiver: &'a mut mpsc::UnboundedReceiver<Solution>,
     n_send: usize,
     expected_solution_count: usize,
 ) {
