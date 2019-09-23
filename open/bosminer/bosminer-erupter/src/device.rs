@@ -194,7 +194,7 @@ pub struct BlockErupterSolver<'a> {
     work_generator: work::Generator,
     work_start: SystemTime,
     curr_work: Option<work::Assignment>,
-    next_solution: Option<work::UniqueSolution>,
+    next_solution: Option<work::Solution>,
     solution_idx: usize,
     stop_reason: RefCell<error::Result<()>>,
 }
@@ -261,13 +261,13 @@ impl<'a> BlockErupterSolver<'a> {
         nonce: u32,
         timestamp: SystemTime,
         solution_idx: usize,
-    ) -> work::UniqueSolution {
-        work::UniqueSolution::new(work, Solution::new(nonce, solution_idx), Some(timestamp))
+    ) -> work::Solution {
+        work::Solution::new(work, Solution::new(nonce, solution_idx), Some(timestamp))
     }
 }
 
 impl<'a> Iterator for BlockErupterSolver<'a> {
-    type Item = work::UniqueSolution;
+    type Item = work::Solution;
 
     /// Waits for new work and send it to the Block Erupter device
     /// When the solution is found then the result is returned as an unique mining work solution.

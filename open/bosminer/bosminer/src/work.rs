@@ -116,7 +116,7 @@ impl Assignment {
 /// Container with mining work and a corresponding solution received at a particular time
 /// This data structure is used when posting work+solution pairs for further submission upstream.
 #[derive(Clone)]
-pub struct UniqueSolution {
+pub struct Solution {
     /// Time stamp when it has been fetched from the solution FIFO
     timestamp: SystemTime,
     /// Original mining work associated with this solution
@@ -127,7 +127,7 @@ pub struct UniqueSolution {
     hash: Cell<Option<ii_bitcoin::DHash>>,
 }
 
-impl UniqueSolution {
+impl Solution {
     pub fn new(
         work: Assignment,
         solution: impl hal::BackendSolution + 'static,
@@ -207,7 +207,7 @@ impl UniqueSolution {
     }
 }
 
-impl Debug for UniqueSolution {
+impl Debug for Solution {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -368,7 +368,7 @@ pub mod test_utils {
         }
     }
 
-    impl From<&test_utils::TestBlock> for UniqueSolution {
+    impl From<&test_utils::TestBlock> for Solution {
         fn from(test_block: &test_utils::TestBlock) -> Self {
             Self {
                 timestamp: SystemTime::UNIX_EPOCH,
@@ -387,7 +387,7 @@ pub mod test {
     #[test]
     fn test_block_double_hash() {
         for block in crate::test_utils::TEST_BLOCKS.iter() {
-            let solution: UniqueSolution = block.into();
+            let solution: Solution = block.into();
 
             // test lazy evaluated hash
             let hash = solution.hash();

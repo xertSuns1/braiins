@@ -63,11 +63,7 @@ impl WorkRegistryItem {
         }
 
         // report the unique solution via status
-        status.unique_solution = Some(work::UniqueSolution::new(
-            self.work.clone(),
-            new_solution,
-            None,
-        ));
+        status.unique_solution = Some(work::Solution::new(self.work.clone(), new_solution, None));
         status
     }
 }
@@ -81,7 +77,7 @@ pub struct InsertSolutionStatus {
     pub duplicate: bool,
     /// actual solution (defined if the above 2 are false)
     /// TODO: rename `unique_solution` to solution
-    pub unique_solution: Option<work::UniqueSolution>,
+    pub unique_solution: Option<work::Solution>,
 }
 
 /// Simple work registry with `work_id` allocator
