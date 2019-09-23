@@ -44,7 +44,7 @@ impl Solver {
     /// Construct new work solver from engine receiver and associated channel to send the results
     pub fn new(
         engine_receiver: EngineReceiver,
-        solution_queue_tx: mpsc::UnboundedSender<UniqueSolution>,
+        solution_queue_tx: mpsc::UnboundedSender<Solution>,
     ) -> Self {
         Self {
             work_generator: Generator::new(engine_receiver),
@@ -100,10 +100,10 @@ impl Generator {
 /// This struct is to be passed to the underlying mining backend. It allows submission of
 /// `UniqueMiningWorkSolution`
 #[derive(Clone)]
-pub struct SolutionSender(mpsc::UnboundedSender<UniqueSolution>);
+pub struct SolutionSender(mpsc::UnboundedSender<Solution>);
 
 impl SolutionSender {
-    pub fn send(&self, solution: UniqueSolution) {
+    pub fn send(&self, solution: Solution) {
         self.0
             .unbounded_send(solution)
             .expect("solution queue send failed");

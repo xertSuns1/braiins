@@ -92,7 +92,7 @@ pub struct Solver {
 impl Solver {
     pub fn new(
         engine_sender: work::EngineSender,
-        solution_queue_rx: mpsc::UnboundedReceiver<work::UniqueSolution>,
+        solution_queue_rx: mpsc::UnboundedReceiver<work::Solution>,
     ) -> Self {
         let current_target = create_shared_target(Default::default());
         Self {
@@ -144,13 +144,13 @@ impl Sender {
 /// Receives `work::UniqueSolution` via a channel and filters only solutions that meet the
 /// pool specified target
 pub struct SolutionReceiver {
-    solution_channel: mpsc::UnboundedReceiver<work::UniqueSolution>,
+    solution_channel: mpsc::UnboundedReceiver<work::Solution>,
     current_target: Arc<RwLock<ii_bitcoin::Target>>,
 }
 
 impl SolutionReceiver {
     pub fn new(
-        solution_channel: mpsc::UnboundedReceiver<work::UniqueSolution>,
+        solution_channel: mpsc::UnboundedReceiver<work::Solution>,
         current_target: Arc<RwLock<ii_bitcoin::Target>>,
     ) -> Self {
         Self {
@@ -159,7 +159,7 @@ impl SolutionReceiver {
         }
     }
 
-    fn trace_share(solution: &work::UniqueSolution, target: &ii_bitcoin::Target) {
+    fn trace_share(solution: &work::Solution, target: &ii_bitcoin::Target) {
         info!(
             "nonce={:08x} bytes={}",
             solution.nonce(),
@@ -169,7 +169,7 @@ impl SolutionReceiver {
         info!("target={:x}", target);
     }
 
-    pub async fn receive(&mut self) -> Option<work::UniqueSolution> {
+    pub async fn receive(&mut self) -> Option<work::Solution> {
         while let Some(solution) = await!(self.solution_channel.next()) {
             let current_target = &*self
                 .current_target

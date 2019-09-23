@@ -239,7 +239,7 @@ impl StratumSolutionHandler {
         }
     }
 
-    async fn process_solution(&mut self, solution: work::UniqueSolution) {
+    async fn process_solution(&mut self, solution: work::Solution) {
         let job: &StratumJob = solution.job();
 
         let seq_num = self.seq_num;
