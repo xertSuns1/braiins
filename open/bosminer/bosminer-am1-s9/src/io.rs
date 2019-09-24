@@ -539,9 +539,14 @@ impl CommandRxTx {
     }
 }
 
+/// Structure holding the `common` register block
 pub struct Config {
+    /// The `common` register block itself
     regs: uio_async::UioTypedMapping<ii_fpga_io_am1_s9::common::RegisterBlock>,
+    /// Current midstate configuration
     midstate_count: MidstateCount,
+    /// With which hashboard is this register block associated?
+    /// This is required to print meaningful error messages.
     hashboard_idx: usize,
 }
 
