@@ -24,7 +24,7 @@ use packed_struct::prelude::*;
 
 /// Just an util trait so that we can pack/unpack directly to registers
 pub trait PackedRegister: Sized {
-    fn from_reg(reg: u32) -> Result<Self, PackingError>;
+    fn from_reg(reg: u32) -> Self;
     fn to_reg(&self) -> u32;
 }
 
@@ -33,8 +33,8 @@ where
     T: PackedStruct<[u8; 4]>,
 {
     /// Take register and unpack (as big endian)
-    fn from_reg(reg: u32) -> Result<Self, PackingError> {
-        Self::unpack(&u32::to_be_bytes(reg))
+    fn from_reg(reg: u32) -> Self {
+        Self::unpack(&u32::to_be_bytes(reg)).expect("unpacking error")
     }
     /// Pack into big-endian register
     fn to_reg(&self) -> u32 {

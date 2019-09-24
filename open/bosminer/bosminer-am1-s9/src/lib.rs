@@ -448,7 +448,7 @@ where
 
         // Check if are responses meaningful
         for (address, register) in responses.iter().enumerate() {
-            let addr_reg = bm1387::GetAddressReg::from_reg(*register).expect("unpacking failed");
+            let addr_reg = bm1387::GetAddressReg::from_reg(*register);
             if addr_reg.chip_rev != bm1387::ChipRev::Bm1387 {
                 Err(ErrorKind::Hashchip(format!(
                     "unexpected revision of chip {} (expected: {:?} received: {:?})",
@@ -714,7 +714,7 @@ where
             }
             let mut sum = 0;
             for (chip_address, reg) in responses.iter().enumerate() {
-                let hashrate_reg = bm1387::HashrateReg::from_reg(*reg).expect("unpacking failed");
+                let hashrate_reg = bm1387::HashrateReg::from_reg(*reg);
                 trace!(
                     "chip {} hashrate {} GHash/s",
                     chip_address,
