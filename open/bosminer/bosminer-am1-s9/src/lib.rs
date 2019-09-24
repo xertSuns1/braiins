@@ -3,16 +3,16 @@
 // This file is part of Braiins Open-Source Initiative (BOSI).
 //
 // BOSI is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Common Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
+// GNU Common Public License for more details.
 //
-// You should have received a copy of the GNU General Public License
+// You should have received a copy of the GNU Common Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 // Please, keep in mind that we may also license BOSI or any part thereof
@@ -183,7 +183,7 @@ pub struct HashChain<VBackend> {
     #[allow(dead_code)]
     hashboard_idx: usize,
     pub command_io: io::CommandRxTx,
-    pub config_io: io::Config,
+    pub common_io: io::Common,
     pub work_rx_io: Option<io::WorkRx>,
     pub work_tx_io: Option<io::WorkTx>,
 }
@@ -231,7 +231,7 @@ where
 
         let core = io::Core::new(hashboard_idx, midstate_count)?;
         // Unfortunately, we have to do IP core re-init here (but it should be OK, it's synchronous)
-        let (config_io, command_io, work_rx_io, work_tx_io) = core.init_and_split()?;
+        let (common_io, command_io, work_rx_io, work_tx_io) = core.init_and_split()?;
 
         Ok(Self {
             chip_count: 0,
@@ -244,7 +244,7 @@ where
             last_heartbeat_sent: None,
             // TODO: implement setting me
             pll_frequency: DEFAULT_S9_PLL_FREQUENCY,
-            config_io,
+            common_io,
             command_io,
             work_rx_io: Some(work_rx_io),
             work_tx_io: Some(work_tx_io),
@@ -267,15 +267,15 @@ where
         self.set_ip_core_baud_rate(INIT_CHIP_BAUD_RATE)?;
         let work_time = self.calculate_work_time();
         trace!("Using work time: {}", work_time);
-        self.config_io.set_ip_core_work_time(work_time);
-        self.config_io.set_midstate_count();
+        self.common_io.set_ip_core_work_time(work_time);
+        self.common_io.set_midstate_count();
 
         Ok(())
     }
 
     /// Puts the board into reset mode and disables the associated IP core
     fn enter_reset(&mut self) -> error::Result<()> {
-        self.config_io.disable_ip_core();
+        self.common_io.disable_ip_core();
         // perform reset of the hashboard
         self.rst_pin.set_low()?;
         Ok(())
@@ -284,7 +284,7 @@ where
     /// Leaves reset mode
     fn exit_reset(&mut self) -> error::Result<()> {
         self.rst_pin.set_high()?;
-        self.config_io.enable_ip_core();
+        self.common_io.enable_ip_core();
         Ok(())
     }
 
@@ -484,7 +484,7 @@ where
             baud, actual_baud_rate, baud_clock_div
         );
 
-        self.config_io.set_baud_clock_div(baud_clock_div as u32);
+        self.common_io.set_baud_clock_div(baud_clock_div as u32);
         Ok(())
     }
 

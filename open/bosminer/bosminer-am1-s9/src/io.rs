@@ -3,16 +3,16 @@
 // This file is part of Braiins Open-Source Initiative (BOSI).
 //
 // BOSI is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// it under the terms of the GNU Common Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
+// GNU Common Public License for more details.
 //
-// You should have received a copy of the GNU General Public License
+// You should have received a copy of the GNU Common Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 // Please, keep in mind that we may also license BOSI or any part thereof
@@ -540,7 +540,7 @@ impl CommandRxTx {
 }
 
 /// Structure holding the `common` register block
-pub struct Config {
+pub struct Common {
     /// The `common` register block itself
     regs: uio_async::UioTypedMapping<ii_fpga_io_am1_s9::common::RegisterBlock>,
     /// Current midstate configuration
@@ -550,7 +550,7 @@ pub struct Config {
     hashboard_idx: usize,
 }
 
-impl Config {
+impl Common {
     /// Return build id (unix timestamp) of s9-io bitstream
     #[inline]
     fn get_build_id(&mut self) -> BuildId {
@@ -663,7 +663,7 @@ impl Config {
 
 /// Represents the whole IP core
 pub struct Core {
-    config_io: Config,
+    common_io: Common,
     command_io: CommandRxTx,
     work_rx_io: WorkRx,
     work_tx_io: WorkTx,
@@ -673,7 +673,7 @@ impl Core {
     /// Build a new IP core
     pub fn new(hashboard_idx: usize, midstate_count: MidstateCount) -> error::Result<Self> {
         Ok(Self {
-            config_io: Config::new(hashboard_idx, midstate_count)?,
+            common_io: Common::new(hashboard_idx, midstate_count)?,
             command_io: CommandRxTx::new(hashboard_idx)?,
             work_rx_io: WorkRx::new(hashboard_idx, midstate_count)?,
             work_tx_io: WorkTx::new(hashboard_idx, midstate_count)?,
@@ -682,9 +682,9 @@ impl Core {
 
     /// Initialize the IP core and split it into components
     /// That way it's not possible to access un-initialized IO blocks
-    pub fn init_and_split(mut self) -> error::Result<(Config, CommandRxTx, WorkRx, WorkTx)> {
-        // config_io has to go first to reset the IP core
-        self.config_io.init()?;
+    pub fn init_and_split(mut self) -> error::Result<(Common, CommandRxTx, WorkRx, WorkTx)> {
+        // common_io has to go first to reset the IP core
+        self.common_io.init()?;
 
         // Initialize fifos
         self.command_io.init()?;
@@ -692,7 +692,7 @@ impl Core {
         self.work_tx_io.init()?;
 
         Ok((
-            self.config_io,
+            self.common_io,
             self.command_io,
             self.work_rx_io,
             self.work_tx_io,
@@ -809,7 +809,7 @@ mod test {
 pub mod test_utils {
     use super::*;
 
-    /// Represents configuration of Config block
+    /// Represents configuration of Common block
     pub struct Regs {
         pub work_time: u32,
         pub baud_reg: u32,
@@ -821,7 +821,7 @@ pub mod test_utils {
 
     impl Regs {
         pub fn new(
-            config: &Config,
+            config: &Common,
             command: &CommandRxTx,
             work_rx: &WorkRx,
             work_tx: &WorkTx,
