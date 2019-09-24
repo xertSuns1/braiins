@@ -230,16 +230,6 @@ impl TicketMaskReg {
     }
 }
 
-/// Converts the register value into a word accepted by the FPGA
-impl Into<u32> for TicketMaskReg {
-    fn into(self) -> u32 {
-        let reg_bytes = self.pack();
-        // packed struct already took care of endianess conversion, we just need the canonical
-        // value as u32
-        u32::from_be_bytes(reg_bytes)
-    }
-}
-
 /// Core register that configures the most important aspects of the mining chip like:
 ///
 /// - baud rate/communication speed
@@ -301,13 +291,6 @@ impl MiscCtrlReg {
             gate_block,
             mmen,
         })
-    }
-}
-
-impl Into<u32> for MiscCtrlReg {
-    fn into(self) -> u32 {
-        let reg_bytes = self.pack();
-        u32::from_be_bytes(reg_bytes)
     }
 }
 
@@ -417,7 +400,7 @@ mod test {
     #[test]
     fn build_set_config_ticket_mask() {
         let reg = TicketMaskReg::new(64).expect("Cannot build difficulty register");
-        let cmd = SetConfigCmd::new(0x00, true, TICKET_MASK_REG, reg.into());
+        let cmd = SetConfigCmd::new(0x00, true, TICKET_MASK_REG, reg.to_reg());
         let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x18, 0x00, 0x00, 0x00, 0x3f];
         let cmd_bytes = cmd.pack();
         assert_eq!(cmd_bytes, expected_cmd_with_padding);
@@ -433,7 +416,7 @@ mod test {
             gate_block: true,
             mmen: true,
         };
-        let cmd = SetConfigCmd::new(0x00, true, MISC_CONTROL_REG, reg.into());
+        let cmd = SetConfigCmd::new(0x00, true, MISC_CONTROL_REG, reg.to_reg());
         let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x1c, 0x40, 0x20, 0x9a, 0x80];
         let cmd_bytes = cmd.pack();
         assert_eq!(cmd_bytes, expected_cmd_with_padding);
@@ -545,7 +528,7 @@ mod test {
             mmen: true,
         };
         let expected_reg_value = 0x40209a80u32;
-        let reg_value: u32 = reg.into();
+        let reg_value: u32 = reg.to_reg();
         assert_eq!(
             reg_value, expected_reg_value,
             "Misc Control Register 32-bit value  doesn't match: V:{:#010x} E:{:#010x}",
@@ -564,7 +547,7 @@ mod test {
         let reg = TicketMaskReg::new(64).expect("Cannot build difficulty register");
 
         let expected_reg_value = 0x3fu32;
-        let reg_value: u32 = reg.into();
+        let reg_value: u32 = reg.to_reg();
         assert_eq!(
             reg_value, expected_reg_value,
             "Ticket mask register 32-bit value  doesn't match: V:{:#010x} E:{:#010x}",

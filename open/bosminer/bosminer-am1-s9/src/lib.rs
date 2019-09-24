@@ -294,7 +294,7 @@ where
             difficulty,
             tm_reg
         );
-        let cmd = bm1387::SetConfigCmd::new(0, true, bm1387::TICKET_MASK_REG, tm_reg.into());
+        let cmd = bm1387::SetConfigCmd::new(0, true, bm1387::TICKET_MASK_REG, tm_reg.to_reg());
         // wait until all commands have been sent
         await!(self.send_ctl_cmd(cmd.pack().to_vec(), true));
 
@@ -462,7 +462,7 @@ where
             bm1387::MiscCtrlReg::new(not_set_baud, true, baud_clock_div, gate_block, true)?;
         // TODO: rework the setconfig::new interface to accept the register directly and
         // eliminate the register address in this place
-        let cmd = bm1387::SetConfigCmd::new(0, true, bm1387::MISC_CONTROL_REG, ctl_reg.into());
+        let cmd = bm1387::SetConfigCmd::new(0, true, bm1387::MISC_CONTROL_REG, ctl_reg.to_reg());
         // wait until all commands have been sent
         await!(self.send_ctl_cmd(cmd.pack().to_vec(), true));
         Ok(actual_baud_rate)
