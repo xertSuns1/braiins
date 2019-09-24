@@ -324,7 +324,7 @@ Each mining work specification have the following format:
 
 Extended work ID can be up to 16 bits. Lower 1 - 2 bits have to be 0 depending whether submitting work that contains 1, 2, or 4 midstates resp.
 Words in midstates are in reverse order `State[7]..State[0]`. However, unlike **BM1387** specification words don't have to be in big endian, IP core performs the ordering change on its own.
-Extended work ID allows pairing of assigned mining work with a result, currently, there are 7 bits available for the work ID send into ASICs. The work's IDs have to be assigned with a gap of 4 (e.g. 0, 4, 8, 12). The reason is that the chip communicates the midstate index via `work_id`.
+Extended work ID allows pairing of assigned mining work with a result, currently, there are 7 bits available for the work ID send into ASICs. The work's IDs have to be assigned with a gap of # midstates (e.g. 0, 4, 8, 12 for 4 midstates, 0, 2, 4, ... for 2 midstates). The reason is that the chip communicates the midstate index via `work_id`.
 
 Register is 32-bit width and it is write-only. Register must be written only by 32b words because each write access increments pointer in the buffer.
 
