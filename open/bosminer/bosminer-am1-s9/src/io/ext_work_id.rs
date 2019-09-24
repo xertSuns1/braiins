@@ -39,6 +39,8 @@ use crate::MidstateCount;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtWorkId {
     pub work_id: usize,
+    /// Midstate index is relevant only when receiving a work solution denoting the midstate index
+    /// relevant for a specific solution
     pub midstate_idx: usize,
 }
 
