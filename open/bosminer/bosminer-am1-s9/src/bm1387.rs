@@ -232,7 +232,7 @@ impl Default for ChipRev {
 /// This register represents ASIC difficulty
 ///
 /// The chip will provide only solutions that are <= target based on this difficulty
-#[derive(PackedStruct, Debug)]
+#[derive(PackedStruct, Debug, PartialEq)]
 #[packed_struct(size_bytes = "4", endian = "msb")]
 pub struct TicketMaskReg {
     /// stores difficulty - 1
@@ -261,7 +261,7 @@ impl TicketMaskReg {
 ///
 /// TODO: research set_baud_with_addr() in bmminer-mix as there seems to be some magic setting
 /// I2C interface of the chip or something like that
-#[derive(PackedStruct, Debug)]
+#[derive(PackedStruct, Debug, PartialEq)]
 #[packed_struct(bit_numbering = "lsb0", size_bytes = "4", endian = "msb")]
 pub struct MiscCtrlReg {
     /// Exact meaning of this field is unknown, when setting baud rate, it is 0, when
