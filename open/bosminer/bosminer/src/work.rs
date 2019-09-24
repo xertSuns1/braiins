@@ -27,7 +27,7 @@ pub mod engine;
 mod solver;
 
 use crate::hal;
-use crate::job::{self, Bitcoin as _};
+use crate::job;
 
 use ii_bitcoin::{HashTrait, MeetsTarget};
 
@@ -312,70 +312,6 @@ impl EngineReceiver {
             reschedule_sender
                 .unbounded_send(engine)
                 .expect("reschedule notify send failed");
-        }
-    }
-}
-
-pub mod test_utils {
-    use super::*;
-    use crate::test_utils;
-
-    #[derive(Debug)]
-    struct TestSolution {
-        test_block: test_utils::TestBlock,
-    }
-
-    impl TestSolution {
-        pub fn new(test_block: &test_utils::TestBlock) -> Self {
-            Self {
-                test_block: *test_block,
-            }
-        }
-    }
-
-    impl hal::BackendSolution for TestSolution {
-        #[inline]
-        fn nonce(&self) -> u32 {
-            self.test_block.nonce
-        }
-
-        #[inline]
-        fn midstate_idx(&self) -> usize {
-            0
-        }
-
-        #[inline]
-        fn solution_idx(&self) -> usize {
-            0
-        }
-    }
-
-    impl From<&test_utils::TestBlock> for Assignment {
-        fn from(test_block: &test_utils::TestBlock) -> Self {
-            let job = Arc::new(*test_block);
-            let time = job.time();
-
-            let mid = Midstate {
-                version: job.version(),
-                state: job.midstate,
-            };
-
-            Self {
-                job,
-                midstates: vec![mid],
-                ntime: time,
-            }
-        }
-    }
-
-    impl From<&test_utils::TestBlock> for Solution {
-        fn from(test_block: &test_utils::TestBlock) -> Self {
-            Self {
-                timestamp: SystemTime::UNIX_EPOCH,
-                work: test_block.into(),
-                solution: Arc::new(TestSolution::new(test_block)),
-                hash: Cell::new(None),
-            }
         }
     }
 }

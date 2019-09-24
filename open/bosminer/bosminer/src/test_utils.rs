@@ -22,12 +22,14 @@
 
 pub mod block_mining;
 
-use crate::job;
+use crate::hal;
+use crate::job::{self, Bitcoin as _};
 use crate::work;
 
 pub use ii_bitcoin::{TestBlock, TEST_BLOCKS};
 
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
+use std::time::SystemTime;
 
 impl job::Bitcoin for TestBlock {
     fn version(&self) -> u32 {
@@ -56,6 +58,60 @@ impl job::Bitcoin for TestBlock {
 
     fn is_valid(&self) -> bool {
         true
+    }
+}
+
+#[derive(Debug)]
+struct TestSolution {
+    test_block: TestBlock,
+}
+
+impl TestSolution {
+    pub fn new(test_block: &TestBlock) -> Self {
+        Self {
+            test_block: *test_block,
+        }
+    }
+}
+
+impl hal::BackendSolution for TestSolution {
+    #[inline]
+    fn nonce(&self) -> u32 {
+        self.test_block.nonce
+    }
+
+    #[inline]
+    fn midstate_idx(&self) -> usize {
+        0
+    }
+
+    #[inline]
+    fn solution_idx(&self) -> usize {
+        0
+    }
+}
+
+impl From<&TestBlock> for work::Assignment {
+    fn from(test_block: &TestBlock) -> Self {
+        let job = Arc::new(*test_block);
+        let time = job.time();
+
+        let mid = work::Midstate {
+            version: job.version(),
+            state: job.midstate,
+        };
+
+        Self::new(Arc::new(*test_block), vec![mid], time)
+    }
+}
+
+impl From<&TestBlock> for work::Solution {
+    fn from(test_block: &TestBlock) -> Self {
+        Self::new(
+            test_block.into(),
+            TestSolution::new(test_block),
+            Some(SystemTime::UNIX_EPOCH),
+        )
     }
 }
 
