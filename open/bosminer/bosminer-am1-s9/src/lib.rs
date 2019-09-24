@@ -697,6 +697,35 @@ where
         }
     }
 
+    /// Monitor task
+    /// Fetch periodically information about hashrate
+    async fn monitor_task(hash_chain: Arc<Mutex<Self>>) {
+        info!("monitor task is starting");
+        loop {
+            await!(sleep(Duration::from_secs(5)));
+
+            let mut hash_chain = await!(hash_chain.lock());
+            let responses =
+                await!(hash_chain.read_register(ChipAddress::All, bm1387::HASHRATE_REG))
+                    .expect("reading hashrate_reg failed");
+
+            if responses.len() != hash_chain.chip_count {
+                warn!("missing some responses");
+            }
+            let mut sum = 0;
+            for (chip_address, reg) in responses.iter().enumerate() {
+                let hashrate_reg = bm1387::HashrateReg::from_reg(*reg).expect("unpacking failed");
+                trace!(
+                    "chip {} hashrate {} GHash/s",
+                    chip_address,
+                    hashrate_reg.hashrate() as f64 / 1e9
+                );
+                sum += hashrate_reg.hashrate() as u128;
+            }
+            info!("total chip hashrate {} GHash/s", sum as f64 / 1e9);
+        }
+    }
+
     fn spawn_tx_task(
         hash_chain: Arc<Mutex<Self>>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
@@ -745,6 +774,12 @@ where
         });
     }
 
+    fn spawn_monitor_task(hash_chain: Arc<Mutex<Self>>) {
+        ii_async_compat::spawn(async move {
+            await!(Self::monitor_task(hash_chain,));
+        });
+    }
+
     pub fn start(
         self,
         work_solver: work::Solver,
@@ -773,6 +808,7 @@ where
             mining_stats.clone(),
             work_solution,
         );
+        HashChain::spawn_monitor_task(hash_chain.clone());
 
         hash_chain
     }

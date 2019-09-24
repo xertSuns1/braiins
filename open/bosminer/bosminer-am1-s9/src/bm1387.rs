@@ -29,7 +29,7 @@ use packed_struct_codegen::{PrimitiveEnum_u16, PrimitiveEnum_u8};
 use std::mem::size_of;
 
 pub const GET_ADDRESS_REG: u8 = 0x00;
-pub const HASH_RATE_REG: u8 = 0x08;
+pub const HASHRATE_REG: u8 = 0x08;
 pub const PLL_PARAM_REG: u8 = 0x0c;
 #[allow(dead_code)]
 pub const HASH_COUNTING_REG: u8 = 0x14;
@@ -192,6 +192,19 @@ impl InactivateFromChainCmd {
             header,
             _reserved: 0,
         }
+    }
+}
+
+#[derive(PackedStruct, Default, Debug)]
+#[packed_struct(endian = "msb", size_bytes = "4")]
+pub struct HashrateReg {
+    // hashrate in 2^24 hash units
+    pub hashrate24: u32,
+}
+
+impl HashrateReg {
+    pub fn hashrate(&self) -> u64 {
+        (self.hashrate24 as u64) << 24
     }
 }
 
@@ -481,7 +494,7 @@ mod test {
             addr: 0x00,
             ..Default::default()
         };
-        let expected_reg = [0x13u8, 0x87, 0x90, 0x00, 0x00, 0x00];
+        let expected_reg = [0x13u8, 0x87, 0x90, 0x00];
 
         let reg_bytes = reg.pack();
         assert_eq!(
