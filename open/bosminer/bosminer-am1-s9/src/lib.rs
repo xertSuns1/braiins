@@ -55,6 +55,8 @@ use failure::ResultExt;
 
 use futures::lock::Mutex;
 
+use bm1387::ChipAddress;
+
 use crate::utils::PackedRegister;
 use packed_struct::{PackedStruct, PackedStructSlice};
 
@@ -152,31 +154,6 @@ impl MidstateCount {
     #[inline]
     fn to_mask(&self) -> usize {
         (1 << self.log2) - 1
-    }
-}
-
-/// Enum representig chip address
-#[derive(Debug, Clone, Copy)]
-enum ChipAddress {
-    All,
-    One(u8),
-}
-
-impl ChipAddress {
-    // is address broadcast?
-    fn is_to_all(&self) -> bool {
-        match self {
-            ChipAddress::All => true,
-            ChipAddress::One(_) => false,
-        }
-    }
-
-    // get chip address or 0 if it's broadcast
-    fn get_addr(&self) -> u8 {
-        match self {
-            ChipAddress::All => 0,
-            ChipAddress::One(x) => *x,
-        }
     }
 }
 
@@ -314,10 +291,10 @@ where
 
     async fn read_register<T: PackedRegister>(
         &mut self,
-        addr: ChipAddress,
+        chip_address: ChipAddress,
         register: u8,
     ) -> error::Result<Vec<T>> {
-        let cmd = bm1387::GetStatusCmd::new(addr.get_addr(), addr.is_to_all(), register).pack();
+        let cmd = bm1387::GetStatusCmd::new(chip_address, register).pack();
         // send command, do not wait for it to be sent out
         await!(self.send_ctl_cmd(cmd.to_vec(), false));
 
@@ -330,7 +307,7 @@ where
                         .context(format!("response unpacking failed"))?;
                     responses.push(T::from_reg(cmd_response.value));
                     // exit early if we expect just one reply
-                    if !addr.is_to_all() {
+                    if chip_address != ChipAddress::All {
                         break;
                     }
                 }
@@ -342,19 +319,18 @@ where
 
     async fn write_register<'a, T: PackedRegister + Debug + PartialEq>(
         &'a mut self,
-        addr: ChipAddress,
+        chip_address: ChipAddress,
         read_back: bool,
         register: u8,
         value: &'a T,
     ) -> error::Result<()> {
-        let cmd =
-            bm1387::SetConfigCmd::new(addr.get_addr(), addr.is_to_all(), register, value.to_reg());
+        let cmd = bm1387::SetConfigCmd::new(chip_address, register, value.to_reg());
         // wait for command to be sent out
         await!(self.send_ctl_cmd(cmd.pack().to_vec(), true));
 
         // read the register back
         if read_back {
-            let responses = await!(self.read_register::<T>(addr, register))?;
+            let responses = await!(self.read_register::<T>(chip_address, register))?;
             // TODO: insert here some more checks - like does number of replies match number of chips etc.
             for (chip_address, read_back_value) in responses.iter().enumerate() {
                 if *read_back_value != *value {
@@ -482,26 +458,19 @@ where
         }
 
         // Assign address to each chip
-        for addr in self.chip_iter() {
-            let cmd = bm1387::SetChipAddressCmd::new(addr);
+        for i in 0..self.chip_count {
+            let cmd = bm1387::SetChipAddressCmd::new(ChipAddress::One(i));
             await!(self.send_ctl_cmd(cmd.pack().to_vec(), false));
         }
 
         Ok(())
     }
 
-    /// Returns iterator over all chips (yield their u8 addresses)
-    fn chip_iter(&self) -> impl Iterator<Item = u8> {
-        // make sure there is not too many chips
-        assert!(self.chip_count * 4 < 256);
-        (0..(self.chip_count as u8 * 4)).step_by(4)
-    }
-
     /// Loads PLL register with a starting value
     async fn set_pll<'a>(&'a mut self, pll: &'a bm1387::Pll) -> error::Result<()> {
-        for addr in self.chip_iter() {
+        for i in 0..self.chip_count {
             // NOTE: when PLL register is read back, it is or-ed with 0x8000_0000, not sure why
-            await!(self.write_register(ChipAddress::One(addr), false, bm1387::PLL_PARAM_REG, pll))?;
+            await!(self.write_register(ChipAddress::One(i), false, bm1387::PLL_PARAM_REG, pll))?;
         }
         Ok(())
     }

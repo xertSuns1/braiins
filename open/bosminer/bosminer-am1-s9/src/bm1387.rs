@@ -26,6 +26,7 @@ use packed_struct::prelude::*;
 use packed_struct_codegen::PackedStruct;
 use packed_struct_codegen::{PrimitiveEnum_u16, PrimitiveEnum_u8};
 
+use std::convert::TryInto;
 use std::mem::size_of;
 
 pub const GET_ADDRESS_REG: u8 = 0x00;
@@ -44,6 +45,36 @@ pub const CHIP_OSC_CLK_BASE_BAUD_DIV: usize = 8;
 
 /// How many cores are on the chip
 pub const NUM_CORES_ON_CHIP: usize = 114;
+
+/// This enum is a bridge between chip address representation as we tend to
+/// think about it (addresses `0..=62`) and how the hardware addresses them
+/// (in increments of four).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ChipAddress {
+    All,
+    /// Represents linear chip address 0..62
+    One(usize),
+}
+
+impl ChipAddress {
+    /// Return if address is a broadcast
+    fn is_broadcast(&self) -> bool {
+        match self {
+            ChipAddress::All => true,
+            ChipAddress::One(_) => false,
+        }
+    }
+
+    /// Return hardware chip address or 0 if it's a broadcast
+    fn to_hw_addr(&self) -> u8 {
+        match self {
+            ChipAddress::All => 0,
+            ChipAddress::One(x) => ((*x) * 4)
+                .try_into()
+                .expect("chip address doesn't fit into a byte"),
+        }
+    }
+}
 
 /// Control or work command layout
 #[derive(PackedStruct, Debug)]
@@ -78,34 +109,31 @@ pub struct CmdHeader {
     #[packed_field(element_size_bytes = "1")]
     cmd: Cmd,
     length: u8,
-    chip_address: u8,
+    hw_addr: u8,
 }
 impl CmdHeader {
     ///
     /// * `length` - size of the command excluding checksum
     /// * `checksum_size` - Size of checksum needs to be known as it is accounted in the length
     /// field
-    fn new(cmd: Cmd, length: usize, chip_address: u8, checksum_size: usize) -> Self {
+    fn new_extended(
+        code: u8,
+        length: usize,
+        chip_address: ChipAddress,
+        checksum_size: usize,
+    ) -> Self {
         Self {
-            cmd,
+            cmd: Cmd::new(code, chip_address.is_broadcast()),
             length: (length + checksum_size) as u8,
-            chip_address,
+            hw_addr: chip_address.to_hw_addr(),
         }
     }
 
     /// Helper builder for control commands
     /// Control commands CRC5 checksum that fits into 1 byte
     /// * `length` - length of the command without checksum
-    fn new_ctl_cmd_header(cmd: Cmd, length: usize, chip_address: u8) -> Self {
-        Self::new(cmd, length, chip_address, size_of::<u8>())
-    }
-
-    #[inline]
-    #[allow(dead_code)]
-    /// Helper method - when streaming multiple commands to eliminate the need to create a new
-    /// command instance every time, we allow modifying the chip address
-    pub fn set_chip_address(&mut self, addr: u8) {
-        self.chip_address = addr;
+    fn new(code: u8, length: usize, chip_address: ChipAddress) -> Self {
+        Self::new_extended(code, length, chip_address, size_of::<u8>())
     }
 }
 
@@ -129,10 +157,9 @@ pub struct SetConfigCmd {
 }
 
 impl SetConfigCmd {
-    pub fn new(chip_address: u8, to_all: bool, register: u8, value: u32) -> Self {
-        let cmd = Cmd::new(0x08, to_all);
+    pub fn new(chip_address: ChipAddress, register: u8, value: u32) -> Self {
         // payload consists of 1 byte register address and 4 byte value
-        let header = CmdHeader::new_ctl_cmd_header(cmd, Self::packed_bytes(), chip_address);
+        let header = CmdHeader::new(0x08, Self::packed_bytes(), chip_address);
         Self {
             header,
             register,
@@ -150,9 +177,8 @@ pub struct GetStatusCmd {
 }
 
 impl GetStatusCmd {
-    pub fn new(chip_address: u8, to_all: bool, register: u8) -> Self {
-        let cmd = Cmd::new(0x04, to_all);
-        let header = CmdHeader::new_ctl_cmd_header(cmd, Self::packed_bytes(), chip_address);
+    pub fn new(chip_address: ChipAddress, register: u8) -> Self {
+        let header = CmdHeader::new(0x04, Self::packed_bytes(), chip_address);
         Self { header, register }
     }
 }
@@ -166,9 +192,9 @@ pub struct SetChipAddressCmd {
 }
 
 impl SetChipAddressCmd {
-    pub fn new(chip_address: u8) -> Self {
-        let cmd = Cmd::new(0x01, false);
-        let header = CmdHeader::new_ctl_cmd_header(cmd, Self::packed_bytes(), chip_address);
+    pub fn new(chip_address: ChipAddress) -> Self {
+        assert!(!chip_address.is_broadcast());
+        let header = CmdHeader::new(0x01, Self::packed_bytes(), chip_address);
         Self {
             header,
             _reserved: 0,
@@ -186,8 +212,7 @@ pub struct InactivateFromChainCmd {
 
 impl InactivateFromChainCmd {
     pub fn new() -> Self {
-        let cmd = Cmd::new(0x05, true);
-        let header = CmdHeader::new_ctl_cmd_header(cmd, Self::packed_bytes(), 0);
+        let header = CmdHeader::new(0x05, Self::packed_bytes(), ChipAddress::All);
         Self {
             header,
             _reserved: 0,
@@ -401,12 +426,31 @@ mod test {
     /// Default S9 clock frequency
     const DEFAULT_XTAL_FREQ: usize = 25_000_000;
 
+    /// Test chip address contstruction
+    #[test]
+    fn test_chip_address() {
+        let all = ChipAddress::All;
+        assert!(all.is_broadcast());
+        assert_eq!(all.to_hw_addr(), 0);
+
+        let one = ChipAddress::One(9);
+        assert!(!one.is_broadcast());
+        assert_eq!(one.to_hw_addr(), 0x24);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_chip_address_too_big() {
+        // address is too big to fit in a u8
+        ChipAddress::One(0x40).to_hw_addr();
+    }
+
     /// Builds a sample set_config command (here the PLL register @ 0x0c with a value of
     /// 0x00680221 that corresponds to
     /// and verifies correct serialization
     #[test]
     fn build_set_config_cmd_pll() {
-        let cmd = SetConfigCmd::new(0x24, false, PLL_PARAM_REG, 0x680221);
+        let cmd = SetConfigCmd::new(ChipAddress::One(9), PLL_PARAM_REG, 0x680221);
         let expected_cmd_with_padding = [0x48u8, 0x09, 0x24, PLL_PARAM_REG, 0x00, 0x68, 0x02, 0x21];
         let cmd_bytes = cmd.pack();
         assert_eq!(
@@ -421,7 +465,7 @@ mod test {
     #[test]
     fn build_set_config_ticket_mask() {
         let reg = TicketMaskReg::new(64).expect("Cannot build difficulty register");
-        let cmd = SetConfigCmd::new(0x00, true, TICKET_MASK_REG, reg.to_reg());
+        let cmd = SetConfigCmd::new(ChipAddress::All, TICKET_MASK_REG, reg.to_reg());
         let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x18, 0x00, 0x00, 0x00, 0x3f];
         let cmd_bytes = cmd.pack();
         assert_eq!(cmd_bytes, expected_cmd_with_padding);
@@ -437,7 +481,7 @@ mod test {
             gate_block: true,
             mmen: true,
         };
-        let cmd = SetConfigCmd::new(0x00, true, MISC_CONTROL_REG, reg.to_reg());
+        let cmd = SetConfigCmd::new(ChipAddress::All, MISC_CONTROL_REG, reg.to_reg());
         let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x1c, 0x40, 0x20, 0x9a, 0x80];
         let cmd_bytes = cmd.pack();
         assert_eq!(cmd_bytes, expected_cmd_with_padding);
@@ -446,7 +490,7 @@ mod test {
     /// Builds a get status command to read chip address of all chips
     #[test]
     fn build_get_status_cmd() {
-        let cmd = GetStatusCmd::new(0x00, true, GET_ADDRESS_REG);
+        let cmd = GetStatusCmd::new(ChipAddress::All, GET_ADDRESS_REG);
         let expected_cmd_with_padding = [0x54u8, 0x05, 0x00, 0x00];
 
         let cmd_bytes = cmd.pack();
@@ -474,7 +518,7 @@ mod test {
 
     #[test]
     fn build_set_chip_address_cmd() {
-        let cmd = SetChipAddressCmd::new(0x04);
+        let cmd = SetChipAddressCmd::new(ChipAddress::One(1));
         let expected_cmd_with_padding = [0x41u8, 0x05, 0x04, 0x00];
 
         let cmd_bytes = cmd.pack();
