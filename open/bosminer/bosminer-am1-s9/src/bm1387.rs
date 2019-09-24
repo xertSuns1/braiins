@@ -29,10 +29,10 @@ use packed_struct_codegen::{PrimitiveEnum_u16, PrimitiveEnum_u8};
 use std::mem::size_of;
 
 pub const GET_ADDRESS_REG: u8 = 0x00;
+pub const HASH_RATE_REG: u8 = 0x08;
 pub const PLL_PARAM_REG: u8 = 0x0c;
 #[allow(dead_code)]
 pub const HASH_COUNTING_REG: u8 = 0x14;
-#[allow(dead_code)]
 pub const TICKET_MASK_REG: u8 = 0x18;
 pub const MISC_CONTROL_REG: u8 = 0x1c;
 
@@ -107,6 +107,15 @@ impl CmdHeader {
     pub fn set_chip_address(&mut self, addr: u8) {
         self.chip_address = addr;
     }
+}
+
+/// Command response
+#[derive(PackedStruct, Debug)]
+#[packed_struct(endian = "msb")]
+pub struct CmdResponse {
+    pub value: u32,
+    _unused1: u8, // address in bm1391
+    _unused2: u8, // register in bm1391
 }
 
 /// Sets configuration register
@@ -187,13 +196,12 @@ impl InactivateFromChainCmd {
 }
 
 #[derive(PackedStruct, Default, Debug)]
-#[packed_struct(endian = "msb", size_bytes = "6")]
+#[packed_struct(endian = "msb", size_bytes = "4")]
 pub struct GetAddressReg {
     #[packed_field(ty = "enum", element_size_bytes = "2")]
     pub chip_rev: ChipRev,
     _reserved1: u8,
     pub addr: u8,
-    _reserved2: [u8; 2],
 }
 
 /// Describes recognized chip revisions
