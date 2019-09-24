@@ -504,7 +504,7 @@ where
         );
         // Each chip is always configured with inverted clock
         let ctl_reg =
-            bm1387::MiscCtrlReg::new(not_set_baud, true, baud_clock_div, gate_block, true)?;
+            bm1387::MiscCtrlReg::new_uart_baud(not_set_baud, baud_clock_div, gate_block, true)?;
         await!(self.write_register(ChipAddress::All, true, bm1387::MISC_CONTROL_REG, &ctl_reg))?;
         Ok(actual_baud_rate)
     }

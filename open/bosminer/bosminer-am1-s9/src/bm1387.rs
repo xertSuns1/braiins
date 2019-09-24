@@ -27,6 +27,7 @@ use packed_struct_codegen::PackedStruct;
 use packed_struct_codegen::{PrimitiveEnum_u16, PrimitiveEnum_u8};
 
 use std::convert::TryInto;
+use std::default::Default;
 use std::mem::size_of;
 
 pub const GET_ADDRESS_REG: u8 = 0x00;
@@ -36,6 +37,7 @@ pub const PLL_PARAM_REG: u8 = 0x0c;
 pub const HASH_COUNTING_REG: u8 = 0x14;
 pub const TICKET_MASK_REG: u8 = 0x18;
 pub const MISC_CONTROL_REG: u8 = 0x1c;
+pub const READ_TEMP_REG: u8 = 0x20;
 
 /// Maximum supported baud rate clock divisor
 const MAX_BAUD_CLOCK_DIV: usize = 26;
@@ -235,6 +237,15 @@ impl HashrateReg {
 
 #[derive(PackedStruct, Default, Debug)]
 #[packed_struct(endian = "msb", size_bytes = "4")]
+pub struct ReadTempReg {
+    pub cmd_type: u8,
+    pub addr: u8,
+    pub reg: u8,
+    pub data: u8,
+}
+
+#[derive(PackedStruct, Default, Debug)]
+#[packed_struct(endian = "msb", size_bytes = "4")]
 pub struct GetAddressReg {
     #[packed_field(ty = "enum", element_size_bytes = "2")]
     pub chip_rev: ChipRev,
@@ -286,7 +297,7 @@ impl TicketMaskReg {
 ///
 /// TODO: research set_baud_with_addr() in bmminer-mix as there seems to be some magic setting
 /// I2C interface of the chip or something like that
-#[derive(PackedStruct, Debug, PartialEq)]
+#[derive(PackedStruct, Debug, Default, PartialEq)]
 #[packed_struct(bit_numbering = "lsb0", size_bytes = "4", endian = "msb")]
 pub struct MiscCtrlReg {
     /// Exact meaning of this field is unknown, when setting baud rate, it is 0, when
@@ -297,6 +308,14 @@ pub struct MiscCtrlReg {
     /// Invert clock pin -> used on S9's
     #[packed_field(bits = "21")]
     pub inv_clock: bool,
+
+    /// Selects I2C bus, 0 bottom, 1 middle
+    #[packed_field(bits = "16")]
+    pub i2c_middle_bus: bool,
+
+    /// Unknown purpose, set only for I2C
+    #[packed_field(bits = "14")]
+    pub i2c_enable_1: bool,
 
     /// baudrate divisor - maximum divisor is 26. To calculate the divisor:
     /// baud_div = min(OSC/8*baud - 1, 26)
@@ -313,13 +332,20 @@ pub struct MiscCtrlReg {
     /// Enable multi midstate processing = "AsicBoost"
     #[packed_field(bits = "7")]
     pub mmen: bool,
+
+    /// Unknown purpose, set only for I2C
+    #[packed_field(bits = "6")]
+    pub i2c_enable_2: bool,
+
+    /// Unknown purpose, set only for I2C
+    #[packed_field(bits = "5")]
+    pub i2c_enable_3: bool,
 }
 
 impl MiscCtrlReg {
     /// Builds register instance and sanity checks the divisor for the baud rate generator
-    pub fn new(
+    pub fn new_uart_baud(
         not_set_baud: bool,
-        inv_clock: bool,
         baud_div: usize,
         gate_block: bool,
         mmen: bool,
@@ -332,9 +358,30 @@ impl MiscCtrlReg {
         }
         Ok(Self {
             not_set_baud,
-            inv_clock,
+            inv_clock: true,
             baud_div: (baud_div as u8).into(),
             gate_block,
+            mmen,
+            ..Default::default()
+        })
+    }
+
+    pub fn new_i2c_baud(baud_div: usize, mmen: bool, i2c_middle_bus: bool) -> error::Result<Self> {
+        if baud_div > MAX_BAUD_CLOCK_DIV {
+            Err(ErrorKind::BaudRate(format!(
+                "divisor {} is out of range, maximum allowed is {}",
+                baud_div, MAX_BAUD_CLOCK_DIV
+            )))?
+        }
+        Ok(Self {
+            not_set_baud: true,
+            inv_clock: true,
+            baud_div: (baud_div as u8).into(),
+            gate_block: false,
+            i2c_enable_1: true,
+            i2c_enable_2: true,
+            i2c_enable_3: true,
+            i2c_middle_bus,
             mmen,
         })
     }
@@ -480,11 +527,42 @@ mod test {
             baud_div: 26.into(),
             gate_block: true,
             mmen: true,
+            ..Default::default()
         };
         let cmd = SetConfigCmd::new(ChipAddress::All, MISC_CONTROL_REG, reg.to_reg());
         let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x1c, 0x40, 0x20, 0x9a, 0x80];
         let cmd_bytes = cmd.pack();
         assert_eq!(cmd_bytes, expected_cmd_with_padding);
+        // MiscCtrlReg constructor should build the same structure
+        assert_eq!(
+            reg,
+            MiscCtrlReg::new_uart_baud(true, 26, true, true).expect("invalid divisor")
+        );
+    }
+
+    /// Verify serialization of SetConfig(MISC_CONTROL(...)) command for I2C
+    #[test]
+    fn build_set_config_misc_control_i2c() {
+        let reg = MiscCtrlReg {
+            not_set_baud: true,
+            inv_clock: true,
+            baud_div: 26.into(),
+            gate_block: false,
+            i2c_enable_1: true,
+            i2c_enable_2: true,
+            i2c_enable_3: true,
+            i2c_middle_bus: false,
+            mmen: true,
+        };
+        let cmd = SetConfigCmd::new(ChipAddress::All, MISC_CONTROL_REG, reg.to_reg());
+        let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x1c, 0x40, 0x20, 0x5a, 0xe0];
+        let cmd_bytes = cmd.pack();
+        assert_eq!(cmd_bytes, expected_cmd_with_padding);
+        // MiscCtrlReg constructor should build the same structure
+        assert_eq!(
+            reg,
+            MiscCtrlReg::new_i2c_baud(26, true, false).expect("invalid divisor")
+        );
     }
 
     /// Builds a get status command to read chip address of all chips
@@ -571,6 +649,7 @@ mod test {
             baud_div: 26.into(),
             gate_block: true,
             mmen: true,
+            ..Default::default()
         };
         let expected_reg_msb = [0x40u8, 0x20, 0x9a, 0x80];
         let reg_bytes = reg.pack();
@@ -591,6 +670,7 @@ mod test {
             baud_div: 26.into(),
             gate_block: true,
             mmen: true,
+            ..Default::default()
         };
         let expected_reg_value = 0x40209a80u32;
         let reg_value: u32 = reg.to_reg();
@@ -618,6 +698,15 @@ mod test {
             "Ticket mask register 32-bit value  doesn't match: V:{:#010x} E:{:#010x}",
             reg_value, expected_reg_value
         );
+    }
+
+    #[test]
+    fn test_hashrate_reg() {
+        let reg = HashrateReg { hashrate24: 0x23 };
+
+        assert_eq!(reg.pack(), [0x00, 0x00, 0x00, 0x23]);
+        assert_eq!(reg.to_reg(), 0x23);
+        assert_eq!(reg.hashrate(), 0x23000000);
     }
 
     /// Test serialization and evaluation of PLL divider
