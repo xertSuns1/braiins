@@ -84,7 +84,7 @@ fn test_hchain_ctl_init() {
     );
 
     let regs = io::test_utils::Regs::new(
-        &hash_chain.config_io,
+        &hash_chain.common_io,
         &hash_chain.command_io,
         &hash_chain.work_rx_io.as_ref().expect("work rx missing"),
         &hash_chain.work_tx_io.as_ref().expect("work tx missing"),
