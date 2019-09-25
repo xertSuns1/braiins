@@ -468,11 +468,8 @@ where
 
     /// Loads PLL register with a starting value
     async fn set_pll<'a>(&'a mut self, pll: &'a bm1387::Pll) -> error::Result<()> {
-        for i in 0..self.chip_count {
-            // NOTE: when PLL register is read back, it is or-ed with 0x8000_0000, not sure why
-            await!(self.write_register(ChipAddress::One(i), false, bm1387::PLL_PARAM_REG, pll))?;
-        }
-        Ok(())
+        // NOTE: when PLL register is read back, it is or-ed with 0x8000_0000, not sure why
+        await!(self.write_register(ChipAddress::All, false, bm1387::PLL_PARAM_REG, pll))
     }
 
     /// Configure all chips in the hash chain
