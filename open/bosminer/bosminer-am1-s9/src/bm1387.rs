@@ -30,14 +30,8 @@ use std::convert::TryInto;
 use std::default::Default;
 use std::mem::size_of;
 
-pub const GET_ADDRESS_REG: u8 = 0x00;
-pub const HASHRATE_REG: u8 = 0x08;
-pub const PLL_PARAM_REG: u8 = 0x0c;
 #[allow(dead_code)]
 pub const HASH_COUNTING_REG: u8 = 0x14;
-pub const TICKET_MASK_REG: u8 = 0x18;
-pub const MISC_CONTROL_REG: u8 = 0x1c;
-pub const READ_TEMP_REG: u8 = 0x20;
 
 /// Maximum supported baud rate clock divisor
 const MAX_BAUD_CLOCK_DIV: usize = 26;
@@ -222,6 +216,27 @@ impl InactivateFromChainCmd {
     }
 }
 
+/// `Register` trait represents register on chip. Register:
+///
+/// * supports being serialized from/to register format (`from_reg`/`to_reg`)
+/// * register is identified by address on chip (`REG_NUM`)
+/// * is 4 bytes long (one "word")
+///
+/// Chip registers can be read with `GetStatusCmd` and written with  `SetConfigCmd`.
+
+pub trait Register: PackedStruct<[u8; 4]> {
+    const REG_NUM: u8;
+
+    /// Take register and unpack (as big endian)
+    fn from_reg(reg: u32) -> Self {
+        Self::unpack(&u32::to_be_bytes(reg)).expect("unpacking error")
+    }
+    /// Pack into big-endian register
+    fn to_reg(&self) -> u32 {
+        u32::from_be_bytes(self.pack())
+    }
+}
+
 #[derive(PackedStruct, Default, Debug)]
 #[packed_struct(endian = "msb", size_bytes = "4")]
 pub struct HashrateReg {
@@ -235,6 +250,10 @@ impl HashrateReg {
     }
 }
 
+impl Register for HashrateReg {
+    const REG_NUM: u8 = 0x08;
+}
+
 #[derive(PackedStruct, Default, Debug)]
 #[packed_struct(endian = "msb", size_bytes = "4")]
 pub struct ReadTempReg {
@@ -244,6 +263,10 @@ pub struct ReadTempReg {
     pub data: u8,
 }
 
+impl Register for ReadTempReg {
+    const REG_NUM: u8 = 0x20;
+}
+
 #[derive(PackedStruct, Default, Debug)]
 #[packed_struct(endian = "msb", size_bytes = "4")]
 pub struct GetAddressReg {
@@ -251,6 +274,10 @@ pub struct GetAddressReg {
     pub chip_rev: ChipRev,
     _reserved1: u8,
     pub addr: u8,
+}
+
+impl Register for GetAddressReg {
+    const REG_NUM: u8 = 0x00;
 }
 
 /// Describes recognized chip revisions
@@ -285,6 +312,10 @@ impl TicketMaskReg {
         }
         Ok(Self { diff: diff - 1 })
     }
+}
+
+impl Register for TicketMaskReg {
+    const REG_NUM: u8 = 0x18;
 }
 
 /// Core register that configures the most important aspects of the mining chip like:
@@ -387,11 +418,15 @@ impl MiscCtrlReg {
     }
 }
 
+impl Register for MiscCtrlReg {
+    const REG_NUM: u8 = 0x1c;
+}
+
 /// Structure representing settings of chip PLL divider
 /// It can serialize itself right to register settings
 #[derive(PackedStruct, Debug, PartialEq, Clone)]
 #[packed_struct(bit_numbering = "lsb0", size_bytes = "4", endian = "msb")]
-pub struct Pll {
+pub struct PllReg {
     /// Range: 60..=320, but in datasheet table: 32..=128
     #[packed_field(bits = "23:16")]
     fbdiv: u8,
@@ -407,7 +442,7 @@ pub struct Pll {
     postdiv2: u8,
 }
 
-impl Pll {
+impl PllReg {
     /// Minimum and maximum supported frequency
     const MIN_FREQ: usize = 100_000_000;
     const MAX_FREQ: usize = 1_200_000_000;
@@ -426,7 +461,7 @@ impl Pll {
     }
 
     fn find_divider(xtal_freq: usize, target_freq: usize) -> Self {
-        let mut best = Pll {
+        let mut best = PllReg {
             fbdiv: 0,
             refdiv: 1,
             postdiv1: 1,
@@ -439,7 +474,7 @@ impl Pll {
         // - refdiv and postdiv2 are in tables always fixed
         for fbdiv in 32..128 {
             for postdiv1 in 1..=7 {
-                let pll = Pll {
+                let pll = PllReg {
                     fbdiv,
                     refdiv: 2,
                     postdiv1,
@@ -465,10 +500,13 @@ impl Pll {
     }
 }
 
+impl Register for PllReg {
+    const REG_NUM: u8 = 0x0c;
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::utils::PackedRegister;
 
     /// Default S9 clock frequency
     const DEFAULT_XTAL_FREQ: usize = 25_000_000;
@@ -497,8 +535,9 @@ mod test {
     /// and verifies correct serialization
     #[test]
     fn build_set_config_cmd_pll() {
-        let cmd = SetConfigCmd::new(ChipAddress::One(9), PLL_PARAM_REG, 0x680221);
-        let expected_cmd_with_padding = [0x48u8, 0x09, 0x24, PLL_PARAM_REG, 0x00, 0x68, 0x02, 0x21];
+        let cmd = SetConfigCmd::new(ChipAddress::One(9), PllReg::REG_NUM, 0x680221);
+        let expected_cmd_with_padding =
+            [0x48u8, 0x09, 0x24, PllReg::REG_NUM, 0x00, 0x68, 0x02, 0x21];
         let cmd_bytes = cmd.pack();
         assert_eq!(
             cmd_bytes, expected_cmd_with_padding,
@@ -512,7 +551,7 @@ mod test {
     #[test]
     fn build_set_config_ticket_mask() {
         let reg = TicketMaskReg::new(64).expect("Cannot build difficulty register");
-        let cmd = SetConfigCmd::new(ChipAddress::All, TICKET_MASK_REG, reg.to_reg());
+        let cmd = SetConfigCmd::new(ChipAddress::All, TicketMaskReg::REG_NUM, reg.to_reg());
         let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x18, 0x00, 0x00, 0x00, 0x3f];
         let cmd_bytes = cmd.pack();
         assert_eq!(cmd_bytes, expected_cmd_with_padding);
@@ -529,7 +568,7 @@ mod test {
             mmen: true,
             ..Default::default()
         };
-        let cmd = SetConfigCmd::new(ChipAddress::All, MISC_CONTROL_REG, reg.to_reg());
+        let cmd = SetConfigCmd::new(ChipAddress::All, MiscCtrlReg::REG_NUM, reg.to_reg());
         let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x1c, 0x40, 0x20, 0x9a, 0x80];
         let cmd_bytes = cmd.pack();
         assert_eq!(cmd_bytes, expected_cmd_with_padding);
@@ -554,7 +593,7 @@ mod test {
             i2c_middle_bus: false,
             mmen: true,
         };
-        let cmd = SetConfigCmd::new(ChipAddress::All, MISC_CONTROL_REG, reg.to_reg());
+        let cmd = SetConfigCmd::new(ChipAddress::All, MiscCtrlReg::REG_NUM, reg.to_reg());
         let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x1c, 0x40, 0x20, 0x5a, 0xe0];
         let cmd_bytes = cmd.pack();
         assert_eq!(cmd_bytes, expected_cmd_with_padding);
@@ -568,7 +607,7 @@ mod test {
     /// Builds a get status command to read chip address of all chips
     #[test]
     fn build_get_status_cmd() {
-        let cmd = GetStatusCmd::new(ChipAddress::All, GET_ADDRESS_REG);
+        let cmd = GetStatusCmd::new(ChipAddress::All, GetAddressReg::REG_NUM);
         let expected_cmd_with_padding = [0x54u8, 0x05, 0x00, 0x00];
 
         let cmd_bytes = cmd.pack();
@@ -711,7 +750,7 @@ mod test {
 
     /// Test serialization and evaluation of PLL divider
     fn try_one_divider(freq: usize, reg: u32, fbdiv: u8, refdiv: u8, postdiv1: u8, postdiv2: u8) {
-        let pll = Pll {
+        let pll = PllReg {
             fbdiv,
             refdiv,
             postdiv1,
@@ -740,13 +779,13 @@ mod test {
     #[test]
     fn test_pll_search() {
         // should fail: too low
-        assert!(Pll::try_pll_from_freq(DEFAULT_XTAL_FREQ, 50_000_000).is_err());
+        assert!(PllReg::try_pll_from_freq(DEFAULT_XTAL_FREQ, 50_000_000).is_err());
         // should fail: too high
-        assert!(Pll::try_pll_from_freq(DEFAULT_XTAL_FREQ, 2_000_000_000).is_err());
+        assert!(PllReg::try_pll_from_freq(DEFAULT_XTAL_FREQ, 2_000_000_000).is_err());
         // ok
         assert_eq!(
-            Pll::try_pll_from_freq(DEFAULT_XTAL_FREQ, 650_000_000).expect("pll is ok"),
-            Pll {
+            PllReg::try_pll_from_freq(DEFAULT_XTAL_FREQ, 650_000_000).expect("pll is ok"),
+            PllReg {
                 fbdiv: 0x34,
                 refdiv: 2,
                 postdiv1: 1,
