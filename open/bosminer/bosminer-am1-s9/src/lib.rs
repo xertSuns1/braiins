@@ -57,7 +57,6 @@ use futures::lock::Mutex;
 
 use bm1387::ChipAddress;
 
-use crate::utils::PackedRegister;
 use packed_struct::{PackedStruct, PackedStructSlice};
 
 use embedded_hal::digital::v2::InputPin;
@@ -289,12 +288,12 @@ where
         Ok(())
     }
 
-    async fn read_register<T: PackedRegister>(
+    /// Read chip register
+    async fn read_register<T: bm1387::Register>(
         &mut self,
         chip_address: ChipAddress,
-        register: u8,
     ) -> error::Result<Vec<T>> {
-        let cmd = bm1387::GetStatusCmd::new(chip_address, register).pack();
+        let cmd = bm1387::GetStatusCmd::new(chip_address, T::REG_NUM).pack();
         // send command, do not wait for it to be sent out
         await!(self.send_ctl_cmd(cmd.to_vec(), false));
 
@@ -317,26 +316,35 @@ where
         Ok(responses)
     }
 
-    async fn write_register<'a, T: PackedRegister + Debug + PartialEq>(
+    /// Write chip register
+    ///
+    /// * `chip_address` - address of chip
+    /// * `read_back` - flag whether to read back registers and check they
+    ///    were written correctly
+    /// * `value` - register to be written - both type and value are used
+    ///   (type determines register address to be written)
+    async fn write_register<'a, T: bm1387::Register + Debug + PartialEq>(
         &'a mut self,
         chip_address: ChipAddress,
         read_back: bool,
-        register: u8,
         value: &'a T,
     ) -> error::Result<()> {
-        let cmd = bm1387::SetConfigCmd::new(chip_address, register, value.to_reg());
+        let cmd = bm1387::SetConfigCmd::new(chip_address, T::REG_NUM, value.to_reg());
         // wait for command to be sent out
         await!(self.send_ctl_cmd(cmd.pack().to_vec(), true));
 
         // read the register back
         if read_back {
-            let responses = await!(self.read_register::<T>(chip_address, register))?;
+            let responses = await!(self.read_register::<T>(chip_address))?;
             // TODO: insert here some more checks - like does number of replies match number of chips etc.
             for (chip_address, read_back_value) in responses.iter().enumerate() {
                 if *read_back_value != *value {
                     Err(ErrorKind::Hashchip(format!(
                         "chip {} returned wrong value of register {:#x}: {:#x?} instead of {:#x?}",
-                        chip_address, register, *read_back_value, value
+                        chip_address,
+                        T::REG_NUM,
+                        *read_back_value,
+                        value
                     )))?
                 }
             }
@@ -353,7 +361,7 @@ where
             difficulty,
             tm_reg
         );
-        await!(self.write_register(ChipAddress::All, true, bm1387::TICKET_MASK_REG, &tm_reg))?;
+        await!(self.write_register(ChipAddress::All, true, &tm_reg))?;
         Ok(())
     }
 
@@ -405,7 +413,7 @@ where
         info!("Discovered {} chips", self.chip_count);
 
         // calculate PLL for given frequency
-        let pll = bm1387::Pll::try_pll_from_freq(CHIP_OSC_CLK_HZ, DEFAULT_S9_PLL_FREQUENCY)?;
+        let pll = bm1387::PllReg::try_pll_from_freq(CHIP_OSC_CLK_HZ, DEFAULT_S9_PLL_FREQUENCY)?;
         // set PLL
         await!(self.set_pll(&pll))?;
 
@@ -421,8 +429,7 @@ where
     /// Detects the number of chips on the hashing chain and assigns an address to each chip
     async fn enumerate_chips(&mut self) -> error::Result<()> {
         // Enumerate all chips (broadcast read address register request)
-        let responses: Vec<bm1387::GetAddressReg> =
-            await!(self.read_register(ChipAddress::All, bm1387::GET_ADDRESS_REG))?;
+        let responses = await!(self.read_register::<bm1387::GetAddressReg>(ChipAddress::All))?;
 
         // Check if are responses meaningful
         for (address, addr_reg) in responses.iter().enumerate() {
@@ -467,9 +474,9 @@ where
     }
 
     /// Loads PLL register with a starting value
-    async fn set_pll<'a>(&'a mut self, pll: &'a bm1387::Pll) -> error::Result<()> {
+    async fn set_pll<'a>(&'a mut self, pll: &'a bm1387::PllReg) -> error::Result<()> {
         // NOTE: when PLL register is read back, it is or-ed with 0x8000_0000, not sure why
-        await!(self.write_register(ChipAddress::All, false, bm1387::PLL_PARAM_REG, pll))
+        await!(self.write_register(ChipAddress::All, false, pll))
     }
 
     /// Configure all chips in the hash chain
@@ -502,7 +509,7 @@ where
         // Each chip is always configured with inverted clock
         let ctl_reg =
             bm1387::MiscCtrlReg::new_uart_baud(not_set_baud, baud_clock_div, gate_block, true)?;
-        await!(self.write_register(ChipAddress::All, true, bm1387::MISC_CONTROL_REG, &ctl_reg))?;
+        await!(self.write_register(ChipAddress::All, true, &ctl_reg))?;
         Ok(actual_baud_rate)
     }
 
@@ -648,8 +655,8 @@ where
             await!(sleep(Duration::from_secs(5)));
 
             let mut hash_chain = await!(hash_chain.lock());
-            let responses: Vec<bm1387::HashrateReg> =
-                await!(hash_chain.read_register(ChipAddress::All, bm1387::HASHRATE_REG))
+            let responses =
+                await!(hash_chain.read_register::<bm1387::HashrateReg>(ChipAddress::All))
                     .expect("reading hashrate_reg failed");
 
             if responses.len() != hash_chain.chip_count {
