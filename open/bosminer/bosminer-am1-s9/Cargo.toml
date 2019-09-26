@@ -24,6 +24,8 @@ uio-async = { path = "../../utils-rs/uio-async" }
 linux-embedded-hal = { version = "0.2.0" }
 sysfs_gpio = { version = "0.5.3" }
 chrono = "0.4.9"
+async-trait = "0.1.13"
+inventory = "0.1.4"
 
 [dependencies.embedded-hal]
 version = "0.2.0"
