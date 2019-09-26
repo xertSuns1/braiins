@@ -20,6 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+pub mod i2c;
+
 use crate::error::{self, ErrorKind};
 
 use packed_struct::prelude::*;
@@ -28,6 +30,7 @@ use packed_struct_codegen::{PrimitiveEnum_u16, PrimitiveEnum_u8};
 
 use std::convert::TryInto;
 use std::default::Default;
+use std::fmt::Debug;
 use std::mem::size_of;
 
 #[allow(dead_code)]
@@ -54,7 +57,7 @@ pub enum ChipAddress {
 
 impl ChipAddress {
     /// Return if address is a broadcast
-    fn is_broadcast(&self) -> bool {
+    pub fn is_broadcast(&self) -> bool {
         match self {
             ChipAddress::All => true,
             ChipAddress::One(_) => false,
@@ -83,6 +86,7 @@ pub struct Cmd {
     #[packed_field(bits = "5:7", ty = "enum")]
     cmd_type: CmdType,
 }
+
 impl Cmd {
     fn new(code: u8, to_all: bool) -> Self {
         Self {
@@ -107,7 +111,9 @@ pub struct CmdHeader {
     length: u8,
     hw_addr: u8,
 }
+
 impl CmdHeader {
+    /// Create a new header with custom checksum_size
     ///
     /// * `length` - size of the command excluding checksum
     /// * `checksum_size` - Size of checksum needs to be known as it is accounted in the length
@@ -138,8 +144,8 @@ impl CmdHeader {
 #[packed_struct(endian = "msb")]
 pub struct CmdResponse {
     pub value: u32,
-    _unused1: u8, // address in bm1391
-    _unused2: u8, // register in bm1391
+    _zero_in_bm1387_but_its_chip_address_in_bm1391: u8,
+    _zero_in_bm1387_but_its_register_number_in_bm1391: u8,
 }
 
 /// Sets configuration register
@@ -223,13 +229,12 @@ impl InactivateFromChainCmd {
 /// * is 4 bytes long (one "word")
 ///
 /// Chip registers can be read with `GetStatusCmd` and written with  `SetConfigCmd`.
-
-pub trait Register: PackedStruct<[u8; 4]> {
+pub trait Register: PackedStruct<[u8; 4]> + Send + Sync + PartialEq + Debug {
     const REG_NUM: u8;
 
     /// Take register and unpack (as big endian)
     fn from_reg(reg: u32) -> Self {
-        Self::unpack(&u32::to_be_bytes(reg)).expect("unpacking error")
+        Self::unpack(&reg.to_be_bytes()).expect("unpacking error")
     }
     /// Pack into big-endian register
     fn to_reg(&self) -> u32 {
@@ -237,7 +242,7 @@ pub trait Register: PackedStruct<[u8; 4]> {
     }
 }
 
-#[derive(PackedStruct, Default, Debug)]
+#[derive(PackedStruct, Debug, Clone, PartialEq)]
 #[packed_struct(endian = "msb", size_bytes = "4")]
 pub struct HashrateReg {
     // hashrate in 2^24 hash units
@@ -254,20 +259,36 @@ impl Register for HashrateReg {
     const REG_NUM: u8 = 0x08;
 }
 
-#[derive(PackedStruct, Default, Debug)]
+#[derive(PackedStruct, Debug, Clone, PartialEq)]
+#[packed_struct(size_bytes = "1", bit_numbering = "lsb0")]
+pub struct I2cControlFlags {
+    /// I2C controller is busy flag
+    #[packed_field(bits = "7")]
+    pub busy: bool,
+    /// Initiate I2C transaction flag
+    #[packed_field(bits = "0")]
+    pub do_command: bool,
+}
+
+#[derive(PackedStruct, Debug, Clone, PartialEq)]
 #[packed_struct(endian = "msb", size_bytes = "4")]
-pub struct ReadTempReg {
-    pub cmd_type: u8,
+pub struct I2cControlReg {
+    /// I2C controller status/control
+    #[packed_field(element_size_bytes = "1")]
+    pub flags: I2cControlFlags,
+    /// I2C address (8-bit format, use odd address for writing)
     pub addr: u8,
+    /// Register number
     pub reg: u8,
+    /// For read: data that were read, for write: data to write
     pub data: u8,
 }
 
-impl Register for ReadTempReg {
+impl Register for I2cControlReg {
     const REG_NUM: u8 = 0x20;
 }
 
-#[derive(PackedStruct, Default, Debug)]
+#[derive(PackedStruct, Debug, Clone, PartialEq, Default)]
 #[packed_struct(endian = "msb", size_bytes = "4")]
 pub struct GetAddressReg {
     #[packed_field(ty = "enum", element_size_bytes = "2")]
@@ -318,6 +339,32 @@ impl Register for TicketMaskReg {
     const REG_NUM: u8 = 0x18;
 }
 
+/// TF pin selector
+#[derive(PrimitiveEnum_u8, Clone, Copy, Debug, PartialEq)]
+pub enum TfSelector {
+    /// Chip is hashing
+    HashDoing = 0, // name from bm1387 datasheet
+    UartReceiving = 1,
+    UartTransmitting = 2,
+    /// Required for I2C
+    SCL0 = 3,
+}
+
+/// RF pin selector
+#[derive(PrimitiveEnum_u8, Clone, Copy, Debug, PartialEq)]
+pub enum RfSelector {
+    OpenDrain = 0,
+    /// Required for I2c
+    SDA0 = 1,
+}
+
+/// Names of I2C buses connected to bm1387
+#[derive(PrimitiveEnum_u8, Clone, Copy, Debug, PartialEq)]
+pub enum I2cBusSelect {
+    Bottom = 0,
+    Middle = 1,
+}
+
 /// Core register that configures the most important aspects of the mining chip like:
 ///
 /// - baud rate/communication speed
@@ -360,6 +407,10 @@ pub struct MiscCtrlReg {
     /// baudrate divisor - maximum divisor is 26. To calculate the divisor:
     /// baud_div = min(OSC/8*baud - 1, 26)
     /// Oscillator frequency is 25 MHz
+    ///
+    /// **Note**: This field has to be always set to correct UART baud rate,
+    /// no matter what value you set to `not_set_baud` (this was found out
+    /// experimentally).
     #[packed_field(bits = "12:8")]
     pub baud_div: Integer<u8, packed_bits::Bits5>,
 
@@ -371,36 +422,11 @@ pub struct MiscCtrlReg {
     pub tfs: TfSelector,
 }
 
-/// TF pin selector
-#[derive(PrimitiveEnum_u8, Clone, Copy, Debug, PartialEq)]
-pub enum TfSelector {
-    /// Chip is hashing
-    HashDoing = 0, // name from bm1387 datasheet
-    UartReceiving = 1,
-    UartTransmitting = 2,
-    /// Required for I2C
-    SCL0 = 3,
-}
-
-/// RF pin selector
-#[derive(PrimitiveEnum_u8, Clone, Copy, Debug, PartialEq)]
-pub enum RfSelector {
-    OpenDrain = 0,
-    /// Required for I2c
-    SDA0 = 1,
-}
-
-/// Names of I2C buses connected to bm1387
-#[derive(PrimitiveEnum_u8, Clone, Copy, Debug, PartialEq)]
-pub enum I2cBusSelect {
-    Bottom = 0,
-    Middle = 1,
-}
-
 impl MiscCtrlReg {
     /// Builds register instance and sanity checks the divisor for the baud rate generator
-    pub fn new_uart_baud(
+    pub fn new(
         not_set_baud: bool,
+        inv_clock: bool,
         baud_div: usize,
         gate_block: bool,
         mmen: bool,
@@ -413,7 +439,7 @@ impl MiscCtrlReg {
         }
         Ok(Self {
             not_set_baud,
-            inv_clock: true,
+            inv_clock,
             baud_div: (baud_div as u8).into(),
             gate_block,
             mmen,
@@ -423,23 +449,28 @@ impl MiscCtrlReg {
         })
     }
 
-    pub fn new_i2c_baud(baud_div: usize, mmen: bool, i2c_bus: I2cBusSelect) -> error::Result<Self> {
-        if baud_div > MAX_BAUD_CLOCK_DIV {
-            Err(ErrorKind::BaudRate(format!(
-                "divisor {} is out of range, maximum allowed is {}",
-                baud_div, MAX_BAUD_CLOCK_DIV
-            )))?
+    /// Alter the value of MiscCtrl register to enable I2C
+    ///
+    /// When we enable/disable I2C on chip, we want to leave the rest of the settings
+    /// as they are. This is why this call alters the register - it is intended
+    /// to be a part of read-modify-write cycle.
+    ///
+    /// `i2c_bus` selects the bus or disables the I2C controller (when `None`)
+    pub fn set_i2c(&mut self, i2c_bus: Option<I2cBusSelect>) {
+        // These two are meaningful only during initialization so we
+        // should better clear them.
+        self.not_set_baud = true;
+        self.gate_block = false;
+
+        if let Some(i2c_bus) = i2c_bus {
+            self.tfs = TfSelector::SCL0;
+            self.rfs = RfSelector::SDA0;
+            self.i2c_bus = i2c_bus;
+        } else {
+            self.tfs = TfSelector::HashDoing;
+            self.rfs = RfSelector::OpenDrain;
+            self.i2c_bus = I2cBusSelect::Bottom;
         }
-        Ok(Self {
-            not_set_baud: true,
-            inv_clock: true,
-            baud_div: (baud_div as u8).into(),
-            gate_block: false,
-            tfs: TfSelector::SCL0,
-            rfs: RfSelector::SDA0,
-            i2c_bus,
-            mmen,
-        })
     }
 }
 
@@ -472,8 +503,9 @@ impl PllReg {
     const MIN_FREQ: usize = 100_000_000;
     const MAX_FREQ: usize = 1_200_000_000;
 
+    /// Simulate divider/PLL and calculate target frequency
     fn calc(&self, xtal_freq: usize) -> usize {
-        // we have to do the arithmetic in u64 at least to be sure
+        // we have to do the arithmetic in u64 (at least) to be sure
         // there wouldn't be an overflow
         (xtal_freq as u64 * self.fbdiv as u64
             / self.refdiv as u64
@@ -481,10 +513,12 @@ impl PllReg {
             / self.postdiv2 as u64) as usize
     }
 
-    fn dist(&self, xtal_freq: usize, target_freq: usize) -> usize {
+    /// Find error between target frequency and computed frequency
+    fn calculate_error(&self, xtal_freq: usize, target_freq: usize) -> usize {
         (self.calc(xtal_freq) as i64 - target_freq as i64).abs() as usize
     }
 
+    /// Find divider to approximate `target_freq`
     fn find_divider(xtal_freq: usize, target_freq: usize) -> Self {
         let mut best = PllReg {
             fbdiv: 0,
@@ -505,7 +539,9 @@ impl PllReg {
                     postdiv1,
                     postdiv2: 1,
                 };
-                if pll.dist(xtal_freq, target_freq) < best.dist(xtal_freq, target_freq) {
+                if pll.calculate_error(xtal_freq, target_freq)
+                    < best.calculate_error(xtal_freq, target_freq)
+                {
                     best = pll;
                 }
             }
@@ -513,6 +549,12 @@ impl PllReg {
         best
     }
 
+    /// Try to calculate PLL divider settings to approximate target frequency
+    ///
+    /// * `xtal_freq` - frequency (in MHz) of crystal (that is to be multiplied/divided by PLL)
+    /// * `target_freq` - frequency (in MHz) that is to be approximated
+    ///
+    /// This function always returns some PLL divider if frequency is in range.
     pub fn try_pll_from_freq(xtal_freq: usize, target_freq: usize) -> error::Result<Self> {
         if target_freq < Self::MIN_FREQ || target_freq > Self::MAX_FREQ {
             Err(ErrorKind::PLL(format!(
@@ -602,7 +644,7 @@ mod test {
         // MiscCtrlReg constructor should build the same structure
         assert_eq!(
             reg,
-            MiscCtrlReg::new_uart_baud(true, 26, true, true).expect("invalid divisor")
+            MiscCtrlReg::new(true, true, 26, true, true).expect("invalid divisor")
         );
     }
 
@@ -624,10 +666,9 @@ mod test {
         let cmd_bytes = cmd.pack();
         assert_eq!(cmd_bytes, expected_cmd_with_padding);
         // MiscCtrlReg constructor should build the same structure
-        assert_eq!(
-            reg,
-            MiscCtrlReg::new_i2c_baud(26, true, I2cBusSelect::Bottom).expect("invalid divisor")
-        );
+        let mut misc_reg = MiscCtrlReg::new(true, true, 26, false, true).expect("invalid divisor");
+        misc_reg.set_i2c(Some(I2cBusSelect::Bottom));
+        assert_eq!(reg, misc_reg,);
     }
 
     /// Builds a get status command to read chip address of all chips
@@ -788,7 +829,7 @@ mod test {
         };
         let xin = DEFAULT_XTAL_FREQ;
         assert_eq!(pll.calc(xin), freq);
-        assert_eq!(pll.dist(xin, freq - 500), 500);
+        assert_eq!(pll.calculate_error(xin, freq - 500), 500);
         assert_eq!(pll.to_reg(), reg);
     }
 

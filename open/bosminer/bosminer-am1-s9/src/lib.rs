@@ -23,13 +23,16 @@
 #![feature(await_macro, async_await, duration_float)]
 
 mod bm1387;
+pub mod command;
 pub mod config;
 pub mod error;
 pub mod gpio;
+pub mod i2c;
 pub mod io;
 pub mod null_work;
 pub mod power;
 pub mod registry;
+pub mod sensor;
 pub mod utils;
 
 #[cfg(test)]
@@ -47,7 +50,6 @@ use std::sync::Arc;
 
 use lazy_static::lazy_static;
 
-use std::fmt::Debug;
 use std::time::{Duration, SystemTime};
 
 use error::ErrorKind;
@@ -56,8 +58,9 @@ use failure::ResultExt;
 use futures::lock::Mutex;
 
 use bm1387::ChipAddress;
+use command::Interface;
 
-use packed_struct::{PackedStruct, PackedStructSlice};
+use packed_struct::PackedStruct;
 
 use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
@@ -93,6 +96,9 @@ const DEFAULT_S9_PLL_FREQUENCY: usize = 650_000_000;
 
 /// Default initial voltage
 const INITIAL_VOLTAGE: power::Voltage = power::Voltage::from_volts(9.4);
+
+/// Address of chip with connected temp sensor
+const TEMP_CHIP: ChipAddress = ChipAddress::One(61);
 
 lazy_static! {
     /// What is our target?
@@ -183,7 +189,7 @@ pub struct HashChain<VBackend> {
     last_heartbeat_sent: Option<SystemTime>,
     #[allow(dead_code)]
     hashboard_idx: usize,
-    pub command_io: io::CommandRxTx,
+    pub command_context: command::Context,
     pub common_io: io::Common,
     pub work_rx_io: Option<io::WorkRx>,
     pub work_tx_io: Option<io::WorkTx>,
@@ -245,7 +251,7 @@ where
             last_heartbeat_sent: None,
             pll_frequency: DEFAULT_S9_PLL_FREQUENCY,
             common_io,
-            command_io,
+            command_context: command::Context::new(command_io),
             work_rx_io: Some(work_rx_io),
             work_tx_io: Some(work_tx_io),
         })
@@ -288,71 +294,6 @@ where
         Ok(())
     }
 
-    /// Read chip register
-    async fn read_register<T: bm1387::Register>(
-        &mut self,
-        chip_address: ChipAddress,
-    ) -> error::Result<Vec<T>> {
-        let cmd = bm1387::GetStatusCmd::new(chip_address, T::REG_NUM).pack();
-        // send command, do not wait for it to be sent out
-        await!(self.send_ctl_cmd(cmd.to_vec(), false));
-
-        // wait for all responses and collect them
-        let mut responses = Vec::new();
-        loop {
-            match await!(self.command_io.recv_response())? {
-                Some(response) => {
-                    let cmd_response = bm1387::CmdResponse::unpack_from_slice(&response)
-                        .context(format!("response unpacking failed"))?;
-                    responses.push(T::from_reg(cmd_response.value));
-                    // exit early if we expect just one reply
-                    if chip_address != ChipAddress::All {
-                        break;
-                    }
-                }
-                None => break,
-            }
-        }
-        Ok(responses)
-    }
-
-    /// Write chip register
-    ///
-    /// * `chip_address` - address of chip
-    /// * `read_back` - flag whether to read back registers and check they
-    ///    were written correctly
-    /// * `value` - register to be written - both type and value are used
-    ///   (type determines register address to be written)
-    async fn write_register<'a, T: bm1387::Register + Debug + PartialEq>(
-        &'a mut self,
-        chip_address: ChipAddress,
-        read_back: bool,
-        value: &'a T,
-    ) -> error::Result<()> {
-        let cmd = bm1387::SetConfigCmd::new(chip_address, T::REG_NUM, value.to_reg());
-        // wait for command to be sent out
-        await!(self.send_ctl_cmd(cmd.pack().to_vec(), true));
-
-        // read the register back
-        if read_back {
-            let responses = await!(self.read_register::<T>(chip_address))?;
-            // TODO: insert here some more checks - like does number of replies match number of chips etc.
-            for (chip_address, read_back_value) in responses.iter().enumerate() {
-                if *read_back_value != *value {
-                    Err(ErrorKind::Hashchip(format!(
-                        "chip {} returned wrong value of register {:#x}: {:#x?} instead of {:#x?}",
-                        chip_address,
-                        T::REG_NUM,
-                        *read_back_value,
-                        value
-                    )))?
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     /// Configures difficulty globally on all chips within the hashchain
     async fn set_asic_diff(&mut self, difficulty: usize) -> error::Result<()> {
         let tm_reg = bm1387::TicketMaskReg::new(difficulty as u32)?;
@@ -361,7 +302,9 @@ where
             difficulty,
             tm_reg
         );
-        await!(self.write_register(ChipAddress::All, true, &tm_reg))?;
+        await!(self
+            .command_context
+            .write_register_readback(ChipAddress::All, &tm_reg))?;
         Ok(())
     }
 
@@ -411,6 +354,7 @@ where
         info!("Starting chip enumeration");
         await!(self.enumerate_chips())?;
         info!("Discovered {} chips", self.chip_count);
+        await!(self.command_context.set_chip_count(self.chip_count));
 
         // calculate PLL for given frequency
         let pll = bm1387::PllReg::try_pll_from_freq(CHIP_OSC_CLK_HZ, DEFAULT_S9_PLL_FREQUENCY)?;
@@ -429,7 +373,9 @@ where
     /// Detects the number of chips on the hashing chain and assigns an address to each chip
     async fn enumerate_chips(&mut self) -> error::Result<()> {
         // Enumerate all chips (broadcast read address register request)
-        let responses = await!(self.read_register::<bm1387::GetAddressReg>(ChipAddress::All))?;
+        let responses = await!(self
+            .command_context
+            .read_register::<bm1387::GetAddressReg>(ChipAddress::All))?;
 
         // Check if are responses meaningful
         for (address, addr_reg) in responses.iter().enumerate() {
@@ -460,14 +406,18 @@ where
         let inactivate_from_chain_cmd = bm1387::InactivateFromChainCmd::new().pack();
         // make sure all chips receive inactivation request
         for _ in 0..3 {
-            await!(self.send_ctl_cmd(inactivate_from_chain_cmd.to_vec(), false));
+            await!(self
+                .command_context
+                .send_raw_command(inactivate_from_chain_cmd.to_vec(), false));
             await!(sleep(Duration::from_millis(INACTIVATE_FROM_CHAIN_DELAY_MS)));
         }
 
         // Assign address to each chip
         for i in 0..self.chip_count {
             let cmd = bm1387::SetChipAddressCmd::new(ChipAddress::One(i));
-            await!(self.send_ctl_cmd(cmd.pack().to_vec(), false));
+            await!(self
+                .command_context
+                .send_raw_command(cmd.pack().to_vec(), false));
         }
 
         Ok(())
@@ -476,7 +426,7 @@ where
     /// Loads PLL register with a starting value
     async fn set_pll<'a>(&'a mut self, pll: &'a bm1387::PllReg) -> error::Result<()> {
         // NOTE: when PLL register is read back, it is or-ed with 0x8000_0000, not sure why
-        await!(self.write_register(ChipAddress::All, false, pll))
+        await!(self.command_context.write_register(ChipAddress::All, pll))
     }
 
     /// Configure all chips in the hash chain
@@ -508,8 +458,12 @@ where
         );
         // Each chip is always configured with inverted clock
         let ctl_reg =
-            bm1387::MiscCtrlReg::new_uart_baud(not_set_baud, baud_clock_div, gate_block, true)?;
-        await!(self.write_register(ChipAddress::All, true, &ctl_reg))?;
+            bm1387::MiscCtrlReg::new(not_set_baud, true, baud_clock_div, gate_block, true)?;
+        // Do not read back the MiscCtrl register when setting baud rate: it will result
+        // in serial speed mismatch and nothing being read.
+        await!(self
+            .command_context
+            .write_register(ChipAddress::All, &ctl_reg))?;
         Ok(actual_baud_rate)
     }
 
@@ -530,10 +484,6 @@ where
 
         self.common_io.set_baud_clock_div(baud_clock_div as u32);
         Ok(())
-    }
-
-    async fn send_ctl_cmd(&self, cmd: Vec<u8>, wait: bool) {
-        await!(self.command_io.send_command(cmd, wait));
     }
 
     pub fn get_chip_count(&self) -> usize {
@@ -647,21 +597,33 @@ where
         }
     }
 
-    /// Monitor task
-    /// Fetch periodically information about hashrate
-    async fn monitor_task(hash_chain: Arc<Mutex<Self>>) {
-        info!("monitor task is starting");
+    /// Temperature monitor task
+    async fn temperature_monitor_task(command_context: command::Context) {
+        info!("Temperature monitor task started");
+        let i2c_bus = await!(bm1387::i2c::Bus::new_and_init(command_context, TEMP_CHIP))
+            .expect("bus construction failed");
+        let mut sensor = await!(sensor::probe_i2c_sensors(i2c_bus))
+            .expect("sensor probing failed")
+            .expect("no sensors found");
+        await!(sensor.init()).expect("failed to initialize sensor");
         loop {
+            let temp = await!(sensor.read_temperature()).expect("failed to read temperature");
+            info!("{:?}", temp);
             await!(sleep(Duration::from_secs(5)));
+        }
+    }
 
-            let mut hash_chain = await!(hash_chain.lock());
+    /// Hashrate monitor task
+    /// Fetch perodically information about hashrate
+    async fn hashrate_monitor_task(mut command_context: command::Context) {
+        info!("Hashrate monitor task started");
+        loop {
+            await!(sleep(Duration::from_secs(27)));
+
             let responses =
-                await!(hash_chain.read_register::<bm1387::HashrateReg>(ChipAddress::All))
+                await!(command_context.read_register::<bm1387::HashrateReg>(ChipAddress::All))
                     .expect("reading hashrate_reg failed");
 
-            if responses.len() != hash_chain.chip_count {
-                warn!("missing some responses");
-            }
             let mut sum = 0;
             for (chip_address, hashrate_reg) in responses.iter().enumerate() {
                 trace!(
@@ -671,7 +633,7 @@ where
                 );
                 sum += hashrate_reg.hashrate() as u128;
             }
-            info!("total chip hashrate {} GHash/s", sum as f64 / 1e9);
+            info!("Total chip hashrate {} GH/s", sum as f64 / 1e9);
         }
     }
 
@@ -723,9 +685,15 @@ where
         });
     }
 
-    fn spawn_monitor_task(hash_chain: Arc<Mutex<Self>>) {
+    fn spawn_hashrate_monitor_task(command_context: command::Context) {
         ii_async_compat::spawn(async move {
-            await!(Self::monitor_task(hash_chain,));
+            await!(Self::hashrate_monitor_task(command_context));
+        });
+    }
+
+    fn spawn_temperature_monitor_task(command_context: command::Context) {
+        ii_async_compat::spawn(async move {
+            await!(Self::temperature_monitor_task(command_context));
         });
     }
 
@@ -741,23 +709,25 @@ where
                 .expect("io missing")
                 .work_id_count(),
         )));
+        let command_context = self.command_context.clone();
         let hash_chain = Arc::new(Mutex::new(self));
         let (work_generator, work_solution) = work_solver.split();
 
-        HashChain::spawn_tx_task(
+        Self::spawn_tx_task(
             hash_chain.clone(),
             work_registry.clone(),
             mining_stats.clone(),
             work_generator,
             shutdown.clone(),
         );
-        HashChain::spawn_rx_task(
+        Self::spawn_rx_task(
             hash_chain.clone(),
             work_registry.clone(),
             mining_stats.clone(),
             work_solution,
         );
-        HashChain::spawn_monitor_task(hash_chain.clone());
+        Self::spawn_hashrate_monitor_task(command_context.clone());
+        Self::spawn_temperature_monitor_task(command_context.clone());
 
         hash_chain
     }

@@ -63,6 +63,10 @@ pub enum ErrorKind {
     #[fail(display = "Hashchip: {}", _0)]
     Hashchip(String),
 
+    /// Error concerning I2C on hashchip.
+    #[fail(display = "I2C hashchip: {}", _0)]
+    I2cHashchip(String),
+
     /// Work or command FIFO timeout.
     #[fail(display = "FIFO: {}: {}", _0, _1)]
     Fifo(Fifo, String),

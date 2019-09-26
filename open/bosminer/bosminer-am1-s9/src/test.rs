@@ -65,53 +65,6 @@ fn test_hchain_ctl_instance() {
 }
 
 #[test]
-fn test_hchain_ctl_init() {
-    let gpio_mgr = gpio::ControlPinManager::new();
-    let voltage_ctrl_backend = power::I2cBackend::new(0);
-    let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
-    let mut hash_chain = HashChain::new(
-        &gpio_mgr,
-        voltage_ctrl_backend,
-        config::S9_HASHBOARD_INDEX,
-        MidstateCount::new(1),
-        config::ASIC_DIFFICULTY,
-    )
-    .expect("Failed to create hash board instance");
-
-    assert!(
-        hash_chain.ip_core_init().is_ok(),
-        "Failed to initialize IP core"
-    );
-
-    let regs = io::test_utils::Regs::new(
-        &hash_chain.common_io,
-        &hash_chain.command_io,
-        &hash_chain.work_rx_io.as_ref().expect("work rx missing"),
-        &hash_chain.work_tx_io.as_ref().expect("work tx missing"),
-    );
-    // verify sane register values
-    assert_eq!(regs.work_time, 36296, "Unexpected work time value");
-    assert_eq!(
-        regs.baud_reg, 0x1a,
-        "Unexpected baud rate register value for {} baud",
-        INIT_CHIP_BAUD_RATE
-    );
-    assert_eq!(
-        regs.work_rx_stat_reg, 1,
-        "Unexpected work rx status register value"
-    );
-    assert_eq!(
-        regs.work_tx_stat_reg, 0x14,
-        "Unexpected work tx status register value"
-    );
-    assert_eq!(
-        regs.cmd_stat_reg, 5,
-        "Unexpected command status register value"
-    );
-    assert_eq!(regs.midstate_cnt, 1, "Unexpected midstate count");
-}
-
-#[test]
 fn test_calc_baud_div_correct_baud_rate_bm1387() {
     // these are sample baud rates for communicating with BM1387 chips
     let correct_bauds_and_divs = [

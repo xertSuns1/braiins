@@ -782,36 +782,3 @@ mod test {
         assert_eq!(build_id.to_string(), "2019-09-18 16:06:08 UTC");
     }
 }
-
-#[cfg(test)]
-pub mod test_utils {
-    use super::*;
-
-    /// Represents configuration of Common block
-    pub struct Regs {
-        pub work_time: u32,
-        pub baud_reg: u32,
-        pub work_rx_stat_reg: u32,
-        pub work_tx_stat_reg: u32,
-        pub cmd_stat_reg: u32,
-        pub midstate_cnt: u32,
-    }
-
-    impl Regs {
-        pub fn new(
-            config: &Common,
-            command: &CommandRxTx,
-            work_rx: &WorkRx,
-            work_tx: &WorkTx,
-        ) -> Self {
-            Self {
-                work_time: config.regs.work_time.read().bits(),
-                baud_reg: config.regs.baud_reg.read().bits(),
-                work_rx_stat_reg: work_rx.fifo.regs.work_rx_stat_reg.read().bits(),
-                work_tx_stat_reg: work_tx.fifo.regs.work_tx_stat_reg.read().bits(),
-                cmd_stat_reg: command.fifo.regs.cmd_stat_reg.read().bits(),
-                midstate_cnt: 1u32 << config.regs.ctrl_reg.read().midstate_cnt().bits(),
-            }
-        }
-    }
-}
