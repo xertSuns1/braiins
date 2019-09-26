@@ -328,7 +328,7 @@ impl Register for TicketMaskReg {
 ///
 /// TODO: research set_baud_with_addr() in bmminer-mix as there seems to be some magic setting
 /// I2C interface of the chip or something like that
-#[derive(PackedStruct, Debug, Default, PartialEq)]
+#[derive(PackedStruct, Clone, Debug, PartialEq)]
 #[packed_struct(bit_numbering = "lsb0", size_bytes = "4", endian = "msb")]
 pub struct MiscCtrlReg {
     /// Exact meaning of this field is unknown, when setting baud rate, it is 0, when
@@ -340,19 +340,11 @@ pub struct MiscCtrlReg {
     #[packed_field(bits = "21")]
     pub inv_clock: bool,
 
-    /// Selects I2C bus, 0 bottom, 1 middle
-    #[packed_field(bits = "16")]
-    pub i2c_middle_bus: bool,
-
-    /// Unknown purpose, set only for I2C
-    #[packed_field(bits = "14")]
-    pub i2c_enable_1: bool,
-
-    /// baudrate divisor - maximum divisor is 26. To calculate the divisor:
-    /// baud_div = min(OSC/8*baud - 1, 26)
-    /// Oscillator frequency is 25 MHz
-    #[packed_field(bits = "12:8")]
-    pub baud_div: Integer<u8, packed_bits::Bits5>,
+    /// Selects on which I2C bus to communicate
+    /// This info was gathered from bmminer
+    /// This field (23:16) is called "addr" in 1387 datasheet
+    #[packed_field(bits = "16", ty = "enum")]
+    pub i2c_bus: I2cBusSelect,
 
     /// This field causes all blocks of the hashing chip to ignore any incoming
     /// work and allows enabling the blocks one-by-one when a mining work with bit[0] set to 1
@@ -360,17 +352,49 @@ pub struct MiscCtrlReg {
     #[packed_field(bits = "15")]
     pub gate_block: bool,
 
+    /// RF pin function
+    /// Info from bm1387 datasheet
+    #[packed_field(bits = "14", ty = "enum")]
+    pub rfs: RfSelector,
+
+    /// baudrate divisor - maximum divisor is 26. To calculate the divisor:
+    /// baud_div = min(OSC/8*baud - 1, 26)
+    /// Oscillator frequency is 25 MHz
+    #[packed_field(bits = "12:8")]
+    pub baud_div: Integer<u8, packed_bits::Bits5>,
+
     /// Enable multi midstate processing = "AsicBoost"
     #[packed_field(bits = "7")]
     pub mmen: bool,
 
-    /// Unknown purpose, set only for I2C
-    #[packed_field(bits = "6")]
-    pub i2c_enable_2: bool,
+    #[packed_field(bits = "5:6", ty = "enum")]
+    pub tfs: TfSelector,
+}
 
-    /// Unknown purpose, set only for I2C
-    #[packed_field(bits = "5")]
-    pub i2c_enable_3: bool,
+/// TF pin selector
+#[derive(PrimitiveEnum_u8, Clone, Copy, Debug, PartialEq)]
+pub enum TfSelector {
+    /// Chip is hashing
+    HashDoing = 0, // name from bm1387 datasheet
+    UartReceiving = 1,
+    UartTransmitting = 2,
+    /// Required for I2C
+    SCL0 = 3,
+}
+
+/// RF pin selector
+#[derive(PrimitiveEnum_u8, Clone, Copy, Debug, PartialEq)]
+pub enum RfSelector {
+    OpenDrain = 0,
+    /// Required for I2c
+    SDA0 = 1,
+}
+
+/// Names of I2C buses connected to bm1387
+#[derive(PrimitiveEnum_u8, Clone, Copy, Debug, PartialEq)]
+pub enum I2cBusSelect {
+    Bottom = 0,
+    Middle = 1,
 }
 
 impl MiscCtrlReg {
@@ -393,11 +417,13 @@ impl MiscCtrlReg {
             baud_div: (baud_div as u8).into(),
             gate_block,
             mmen,
-            ..Default::default()
+            tfs: TfSelector::HashDoing,
+            rfs: RfSelector::OpenDrain,
+            i2c_bus: I2cBusSelect::Bottom,
         })
     }
 
-    pub fn new_i2c_baud(baud_div: usize, mmen: bool, i2c_middle_bus: bool) -> error::Result<Self> {
+    pub fn new_i2c_baud(baud_div: usize, mmen: bool, i2c_bus: I2cBusSelect) -> error::Result<Self> {
         if baud_div > MAX_BAUD_CLOCK_DIV {
             Err(ErrorKind::BaudRate(format!(
                 "divisor {} is out of range, maximum allowed is {}",
@@ -409,10 +435,9 @@ impl MiscCtrlReg {
             inv_clock: true,
             baud_div: (baud_div as u8).into(),
             gate_block: false,
-            i2c_enable_1: true,
-            i2c_enable_2: true,
-            i2c_enable_3: true,
-            i2c_middle_bus,
+            tfs: TfSelector::SCL0,
+            rfs: RfSelector::SDA0,
+            i2c_bus,
             mmen,
         })
     }
@@ -566,7 +591,9 @@ mod test {
             baud_div: 26.into(),
             gate_block: true,
             mmen: true,
-            ..Default::default()
+            tfs: TfSelector::HashDoing,
+            rfs: RfSelector::OpenDrain,
+            i2c_bus: I2cBusSelect::Bottom,
         };
         let cmd = SetConfigCmd::new(ChipAddress::All, MiscCtrlReg::REG_NUM, reg.to_reg());
         let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x1c, 0x40, 0x20, 0x9a, 0x80];
@@ -587,10 +614,9 @@ mod test {
             inv_clock: true,
             baud_div: 26.into(),
             gate_block: false,
-            i2c_enable_1: true,
-            i2c_enable_2: true,
-            i2c_enable_3: true,
-            i2c_middle_bus: false,
+            tfs: TfSelector::SCL0,
+            rfs: RfSelector::SDA0,
+            i2c_bus: I2cBusSelect::Bottom,
             mmen: true,
         };
         let cmd = SetConfigCmd::new(ChipAddress::All, MiscCtrlReg::REG_NUM, reg.to_reg());
@@ -600,7 +626,7 @@ mod test {
         // MiscCtrlReg constructor should build the same structure
         assert_eq!(
             reg,
-            MiscCtrlReg::new_i2c_baud(26, true, false).expect("invalid divisor")
+            MiscCtrlReg::new_i2c_baud(26, true, I2cBusSelect::Bottom).expect("invalid divisor")
         );
     }
 
@@ -688,7 +714,9 @@ mod test {
             baud_div: 26.into(),
             gate_block: true,
             mmen: true,
-            ..Default::default()
+            tfs: TfSelector::HashDoing,
+            rfs: RfSelector::OpenDrain,
+            i2c_bus: I2cBusSelect::Bottom,
         };
         let expected_reg_msb = [0x40u8, 0x20, 0x9a, 0x80];
         let reg_bytes = reg.pack();
@@ -709,7 +737,9 @@ mod test {
             baud_div: 26.into(),
             gate_block: true,
             mmen: true,
-            ..Default::default()
+            tfs: TfSelector::HashDoing,
+            rfs: RfSelector::OpenDrain,
+            i2c_bus: I2cBusSelect::Bottom,
         };
         let expected_reg_value = 0x40209a80u32;
         let reg_value: u32 = reg.to_reg();
