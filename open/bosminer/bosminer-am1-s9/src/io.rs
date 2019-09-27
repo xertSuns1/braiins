@@ -323,8 +323,8 @@ impl CommandRxTxFifos {
     pub async fn read_with_timeout(&mut self, timeout: Duration) -> error::Result<Option<u32>> {
         match await!(timeout_future(self.read(), timeout,)) {
             TimeoutResult::Error => panic!("timeout error"),
-            TimeoutResult::TimedOut => return Ok(None),
-            TimeoutResult::Returned(word) => return Ok(Some(word?)),
+            TimeoutResult::TimedOut => Ok(None),
+            TimeoutResult::Returned(word) => Ok(Some(word?)),
         }
     }
 
