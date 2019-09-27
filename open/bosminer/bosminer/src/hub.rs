@@ -23,14 +23,26 @@
 //! Top level builder for `job::Solver` and `work::Solver` intended to be used when instantiating
 //! the full miner
 
+use ii_logging::macros::*;
+
 use crate::job;
 use crate::work;
 
 use futures::channel::mpsc;
 
+/// Handle external events. Currently it is used only wor handling exhausted work from work engine.
+/// It usually signals some serious problem in backend.
+struct EventHandler;
+
+impl work::ExhaustedHandler for EventHandler {
+    fn handle_exhausted(&self, _engine: work::DynEngine) {
+        warn!("No more work available for current job!");
+    }
+}
+
 /// Create Solvers for frontend (pool) and backend (HW accelerator)
 pub fn build_solvers() -> (job::Solver, work::Solver) {
-    let (engine_sender, engine_receiver) = work::engine_channel(None);
+    let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
     let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
     (
         job::Solver::new(engine_sender, solution_queue_rx),
@@ -94,7 +106,7 @@ pub mod test {
     /// solutions and yields only those that meet the target.
     #[test]
     fn test_job_solver_target() {
-        let (engine_sender, _) = work::engine_channel(None);
+        let (engine_sender, _) = work::engine_channel(work::IgnoreEvents);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
 
         let (job_sender, mut solution_receiver) =

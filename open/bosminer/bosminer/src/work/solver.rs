@@ -20,8 +20,6 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use ii_logging::macros::*;
-
 use super::*;
 
 use futures::channel::mpsc;
@@ -70,14 +68,13 @@ impl Generator {
     /// Generator shutdown)
     pub async fn generate(&mut self) -> Option<Assignment> {
         loop {
-            let work;
-            match await!(self.engine_receiver.get_engine()) {
+            let engine = match await!(self.engine_receiver.get_engine()) {
                 // end of stream
                 None => return None,
-                // try to generate new work from engine
-                Some(engine) => work = engine.next_work(),
-            }
-            return Some(match work {
+                Some(value) => value,
+            };
+            // try to generate new work from engine
+            return Some(match engine.next_work() {
                 // one or more competing work engines are exhausted
                 // try to gen new work engine
                 // NOTE: this can happen simultaneously for multiple parallel generators because
@@ -87,9 +84,8 @@ impl Generator {
                 LoopState::Continue(value) => value,
                 // tha last work is returned from work engine (the work is exhausted)
                 LoopState::Break(value) => {
-                    warn!("No more work available for current job!");
-                    // inform the 'WorkHub' for rescheduling a new work
-                    self.engine_receiver.reschedule();
+                    // inform about this event
+                    self.engine_receiver.handle_exhausted(engine);
                     value
                 }
             });
