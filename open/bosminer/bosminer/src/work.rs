@@ -33,7 +33,6 @@ use ii_bitcoin::{HashTrait, MeetsTarget};
 
 pub use solver::{Generator, SolutionSender, Solver};
 
-use futures::channel::mpsc;
 use tokio::prelude::*;
 use tokio::sync::watch;
 
@@ -228,18 +227,28 @@ pub trait Engine: Debug + Send + Sync {
 /// Shared work engine type
 pub type DynEngine = Arc<dyn Engine>;
 
+/// Interface required by `EngineReceiver` used for notification of exhausted work
+pub trait ExhaustedHandler: Send + Sync + 'static {
+    /// Called when all work is exhausted in given work engine
+    fn handle_exhausted(&self, _engine: DynEngine) {}
+}
+
+/// Helper structure for ignoring all events provided by work module
+pub struct IgnoreEvents;
+
+impl ExhaustedHandler for IgnoreEvents {}
+
 /// Builds a WorkEngine broadcasting channel. The broadcast channel requires an initial value. We
 /// use the empty work engine that signals 'exhausted' state all the time.
-/// You can optionally pass a channel `reschedule_sender` that will be used to return all exhausted
-/// engines. This way you can track what engines are "done".
-pub fn engine_channel(
-    reschedule_sender: Option<mpsc::UnboundedSender<DynEngine>>,
-) -> (EngineSender, EngineReceiver) {
+/// Only parameter is event handler implementing `ExhaustedHandler` trait that will be used to
+/// signal that all work in current engine has been exhausted. This way it is possible to track what
+/// engines are "done".
+pub fn engine_channel(event_handler: impl ExhaustedHandler) -> (EngineSender, EngineReceiver) {
     let work_engine: DynEngine = Arc::new(engine::ExhaustedWork);
     let (sender, receiver) = watch::channel(work_engine);
     (
         EngineSender::new(sender),
-        EngineReceiver::new(receiver, reschedule_sender),
+        EngineReceiver::new(receiver, event_handler),
     )
 }
 
@@ -271,17 +280,17 @@ pub struct EngineReceiver {
     /// A channel that is (if present) used to send back exhausted engines
     /// to be "recycled" or just so that engine sender is notified that all work
     /// has been generated from them
-    reschedule_sender: Option<mpsc::UnboundedSender<DynEngine>>,
+    event_handler: Arc<dyn ExhaustedHandler>,
 }
 
 impl EngineReceiver {
     fn new(
         watch_receiver: watch::Receiver<DynEngine>,
-        reschedule_sender: Option<mpsc::UnboundedSender<DynEngine>>,
+        event_handler: impl ExhaustedHandler,
     ) -> Self {
         Self {
             watch_receiver,
-            reschedule_sender,
+            event_handler: Arc::new(event_handler),
         }
     }
 
@@ -304,15 +313,9 @@ impl EngineReceiver {
     }
 
     /// This function should be called just when last entry has been taken out of engine
-    pub fn reschedule(&self) {
-        let engine = self.watch_receiver.get_ref().clone();
-
-        // If `reschedule_sender` is present, send the current engine back to it
-        if let Some(reschedule_sender) = self.reschedule_sender.as_ref() {
-            reschedule_sender
-                .unbounded_send(engine)
-                .expect("reschedule notify send failed");
-        }
+    #[inline]
+    pub fn handle_exhausted(&self, engine: DynEngine) {
+        self.event_handler.handle_exhausted(engine);
     }
 }
 

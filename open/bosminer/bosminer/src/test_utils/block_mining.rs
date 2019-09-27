@@ -48,6 +48,24 @@ use futures::stream::StreamExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+struct ExhaustedWorkHandler {
+    reschedule_sender: mpsc::UnboundedSender<work::DynEngine>,
+}
+
+impl ExhaustedWorkHandler {
+    pub fn new(reschedule_sender: mpsc::UnboundedSender<work::DynEngine>) -> Self {
+        Self { reschedule_sender }
+    }
+}
+
+impl work::ExhaustedHandler for ExhaustedWorkHandler {
+    fn handle_exhausted(&self, engine: work::DynEngine) {
+        self.reschedule_sender
+            .unbounded_send(engine)
+            .expect("reschedule notify send failed");
+    }
+}
+
 /// Problem is a "work recipe" for mining hardware that is to have a particular
 /// solution in a particular midstate.
 /// The `model_solution` is a "template" after which this work is modeled.
@@ -247,7 +265,8 @@ fn build_solvers() -> (
     work::Solver,
 ) {
     let (reschedule_sender, reschedule_receiver) = mpsc::unbounded();
-    let (engine_sender, engine_receiver) = work::engine_channel(Some(reschedule_sender));
+    let (engine_sender, engine_receiver) =
+        work::engine_channel(ExhaustedWorkHandler::new(reschedule_sender));
     let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
     (
         // Send engines here (preferably OneWork engines)
