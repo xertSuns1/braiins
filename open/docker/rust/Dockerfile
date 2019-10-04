@@ -20,7 +20,8 @@
 # of such proprietary license or if you have any other questions, please
 # contact us at opensource@braiins.com.
 
-FROM debian:9.6 AS base-system
+# FROM debian:9.6 AS base-system
+FROM debian:buster AS base-system
 
 # required packages:
 #   build-essential - rust needs gcc linker
@@ -31,12 +32,13 @@ RUN apt-get update && apt-get install -y \
         build-essential \
         pkg-config \
         libusb-1.0-0-dev \
+        python3-toml \
         curl \
     && rm -rf /var/lib/apt/* /var/cache/apt/*
 
 FROM base-system AS rust-system
 
-COPY run4all /usr/local/bin/
+COPY run4all projecter /usr/local/bin/
 
 # poor man's packaging to not let rustup mess around with PATH
 # building under different uid will need to redefine CARGO_HOME somewhere to $HOME

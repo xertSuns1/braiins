@@ -28,7 +28,7 @@
 
 # templates
 .base-rust: &base-rust
-    image: $CI_REGISTRY_IMAGE/rust:7
+    image: $CI_REGISTRY_IMAGE/rust:8
 
 stages:
     - format
@@ -39,26 +39,12 @@ format:
     <<: *base-rust
     stage: format
     script:
-        - ( cd open/bosminer && run4all cargo fmt -- --check )
-        - ( cd open/coins && run4all cargo fmt --all -- --check )
-        - ( cd open/protocols && run4all cargo fmt --all -- --check )
-        - ( cd open/stratum-proxy && run4all cargo fmt --all -- --check )
-        - ( cd open/utils-rs && run4all cargo fmt --all -- --check )
+        - ./open/scripts/projecter cargo fmt -- --check
 
 check:
     <<: *base-rust
     stage: check
+    variables:
+        RUSTFLAGS: "-D warnings"
     script:
-        - ( cd open/bosminer && cargo check )
-        - ( cd open/bosminer/bosminer-erupter && cargo check )
-        - ( cd open/bosminer/bosminer && cargo check )
-        - ( cd open/coins && cargo check )
-        - ( cd open/coins/bitcoin && cargo check )
-        - ( cd open/hw/zynq-io-am1-s9/fpga-io && cargo check )
-        - ( cd open/protocols/stratum && cargo check )
-        - ( cd open/protocols/wire && cargo check )
-        - ( cd open/stratum-proxy && cargo check )
-        - ( cd open/utils-rs/async-compat && cargo check )
-        - ( cd open/utils-rs/logging && cargo check )
-        - ( cd open/utils-rs/svd-build && cargo check )
-        - ( cd open/utils-rs/uio-async && cargo check )
+        - ./open/scripts/projecter cargo check

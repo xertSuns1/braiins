@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+#
+# Copyright (C) 2019  Braiins Systems s.r.o.
+#
+# This file is part of Braiins Open-Source Initiative (BOSI).
+#
+# BOSI is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# Please, keep in mind that we may also license BOSI or any part thereof
+# under a proprietary license. For more information on the terms and conditions
+# of such proprietary license or if you have any other questions, please
+# contact us at opensource@braiins.com.
+
+import sys
+import subprocess
+import toml
+from pathlib import Path
+import argparse
+
+CFGFILE = 'ci.toml'
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Run command in all subdirectoris with a rust project.'
+    )
+
+    parser.add_argument(
+        '-i',
+        '--ignore-fail',
+        action='store_true',
+        dest='ignore',
+        help='Do not stop on errors',
+    )
+    parser.add_argument(
+        '-l',
+        '--list',
+        action='store_true',
+        help='List found projects',
+    )
+    parser.add_argument(
+        '-p',
+        '--report',
+        action='store_true',
+        help='Print an end summary',
+    )
+    parser.add_argument(
+        'command',
+        nargs=argparse.REMAINDER,
+        metavar='command',
+        help='command to run',
+    )
+    args = parser.parse_args()
+
+    cwd = Path('.')
+    subprojects = [i.parent for i in cwd.rglob('Cargo.toml')]
+    # TODO: figure out proper dependency
+    subprojects.reverse()
+    if args.list:
+        print('\n'.join([str(i) for i in subprojects]))
+        sys.exit(0)
+
+    results = {}
+    for projdir in subprojects:
+        result = run(projdir, args.command)
+        results[projdir] = result
+        if not isinstance(result, Success):
+            out(f'{projdir}/: {result}')
+        if isinstance(result, Fail) and not args.ignore:
+            sys.exit(result.code)
+
+    if args.report:
+        print('-' * 80)
+        for projdir, result in results.items():
+            print(f'{projdir}: {result.status}')
+
+    fail_codes = [i.code for i in results.values() if isinstance(i, Fail)]
+    if fail_codes:
+        sys.exit(fail_codes[-1])
+
+
+def run(projdir, command):
+    configfile = projdir / CFGFILE
+
+    command_config = {
+        'skip': False,
+        'ignore': False,
+    }
+    if configfile.exists():
+        local_config = toml.load(configfile)
+        for key in local_config:
+            if key in '_'.join(command):
+                command_config.update(local_config[key])
+
+    if command_config['skip']:
+        # skip over this one
+        return Skip(command, None)
+
+    out(f'{projdir}/: {" ".join(command)}')
+
+    result = subprocess.run(command, shell=False, cwd=projdir)
+    if command_config['ignore']:
+        return Ignore(command, result.returncode)
+    elif result.returncode == 0:
+        return Success(command, result.returncode)
+    return Fail(command, result.returncode)
+
+
+def out(s, *args, **kargs):
+    print('projecter: ' + s.format(*args, **kargs))
+
+
+class Result:
+    def __init__(self, args, code):
+        self.command = ' '.join(args)
+        self.code = code
+
+    def __str__(self):
+        return f'{self.status} {"(%d)" % self.code if self.code else ""}: {self.command}'
+
+
+class Fail(Result):
+    status = 'failed'
+
+class Success(Result):
+    status = 'success'
+
+class Ignore(Result):
+    status = 'ignored'
+
+class Skip(Result):
+    status = 'skipped'
+
+
+if __name__ == '__main__':
+    main()

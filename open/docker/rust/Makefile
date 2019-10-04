@@ -26,10 +26,14 @@ DOCKER_SSH_AUTH_SOCK=/ssh_auth.sock
 # NOTE: $CI_REGISTRY_IMAGE need to be set to docker registry
 
 # increment tag here and in ci config to enforce gitlab runners to fetch new images
-TAG=7
+TAG=8
+
+# copy tool from outside 'cos docker is stupid
+projecter: ../../../projecter
+	cp ../../../projecter .
 
 # prepare image
-build:
+build: projecter
 	test -n "$(CI_REGISTRY_IMAGE)"
 	docker build -t $(CI_REGISTRY_IMAGE)/rust:$(TAG) .
 
