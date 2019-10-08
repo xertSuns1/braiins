@@ -165,6 +165,11 @@ impl Solution {
     }
 
     #[inline]
+    pub fn job_target(&self) -> ii_bitcoin::Target {
+        self.work.job.target()
+    }
+
+    #[inline]
     pub fn midstate_idx(&self) -> usize {
         self.solution.midstate_idx()
     }

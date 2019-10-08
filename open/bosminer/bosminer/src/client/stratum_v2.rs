@@ -59,10 +59,15 @@ struct StratumJob {
     time: u32,
     max_time: u32,
     bits: u32,
+    target: ii_bitcoin::Target,
 }
 
 impl StratumJob {
-    pub fn new(job_msg: &NewMiningJob, prevhash_msg: &SetNewPrevHash) -> Self {
+    pub fn new(
+        job_msg: &NewMiningJob,
+        prevhash_msg: &SetNewPrevHash,
+        target: ii_bitcoin::Target,
+    ) -> Self {
         Self {
             id: job_msg.job_id,
             channel_id: job_msg.channel_id,
@@ -72,6 +77,7 @@ impl StratumJob {
             time: prevhash_msg.min_ntime,
             max_time: prevhash_msg.min_ntime + prevhash_msg.max_ntime_offset as u32,
             bits: prevhash_msg.nbits,
+            target,
         }
     }
 }
@@ -105,6 +111,10 @@ impl job::Bitcoin for StratumJob {
         self.bits
     }
 
+    fn target(&self) -> ii_bitcoin::Target {
+        self.target
+    }
+
     fn is_valid(&self) -> bool {
         // TODO: currently there is no easy way to detect the job is valid -> we have to check
         //  its presence in the registry. The inequality below was possible in the previous
@@ -119,6 +129,7 @@ struct StratumEventHandler {
     job_sender: job::Sender,
     all_jobs: HashMap<u32, NewMiningJob>,
     current_prevhash_msg: Option<SetNewPrevHash>,
+    current_target: ii_bitcoin::Target,
 }
 
 impl StratumEventHandler {
@@ -128,12 +139,14 @@ impl StratumEventHandler {
             job_sender,
             all_jobs: Default::default(),
             current_prevhash_msg: None,
+            current_target: Default::default(),
         }
     }
     pub fn update_job(&mut self, job_msg: &NewMiningJob) {
         let job = StratumJob::new(
             job_msg,
             self.current_prevhash_msg.as_ref().expect("no prevhash"),
+            self.current_target,
         );
         self.job_sender.send(Arc::new(job));
     }
@@ -141,7 +154,7 @@ impl StratumEventHandler {
     pub fn update_target(&mut self, value: Uint256Bytes) {
         let new_target: ii_bitcoin::Target = value.into();
         info!("changing target to {:?}", new_target);
-        self.job_sender.change_target(new_target);
+        self.current_target = new_target;
     }
 }
 

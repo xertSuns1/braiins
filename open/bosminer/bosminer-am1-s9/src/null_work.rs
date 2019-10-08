@@ -34,6 +34,7 @@ pub struct NullJob {
     time: u32,
     bits: u32,
     version: u32,
+    target: ii_bitcoin::Target,
 }
 
 impl NullJob {
@@ -44,6 +45,7 @@ impl NullJob {
             time,
             bits,
             version,
+            target: ii_bitcoin::Target::from_compact(bits).expect("network difficulty"),
         }
     }
 
@@ -75,6 +77,10 @@ impl job::Bitcoin for NullJob {
 
     fn bits(&self) -> u32 {
         self.bits
+    }
+
+    fn target(&self) -> ii_bitcoin::Target {
+        self.target
     }
 
     fn is_valid(&self) -> bool {

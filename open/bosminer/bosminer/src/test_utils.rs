@@ -56,8 +56,26 @@ impl job::Bitcoin for TestBlock {
         self.bits
     }
 
+    fn target(&self) -> ii_bitcoin::Target {
+        self.target
+    }
+
     fn is_valid(&self) -> bool {
         true
+    }
+}
+
+/// Trait used for `TestBlock` customization
+pub trait TestBlockBuilder {
+    /// Modify job target
+    fn change_target(&self, target: ii_bitcoin::Target) -> TestBlock;
+}
+
+impl TestBlockBuilder for TestBlock {
+    fn change_target(&self, target: ii_bitcoin::Target) -> TestBlock {
+        let mut test_block = *self;
+        test_block.target = target;
+        test_block
     }
 }
 
@@ -101,7 +119,7 @@ impl From<&TestBlock> for work::Assignment {
             state: job.midstate,
         };
 
-        Self::new(Arc::new(*test_block), vec![mid], time)
+        Self::new(job, vec![mid], time)
     }
 }
 
@@ -112,6 +130,18 @@ impl From<&TestBlock> for work::Solution {
             TestSolution::new(test_block),
             Some(SystemTime::UNIX_EPOCH),
         )
+    }
+}
+
+impl From<TestBlock> for work::Assignment {
+    fn from(test_block: TestBlock) -> Self {
+        (&test_block).into()
+    }
+}
+
+impl From<TestBlock> for work::Solution {
+    fn from(test_block: TestBlock) -> Self {
+        (&test_block).into()
     }
 }
 
