@@ -27,6 +27,13 @@ use packed_struct_codegen::PackedStruct;
 
 use std::mem::size_of;
 
+use lazy_static::lazy_static;
+
+lazy_static! {
+    /// ASIC difficulty is 1 and cannot be changed
+    pub static ref ASIC_TARGET: ii_bitcoin::Target = Default::default();
+}
+
 // time for computation one double hash and target comparison in seconds
 const HASH_TIME_S: f64 = 0.0000000029761;
 

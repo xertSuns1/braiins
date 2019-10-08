@@ -165,6 +165,11 @@ impl Solution {
     }
 
     #[inline]
+    pub fn backend_target(&self) -> &ii_bitcoin::Target {
+        self.solution.target()
+    }
+
+    #[inline]
     pub fn job_target(&self) -> ii_bitcoin::Target {
         self.work.job.target()
     }
