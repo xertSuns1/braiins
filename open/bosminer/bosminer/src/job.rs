@@ -36,7 +36,7 @@ use ii_async_compat::futures;
 use std::convert::TryInto;
 use std::fmt::Debug;
 use std::mem;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use downcast_rs::{impl_downcast, Downcast};
 
@@ -58,9 +58,11 @@ pub trait Bitcoin: Debug + Downcast + Send + Sync {
     fn max_time(&self) -> u32 {
         self.time()
     }
-    /// Current target in compact format (network difficulty)
+    /// Current network target in compact format (network difficulty)
     /// https://en.bitcoin.it/wiki/Difficulty
     fn bits(&self) -> u32;
+    /// Current pool/protocol target used for solution checking
+    fn target(&self) -> ii_bitcoin::Target;
     /// Checks if job is still valid for mining
     fn is_valid(&self) -> bool;
 
@@ -78,11 +80,6 @@ pub trait Bitcoin: Debug + Downcast + Send + Sync {
 }
 impl_downcast!(Bitcoin);
 
-/// Helper function for creating target difficulty suitable for sharing
-pub fn create_shared_target(target: ii_bitcoin::Target) -> Arc<RwLock<ii_bitcoin::Target>> {
-    Arc::new(RwLock::new(target))
-}
-
 /// Compound object for job submission and solution reception intended to be passed to
 /// protocol handler
 pub struct Solver {
@@ -95,10 +92,9 @@ impl Solver {
         engine_sender: work::EngineSender,
         solution_queue_rx: mpsc::UnboundedReceiver<work::Solution>,
     ) -> Self {
-        let current_target = create_shared_target(Default::default());
         Self {
-            job_sender: Sender::new(engine_sender, current_target.clone()),
-            solution_receiver: SolutionReceiver::new(solution_queue_rx, current_target),
+            job_sender: Sender::new(engine_sender),
+            solution_receiver: SolutionReceiver::new(solution_queue_rx),
         }
     }
 
@@ -111,25 +107,11 @@ impl Solver {
 /// Typically the mining protocol handler will inject new jobs through it
 pub struct Sender {
     engine_sender: work::EngineSender,
-    current_target: Arc<RwLock<ii_bitcoin::Target>>,
 }
 
 impl Sender {
-    pub fn new(
-        engine_sender: work::EngineSender,
-        current_target: Arc<RwLock<ii_bitcoin::Target>>,
-    ) -> Self {
-        Self {
-            engine_sender,
-            current_target,
-        }
-    }
-
-    pub fn change_target(&self, target: ii_bitcoin::Target) {
-        *self
-            .current_target
-            .write()
-            .expect("cannot write to shared current target") = target;
+    pub fn new(engine_sender: work::EngineSender) -> Self {
+        Self { engine_sender }
     }
 
     pub fn send(&mut self, job: Arc<dyn job::Bitcoin>) {
@@ -146,18 +128,11 @@ impl Sender {
 /// pool specified target
 pub struct SolutionReceiver {
     solution_channel: mpsc::UnboundedReceiver<work::Solution>,
-    current_target: Arc<RwLock<ii_bitcoin::Target>>,
 }
 
 impl SolutionReceiver {
-    pub fn new(
-        solution_channel: mpsc::UnboundedReceiver<work::Solution>,
-        current_target: Arc<RwLock<ii_bitcoin::Target>>,
-    ) -> Self {
-        Self {
-            solution_channel,
-            current_target,
-        }
+    pub fn new(solution_channel: mpsc::UnboundedReceiver<work::Solution>) -> Self {
+        Self { solution_channel }
     }
 
     fn trace_share(solution: &work::Solution, target: &ii_bitcoin::Target) {
@@ -172,11 +147,8 @@ impl SolutionReceiver {
 
     pub async fn receive(&mut self) -> Option<work::Solution> {
         while let Some(solution) = self.solution_channel.next().await {
-            let current_target = &*self
-                .current_target
-                .read()
-                .expect("cannot read from shared current target");
-            if solution.is_valid(current_target) {
+            let current_target = solution.job_target();
+            if solution.is_valid(&current_target) {
                 stats::account_solution(&current_target);
                 info!("----- Found share within current job's difficulty (diff={}) target range -----",
                       current_target.get_difficulty());

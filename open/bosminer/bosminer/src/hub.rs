@@ -54,7 +54,7 @@ pub fn build_solvers() -> (job::Solver, work::Solver) {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::test_utils;
+    use crate::test_utils::{self, TestBlockBuilder as _};
 
     use futures::executor::block_on;
 
@@ -111,11 +111,9 @@ pub mod test {
     fn test_job_solver_target() {
         let (engine_sender, _) = work::engine_channel(work::IgnoreEvents);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
+        let (_, mut solution_receiver) = job::Solver::new(engine_sender, solution_queue_rx).split();
 
-        let (job_sender, mut solution_receiver) =
-            job::Solver::new(engine_sender, solution_queue_rx).split();
-
-        // default target is be set to difficulty 1 so all solution should pass
+        // default target is set to block network difficulty so all solution should pass
         for block in test_utils::TEST_BLOCKS.iter() {
             // test block has automatic conversion into work solution
             solution_queue_tx.unbounded_send(block.into()).unwrap();
@@ -131,12 +129,12 @@ pub mod test {
             .min_by(|a, b| double_hash_cmp(&a.hash, &b.hash))
             .unwrap();
 
-        // change the target to return from solution receiver only this block
+        // change the target of all jobs to return from solution receiver only this block
         let target: ii_bitcoin::Target = target_block.hash.into();
-        job_sender.change_target(target);
 
         // send all solutions to the queue not to block on receiver
         for block in test_utils::TEST_BLOCKS.iter() {
+            let block = block.change_target(target);
             // test block has automatic conversion into work solution
             solution_queue_tx.unbounded_send(block.into()).unwrap();
         }
