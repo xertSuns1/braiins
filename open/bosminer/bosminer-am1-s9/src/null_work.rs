@@ -45,7 +45,7 @@ impl NullJob {
             time,
             bits,
             version,
-            target: ii_bitcoin::Target::from_compact(bits).expect("network difficulty"),
+            target: Default::default(),
         }
     }
 

@@ -39,6 +39,9 @@ pub trait BackendSolution: Debug + Send + Sync {
     fn midstate_idx(&self) -> usize;
     /// Index of a solution (if multiple were found)
     fn solution_idx(&self) -> usize;
+    /// Backend target used for finding this nonce
+    /// This information is used mainly for detecting HW errors
+    fn target(&self) -> &ii_bitcoin::Target;
 }
 
 /// Minimal interface for running compatible backend with bOSminer crate

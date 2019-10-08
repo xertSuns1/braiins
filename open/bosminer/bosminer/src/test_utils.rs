@@ -82,12 +82,14 @@ impl TestBlockBuilder for TestBlock {
 #[derive(Debug)]
 struct TestSolution {
     test_block: TestBlock,
+    target: ii_bitcoin::Target,
 }
 
 impl TestSolution {
     pub fn new(test_block: &TestBlock) -> Self {
         Self {
             test_block: *test_block,
+            target: Default::default(),
         }
     }
 }
@@ -106,6 +108,10 @@ impl hal::BackendSolution for TestSolution {
     #[inline]
     fn solution_idx(&self) -> usize {
         0
+    }
+
+    fn target(&self) -> &ii_bitcoin::Target {
+        &self.target
     }
 }
 

@@ -110,6 +110,11 @@ impl hal::BackendSolution for Solution {
     fn solution_idx(&self) -> usize {
         self.solution_idx
     }
+
+    #[inline]
+    fn target(&self) -> &ii_bitcoin::Target {
+        &icarus::ASIC_TARGET
+    }
 }
 
 pub struct Backend;
