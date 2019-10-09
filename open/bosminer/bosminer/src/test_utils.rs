@@ -24,14 +24,31 @@ pub mod block_mining;
 
 use crate::hal;
 use crate::job::{self, Bitcoin as _};
+use crate::node;
 use crate::work;
 
 pub use ii_bitcoin::{TestBlock, TEST_BLOCKS};
 
+use std::fmt;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 use std::time::SystemTime;
 
+#[derive(Debug)]
+struct TestInfo;
+
+impl fmt::Display for TestInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Test blocks")
+    }
+}
+
+impl node::Info for TestInfo {}
+
 impl job::Bitcoin for TestBlock {
+    fn origin(&self) -> Arc<dyn node::Info> {
+        Arc::new(TestInfo)
+    }
+
     fn version(&self) -> u32 {
         self.version
     }

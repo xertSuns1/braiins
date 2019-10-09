@@ -23,8 +23,10 @@
 use ii_bitcoin::HashTrait;
 
 use bosminer::job::{self, Bitcoin};
+use bosminer::node;
 use bosminer::work;
 
+use std::fmt;
 use std::sync::Arc;
 
 /// NullJob to be used for chip initialization and tests
@@ -54,7 +56,22 @@ impl NullJob {
     }
 }
 
+#[derive(Debug)]
+struct NullJobInfo;
+
+impl fmt::Display for NullJobInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Antminer NULL job generator")
+    }
+}
+
+impl node::Info for NullJobInfo {}
+
 impl job::Bitcoin for NullJob {
+    fn origin(&self) -> Arc<dyn node::Info> {
+        Arc::new(NullJobInfo)
+    }
+
     fn version(&self) -> u32 {
         self.version
     }

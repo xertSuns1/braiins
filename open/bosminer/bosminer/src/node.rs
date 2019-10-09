@@ -20,22 +20,12 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-pub mod client;
-pub mod config;
-pub mod entry;
-pub mod error;
-pub mod hal;
-pub mod hub;
-pub mod job;
-pub mod node;
-pub mod runtime_config;
-pub mod shutdown;
-pub mod stats;
-pub mod work;
+use std::fmt::{Debug, Display};
 
-pub mod test_utils;
-
-// reexport main function from `entry` module
-pub use entry::main;
-// reexport clap which is needed in `hal::Backend::add_args`
-pub use clap;
+/// Generic trait for providing information about unique location of a "node" which is abstraction
+/// for all elements that somehow transforms or provides jobs/work.
+/// Typical path of job/work is: client/pool -> backend -> chain -> chip -> core
+/// The `node::Info` also provides interface for accounting various statistics related to shares.
+/// All nodes implementing this trait and stored in `work::Solution` internal list will be
+/// automatically updated whenever the solution is received in `job::SolutionReceiver`
+pub trait Info: Debug + Display + Send + Sync {}

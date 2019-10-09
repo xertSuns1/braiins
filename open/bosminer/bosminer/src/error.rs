@@ -92,6 +92,12 @@ impl From<Context<ErrorKind>> for Error {
     }
 }
 
+impl From<&str> for Error {
+    fn from(msg: &str) -> Self {
+        ErrorKind::General(msg.to_string()).into()
+    }
+}
+
 impl From<String> for Error {
     fn from(msg: String) -> Self {
         ErrorKind::General(msg).into()

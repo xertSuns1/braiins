@@ -25,6 +25,7 @@ use ii_logging::macros::*;
 use ii_bitcoin::HashTrait;
 
 use crate::job;
+use crate::node;
 use crate::runtime_config;
 use crate::stats;
 use crate::work;
@@ -44,6 +45,8 @@ use downcast_rs::{impl_downcast, Downcast};
 /// generated. The trait is bound to Downcast which enables connect work solution with original job
 /// and hide protocol specific details.
 pub trait Bitcoin: Debug + Downcast + Send + Sync {
+    /// Information about origin where the job has been created
+    fn origin(&self) -> Arc<dyn node::Info>;
     /// Original version field that reflects the current network consensus
     fn version(&self) -> u32;
     /// Bit-mask with general purpose bits which can be freely manipulated (specified by BIP320)
