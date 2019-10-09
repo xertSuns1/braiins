@@ -118,7 +118,10 @@ impl Voltage {
 }
 
 /// Describes a voltage controller backend interface
-pub trait Backend {
+pub trait Backend
+where
+    Self: Send + Sync,
+{
     /// Sends a Write transaction for a voltage controller on a particular hashboard
     /// * `data` - payload of the command
     fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()>;
