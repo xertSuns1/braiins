@@ -24,13 +24,14 @@ use ii_logging::macros::*;
 
 use ii_bitcoin::HashTrait;
 
+use crate::client;
 use crate::job;
+use crate::node;
 use crate::work;
 
 use ii_async_compat::tokio;
 use tokio::prelude::*;
 
-use std::net::ToSocketAddrs;
 use std::sync::Arc;
 
 use ii_stratum::v2::framing::codec::Framing;
@@ -51,6 +52,7 @@ const VERSION_MASK: u32 = 0x1fffe000;
 
 #[derive(Debug, Clone)]
 struct StratumJob {
+    descriptor: Arc<client::Descriptor>,
     id: u32,
     channel_id: u32,
     version: u32,
@@ -64,11 +66,13 @@ struct StratumJob {
 
 impl StratumJob {
     pub fn new(
+        descriptor: Arc<client::Descriptor>,
         job_msg: &NewMiningJob,
         prevhash_msg: &SetNewPrevHash,
         target: ii_bitcoin::Target,
     ) -> Self {
         Self {
+            descriptor,
             id: job_msg.job_id,
             channel_id: job_msg.channel_id,
             version: job_msg.version,
@@ -83,6 +87,10 @@ impl StratumJob {
 }
 
 impl job::Bitcoin for StratumJob {
+    fn origin(&self) -> Arc<dyn node::Info> {
+        self.descriptor.clone()
+    }
+
     fn version(&self) -> u32 {
         self.version
     }
@@ -125,6 +133,7 @@ impl job::Bitcoin for StratumJob {
 }
 
 struct StratumEventHandler {
+    descriptor: Arc<client::Descriptor>,
     status: Result<(), ()>,
     job_sender: job::Sender,
     all_jobs: HashMap<u32, NewMiningJob>,
@@ -133,8 +142,9 @@ struct StratumEventHandler {
 }
 
 impl StratumEventHandler {
-    pub fn new(job_sender: job::Sender) -> Self {
+    pub fn new(job_sender: job::Sender, descriptor: Arc<client::Descriptor>) -> Self {
         Self {
+            descriptor,
             status: Err(()),
             job_sender,
             all_jobs: Default::default(),
@@ -144,6 +154,7 @@ impl StratumEventHandler {
     }
     pub fn update_job(&mut self, job_msg: &NewMiningJob) {
         let job = StratumJob::new(
+            self.descriptor.clone(),
             job_msg,
             self.current_prevhash_msg.as_ref().expect("no prevhash"),
             self.current_target,
@@ -427,28 +438,23 @@ async fn event_handler_task(
     }
 }
 
-pub async fn run(job_solver: job::Solver, stratum_addr: String, user: String) {
-    let socket_addr = stratum_addr
-        .to_socket_addrs()
-        .expect("Invalid server address")
-        .next()
-        .expect("Cannot resolve any IP address");
+pub async fn run(job_solver: job::Solver, descriptor: Arc<client::Descriptor>) {
     let (job_sender, job_solution) = job_solver.split();
-    let mut event_handler = StratumEventHandler::new(job_sender);
+    let mut event_handler = StratumEventHandler::new(job_sender, descriptor.clone());
 
-    let mut connection = Connection::<Framing>::connect(&socket_addr)
+    let mut connection = Connection::<Framing>::connect(&descriptor.socket_addr)
         .await
         .expect("Cannot connect to stratum server");
 
     setup_mining_connection(
         &mut connection,
         &mut event_handler,
-        stratum_addr,
-        socket_addr.port() as usize,
+        descriptor.url.clone(),
+        descriptor.socket_addr.port() as usize,
     )
     .await
     .expect("Cannot setup stratum mining connection");
-    open_channel(&mut connection, &mut event_handler, user)
+    open_channel(&mut connection, &mut event_handler, descriptor.user.clone())
         .await
         .expect("Cannot open stratum channel");
 

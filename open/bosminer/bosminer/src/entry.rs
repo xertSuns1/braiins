@@ -20,7 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use crate::client::stratum_v2;
+use crate::client;
 use crate::hal;
 use crate::hub;
 use crate::runtime_config;
@@ -61,8 +61,11 @@ pub async fn main<T: hal::Backend>(mut backend: T) {
     let args = backend.add_args(app).get_matches();
 
     // Unwraps should be ok as long as the flags are required
-    let stratum_addr = args.value_of("pool").unwrap().to_string();
+    let url = args.value_of("pool").unwrap().to_string();
     let user = args.value_of("user").unwrap().to_string();
+
+    // parse user input to fail fast when it is incorrect
+    let client_descriptor = client::parse(url, user).expect("Server parameters");
 
     // Set default backend midstate count
     runtime_config::set_midstate_count(T::DEFAULT_MIDSTATE_COUNT);
@@ -81,6 +84,6 @@ pub async fn main<T: hal::Backend>(mut backend: T) {
     backend.run(work_solver, mining_stats.clone(), shutdown_sender);
     // start statistics processing
     T::start_mining_stats_task(mining_stats);
-    // start stratum V2 client
-    stratum_v2::run(job_solver, stratum_addr, user).await;
+    // start client based on user input
+    client::run(job_solver, client_descriptor).await;
 }
