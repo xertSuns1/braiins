@@ -191,7 +191,7 @@ pub struct HashChain<VBackend> {
 
 impl<VBackend> HashChain<VBackend>
 where
-    VBackend: 'static + Send + Sync + Clone + power::Backend,
+    VBackend: 'static + Clone + power::Backend,
 {
     /// Creates a new hashboard controller with memory mapped FPGA IP core
     ///
