@@ -1,5 +1,3 @@
-use libc;
-use nix::sys::mman::{MapFlags, ProtFlags};
 use std::error::Error;
 use std::fmt;
 use std::fs;
@@ -11,9 +9,14 @@ use std::num::ParseIntError;
 use std::ops;
 use std::os::unix::prelude::AsRawFd;
 use std::time::{Duration, Instant};
+
+use tokio::fs::File as TokioFile;
+use tokio::io::AsyncReadExt;
+
+use libc;
+use nix::sys::mman::{MapFlags, ProtFlags};
 use timeout_readwrite::TimeoutReader;
 
-use futures::compat::Future01CompatExt;
 
 const PAGESIZE: usize = 4096;
 
@@ -61,7 +64,7 @@ impl Error for UioError {
         }
     }
 
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         match self {
             UioError::Io(ref e) => Some(e),
             UioError::Map(ref e) => Some(e),
@@ -344,13 +347,11 @@ impl UioDevice {
     }
 
     pub async fn irq_wait_async(&self) -> io::Result<u32> {
-        let file = tokio_file_unix::File::new_nb(self.devfile.try_clone()?)?;
-        let file = file.into_io(&tokio::reactor::Handle::default())?;
-        let buf = [0u8; 4];
-        let read_task = tokio::io::read_exact(file, buf);
-        let (_file_, buf_) = await!(read_task.compat())?;
-        let res = u32::from_ne_bytes(buf_);
-        Ok(res)
+        let file = self.devfile.try_clone()?;
+        let mut file = TokioFile::from_std(file);
+        let mut buf = [0u8; 4];
+        file.read_exact(&mut buf).await?;
+        Ok(u32::from_ne_bytes(buf))
     }
 
     pub fn irq_wait_timeout(&self, timeout: Duration) -> io::Result<Option<u32>> {
@@ -382,7 +383,7 @@ impl UioDevice {
                 // relevant only for edge-sensitive interrupts though)
                 break;
             }
-            await!(self.irq_wait_async())?;
+            self.irq_wait_async().await?;
         }
         Ok(())
     }
@@ -421,7 +422,7 @@ mod tests {
 
     #[test]
     fn open() {
-        let res = ::linux::UioDevice::new(0);
+        let res = UioDevice::new(0);
         match res {
             Err(e) => {
                 panic!("Can not open device /dev/uio0: {}", e);
@@ -432,7 +433,7 @@ mod tests {
 
     #[test]
     fn print_info() {
-        let res = ::linux::UioDevice::new(0).unwrap();
+        let res = UioDevice::new(0).unwrap();
         let name = res.get_name().expect("Can't get name");
         let version = res.get_version().expect("Can't get version");
         let event_count = res.get_event_count().expect("Can't get event count");
@@ -443,7 +444,7 @@ mod tests {
 
     #[test]
     fn map() {
-        let res = ::linux::UioDevice::new(0).unwrap();
+        let res = UioDevice::new(0).unwrap();
         let bars = res.map_resource(5);
         match bars {
             Err(e) => {
@@ -455,7 +456,7 @@ mod tests {
 
     #[test]
     fn bar_info() {
-        let mut res = ::linux::UioDevice::new(0).unwrap();
+        let mut res = UioDevice::new(0).unwrap();
         let bars = res.get_resource_info();
         match bars {
             Err(e) => {
