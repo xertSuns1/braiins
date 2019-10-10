@@ -35,7 +35,9 @@ use futures::channel::mpsc;
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
 
-use ii_async_compat::{sleep, timeout_future, TimeoutResult};
+use ii_async_compat::tokio;
+use tokio::future::FutureExt;
+use tokio::timer::delay_for;
 
 /// Our local abbreviation
 type HashChain = crate::HashChain<power::SharedBackend<power::I2cBackend>>;
@@ -60,13 +62,15 @@ async fn receiver_task(
     hash_chain: Arc<Mutex<HashChain>>,
     solution_sender: mpsc::UnboundedSender<Solution>,
 ) {
-    let mut rx_io = await!(hash_chain.lock())
+    let mut rx_io = hash_chain
+        .lock()
+        .await
         .work_rx_io
         .take()
         .expect("work-rx fifo missing");
 
     loop {
-        let (rx_io_out, solution) = await!(rx_io.recv_solution()).expect("recv solution");
+        let (rx_io_out, solution) = rx_io.recv_solution().await.expect("recv solution");
         rx_io = rx_io_out;
 
         solution_sender
@@ -80,15 +84,17 @@ async fn sender_task(
     hash_chain: Arc<Mutex<HashChain>>,
     mut work_receiver: mpsc::UnboundedReceiver<work::Assignment>,
 ) {
-    let mut tx_io = await!(hash_chain.lock())
+    let mut tx_io = hash_chain
+        .lock()
+        .await
         .work_tx_io
         .take()
         .expect("work-tx fifo missing");
     let mut work_registry = registry::WorkRegistry::new(tx_io.work_id_count());
 
     loop {
-        await!(tx_io.wait_for_room()).expect("wait for tx room");
-        let work = await!(work_receiver.next()).expect("failed receiving work");
+        tx_io.wait_for_room().await.expect("wait for tx room");
+        let work = work_receiver.next().await.expect("failed receiving work");
         let work_id = work_registry.store_work(work.clone());
         // send work is synchronous
         tx_io.send_work(&work, work_id).expect("send work");
@@ -114,19 +120,18 @@ async fn send_and_receive_test_workloads<'a>(
         // TODO: come up with a formula instead of fixed time interval
         // wait = work_time * number_of_chips + time_to_send_out_a_jov
 
-        await!(sleep(Duration::from_millis(100)));
+        delay_for(Duration::from_millis(100)).await;
     }
     let mut returned_solution_count = 0;
-    loop {
-        match await!(timeout_future(
-            solution_receiver.next(),
-            Duration::from_millis(1000)
-        )) {
-            TimeoutResult::TimedOut => break,
-            TimeoutResult::Error => panic!("timeout error"),
-            TimeoutResult::Returned(_solution) => returned_solution_count += 1,
-        }
+    while let Ok(res) = solution_receiver
+        .next()
+        .timeout(Duration::from_millis(1000))
+        .await
+    {
+        res.expect("timeout error");
+        returned_solution_count += 1;
     }
+
     assert_eq!(
         returned_solution_count, expected_solution_count,
         "expected {} solutions but got {}",
@@ -149,7 +154,7 @@ async fn start_hchain() -> HashChain {
         crate::OPEN_CORE_VOLTAGE,
     )
     .unwrap();
-    await!(hash_chain.init()).expect("h_chain init failed");
+    hash_chain.init().await.expect("h_chain init failed");
     hash_chain
 }
 
@@ -161,8 +166,8 @@ async fn start_hchain() -> HashChain {
 /// - the next 2 work items yield actual solutions. Since we don't push more work items, the
 /// solution 1 never appears on the bus and leave chips output queues. This is fine as this test
 /// is intended for initial check of correct operation
-#[test]
-fn test_work_generation() {
+#[tokio::test]
+async fn test_work_generation() {
     // Create channels
     let (solution_sender, mut solution_receiver) = mpsc::unbounded();
     let (work_sender, work_receiver) = mpsc::unbounded();
@@ -171,36 +176,30 @@ fn test_work_generation() {
     let _work_sender_guard = work_sender.clone();
     let _solution_sender_guard = solution_sender.clone();
 
-    ii_async_compat::run_main_exits(async move {
-        // Start HW
-        let hash_chain = Arc::new(Mutex::new(await!(start_hchain())));
+    // Start HW
+    let hash_chain = Arc::new(Mutex::new(start_hchain().await));
 
-        // start HW receiver
-        ii_async_compat::spawn(receiver_task(hash_chain.clone(), solution_sender));
+    // start HW receiver
+    tokio::spawn(receiver_task(hash_chain.clone(), solution_sender));
 
-        // start HW sender
-        ii_async_compat::spawn(sender_task(hash_chain.clone(), work_receiver));
+    // start HW sender
+    tokio::spawn(sender_task(hash_chain.clone(), work_receiver));
 
-        // the first 3 work loads don't produce any solutions, these are merely to initialize the input
-        // queue of each hashing chip
-        await!(send_and_receive_test_workloads(
-            &work_sender,
-            &mut solution_receiver,
-            3,
-            0
-        ));
+    // the first 3 work loads don't produce any solutions, these are merely to initialize the input
+    // queue of each hashing chip
+    send_and_receive_test_workloads(&work_sender, &mut solution_receiver, 3, 0).await;
 
-        // submit 2 more work items, since we are intentionally being slow all chips should send a
-        // solution for the submitted work
-        let more_work_count = 2usize;
-        let chip_count = await!(hash_chain.lock()).get_chip_count();
-        let expected_solution_count = more_work_count * chip_count;
+    // submit 2 more work items, since we are intentionally being slow all chips should send a
+    // solution for the submitted work
+    let more_work_count = 2usize;
+    let chip_count = hash_chain.lock().await.get_chip_count();
+    let expected_solution_count = more_work_count * chip_count;
 
-        await!(send_and_receive_test_workloads(
-            &work_sender,
-            &mut solution_receiver,
-            more_work_count,
-            expected_solution_count,
-        ));
-    });
+    send_and_receive_test_workloads(
+        &work_sender,
+        &mut solution_receiver,
+        more_work_count,
+        expected_solution_count,
+    )
+    .await;
 }

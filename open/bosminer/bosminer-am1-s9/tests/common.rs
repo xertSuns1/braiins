@@ -20,7 +20,9 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-#[test]
-fn block_mining() {
-    bosminer::test_utils::block_mining::run(bosminer_am1_s9::Backend::new());
+use ii_async_compat::tokio;
+
+#[tokio::test]
+async fn block_mining() {
+    bosminer::test_utils::block_mining::run(bosminer_am1_s9::Backend::new()).await;
 }

@@ -33,6 +33,7 @@ use ii_bitcoin::{HashTrait, MeetsTarget};
 
 pub use solver::{Generator, SolutionSender, Solver};
 
+use ii_async_compat::tokio;
 use tokio::prelude::*;
 use tokio::sync::watch;
 
@@ -303,11 +304,11 @@ impl EngineReceiver {
                 // return only work engine which can generate some work
                 return Some(engine);
             }
-            match await!(self.watch_receiver.next()) {
+            match self.watch_receiver.next().await {
                 // end of stream
                 None => return None,
                 // new work engine received
-                Some(value) => engine = value.expect("cannot receive work engine"),
+                Some(value) => engine = value,
             }
         }
     }

@@ -31,6 +31,7 @@ use crate::work;
 
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
+use ii_async_compat::futures;
 
 use std::convert::TryInto;
 use std::fmt::Debug;
@@ -170,7 +171,7 @@ impl SolutionReceiver {
     }
 
     pub async fn receive(&mut self) -> Option<work::Solution> {
-        while let Some(solution) = await!(self.solution_channel.next()) {
+        while let Some(solution) = self.solution_channel.next().await {
             let current_target = &*self
                 .current_target
                 .read()

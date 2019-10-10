@@ -38,12 +38,14 @@ use crate::test_utils;
 use crate::work;
 
 use std::time::{Duration, Instant};
-use tokio::timer::Delay;
+
+use ii_async_compat::tokio;
+use tokio::timer::delay_for;
 
 use futures::channel::mpsc;
-use futures::compat::Future01CompatExt;
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
+use ii_async_compat::futures;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -285,7 +287,7 @@ async fn collect_solutions(
     mut solution_queue_rx: mpsc::UnboundedReceiver<work::Solution>,
     registry: Arc<Mutex<Registry>>,
 ) {
-    while let Some(solution) = await!(solution_queue_rx.next()) {
+    while let Some(solution) = solution_queue_rx.next().await {
         let job: &test_utils::TestBlock = solution.job();
         info!(
             "received: was={:08x} got={:08x} ms={} hash={}",
@@ -294,74 +296,75 @@ async fn collect_solutions(
             solution.midstate_idx(),
             solution.hash()
         );
-        await!(registry.lock()).add_solution(solution.into());
+        registry.lock().await.add_solution(solution.into());
     }
 }
 
-pub fn run<T: hal::Backend>(backend: T) {
+pub async fn run<T: hal::Backend>(backend: T) {
     // create shutdown channel
     let (shutdown_sender, shutdown_receiver) = shutdown::channel();
 
     // this is a small miner core: we generate work, collect solutions, and we pair them together
     // we expect all (generated) problems to be solved
-    ii_async_compat::run_main_exits(async move {
-        // read config
-        let midstate_count = runtime_config::get_midstate_count();
+    // ii_async_compat::run_main_exits(async move {
+    // read config
+    let midstate_count = runtime_config::get_midstate_count();
 
-        // Create solver and channels to send/receive work
-        let (mut engine_sender, solution_queue_rx, mut reschedule_receiver, work_solver) =
-            build_solvers();
+    // Create solver and channels to send/receive work
+    let (mut engine_sender, solution_queue_rx, mut reschedule_receiver, work_solver) =
+        build_solvers();
 
-        // create mining stats
-        let mining_stats = Arc::new(Mutex::new(stats::Mining::new()));
+    // create mining stats
+    let mining_stats = Arc::new(Mutex::new(stats::Mining::new()));
 
-        // create problem registry
-        let registry = Arc::new(Mutex::new(Registry::new()));
+    // create problem registry
+    let registry = Arc::new(Mutex::new(Registry::new()));
 
-        // start HW backend for selected target
-        backend.run(work_solver, mining_stats.clone(), shutdown_sender);
+    // start HW backend for selected target
+    backend.run(work_solver, mining_stats.clone(), shutdown_sender);
 
-        // start task to collect solutions and put them to registry
-        ii_async_compat::spawn(collect_solutions(solution_queue_rx, registry.clone()));
+    // start task to collect solutions and put them to registry
+    tokio::spawn(collect_solutions(solution_queue_rx, registry.clone()));
 
-        // TODO: first work sent to miner is for some reason ignored
-        // workaround: send two works
-        engine_sender.broadcast(Arc::new(test_utils::OneWorkEngine::new(
-            Problem::new((&test_utils::TEST_BLOCKS[0]).into(), 0).into(),
-        )));
+    // TODO: first work sent to miner is for some reason ignored
+    // workaround: send two works
+    engine_sender.broadcast(Arc::new(test_utils::OneWorkEngine::new(
+        Problem::new((&test_utils::TEST_BLOCKS[0]).into(), 0).into(),
+    )));
 
-        // generate all blocks for all possible midstates
-        for target_midstate in 0..midstate_count {
-            for test_block in test_utils::TEST_BLOCKS.iter() {
-                let problem = Problem {
-                    model_solution: test_block.into(),
-                    target_midstate,
-                };
-                let is_unique = await!(registry.lock()).add_problem(problem.clone());
-                if !is_unique {
-                    panic!("duplicate problem");
-                }
-                // wait for the work (engine) to be sent out (exhausted)
-                await!(reschedule_receiver.next());
-                engine_sender.broadcast(Arc::new(test_utils::OneWorkEngine::new(
-                    problem.clone().into(),
-                )));
+    // generate all blocks for all possible midstates
+    for target_midstate in 0..midstate_count {
+        for test_block in test_utils::TEST_BLOCKS.iter() {
+            let problem = Problem {
+                model_solution: test_block.into(),
+                target_midstate,
+            };
+            let is_unique = registry.lock().await.add_problem(problem.clone());
+            if !is_unique {
+                panic!("duplicate problem");
             }
+            // wait for the work (engine) to be sent out (exhausted)
+            reschedule_receiver.next().await;
+            engine_sender.broadcast(Arc::new(test_utils::OneWorkEngine::new(
+                problem.clone().into(),
+            )));
         }
+    }
 
-        // wait for hw to finish computation
-        let timeout_started = Instant::now();
-        while timeout_started.elapsed() < T::JOB_TIMEOUT {
-            await!(Delay::new(Instant::now() + Duration::from_secs(1)).compat()).unwrap();
-            if await!(registry.lock()).check_everything_solved(false) {
-                break;
-            }
+    // wait for hw to finish computation
+    let timeout_started = Instant::now();
+    while timeout_started.elapsed() < T::JOB_TIMEOUT {
+        delay_for(Duration::from_secs(1)).await;
+
+        if registry.lock().await.check_everything_solved(false) {
+            break;
         }
+    }
 
-        // go through registry and check if everything was solved
-        let registry = await!(registry.lock());
-        assert!(registry.check_everything_solved(true));
-    });
+    // go through registry and check if everything was solved
+    let registry = registry.lock().await;
+    assert!(registry.check_everything_solved(true));
+    // });
 
     // the shutdown receiver has to survive up to this point to prevent shutdown sends by dying tasks to fail
     drop(shutdown_receiver);

@@ -118,7 +118,7 @@ pub async fn probe_i2c_sensors<T: 'static + i2c::AsyncBus + Clone>(
         // Construct device
         let mut i2c_device = i2c::Device::new(i2c_bus.clone(), *address);
         // Read manufacturer ID
-        let manufacturer_id = await!(i2c_device.read(REG_MANUFACTURER_ID))?;
+        let manufacturer_id = i2c_device.read(REG_MANUFACTURER_ID).await?;
 
         info!("{:?} manufacturer_id={:#x}", address, manufacturer_id);
 
@@ -138,6 +138,7 @@ pub async fn probe_i2c_sensors<T: 'static + i2c::AsyncBus + Clone>(
 mod test {
     use super::*;
     use i2c::test_utils;
+    use ii_async_compat::tokio;
 
     async fn test_probe_address(addr: u8, man_id: u8) -> bool {
         let bus = test_utils::FakeI2cBus::new(
@@ -147,22 +148,16 @@ mod test {
             Some(0xff),
         );
         let bus = i2c::SharedBus::new(bus);
-        let result = await!(probe_i2c_sensors(bus)).unwrap();
+        let result = probe_i2c_sensors(bus).await.unwrap();
         result.is_some()
     }
 
+    #[tokio::test]
     async fn inner_test_probe_i2c_sensors() {
-        assert_eq!(await!(test_probe_address(0x98, 0x55)), true);
-        assert_eq!(await!(test_probe_address(0x9a, 0x41)), true);
-        assert_eq!(await!(test_probe_address(0x9c, 0x1a)), true);
-        assert_eq!(await!(test_probe_address(0x9c, 0x37)), false);
-        assert_eq!(await!(test_probe_address(0x84, 0x55)), false);
-    }
-
-    #[test]
-    fn test_probe_i2c_sensors() {
-        ii_async_compat::run_main_exits(async {
-            await!(inner_test_probe_i2c_sensors());
-        });
+        assert_eq!(test_probe_address(0x98, 0x55).await, true);
+        assert_eq!(test_probe_address(0x9a, 0x41).await, true);
+        assert_eq!(test_probe_address(0x9c, 0x1a).await, true);
+        assert_eq!(test_probe_address(0x9c, 0x37).await, false);
+        assert_eq!(test_probe_address(0x84, 0x55).await, false);
     }
 }

@@ -16,8 +16,4 @@ failure = "0.1.5"
 lazy_static = "1.3"
 packed_struct="0.3"
 packed_struct_codegen = "0.3"
-tokio = { version = "=0.1.19", features = ["async-await-preview"] }
-tokio-threadpool = "0.1.14"
-futures-preview = { version = "=0.3.0-alpha.16", features = ["compat"] }
-futures-01 = { version = "0.1.27", package = "futures" }
 libusb = { version = "0.3.0" }

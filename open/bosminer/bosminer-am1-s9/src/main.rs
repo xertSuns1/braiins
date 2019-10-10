@@ -20,8 +20,10 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-#![feature(await_macro, async_await, duration_float)]
+use ii_async_compat::tokio;
 
-fn main() {
-    bosminer::main(bosminer_am1_s9::Backend::new());
+#[tokio::main]
+async fn main() {
+    ii_async_compat::setup_panic_handling();
+    bosminer::main(bosminer_am1_s9::Backend::new()).await;
 }

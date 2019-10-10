@@ -96,7 +96,7 @@ impl i2c::AsyncBus for FakeI2cBus {
     /// Write register to device on I2C bus
     async fn write(&mut self, addr: Address, reg: u8, val: u8) -> error::Result<()> {
         // Try read the register first - if it's not accessible, this will create the error
-        await!(self.read(addr, reg))?;
+        self.read(addr, reg).await?;
 
         // Seems that address is accessible, so write to it if it's not default response
         if addr == self.respond_addr {

@@ -22,10 +22,11 @@
 
 use ii_logging::macros::*;
 
-use tokio::timer::Delay;
+use ii_async_compat::tokio;
+use tokio::timer::delay_for;
 
-use futures::compat::Future01CompatExt;
 use futures::lock::Mutex;
+use ii_async_compat::futures;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -81,10 +82,9 @@ pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<Mining>>) {
     let mut last_stat_time = Instant::now();
     let mut old_error_stats = Default::default();
     loop {
-        await!(Delay::new(Instant::now() + Duration::from_secs(1)).compat())
-            .expect("stats delay wait failed");
+        delay_for(Duration::from_secs(1)).await;
 
-        let mut stats = await!(mining_stats.lock());
+        let mut stats = mining_stats.lock().await;
         let solved_shares = stats.unique_solutions_shares;
         stats.unique_solutions_shares = 0;
         let work_generated = stats.work_generated;
@@ -141,8 +141,8 @@ pub async fn hashrate_meter_task() {
     let mut total_shares: u128 = 0;
 
     loop {
-        await!(Delay::new(Instant::now() + Duration::from_secs(1)).compat())
-            .expect("stats delay wait failed");
+        delay_for(Duration::from_secs(1)).await;
+
         total_shares += SUBMITTED_SHARE_COUNTER.swap(0, Ordering::SeqCst) as u128;
         let total_hashing_time = hashing_started.elapsed();
         if total_shares > 0 {

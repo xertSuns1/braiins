@@ -239,8 +239,11 @@ mod test {
     use super::*;
     use crate::job::Bitcoin;
 
-    fn get_engine(work_receiver: &mut work::EngineReceiver) -> Arc<work::Engine> {
-        ii_async_compat::block_on(work_receiver.get_engine()).expect("cannot get test work engine")
+    use futures::executor::block_on;
+    use ii_async_compat::futures;
+
+    fn get_engine(work_receiver: &mut work::EngineReceiver) -> Arc<dyn work::Engine> {
+        block_on(work_receiver.get_engine()).expect("cannot get test work engine")
     }
 
     fn cmp_block_with_work(block: &TestBlock, work: work::Assignment) -> work::Assignment {

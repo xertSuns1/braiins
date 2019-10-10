@@ -17,7 +17,6 @@ use libc;
 use nix::sys::mman::{MapFlags, ProtFlags};
 use timeout_readwrite::TimeoutReader;
 
-
 const PAGESIZE: usize = 4096;
 
 #[derive(Debug)]

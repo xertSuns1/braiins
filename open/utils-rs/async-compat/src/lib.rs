@@ -23,4 +23,36 @@
 // Re-export futures and tokio
 pub use futures;
 pub use tokio;
+pub use tokio_executor;
 pub use tokio_io;
+
+use std::panic::{self, PanicInfo};
+use std::process;
+use std::sync::Once;
+
+/// This registers a customized panic hook with the stdlib.
+/// The customized panic hook does the same thing as the default
+/// panic handling - ie. it prints out the panic information
+/// and optionally a trace - but then it calls abort().
+///
+/// This means that a panic in Tokio threadpool worker thread
+/// will bring down the whole program as if the panic
+/// occured on the main thread.
+///
+/// This function can be called any number of times,
+/// but the hook will be set only on the first call.
+/// This is thread-safe.
+pub fn setup_panic_handling() {
+    static HOOK_SETTER: Once = Once::new();
+
+    HOOK_SETTER.call_once(|| {
+        let default_hook = panic::take_hook();
+
+        let our_hook = move |pi: &PanicInfo| {
+            default_hook(pi);
+            process::abort();
+        };
+
+        panic::set_hook(Box::new(our_hook));
+    });
+}

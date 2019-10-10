@@ -27,6 +27,7 @@ use ii_bitcoin::HashTrait;
 use crate::job;
 use crate::work;
 
+use ii_async_compat::tokio;
 use tokio::prelude::*;
 
 use std::net::ToSocketAddrs;
@@ -254,14 +255,16 @@ impl StratumSolutionHandler {
             version: solution.version(),
         };
         // send solutions back to the stratum server
-        await!(ConnectionTx::send(&mut self.connection_tx, share_msg))
+        self.connection_tx
+            .send_msg(share_msg)
+            .await
             .expect("Cannot send submit to stratum server");
         // the response is handled in a separate task
     }
 
     async fn run(mut self) {
-        while let Some(solution) = await!(self.job_solution.receive()) {
-            await!(self.process_solution(solution));
+        while let Some(solution) = self.job_solution.receive().await {
+            self.process_solution(solution).await;
         }
     }
 }
@@ -287,8 +290,13 @@ async fn setup_mining_connection<'a>(
             dev_id: "xyz".try_into()?,
         },
     };
-    await!(connection.send(setup_msg)).expect("Cannot send stratum setup mining connection");
-    let response_msg = await!(connection.next())
+    connection
+        .send_msg(setup_msg)
+        .await
+        .expect("Cannot send stratum setup mining connection");
+    let response_msg = connection
+        .next()
+        .await
         .expect("Cannot receive response for stratum setup mining connection")
         .unwrap();
     event_handler.status = Err(());
@@ -308,8 +316,13 @@ async fn open_channel<'a>(
         // Maximum bitcoin target is 0xffff << 208 (= difficulty 1 share)
         max_target: ii_bitcoin::Target::default().into(),
     };
-    await!(connection.send(channel_msg)).expect("Cannot send stratum open channel");
-    let response_msg = await!(connection.next())
+    connection
+        .send_msg(channel_msg)
+        .await
+        .expect("Cannot send stratum open channel");
+    let response_msg = connection
+        .next()
+        .await
         .expect("Cannot receive response for stratum open channel")
         .unwrap();
     event_handler.status = Err(());
@@ -394,7 +407,7 @@ async fn event_handler_task(
     mut connection_rx: ConnectionRx<Framing>,
     mut event_handler: StratumEventHandler,
 ) {
-    while let Some(msg) = await!(connection_rx.next()) {
+    while let Some(msg) = connection_rx.next().await {
         let msg = msg.unwrap();
         trace!("handling message {}", StringifyV2::print(&msg));
         msg.accept(&mut event_handler);
@@ -410,23 +423,28 @@ pub async fn run(job_solver: job::Solver, stratum_addr: String, user: String) {
     let (job_sender, job_solution) = job_solver.split();
     let mut event_handler = StratumEventHandler::new(job_sender);
 
-    let mut connection = await!(Connection::<Framing>::connect(&socket_addr))
+    let mut connection = Connection::<Framing>::connect(&socket_addr)
+        .await
         .expect("Cannot connect to stratum server");
 
-    await!(setup_mining_connection(
+    setup_mining_connection(
         &mut connection,
         &mut event_handler,
         stratum_addr,
         socket_addr.port() as usize,
-    ))
+    )
+    .await
     .expect("Cannot setup stratum mining connection");
-    await!(open_channel(&mut connection, &mut event_handler, user))
+    open_channel(&mut connection, &mut event_handler, user)
+        .await
         .expect("Cannot open stratum channel");
 
     let (connection_rx, connection_tx) = connection.split();
 
     // run event handler in a separate task
-    ii_async_compat::spawn(event_handler_task(connection_rx, event_handler));
+    tokio::spawn(event_handler_task(connection_rx, event_handler));
 
-    await!(StratumSolutionHandler::new(connection_tx, job_solution).run());
+    StratumSolutionHandler::new(connection_tx, job_solution)
+        .run()
+        .await;
 }

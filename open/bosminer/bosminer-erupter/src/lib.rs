@@ -20,8 +20,6 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-#![feature(await_macro, async_await, duration_float)]
-
 pub mod config;
 pub mod device;
 pub mod error;
@@ -37,11 +35,13 @@ use bosminer::work;
 
 use error::ErrorKind;
 
-use tokio_threadpool::blocking;
+use ii_async_compat::{tokio, tokio_executor};
+use tokio_executor::threadpool::blocking;
 
-// use old futures which is compatible with current tokio
+use futures::executor::block_on;
 use futures::lock::Mutex;
-use futures_01::future::poll_fn;
+use futures::task::Poll;
+use ii_async_compat::futures;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -68,7 +68,7 @@ fn main_task(
     for solution in &mut solver {
         solution_sender.send(solution);
 
-        ii_async_compat::block_on(mining_stats.lock()).unique_solutions += 1;
+        block_on(mining_stats.lock()).unique_solutions += 1;
     }
 
     // check solver for errors
@@ -120,7 +120,7 @@ impl hal::Backend for Backend {
 
     /// Starts statistics tasks specific for block erupter
     fn start_mining_stats_task(_mining_stats: Arc<Mutex<stats::Mining>>) {
-        ii_async_compat::spawn(stats::hashrate_meter_task());
+        tokio::spawn(stats::hashrate_meter_task());
     }
 
     fn run(
@@ -129,25 +129,22 @@ impl hal::Backend for Backend {
         mining_stats: Arc<Mutex<stats::Mining>>,
         shutdown: shutdown::Sender,
     ) {
-        // wrap `main_task` parameters to Option to overcome FnOnce closure inside FnMut
-        let mut args = Some((work_solver, mining_stats, shutdown));
+        // Spawn future in blocking context which guarantees that the task is run in a separate thread
+        tokio::spawn(async move {
+            let inner = move || {
+                if let Err(e) = main_task(work_solver, mining_stats, shutdown) {
+                    error!("{}", e);
+                }
+            };
 
-        // spawn future in blocking context which guarantees that the task is run in separate thread
-        tokio::spawn(
-            // Because `blocking` returns `Poll`, it is intended to be used from the context of
-            // a `Future` implementation. Since we don't have a complicated requirement, we can use
-            // `poll_fn` in this case.
-            poll_fn(move || {
-                blocking(|| {
-                    let (work_solver, mining_stats, shutdown) = args
-                        .take()
-                        .expect("`tokio_threadpool::blocking` called FnOnce more than once");
-                    if let Err(e) = main_task(work_solver, mining_stats, shutdown) {
-                        error!("{}", e);
-                    }
-                })
-                .map_err(|_| panic!("the threadpool shut down"))
-            }),
-        );
+            // The `blocking()` call is evaluated here with a simple match
+            // rather than via `poll_fn()` because the inner closure
+            // is `FnOnce` and can't be attempted multiple times anyway.
+            match blocking(inner) {
+                Poll::Ready(Err(_)) | Poll::Pending => panic!(
+                    "Could not run main_task in a blocking context. Note: The Erupter backend requires a threadpool context."),
+                _ => {},
+            }
+        });
     }
 }

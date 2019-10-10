@@ -25,6 +25,7 @@ use crate::stats;
 use crate::work;
 
 use futures::lock::Mutex;
+use ii_async_compat::futures;
 
 use std::fmt::Debug;
 use std::sync::Arc;

@@ -28,28 +28,13 @@ use crate::shutdown;
 use crate::stats;
 
 use futures::lock::Mutex;
+use ii_async_compat::futures;
 
 use std::sync::Arc;
 
 use clap::{self, Arg};
 
-async fn main_task<T: hal::Backend>(backend: T, stratum_addr: String, user: String) {
-    // create job and work solvers
-    let (job_solver, work_solver) = hub::build_solvers();
-    // create shutdown channel
-    let (shutdown_sender, _shutdown_receiver) = shutdown::channel();
-    // create mining stats
-    let mining_stats = Arc::new(Mutex::new(stats::Mining::new()));
-
-    // start HW backend for selected target
-    backend.run(work_solver, mining_stats.clone(), shutdown_sender);
-    // start statistics processing
-    T::start_mining_stats_task(mining_stats);
-    // start stratum V2 client
-    await!(stratum_v2::run(job_solver, stratum_addr, user));
-}
-
-pub fn main<T: hal::Backend>(mut backend: T) {
+pub async fn main<T: hal::Backend>(mut backend: T) {
     let _log_guard = ii_logging::setup_for_app();
 
     let app = clap::App::new("bosminer")
@@ -76,8 +61,8 @@ pub fn main<T: hal::Backend>(mut backend: T) {
     let args = backend.add_args(app).get_matches();
 
     // Unwraps should be ok as long as the flags are required
-    let stratum_addr = args.value_of("pool").unwrap();
-    let user = args.value_of("user").unwrap();
+    let stratum_addr = args.value_of("pool").unwrap().to_string();
+    let user = args.value_of("user").unwrap().to_string();
 
     // Set default backend midstate count
     runtime_config::set_midstate_count(T::DEFAULT_MIDSTATE_COUNT);
@@ -85,9 +70,17 @@ pub fn main<T: hal::Backend>(mut backend: T) {
     // Allow backend to initialize itself with cli arguments
     backend.init(&args);
 
-    ii_async_compat::run(main_task(
-        backend,
-        stratum_addr.to_string(),
-        user.to_string(),
-    ));
+    // create job and work solvers
+    let (job_solver, work_solver) = hub::build_solvers();
+    // create shutdown channel
+    let (shutdown_sender, _shutdown_receiver) = shutdown::channel();
+    // create mining stats
+    let mining_stats = Arc::new(Mutex::new(stats::Mining::new()));
+
+    // start HW backend for selected target
+    backend.run(work_solver, mining_stats.clone(), shutdown_sender);
+    // start statistics processing
+    T::start_mining_stats_task(mining_stats);
+    // start stratum V2 client
+    stratum_v2::run(job_solver, stratum_addr, user).await;
 }
