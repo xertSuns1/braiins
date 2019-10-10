@@ -20,8 +20,6 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-#![feature(await_macro, async_await, duration_float)]
-
 mod bm1387;
 pub mod command;
 pub mod config;
@@ -57,6 +55,7 @@ use error::ErrorKind;
 use failure::ResultExt;
 
 use futures::lock::Mutex;
+use ii_async_compat::futures;
 
 use bm1387::ChipAddress;
 use command::Interface;
@@ -68,7 +67,8 @@ use embedded_hal::digital::v2::OutputPin;
 
 use ii_fpga_io_am1_s9::common::ctrl_reg::MIDSTATE_CNT_A;
 
-use ii_async_compat::sleep;
+use ii_async_compat::tokio;
+use tokio::timer::delay_for;
 
 /// Timing constants
 const INACTIVATE_FROM_CHAIN_DELAY_MS: u64 = 100;
@@ -305,15 +305,15 @@ where
             difficulty,
             tm_reg
         );
-        await!(self
-            .command_context
-            .write_register_readback(ChipAddress::All, &tm_reg))?;
+        self.command_context
+            .write_register_readback(ChipAddress::All, &tm_reg)
+            .await?;
         Ok(())
     }
 
     /// Lower voltage to working voltage (after opencore)
     pub async fn lower_voltage(&mut self) -> error::Result<()> {
-        await!(self.voltage_ctrl.set_voltage(self.working_voltage))
+        self.voltage_ctrl.set_voltage(self.working_voltage).await
     }
 
     /// Initializes the complete hashboard including enumerating all chips
@@ -321,9 +321,9 @@ where
         info!("Initializing hash chain {}", self.hashboard_idx);
         self.ip_core_init()?;
         info!("Hashboard IP core initialized");
-        await!(self.voltage_ctrl.reset())?;
+        self.voltage_ctrl.reset().await?;
         info!("Voltage controller reset");
-        await!(self.voltage_ctrl.jump_from_loader_to_app())?;
+        self.voltage_ctrl.jump_from_loader_to_app().await?;
         info!("Voltage controller application started");
         let version = self.voltage_ctrl.get_version()?;
         info!("Voltage controller firmware version {:#04x}", version);
@@ -335,7 +335,7 @@ where
                 power::EXPECTED_VOLTAGE_CTRL_VERSION.to_string(),
             ))?
         }
-        await!(self.voltage_ctrl.set_voltage(OPEN_CORE_VOLTAGE))?;
+        self.voltage_ctrl.set_voltage(OPEN_CORE_VOLTAGE).await?;
         self.voltage_ctrl.enable_voltage()?;
 
         // Voltage controller successfully initialized at this point, we should start sending
@@ -347,43 +347,45 @@ where
         self.enter_reset()?;
         // disable voltage
         self.voltage_ctrl.disable_voltage()?;
-        await!(sleep(Duration::from_millis(INIT_DELAY_MS)));
+        delay_for(Duration::from_millis(INIT_DELAY_MS)).await;
         self.voltage_ctrl.enable_voltage()?;
-        await!(sleep(Duration::from_millis(2 * INIT_DELAY_MS)));
+        delay_for(Duration::from_millis(2 * INIT_DELAY_MS)).await;
 
         // TODO consider including a delay
         self.exit_reset()?;
-        await!(sleep(Duration::from_millis(INIT_DELAY_MS)));
+        delay_for(Duration::from_millis(INIT_DELAY_MS)).await;
         //        let voltage = self.voltage_ctrl.get_voltage()?;
         //        if voltage != 0 {
         //            return Err(io::Error::new(
         //                io::ErrorKind::Other, format!("Detected voltage {}", voltage)));
         //        }
         info!("Starting chip enumeration");
-        await!(self.enumerate_chips())?;
+        self.enumerate_chips().await?;
         info!("Discovered {} chips", self.chip_count);
-        await!(self.command_context.set_chip_count(self.chip_count));
+        self.command_context.set_chip_count(self.chip_count).await;
 
         // calculate PLL for given frequency
         let pll = bm1387::PllReg::try_pll_from_freq(CHIP_OSC_CLK_HZ, self.pll_frequency)?;
         // set PLL
-        await!(self.set_pll(&pll))?;
+        self.set_pll(&pll).await?;
 
         // configure the hashing chain to operate at desired baud rate. Note that gate block is
         // enabled to allow continuous start of chips in the chain
-        await!(self.configure_hash_chain(TARGET_CHIP_BAUD_RATE, false, true))?;
+        self.configure_hash_chain(TARGET_CHIP_BAUD_RATE, false, true)
+            .await?;
         self.set_ip_core_baud_rate(TARGET_CHIP_BAUD_RATE)?;
 
-        await!(self.set_asic_diff(self.asic_difficulty))?;
+        self.set_asic_diff(self.asic_difficulty).await?;
         Ok(())
     }
 
     /// Detects the number of chips on the hashing chain and assigns an address to each chip
     async fn enumerate_chips(&mut self) -> error::Result<()> {
         // Enumerate all chips (broadcast read address register request)
-        let responses = await!(self
+        let responses = self
             .command_context
-            .read_register::<bm1387::GetAddressReg>(ChipAddress::All))?;
+            .read_register::<bm1387::GetAddressReg>(ChipAddress::All)
+            .await?;
 
         // Check if are responses meaningful
         for (address, addr_reg) in responses.iter().enumerate() {
@@ -414,18 +416,18 @@ where
         let inactivate_from_chain_cmd = bm1387::InactivateFromChainCmd::new().pack();
         // make sure all chips receive inactivation request
         for _ in 0..3 {
-            await!(self
-                .command_context
-                .send_raw_command(inactivate_from_chain_cmd.to_vec(), false));
-            await!(sleep(Duration::from_millis(INACTIVATE_FROM_CHAIN_DELAY_MS)));
+            self.command_context
+                .send_raw_command(inactivate_from_chain_cmd.to_vec(), false)
+                .await;
+            delay_for(Duration::from_millis(INACTIVATE_FROM_CHAIN_DELAY_MS)).await;
         }
 
         // Assign address to each chip
         for i in 0..self.chip_count {
             let cmd = bm1387::SetChipAddressCmd::new(ChipAddress::One(i));
-            await!(self
-                .command_context
-                .send_raw_command(cmd.pack().to_vec(), false));
+            self.command_context
+                .send_raw_command(cmd.pack().to_vec(), false)
+                .await;
         }
 
         Ok(())
@@ -434,7 +436,9 @@ where
     /// Loads PLL register with a starting value
     async fn set_pll<'a>(&'a mut self, pll: &'a bm1387::PllReg) -> error::Result<()> {
         // NOTE: when PLL register is read back, it is or-ed with 0x8000_0000, not sure why
-        await!(self.command_context.write_register(ChipAddress::All, pll))
+        self.command_context
+            .write_register(ChipAddress::All, pll)
+            .await
     }
 
     /// Configure all chips in the hash chain
@@ -469,9 +473,9 @@ where
             bm1387::MiscCtrlReg::new(not_set_baud, true, baud_clock_div, gate_block, true)?;
         // Do not read back the MiscCtrl register when setting baud rate: it will result
         // in serial speed mismatch and nothing being read.
-        await!(self
-            .command_context
-            .write_register(ChipAddress::All, &ctl_reg))?;
+        self.command_context
+            .write_register(ChipAddress::All, &ctl_reg)
+            .await?;
         Ok(actual_baud_rate)
     }
 
@@ -510,11 +514,11 @@ where
             "Sending out {} pieces of dummy work to initialize chips",
             NUM_WORK
         );
-        let midstate_count = await!(hash_chain.lock()).midstate_count.to_count();
+        let midstate_count = hash_chain.lock().await.midstate_count.to_count();
         for _ in 0..NUM_WORK {
             let work = &null_work::prepare_opencore(true, midstate_count);
-            let work_id = await!(work_registry.lock()).store_work(work.clone());
-            await!(tx_fifo.wait_for_room()).expect("wait for tx room");
+            let work_id = work_registry.lock().await.store_work(work.clone());
+            tx_fifo.wait_for_room().await.expect("wait for tx room");
             tx_fifo.send_work(&work, work_id).expect("send work");
         }
     }
@@ -531,16 +535,16 @@ where
         mut work_generator: work::Generator,
     ) {
         loop {
-            await!(tx_fifo.wait_for_room()).expect("wait for tx room");
-            let work = await!(work_generator.generate());
+            tx_fifo.wait_for_room().await.expect("wait for tx room");
+            let work = work_generator.generate().await;
             match work {
                 None => return,
                 Some(work) => {
                     // assign `work_id` to `work`
-                    let work_id = await!(work_registry.lock()).store_work(work.clone());
+                    let work_id = work_registry.lock().await.store_work(work.clone());
                     // send work is synchronous
                     tx_fifo.send_work(&work, work_id).expect("send work");
-                    let mut stats = await!(mining_stats.lock());
+                    let mut stats = mining_stats.lock().await;
                     stats.work_generated += work.midstates.len();
                 }
             }
@@ -563,11 +567,11 @@ where
         // solution receiving/filtering part
         loop {
             let (rx_fifo_out, solution) =
-                await!(rx_fifo.recv_solution()).expect("recv solution failed");
+                rx_fifo.recv_solution().await.expect("recv solution failed");
             rx_fifo = rx_fifo_out;
             let work_id = solution.hardware_id;
-            let mut stats = await!(mining_stats.lock());
-            let mut work_registry = await!(work_registry.lock());
+            let mut stats = mining_stats.lock().await;
+            let mut work_registry = work_registry.lock().await;
 
             let work = work_registry.find_work(work_id as usize);
             match work {
@@ -608,16 +612,21 @@ where
     /// Temperature monitor task
     async fn temperature_monitor_task(command_context: command::Context) {
         info!("Temperature monitor task started");
-        let i2c_bus = await!(bm1387::i2c::Bus::new_and_init(command_context, TEMP_CHIP))
+        let i2c_bus = bm1387::i2c::Bus::new_and_init(command_context, TEMP_CHIP)
+            .await
             .expect("bus construction failed");
-        let mut sensor = await!(sensor::probe_i2c_sensors(i2c_bus))
+        let mut sensor = sensor::probe_i2c_sensors(i2c_bus)
+            .await
             .expect("sensor probing failed")
             .expect("no sensors found");
-        await!(sensor.init()).expect("failed to initialize sensor");
+        sensor.init().await.expect("failed to initialize sensor");
         loop {
-            let temp = await!(sensor.read_temperature()).expect("failed to read temperature");
+            let temp = sensor
+                .read_temperature()
+                .await
+                .expect("failed to read temperature");
             info!("{:?}", temp);
-            await!(sleep(Duration::from_secs(5)));
+            delay_for(Duration::from_secs(5)).await;
         }
     }
 
@@ -626,11 +635,12 @@ where
     async fn hashrate_monitor_task(mut command_context: command::Context) {
         info!("Hashrate monitor task started");
         loop {
-            await!(sleep(Duration::from_secs(27)));
+            delay_for(Duration::from_secs(27)).await;
 
-            let responses =
-                await!(command_context.read_register::<bm1387::HashrateReg>(ChipAddress::All))
-                    .expect("reading hashrate_reg failed");
+            let responses = command_context
+                .read_register::<bm1387::HashrateReg>(ChipAddress::All)
+                .await
+                .expect("reading hashrate_reg failed");
 
             let mut sum = 0;
             for (chip_address, hashrate_reg) in responses.iter().enumerate() {
@@ -652,27 +662,29 @@ where
         work_generator: work::Generator,
         shutdown: shutdown::Sender,
     ) {
-        ii_async_compat::spawn(async move {
-            let mut tx_fifo = await!(hash_chain.lock())
+        tokio::spawn(async move {
+            let mut tx_fifo = hash_chain
+                .lock()
+                .await
                 .work_tx_io
                 .take()
                 .expect("work-tx io missing");
 
-            await!(Self::send_init_work(
+            Self::send_init_work(
                 hash_chain.clone(),
                 work_registry.clone(),
                 &mut tx_fifo
-            ));
+            ).await;
             {
-                let mut hash_chain = await!(hash_chain.lock());
-                await!(hash_chain.lower_voltage()).expect("lowering voltage failed");
+                let mut hash_chain = hash_chain.lock().await;
+                hash_chain.lower_voltage().await.expect("lowering voltage failed");
             }
-            await!(Self::work_tx_task(
+            Self::work_tx_task(
                 work_registry,
                 mining_stats,
                 tx_fifo,
                 work_generator,
-            ));
+            ).await;
             shutdown.send("no more work from workhub");
         });
     }
@@ -683,29 +695,26 @@ where
         mining_stats: Arc<Mutex<stats::Mining>>,
         solution_sender: work::SolutionSender,
     ) {
-        ii_async_compat::spawn(async move {
-            let rx_fifo = await!(hash_chain.lock())
+        tokio::spawn(async move {
+            let rx_fifo = hash_chain
+                .lock()
+                .await
                 .work_rx_io
                 .take()
                 .expect("work-rx io missing");
-            await!(Self::solution_rx_task(
-                work_registry,
-                mining_stats,
-                rx_fifo,
-                solution_sender,
-            ));
+            Self::solution_rx_task(work_registry, mining_stats, rx_fifo, solution_sender).await;
         });
     }
 
     fn spawn_hashrate_monitor_task(command_context: command::Context) {
-        ii_async_compat::spawn(async move {
-            await!(Self::hashrate_monitor_task(command_context));
+        tokio::spawn(async move {
+            Self::hashrate_monitor_task(command_context).await;
         });
     }
 
     fn spawn_temperature_monitor_task(command_context: command::Context) {
-        ii_async_compat::spawn(async move {
-            await!(Self::temperature_monitor_task(command_context));
+        tokio::spawn(async move {
+            Self::temperature_monitor_task(command_context).await;
         });
     }
 
@@ -778,7 +787,10 @@ async fn start_miner(
     }
     // initialize hash chains (sequentially)
     for hash_chain in hash_chains.iter_mut() {
-        await!(hash_chain.init()).expect("miner initialization failed");
+        hash_chain
+            .init()
+            .await
+            .expect("miner initialization failed");
     }
     // spawn worker tasks for each hash chain and start mining
     for hash_chain in hash_chains.drain(..) {
@@ -836,8 +848,8 @@ impl hal::Backend for Backend {
 
     /// Starts statistics tasks specific for S9
     fn start_mining_stats_task(mining_stats: Arc<Mutex<stats::Mining>>) {
-        ii_async_compat::spawn(stats::hashrate_meter_task_hashchain(mining_stats));
-        ii_async_compat::spawn(stats::hashrate_meter_task());
+        tokio::spawn(stats::hashrate_meter_task_hashchain(mining_stats));
+        tokio::spawn(stats::hashrate_meter_task());
     }
 
     fn add_args<'a, 'b>(&self, app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
@@ -890,7 +902,7 @@ impl hal::Backend for Backend {
         mining_stats: Arc<Mutex<stats::Mining>>,
         shutdown: shutdown::Sender,
     ) {
-        ii_async_compat::spawn(start_miner(
+        tokio::spawn(start_miner(
             vec![config::S9_HASHBOARD_INDEX],
             work_solver,
             mining_stats,

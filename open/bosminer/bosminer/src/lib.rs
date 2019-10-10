@@ -20,8 +20,6 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-#![feature(await_macro, async_await, duration_float)]
-
 pub mod client;
 pub mod config;
 pub mod entry;

@@ -56,16 +56,16 @@ async fn read_temperature(
     i2c_dev: &mut Box<dyn i2c::AsyncDevice>,
     use_fract: bool,
 ) -> error::Result<Temperature> {
-    let status = await!(i2c_dev.read(REG_STATUS))?;
-    let local_temp = await!(i2c_dev.read(REG_LOCAL_TEMP))?;
+    let status = i2c_dev.read(REG_STATUS).await?;
+    let local_temp = i2c_dev.read(REG_LOCAL_TEMP).await?;
     let local_frac = if use_fract {
-        await!(i2c_dev.read(REG_LOCAL_FRAC_TEMP))?
+        i2c_dev.read(REG_LOCAL_FRAC_TEMP).await?
     } else {
         0
     };
-    let remote_temp = await!(i2c_dev.read(REG_REMOTE_TEMP))?;
+    let remote_temp = i2c_dev.read(REG_REMOTE_TEMP).await?;
     let remote_frac = if use_fract {
-        await!(i2c_dev.read(REG_REMOTE_FRAC_TEMP))?
+        i2c_dev.read(REG_REMOTE_FRAC_TEMP).await?
     } else {
         0
     };
@@ -87,7 +87,7 @@ async fn read_temperature(
 async fn read_temperature_local(
     i2c_dev: &mut Box<dyn i2c::AsyncDevice>,
 ) -> error::Result<Temperature> {
-    let local_temp = await!(i2c_dev.read(REG_LOCAL_TEMP))?;
+    let local_temp = i2c_dev.read(REG_LOCAL_TEMP).await?;
 
     Ok(Temperature {
         local: make_temp(local_temp, 0),
@@ -96,8 +96,10 @@ async fn read_temperature_local(
 }
 
 async fn generic_init(i2c_dev: &mut Box<dyn i2c::AsyncDevice>) -> error::Result<()> {
-    await!(i2c_dev.write_readback(REG_CONFIG_W, REG_CONFIG, CONFIG_RANGE))?;
-    await!(i2c_dev.write(REG_OFFSET, 0))?;
+    i2c_dev
+        .write_readback(REG_CONFIG_W, REG_CONFIG, CONFIG_RANGE)
+        .await?;
+    i2c_dev.write(REG_OFFSET, 0).await?;
     Ok(())
 }
 
@@ -109,11 +111,11 @@ pub struct TMP451 {
 #[async_trait]
 impl sensor::Sensor for TMP451 {
     async fn init(&mut self) -> error::Result<()> {
-        await!(generic_init(&mut self.i2c_dev))
+        generic_init(&mut self.i2c_dev).await
     }
 
     async fn read_temperature(&mut self) -> error::Result<Temperature> {
-        await!(read_temperature(&mut self.i2c_dev, true))
+        read_temperature(&mut self.i2c_dev, true).await
     }
 }
 
@@ -137,11 +139,11 @@ pub struct ADT7461 {
 #[async_trait]
 impl sensor::Sensor for ADT7461 {
     async fn init(&mut self) -> error::Result<()> {
-        await!(generic_init(&mut self.i2c_dev))
+        generic_init(&mut self.i2c_dev).await
     }
 
     async fn read_temperature(&mut self) -> error::Result<Temperature> {
-        await!(read_temperature(&mut self.i2c_dev, false))
+        read_temperature(&mut self.i2c_dev, false).await
     }
 }
 
@@ -165,11 +167,11 @@ pub struct NCT218 {
 #[async_trait]
 impl sensor::Sensor for NCT218 {
     async fn init(&mut self) -> error::Result<()> {
-        await!(generic_init(&mut self.i2c_dev))
+        generic_init(&mut self.i2c_dev).await
     }
 
     async fn read_temperature(&mut self) -> error::Result<Temperature> {
-        await!(read_temperature_local(&mut self.i2c_dev))
+        read_temperature_local(&mut self.i2c_dev).await
     }
 }
 
@@ -189,6 +191,7 @@ inventory::submit! {
 mod test {
     use super::*;
     use i2c::test_utils::InitReg;
+    use ii_async_compat::tokio;
 
     /// Make sensor T with data being read/written from memory `data`
     fn make_sensor<T: 'static + sensor::Sensor + sensor::I2cSensor>(
@@ -206,13 +209,14 @@ mod test {
 
     async fn check_config_ok(dev: &mut Box<dyn i2c::AsyncDevice>) {
         assert_eq!(
-            await!(dev.read(REG_CONFIG_W)).unwrap() & CONFIG_RANGE,
+            dev.read(REG_CONFIG_W).await.unwrap() & CONFIG_RANGE,
             CONFIG_RANGE
         );
-        assert_eq!(await!(dev.read(REG_OFFSET)).unwrap(), 0);
+        assert_eq!(dev.read(REG_OFFSET).await.unwrap(), 0);
     }
 
-    async fn inner_test_sensor_drivers_i2c() {
+    #[tokio::test]
+    async fn test_sensor_drivers_i2c() {
         let ok_regs = [
             // 23 deg
             InitReg(REG_LOCAL_TEMP, 0x57),
@@ -234,10 +238,10 @@ mod test {
 
         // Check "working conditions" on TMP451
         let (mut sensor, mut dev) = make_sensor::<TMP451>(&ok_regs);
-        await!(sensor.init()).unwrap();
-        await!(check_config_ok(&mut dev));
+        sensor.init().await.unwrap();
+        check_config_ok(&mut dev).await;
         assert_eq!(
-            await!(sensor.read_temperature()).unwrap(),
+            sensor.read_temperature().await.unwrap(),
             Temperature {
                 local: 23.1875,
                 remote: Measurement::Ok(41.25),
@@ -246,10 +250,10 @@ mod test {
 
         // Check "working conditions" on ADT7461
         let (mut sensor, mut dev) = make_sensor::<ADT7461>(&ok_regs);
-        await!(sensor.init()).unwrap();
-        await!(check_config_ok(&mut dev));
+        sensor.init().await.unwrap();
+        check_config_ok(&mut dev).await;
         assert_eq!(
-            await!(sensor.read_temperature()).unwrap(),
+            sensor.read_temperature().await.unwrap(),
             Temperature {
                 local: 23.0,
                 remote: Measurement::Ok(41.0),
@@ -258,10 +262,10 @@ mod test {
 
         // Check "working conditions" on NCT218
         let (mut sensor, mut dev) = make_sensor::<NCT218>(&ok_regs);
-        await!(sensor.init()).unwrap();
-        await!(check_config_ok(&mut dev));
+        sensor.init().await.unwrap();
+        check_config_ok(&mut dev).await;
         assert_eq!(
-            await!(sensor.read_temperature()).unwrap(),
+            sensor.read_temperature().await.unwrap(),
             Temperature {
                 local: 23.0,
                 remote: Measurement::NotPresent,
@@ -269,14 +273,8 @@ mod test {
         );
     }
 
-    #[test]
-    fn test_sensor_drivers_i2c() {
-        ii_async_compat::run_main_exits(async {
-            await!(inner_test_sensor_drivers_i2c());
-        });
-    }
-
-    async fn inner_test_sensor_drivers_i2c_open_circuit() {
+    #[tokio::test]
+    async fn test_sensor_drivers_i2c_open_circuit() {
         let ok_regs = [
             // 23 deg
             InitReg(REG_LOCAL_TEMP, 0x57),
@@ -299,10 +297,10 @@ mod test {
 
         // Test TMP451
         let (mut sensor, mut dev) = make_sensor::<TMP451>(&ok_regs);
-        await!(sensor.init()).unwrap();
-        await!(check_config_ok(&mut dev));
+        sensor.init().await.unwrap();
+        check_config_ok(&mut dev).await;
         assert_eq!(
-            await!(sensor.read_temperature()).unwrap(),
+            sensor.read_temperature().await.unwrap(),
             Temperature {
                 local: 23.1875,
                 remote: Measurement::OpenCircuit,
@@ -311,10 +309,10 @@ mod test {
 
         // Test ADT7461
         let (mut sensor, mut dev) = make_sensor::<ADT7461>(&ok_regs);
-        await!(sensor.init()).unwrap();
-        await!(check_config_ok(&mut dev));
+        sensor.init().await.unwrap();
+        check_config_ok(&mut dev).await;
         assert_eq!(
-            await!(sensor.read_temperature()).unwrap(),
+            sensor.read_temperature().await.unwrap(),
             Temperature {
                 local: 23.0,
                 remote: Measurement::OpenCircuit,
@@ -322,14 +320,8 @@ mod test {
         );
     }
 
-    #[test]
-    fn test_sensor_drivers_i2c_open_circuit() {
-        ii_async_compat::run_main_exits(async {
-            await!(inner_test_sensor_drivers_i2c_open_circuit());
-        });
-    }
-
-    async fn inner_test_sensor_drivers_i2c_short_circuit() {
+    #[tokio::test]
+    async fn test_sensor_drivers_i2c_short_circuit() {
         let ok_regs = [
             // 23 deg
             InitReg(REG_LOCAL_TEMP, 0x57),
@@ -351,10 +343,10 @@ mod test {
 
         // Test TMP451
         let (mut sensor, mut dev) = make_sensor::<TMP451>(&ok_regs);
-        await!(sensor.init()).unwrap();
-        await!(check_config_ok(&mut dev));
+        sensor.init().await.unwrap();
+        check_config_ok(&mut dev).await;
         assert_eq!(
-            await!(sensor.read_temperature()).unwrap(),
+            sensor.read_temperature().await.unwrap(),
             Temperature {
                 local: 23.1875,
                 remote: Measurement::ShortCircuit,
@@ -363,21 +355,14 @@ mod test {
 
         // Test ADT7461
         let (mut sensor, mut dev) = make_sensor::<ADT7461>(&ok_regs);
-        await!(sensor.init()).unwrap();
-        await!(check_config_ok(&mut dev));
+        sensor.init().await.unwrap();
+        check_config_ok(&mut dev).await;
         assert_eq!(
-            await!(sensor.read_temperature()).unwrap(),
+            sensor.read_temperature().await.unwrap(),
             Temperature {
                 local: 23.0,
                 remote: Measurement::ShortCircuit,
             }
         );
-    }
-
-    #[test]
-    fn test_sensor_drivers_i2c_short_circuit() {
-        ii_async_compat::run_main_exits(async {
-            await!(inner_test_sensor_drivers_i2c_short_circuit());
-        });
     }
 }

@@ -27,10 +27,12 @@ use crate::i2c;
 use crate::error::{self, ErrorKind};
 use failure::ResultExt;
 
-use ii_async_compat::sleep;
 use ii_logging::macros::*;
 
 use std::time::Duration;
+
+use ii_async_compat::tokio;
+use tokio::timer::delay_for;
 
 /// Represents I2C bus that is implemented by sending chip commands
 /// to a particular chip on hashchain.
@@ -64,7 +66,7 @@ impl<T: CommandInterface> Bus<T> {
             command_context,
             chip_address,
         };
-        await!(bus.start())?;
+        bus.start().await?;
         Ok(bus)
     }
 
@@ -74,9 +76,10 @@ impl<T: CommandInterface> Bus<T> {
     /// TODO: find out if this can be recovered from
     async fn wait_busy(&mut self) -> error::Result<bm1387::I2cControlReg> {
         for _ in 0..Self::MAX_I2C_BUSY_WAIT_TRIES {
-            let reg = await!(self
+            let reg = self
                 .command_context
-                .read_one_register::<bm1387::I2cControlReg>(self.chip_address))?;
+                .read_one_register::<bm1387::I2cControlReg>(self.chip_address)
+                .await?;
             trace!("i2c busy: {:#x?}", reg);
             if (reg.to_reg() & 0x8000_0000) == 0 {
                 // TODO: There was a check for register not being zero - why? (investigate)
@@ -84,7 +87,7 @@ impl<T: CommandInterface> Bus<T> {
                 // `&& reg.to_reg() != 0`
                 return Ok(reg);
             }
-            await!(sleep(Self::BUSY_WAIT_DELAY));
+            delay_for(Self::BUSY_WAIT_DELAY).await;
         }
         Err(ErrorKind::I2cHashchip(
             "timeout when waiting for I2C response".to_string(),
@@ -98,14 +101,16 @@ impl<T: CommandInterface> Bus<T> {
     /// re-set the `MMEN` flag on chip with temp sensor (thus disabling it
     /// because all work on the chain was with multiple midstates)).
     async fn start(&mut self) -> error::Result<()> {
-        let mut misc = await!(self
+        let mut misc = self
             .command_context
-            .read_one_register::<bm1387::MiscCtrlReg>(self.chip_address))?;
+            .read_one_register::<bm1387::MiscCtrlReg>(self.chip_address)
+            .await?;
         misc.set_i2c(Some(bm1387::I2cBusSelect::Bottom));
-        await!(self
-            .command_context
-            .write_register_readback(self.chip_address, &misc))?;
-        await!(self.wait_busy())
+        self.command_context
+            .write_register_readback(self.chip_address, &misc)
+            .await?;
+        self.wait_busy()
+            .await
             .with_context(|_| ErrorKind::I2cHashchip(format!("wating for I2C controller init")))?;
 
         Ok(())
@@ -125,11 +130,11 @@ impl<T: CommandInterface> i2c::AsyncBus for Bus<T> {
             reg,
             data,
         };
-        await!(self.wait_busy())?;
-        await!(self
-            .command_context
-            .write_register(self.chip_address, &i2c_reg))?;
-        await!(self.wait_busy())?;
+        self.wait_busy().await?;
+        self.command_context
+            .write_register(self.chip_address, &i2c_reg)
+            .await?;
+        self.wait_busy().await?;
         Ok(())
     }
 
@@ -144,19 +149,19 @@ impl<T: CommandInterface> i2c::AsyncBus for Bus<T> {
             data: 0,
         };
         for _ in 0..Self::MAX_I2C_FAIL_TRIES {
-            await!(self.wait_busy())?;
+            self.wait_busy().await?;
             // write I2C READ command
-            await!(self
-                .command_context
-                .write_register(self.chip_address, &cmd_request))?;
+            self.command_context
+                .write_register(self.chip_address, &cmd_request)
+                .await?;
             // wait for it to be done
-            let cmd_reply = await!(self.wait_busy())?;
+            let cmd_reply = self.wait_busy().await?;
             // check that reply has the same i2c address and  register
             if cmd_reply.addr == cmd_request.addr && cmd_reply.reg == reg {
                 // looks legit
                 return Ok(cmd_reply.data);
             }
-            await!(sleep(Bus::<T>::FAIL_TRY_DELAY));
+            delay_for(Bus::<T>::FAIL_TRY_DELAY).await;
         }
         Err(ErrorKind::I2cHashchip(
             "Hashchip I2C controller keeps reading wrong address/register".to_string(),
@@ -168,9 +173,11 @@ impl<T: CommandInterface> i2c::AsyncBus for Bus<T> {
 mod test {
     use super::*;
     use bm1387::{I2cControlReg, MiscCtrlReg};
-    use futures::lock::Mutex;
     use i2c::AsyncBus;
     use std::sync::Arc;
+
+    use futures::lock::Mutex;
+    use ii_async_compat::futures;
 
     /// This trait simulates "chip" on hashchain whose registers can be read or written.
     trait RegisterInterface: Send + Sync {
@@ -217,7 +224,7 @@ mod test {
             &mut self,
             chip_address: ChipAddress,
         ) -> error::Result<Vec<T>> {
-            let mut inner = await!(self.inner.lock());
+            let mut inner = self.inner.lock().await;
             // there shouldn't be any other communication on the bus
             assert!(chip_address == inner.get_address());
             // check if register exists
@@ -233,7 +240,7 @@ mod test {
             chip_address: ChipAddress,
             value: &'a T,
         ) -> error::Result<()> {
-            let mut inner = await!(self.inner.lock());
+            let mut inner = self.inner.lock().await;
             assert!(chip_address == inner.get_address());
             // check if register exists
             match inner.write_reg(T::REG_NUM, value.to_reg()) {
@@ -294,27 +301,19 @@ mod test {
         }
     }
 
-    /// Run the test
-    async fn inner_test_hashchip_i2c_init() {
+    #[tokio::test]
+    async fn test_hashchip_i2c_init() {
         // Construct chip with I2C bus attached
         let sensor_address = ChipAddress::One(0x14);
         // Chip registers are backed with our `CheckInit` "emulator"
         let regs = CheckInit::new(sensor_address);
         let shared_regs = SharedRegisterInterface::new(regs);
         // Construct bus with the chip as backend and initialize it
-        await!(Bus::new_and_init(shared_regs.clone(), sensor_address))
+        Bus::new_and_init(shared_regs.clone(), sensor_address)
+            .await
             .expect("initialization failed");
         // Check the result is OK
-        await!(shared_regs.inner.lock()).verify_regs_ok();
-    }
-
-    /// Run async portion of test.
-    /// If the async part fails (in the main task), this test will also fail.
-    #[test]
-    fn test_hashchip_i2c_init() {
-        ii_async_compat::run_main_exits(async {
-            await!(inner_test_hashchip_i2c_init());
-        });
+        shared_regs.inner.lock().await.verify_regs_ok();
     }
 
     /// More convoluted test: check that:
@@ -438,37 +437,32 @@ mod test {
         }
     }
 
-    /// Run test
-    async fn inner_test_hashchip_i2c_read_write() {
+    #[tokio::test]
+    async fn test_hashchip_i2c_read_write() {
         // construct fake chip
         let sensor_address = ChipAddress::One(0x14);
         let regs = CheckReadWrite::new(sensor_address);
         let shared_regs = SharedRegisterInterface::new(regs);
         // create i2c bus backed with that chip
-        let mut bus = await!(Bus::new_and_init(shared_regs.clone(), sensor_address))
+        let mut bus = Bus::new_and_init(shared_regs.clone(), sensor_address)
+            .await
             .expect("initialization failed");
         // issue read transaction
         assert_eq!(
-            await!(bus.read(i2c::Address::new(TEST_READ_ADDR), TEST_READ_REG))
+            bus.read(i2c::Address::new(TEST_READ_ADDR), TEST_READ_REG)
+                .await
                 .expect("i2c read failed"),
             TEST_READ_VAL
         );
         // issue write transaction
-        await!(bus.write(
+        bus.write(
             i2c::Address::new(TEST_WRITE_ADDR),
             TEST_WRITE_REG,
-            TEST_WRITE_VAL
-        ))
+            TEST_WRITE_VAL,
+        )
+        .await
         .expect("i2c writefailed");
         // verify everything went fine
-        await!(shared_regs.inner.lock()).verify_regs_ok();
-    }
-
-    /// Run async portion of test.
-    #[test]
-    fn test_hashchip_i2c_read_write() {
-        ii_async_compat::run_main_exits(async {
-            await!(inner_test_hashchip_i2c_read_write());
-        });
+        shared_regs.inner.lock().await.verify_regs_ok();
     }
 }

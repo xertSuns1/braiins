@@ -20,7 +20,16 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use ii_async_compat::tokio;
+
 #[test]
 fn block_mining() {
-    bosminer::test_utils::block_mining::run(bosminer_erupter::Backend);
+    ii_async_compat::setup_panic_handling();
+
+    #[tokio::main(threadpool)]
+    async fn inner() {
+        bosminer::test_utils::block_mining::run(bosminer_erupter::Backend).await;
+    }
+
+    inner();
 }

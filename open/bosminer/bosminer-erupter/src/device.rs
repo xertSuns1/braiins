@@ -36,6 +36,9 @@ use std::convert::TryInto;
 use std::mem::size_of;
 use std::time::{Duration, SystemTime};
 
+use futures::executor::block_on;
+use ii_async_compat::futures;
+
 const CP210X_TYPE_OUT: u8 = 0x41;
 const CP210X_REQUEST_IFC_ENABLE: u8 = 0x00;
 const CP210X_REQUEST_DATA: u8 = 0x07;
@@ -319,7 +322,7 @@ impl<'a> Iterator for BlockErupterSolver<'a> {
             }
 
             prev_work = self.curr_work.take().map(|work| (work, self.solution_idx));
-            match ii_async_compat::block_on(self.work_generator.generate()) {
+            match block_on(self.work_generator.generate()) {
                 // end of stream
                 None => break,
                 // send new work and wait for result in the next iteration when no error occurs

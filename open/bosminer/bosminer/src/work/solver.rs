@@ -23,6 +23,7 @@
 use super::*;
 
 use futures::channel::mpsc;
+use ii_async_compat::futures;
 
 /// Compound object that is supposed to be sent down to the mining backend that can in turn solve
 /// any generated work and submit solutions.
@@ -68,7 +69,7 @@ impl Generator {
     /// Generator shutdown)
     pub async fn generate(&mut self) -> Option<Assignment> {
         loop {
-            let engine = match await!(self.engine_receiver.get_engine()) {
+            let engine = match self.engine_receiver.get_engine().await {
                 // end of stream
                 None => return None,
                 Some(value) => value,

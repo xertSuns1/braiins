@@ -26,9 +26,11 @@
 pub mod test_utils;
 
 use async_trait::async_trait;
-use futures::lock::Mutex;
 use std::fmt;
 use std::sync::Arc;
+
+use futures::lock::Mutex;
+use ii_async_compat::futures;
 
 use crate::error::{self, ErrorKind};
 
@@ -92,13 +94,13 @@ where
     T: AsyncBus,
 {
     async fn read(&mut self, addr: Address, reg: u8) -> error::Result<u8> {
-        let mut bus = await!(self.inner.lock());
-        await!(bus.read(addr, reg))
+        let mut bus = self.inner.lock().await;
+        bus.read(addr, reg).await
     }
 
     async fn write(&mut self, addr: Address, reg: u8, val: u8) -> error::Result<()> {
-        let mut bus = await!(self.inner.lock());
-        await!(bus.write(addr, reg, val))
+        let mut bus = self.inner.lock().await;
+        bus.write(addr, reg, val).await
     }
 }
 
@@ -143,11 +145,11 @@ where
     T: Clone + AsyncBus,
 {
     async fn read(&mut self, reg: u8) -> error::Result<u8> {
-        await!(self.bus.read(self.address, reg))
+        self.bus.read(self.address, reg).await
     }
 
     async fn write(&mut self, reg: u8, val: u8) -> error::Result<()> {
-        await!(self.bus.write(self.address, reg, val))
+        self.bus.write(self.address, reg, val).await
     }
 
     /// TODO: Maybe, just maybe find a better place where to put this function.
@@ -156,8 +158,8 @@ where
     /// it doesn't currently work because of https://github.com/rust-lang/rust/issues/51443
     /// which is due to `async-trait` conversion.
     async fn write_readback(&mut self, reg: u8, reg_read_back: u8, val: u8) -> error::Result<()> {
-        await!(self.write(reg, val))?;
-        let new_val = await!(self.read(reg_read_back))?;
+        self.write(reg, val).await?;
+        let new_val = self.read(reg_read_back).await?;
         if val != new_val {
             Err(ErrorKind::I2cHashchip(format!(
                 "failed to read back register {:#x}/{:#x}: written {:#x} but read back {:#x}",
@@ -171,6 +173,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    use ii_async_compat::tokio;
 
     #[test]
     #[should_panic]
@@ -189,24 +192,25 @@ mod test {
         assert_eq!(addr.to_writable_hw_addr(), 0x31);
     }
 
-    async fn inner_test_i2c_device_bus() {
+    #[tokio::test]
+    async fn test_i2c_device_bus() {
         let bus = test_utils::FakeI2cBus::new(Address::new(0x16), &[], Some(0), Some(0x7f));
         let mut dev_bad = Device::new(bus.clone(), Address::new(0x14));
         let mut dev = Device::new(bus, Address::new(0x16));
 
-        await!(dev.write(6, 0x5a)).unwrap();
-        assert_eq!(await!(dev.read(6)).unwrap(), 0x5a);
-        assert_eq!(await!(dev.read(7)).unwrap(), 0);
-        await!(dev.write_readback(8, 8, 0xaa)).unwrap();
-        assert!(await!(dev.write_readback(8, 9, 0xaa)).is_err());
+        dev.write(6, 0x5a).await.unwrap();
+        assert_eq!(dev.read(6).await.unwrap(), 0x5a);
+        assert_eq!(dev.read(7).await.unwrap(), 0);
+        dev.write_readback(8, 8, 0xaa).await.unwrap();
+        assert!(dev.write_readback(8, 9, 0xaa).await.is_err());
 
-        assert_eq!(await!(dev_bad.read(6)).unwrap(), 0x7f);
-        assert!(await!(dev_bad.write_readback(8, 8, 0xaa)).is_err());
+        assert_eq!(dev_bad.read(6).await.unwrap(), 0x7f);
+        assert!(dev_bad.write_readback(8, 8, 0xaa).await.is_err());
 
         // should return error on reads/writes
         let bus = test_utils::FakeI2cBus::new(Address::new(0x16), &[], Some(0), None);
         let mut dev = Device::new(bus, Address::new(0x14));
-        assert!(await!(dev.write_readback(5, 5, 0x10)).is_err());
+        assert!(dev.write_readback(5, 5, 0x10).await.is_err());
 
         // some registers could be poisoned
         let bus = test_utils::FakeI2cBus::new(
@@ -216,20 +220,14 @@ mod test {
             None,
         );
         let mut dev = Device::new(bus, Address::new(0x16));
-        assert_eq!(await!(dev.read(3)).unwrap(), 10);
-        assert!(await!(dev.write(3, 11)).is_ok());
-        assert!(await!(dev.read(4)).is_err());
-        assert!(await!(dev.write(4, 5)).is_err());
+        assert_eq!(dev.read(3).await.unwrap(), 10);
+        assert!(dev.write(3, 11).await.is_ok());
+        assert!(dev.read(4).await.is_err());
+        assert!(dev.write(4, 5).await.is_err());
     }
 
-    #[test]
-    fn test_i2c_device_bus() {
-        ii_async_compat::run_main_exits(async {
-            await!(inner_test_i2c_device_bus());
-        });
-    }
-
-    async fn inner_test_shared_i2c_bus() {
+    #[tokio::test]
+    async fn test_shared_i2c_bus() {
         // FakeI2cBus is not "shared" by default, clone just creates another copy
         // with the same register settings.
         let bus = test_utils::FakeI2cBus::new(Address::new(0x16), &[], Some(0), Some(0x7f));
@@ -240,19 +238,12 @@ mod test {
         let mut dev2 = Device::new(shared_bus.clone(), Address::new(0x16));
 
         // writes by one device on the bus ...
-        await!(dev1.write(3, 0x11)).unwrap();
+        dev1.write(3, 0x11).await.unwrap();
         // ... could be seen by another device on the same bus ...
-        assert_eq!(await!(dev2.read(3)).unwrap(), 0x11);
+        assert_eq!(dev2.read(3).await.unwrap(), 0x11);
         // ... and vice versa
-        await!(dev2.write(5, 0x22)).unwrap();
-        assert_eq!(await!(dev1.read(5)).unwrap(), 0x22);
-        assert_eq!(await!(dev1.read(4)).unwrap(), 0x00);
-    }
-
-    #[test]
-    fn test_shared_i2c_bus() {
-        ii_async_compat::run_main_exits(async {
-            await!(inner_test_shared_i2c_bus());
-        });
+        dev2.write(5, 0x22).await.unwrap();
+        assert_eq!(dev1.read(5).await.unwrap(), 0x22);
+        assert_eq!(dev1.read(4).await.unwrap(), 0x00);
     }
 }

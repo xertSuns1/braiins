@@ -20,7 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-#![feature(await_macro, async_await, duration_float)]
+use ii_async_compat::tokio;
 
 use bosminer_am1_s9::gpio;
 use bosminer_am1_s9::power;
@@ -47,8 +47,8 @@ async fn test_voltage_ctrl_on_1_hashboard(idx: usize, ctrl_pin_manager: &gpio::C
     let backend = power::SharedBackend::new(backend);
     let mut voltage_ctrl = power::Control::new(backend, idx);
 
-    await!(voltage_ctrl.reset()).unwrap();
-    await!(voltage_ctrl.jump_from_loader_to_app()).unwrap();
+    voltage_ctrl.reset().await.unwrap();
+    voltage_ctrl.jump_from_loader_to_app().await.unwrap();
 
     let version = voltage_ctrl.get_version().unwrap();
     let expected_version: u8 = 3;
@@ -61,6 +61,7 @@ async fn test_voltage_ctrl_on_1_hashboard(idx: usize, ctrl_pin_manager: &gpio::C
 
 /// Attempts to run voltage controller test for all hashboards. A minimum of one hashboard is
 /// required to be present in the miner
+#[tokio::test]
 async fn test_voltage_ctrl_all_hashboards() {
     let ctrl_pin_manager = gpio::ControlPinManager::new();
     let mut tested_hashboards: usize = 0;
@@ -72,10 +73,7 @@ async fn test_voltage_ctrl_all_hashboards() {
             .unwrap();
 
         if plug.is_high().unwrap() {
-            await!(test_voltage_ctrl_on_1_hashboard(
-                hashboard_idx,
-                &ctrl_pin_manager
-            ));
+            test_voltage_ctrl_on_1_hashboard(hashboard_idx, &ctrl_pin_manager).await;
             tested_hashboards += 1;
         }
     }
@@ -85,9 +83,4 @@ async fn test_voltage_ctrl_all_hashboards() {
         tested_hashboards,
         expected_tested_hashboards
     );
-}
-
-#[test]
-fn test_voltage_ctrl_all_hashboards_runner() {
-    ii_async_compat::run_main_exits(test_voltage_ctrl_all_hashboards())
 }

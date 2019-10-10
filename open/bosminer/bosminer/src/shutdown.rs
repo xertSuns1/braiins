@@ -22,6 +22,7 @@
 
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
+use ii_async_compat::futures;
 
 /// Message used for shutdown synchronization
 pub type ShutdownMsg = &'static str;
@@ -41,7 +42,7 @@ pub struct Receiver(mpsc::UnboundedReceiver<ShutdownMsg>);
 
 impl Receiver {
     pub async fn receive(&mut self) -> ShutdownMsg {
-        let reply = await!(self.0.next());
+        let reply = self.0.next().await;
 
         // TODO: do we have to handle all these cases?
         let msg = match reply {

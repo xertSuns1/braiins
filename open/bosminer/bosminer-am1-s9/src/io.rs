@@ -44,7 +44,10 @@ use chrono::prelude::DateTime;
 use chrono::Utc;
 use std::time::{Duration, UNIX_EPOCH};
 
-use ii_async_compat::{sleep, timeout_future, TimeoutResult};
+use ii_async_compat::tokio;
+use tokio::future::FutureExt;
+use tokio::timer::delay_for;
+
 use ii_fpga_io_am1_s9::{self, common::version::MINER_TYPE_A, generic::Variant};
 
 use ii_logging::macros::*;
@@ -137,7 +140,7 @@ impl WorkRxFifo {
     /// Async variant. Uses IRQ.
     pub async fn async_read(&mut self) -> error::Result<u32> {
         let cond = || !self.is_empty();
-        await!(self.uio.async_irq_wait_cond(cond))?;
+        self.uio.async_irq_wait_cond(cond).await?;
         Ok(self.regs.work_rx_fifo.read().bits())
     }
 
@@ -210,7 +213,7 @@ impl WorkTxFifo {
     /// Wait for output FIFO to make room for one work
     pub async fn async_wait_for_room(&self) -> error::Result<()> {
         let cond = || self.has_space_for_one_job();
-        await!(self.uio.async_irq_wait_cond(cond))?;
+        self.uio.async_irq_wait_cond(cond).await?;
         Ok(())
     }
 
@@ -269,7 +272,7 @@ impl CommandRxTxFifos {
     /// Uses timed polling
     pub async fn wait_tx_empty(&self) {
         while !self.is_tx_empty() {
-            await!(sleep(Duration::from_millis(1)));
+            delay_for(Duration::from_millis(1)).await;
         }
     }
 
@@ -278,7 +281,7 @@ impl CommandRxTxFifos {
     pub async fn write(&self, item: u32) {
         // wait for space in queue
         while self.is_tx_full() {
-            await!(sleep(Duration::from_millis(1)));
+            delay_for(Duration::from_millis(1)).await;
         }
         // write command word
         self.regs.cmd_tx_fifo.write(|w| unsafe { w.bits(item) });
@@ -288,7 +291,7 @@ impl CommandRxTxFifos {
     /// Async variant. Uses IRQ.
     pub async fn read(&mut self) -> error::Result<u32> {
         let cond = || !self.is_rx_empty();
-        await!(self.uio.async_irq_wait_cond(cond))?;
+        self.uio.async_irq_wait_cond(cond).await?;
         Ok(self.regs.cmd_rx_fifo.read().bits())
     }
 
@@ -299,10 +302,10 @@ impl CommandRxTxFifos {
     ///     * `Ok(Some(_))` if something was received
     ///     * `Err(_)` if error occured
     pub async fn read_with_timeout(&mut self, timeout: Duration) -> error::Result<Option<u32>> {
-        match await!(timeout_future(self.read(), timeout,)) {
-            TimeoutResult::Error => panic!("timeout error"),
-            TimeoutResult::TimedOut => Ok(None),
-            TimeoutResult::Returned(word) => Ok(Some(word?)),
+        match self.read().timeout(timeout).await {
+            Ok(Ok(word)) => Ok(Some(word)), // Read complete on time
+            Ok(Err(err)) => Err(err),       // Read I/O error
+            Err(_) => Ok(None),             // Read timeout
         }
     }
 
@@ -359,8 +362,8 @@ pub struct WorkRx {
 
 impl WorkRx {
     pub async fn recv_solution(mut self) -> Result<(Self, Solution), failure::Error> {
-        let word1 = await!(self.fifo.async_read())?;
-        let word2 = await!(self.fifo.async_read())?;
+        let word1 = self.fifo.async_read().await?;
+        let word2 = self.fifo.async_read().await?;
         let resp = WorkRxResponse::from_hw(self.midstate_count, word1, word2);
 
         let solution = Solution {
@@ -392,7 +395,7 @@ pub struct WorkTx {
 
 impl WorkTx {
     pub async fn wait_for_room(&self) -> error::Result<()> {
-        await!(self.fifo.async_wait_for_room())
+        self.fifo.async_wait_for_room().await
     }
 
     pub fn assert_midstate_count(&self, expected_midstate_count: usize) {
@@ -465,12 +468,14 @@ impl CommandRxTx {
         );
         trace!("Sending Control Command {:x?}", cmd);
         for chunk in cmd.chunks(4) {
-            await!(self.fifo.write(u32::from_le_bytes(
-                chunk.try_into().expect("slice with incorrect length")
-            )));
+            self.fifo
+                .write(u32::from_le_bytes(
+                    chunk.try_into().expect("slice with incorrect length"),
+                ))
+                .await;
         }
         if wait {
-            await!(self.fifo.wait_tx_empty());
+            self.fifo.wait_tx_empty().await;
         }
     }
 
@@ -486,13 +491,21 @@ impl CommandRxTx {
         let mut cmd_resp = Vec::new();
 
         // fetch first word of command response from IP core's fifo
-        match await!(self.fifo.read_with_timeout(Self::COMMAND_READ_TIMEOUT))? {
+        match self
+            .fifo
+            .read_with_timeout(Self::COMMAND_READ_TIMEOUT)
+            .await?
+        {
             None => return Ok(None),
             Some(word1) => cmd_resp.extend_from_slice(&u32::to_le_bytes(word1)),
         }
 
         // fetch second word: getting timeout here is a hardware error
-        match await!(self.fifo.read_with_timeout(Self::COMMAND_READ_TIMEOUT))? {
+        match self
+            .fifo
+            .read_with_timeout(Self::COMMAND_READ_TIMEOUT)
+            .await?
+        {
             None => Err(ErrorKind::Fifo(
                 error::Fifo::TimedOut,
                 "cmd RX fifo framing error".to_string(),

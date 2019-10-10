@@ -103,7 +103,7 @@ pub enum Fifo {
 /// any error types to this custom error with general error kind by calling context
 /// method on any result type.
 impl Fail for Error {
-    fn cause(&self) -> Option<&Fail> {
+    fn cause(&self) -> Option<&dyn Fail> {
         self.inner.cause()
     }
 

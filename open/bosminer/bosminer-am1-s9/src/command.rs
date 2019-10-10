@@ -34,6 +34,7 @@ use crate::io;
 use packed_struct::{PackedStruct, PackedStructSlice};
 
 use futures::lock::Mutex;
+use ii_async_compat::futures;
 use std::sync::Arc;
 
 use crate::error::{self, ErrorKind};
@@ -70,7 +71,7 @@ pub trait Interface: Send + Sync {
         chip_address: ChipAddress,
     ) -> error::Result<T> {
         assert!(!chip_address.is_broadcast());
-        let mut responses = await!(self.read_register::<T>(chip_address))?;
+        let mut responses = self.read_register::<T>(chip_address).await?;
         return Ok(responses.remove(0));
     }
 
@@ -82,10 +83,10 @@ pub trait Interface: Send + Sync {
         value: &'a T,
     ) -> error::Result<()> {
         // write register
-        await!(self.write_register(chip_address, value))?;
+        self.write_register(chip_address, value).await?;
 
         // do readback
-        let responses = await!(self.read_register::<T>(chip_address))?;
+        let responses = self.read_register::<T>(chip_address).await?;
         for (chip_address, read_back_value) in responses.iter().enumerate() {
             if *read_back_value != *value {
                 Err(ErrorKind::Hashchip(format!(
@@ -127,12 +128,14 @@ impl InnerContext {
     ) -> error::Result<Vec<T>> {
         let cmd = bm1387::GetStatusCmd::new(chip_address, T::REG_NUM);
         // send command, do not wait for it to be sent out
-        await!(self.command_io.send_command(cmd.pack().to_vec(), false));
+        self.command_io
+            .send_command(cmd.pack().to_vec(), false)
+            .await;
 
         // wait for all responses and collect them
         let mut responses = Vec::new();
         loop {
-            match await!(self.command_io.recv_response())? {
+            match self.command_io.recv_response().await? {
                 Some(one_response) => {
                     let one_response = bm1387::CmdResponse::unpack_from_slice(&one_response)
                         .context(format!("response unpacking failed"))?;
@@ -180,14 +183,16 @@ impl InnerContext {
     ) -> error::Result<()> {
         let cmd = bm1387::SetConfigCmd::new(chip_address, T::REG_NUM, value.to_reg());
         // wait for command to be sent out
-        await!(self.command_io.send_command(cmd.pack().to_vec(), true));
+        self.command_io
+            .send_command(cmd.pack().to_vec(), true)
+            .await;
         Ok(())
     }
 
     /// Send raw command without any explicit serialization.
     /// If `wait` is true, wait for the command to be issued.
     async fn send_raw_command(&mut self, cmd: Vec<u8>, wait: bool) {
-        await!(self.command_io.send_command(cmd, wait));
+        self.command_io.send_command(cmd, wait).await;
     }
 
     /// Set number of chips on chain (and implicitly enable check for
@@ -216,8 +221,8 @@ impl Interface for Context {
         &mut self,
         chip_address: ChipAddress,
     ) -> error::Result<Vec<T>> {
-        let mut inner = await!(self.inner.lock());
-        await!(inner.read_register::<T>(chip_address))
+        let mut inner = self.inner.lock().await;
+        inner.read_register::<T>(chip_address).await
     }
 
     async fn write_register<'a, T: bm1387::Register>(
@@ -225,19 +230,19 @@ impl Interface for Context {
         chip_address: ChipAddress,
         value: &'a T,
     ) -> error::Result<()> {
-        let mut inner = await!(self.inner.lock());
-        await!(inner.write_register(chip_address, value))
+        let mut inner = self.inner.lock().await;
+        inner.write_register(chip_address, value).await
     }
 }
 
 impl Context {
     pub async fn send_raw_command(&mut self, cmd: Vec<u8>, wait: bool) {
-        let mut inner = await!(self.inner.lock());
-        await!(inner.send_raw_command(cmd, wait))
+        let mut inner = self.inner.lock().await;
+        inner.send_raw_command(cmd, wait).await
     }
 
     pub async fn set_chip_count(&self, chip_count: usize) {
-        let mut inner = await!(self.inner.lock());
+        let mut inner = self.inner.lock().await;
         inner.set_chip_count(chip_count);
     }
 

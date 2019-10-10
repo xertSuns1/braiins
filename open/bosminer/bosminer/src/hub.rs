@@ -29,6 +29,7 @@ use crate::job;
 use crate::work;
 
 use futures::channel::mpsc;
+use ii_async_compat::futures;
 
 /// Handle external events. Currently it is used only wor handling exhausted work from work engine.
 /// It usually signals some serious problem in backend.
@@ -55,6 +56,8 @@ pub mod test {
     use super::*;
     use crate::test_utils;
 
+    use futures::executor::block_on;
+
     /// This test verifies the whole lifecycle of a mining job, its transformation into work
     /// and also collection of the solution via solution receiver. No actual mining takes place
     /// in the test
@@ -74,13 +77,13 @@ pub mod test {
             // send prepared testing block to job solver
             job_sender.send(job);
             // work generator receives this job and prepares work from it
-            let work = ii_async_compat::block_on(work_generator.generate()).unwrap();
+            let work = block_on(work_generator.generate()).unwrap();
             // initial value for version rolling is 0 so midstate should match with expected one
             assert_eq!(block.midstate, work.midstates[0].state);
             // test block has automatic conversion into work solution
             solution_sender.send(block.into());
             // this solution should pass through job solver
-            let solution = ii_async_compat::block_on(solution_receiver.receive()).unwrap();
+            let solution = block_on(solution_receiver.receive()).unwrap();
             // check if the solution is equal to expected one
             assert_eq!(block.nonce, solution.nonce());
             let original_job: &test_utils::TestBlock = solution.job();
@@ -92,7 +95,7 @@ pub mod test {
         // work generator still works even if all job solvers are dropped
         drop(job_sender);
         drop(solution_receiver);
-        assert!(ii_async_compat::block_on(work_generator.generate()).is_some());
+        assert!(block_on(work_generator.generate()).is_some());
     }
 
     /// Helper function that compares 2 hashes while interpreting them as targets
@@ -117,7 +120,7 @@ pub mod test {
             // test block has automatic conversion into work solution
             solution_queue_tx.unbounded_send(block.into()).unwrap();
             // this solution should pass through job solver
-            let solution = ii_async_compat::block_on(solution_receiver.receive()).unwrap();
+            let solution = block_on(solution_receiver.receive()).unwrap();
             // check if the solution is equal to expected one
             assert_eq!(block.nonce, solution.nonce());
         }
@@ -144,9 +147,9 @@ pub mod test {
             .unwrap();
 
         // check if the solutions is equal to expected ones
-        let solution = ii_async_compat::block_on(solution_receiver.receive()).unwrap();
+        let solution = block_on(solution_receiver.receive()).unwrap();
         assert_eq!(target_block.nonce, solution.nonce());
-        let solution = ii_async_compat::block_on(solution_receiver.receive()).unwrap();
+        let solution = block_on(solution_receiver.receive()).unwrap();
         assert_eq!(target_block.nonce, solution.nonce());
     }
 }

@@ -35,7 +35,8 @@ use failure::ResultExt;
 use embedded_hal::blocking::i2c::{Read, Write};
 use linux_embedded_hal::I2cdev;
 
-use ii_async_compat::sleep;
+use ii_async_compat::tokio;
+use tokio::timer::delay_for;
 
 /// Voltage controller requires periodic heart beat messages to be sent
 const VOLTAGE_CTRL_HEART_BEAT_PERIOD: Duration = Duration::from_millis(1000);
@@ -253,13 +254,13 @@ where
 
     pub async fn reset(&mut self) -> error::Result<()> {
         self.write(RESET_PIC, &[])?;
-        await!(sleep(Self::RESET_DELAY));
+        delay_for(Self::RESET_DELAY).await;
         Ok(())
     }
 
     pub async fn jump_from_loader_to_app(&mut self) -> error::Result<()> {
         self.write(JUMP_FROM_LOADER_TO_APP, &[])?;
-        await!(sleep(Self::BMMINER_DELAY));
+        delay_for(Self::BMMINER_DELAY).await;
         Ok(())
     }
 
@@ -299,7 +300,7 @@ where
     pub async fn set_voltage(&mut self, voltage: Voltage) -> error::Result<()> {
         info!("Setting voltage to {}", voltage.as_volts());
         self.write(SET_VOLTAGE, &[voltage.as_pic_value()?])?;
-        await!(sleep(Self::BMMINER_DELAY));
+        delay_for(Self::BMMINER_DELAY).await;
         Ok(())
     }
 
