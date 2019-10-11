@@ -68,7 +68,7 @@ impl fmt::Display for NullJobInfo {
 impl node::Info for NullJobInfo {}
 
 impl job::Bitcoin for NullJob {
-    fn origin(&self) -> Arc<dyn node::Info> {
+    fn origin(&self) -> node::DynInfo {
         Arc::new(NullJobInfo)
     }
 

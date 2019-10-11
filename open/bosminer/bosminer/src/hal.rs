@@ -20,6 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use crate::node;
 use crate::shutdown;
 use crate::stats;
 use crate::work;
@@ -45,7 +46,7 @@ pub trait BackendSolution: Debug + Send + Sync {
 }
 
 /// Minimal interface for running compatible backend with bOSminer crate
-pub trait Backend: Send + Sync + 'static {
+pub trait Backend: node::Info + Send + Sync + 'static {
     /// Number of midstates
     const DEFAULT_MIDSTATE_COUNT: usize;
     /// Maximum time it takes to compute one job under normal circumstances
@@ -62,7 +63,7 @@ pub trait Backend: Send + Sync + 'static {
     fn init(&mut self, _args: &clap::ArgMatches) {}
 
     fn run(
-        &self,
+        self: Arc<Self>,
         work_solver: work::Solver,
         mining_stats: Arc<Mutex<stats::Mining>>,
         shutdown: shutdown::Sender,

@@ -279,7 +279,11 @@ fn build_solvers() -> (
         // then you will be able to receive it here)
         reschedule_receiver,
         // This is a solver that you hand off to backend
-        work::Solver::new(engine_receiver, solution_queue_tx),
+        work::Solver::new(
+            Arc::new(test_utils::TestInfo),
+            engine_receiver,
+            solution_queue_tx,
+        ),
     )
 }
 
@@ -301,6 +305,8 @@ async fn collect_solutions(
 }
 
 pub async fn run<T: hal::Backend>(backend: T) {
+    // create shared backend required by trait methods
+    let backend = Arc::new(backend);
     // create shutdown channel
     let (shutdown_sender, shutdown_receiver) = shutdown::channel();
 

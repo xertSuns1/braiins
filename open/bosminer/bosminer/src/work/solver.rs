@@ -21,48 +21,72 @@
 // contact us at opensource@braiins.com.
 
 use super::*;
+use crate::node;
 
 use futures::channel::mpsc;
 use ii_async_compat::futures;
 
 /// Compound object that is supposed to be sent down to the mining backend that can in turn solve
 /// any generated work and submit solutions.
-#[derive(Clone)]
 pub struct Solver {
-    /// Work generator for sourcing `MiningWork`
-    work_generator: Generator,
+    /// Unique path describing internal hierarchy of backend solvers
+    path: node::Path,
+    /// Shared engine receiver needed for creating `Generator`
+    engine_receiver: EngineReceiver,
     /// Solution submission channel for the underlying mining backend
     solution_sender: SolutionSender,
 }
 
 impl Solver {
     pub fn split(self) -> (Generator, SolutionSender) {
-        (self.work_generator, self.solution_sender)
+        (
+            Generator::new(self.engine_receiver, self.path),
+            self.solution_sender,
+        )
     }
 
     /// Construct new work solver from engine receiver and associated channel to send the results
     pub fn new(
+        node: node::DynInfo,
         engine_receiver: EngineReceiver,
         solution_queue_tx: mpsc::UnboundedSender<Solution>,
     ) -> Self {
         Self {
-            work_generator: Generator::new(engine_receiver),
+            path: vec![node],
+            engine_receiver,
             solution_sender: SolutionSender(solution_queue_tx),
+        }
+    }
+
+    /// Create another solver based on previous one.
+    /// It provides generic way how to describe hierarchy in various backends.
+    /// Each solver has unique path described by generic node info.
+    pub fn branch(&self, node: node::DynInfo) -> Self {
+        let mut path = self.path.clone();
+        path.push(node);
+        Self {
+            path,
+            engine_receiver: self.engine_receiver.clone(),
+            solution_sender: self.solution_sender.clone(),
         }
     }
 }
 
 /// Generator is responsible for accepting a `WorkEngine` and draining as much
 /// `MiningWork` as possible from it.
-#[derive(Clone)]
 pub struct Generator {
+    /// Unique path describing internal hierarchy of backend solvers
+    path: node::SharedPath,
     /// Source of trait objects that implement `WorkEngine` interface
     engine_receiver: EngineReceiver,
 }
 
 impl Generator {
-    pub fn new(engine_receiver: EngineReceiver) -> Self {
-        Self { engine_receiver }
+    pub fn new(engine_receiver: EngineReceiver, path: node::Path) -> Self {
+        Self {
+            path: node::SharedPath::new(path),
+            engine_receiver,
+        }
     }
 
     /// Loops until new work is available or no more `WorkEngines` are supplied (signals
@@ -75,7 +99,7 @@ impl Generator {
                 Some(value) => value,
             };
             // try to generate new work from engine
-            return Some(match engine.next_work() {
+            let mut work = match engine.next_work() {
                 // one or more competing work engines are exhausted
                 // try to gen new work engine
                 // NOTE: this can happen simultaneously for multiple parallel generators because
@@ -89,7 +113,9 @@ impl Generator {
                     self.engine_receiver.handle_exhausted(engine);
                     value
                 }
-            });
+            };
+            work.path.extend(self.path.iter().cloned());
+            return Some(work);
         }
     }
 }

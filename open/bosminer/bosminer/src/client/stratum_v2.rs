@@ -87,7 +87,7 @@ impl StratumJob {
 }
 
 impl job::Bitcoin for StratumJob {
-    fn origin(&self) -> Arc<dyn node::Info> {
+    fn origin(&self) -> node::DynInfo {
         self.descriptor.clone()
     }
 

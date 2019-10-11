@@ -29,6 +29,7 @@ use ii_logging::macros::*;
 
 use bosminer::error::backend::ResultExt;
 use bosminer::hal;
+use bosminer::node;
 use bosminer::shutdown;
 use bosminer::stats;
 use bosminer::work;
@@ -43,6 +44,7 @@ use futures::future::poll_fn;
 use futures::lock::Mutex;
 use ii_async_compat::futures;
 
+use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -117,6 +119,7 @@ impl hal::BackendSolution for Solution {
     }
 }
 
+#[derive(Debug)]
 pub struct Backend;
 
 impl hal::Backend for Backend {
@@ -129,7 +132,7 @@ impl hal::Backend for Backend {
     }
 
     fn run(
-        &self,
+        self: Arc<Self>,
         work_solver: work::Solver,
         mining_stats: Arc<Mutex<stats::Mining>>,
         shutdown: shutdown::Sender,
@@ -157,3 +160,11 @@ impl hal::Backend for Backend {
         });
     }
 }
+
+impl fmt::Display for Backend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Block Erupter")
+    }
+}
+
+impl node::Info for Backend {}

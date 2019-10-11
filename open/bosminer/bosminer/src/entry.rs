@@ -74,7 +74,8 @@ pub async fn main<T: hal::Backend>(mut backend: T) {
     backend.init(&args);
 
     // create job and work solvers
-    let (job_solver, work_solver) = hub::build_solvers();
+    let backend = Arc::new(backend);
+    let (job_solver, work_solver) = hub::build_solvers(backend.clone());
     // create shutdown channel
     let (shutdown_sender, _shutdown_receiver) = shutdown::channel();
     // create mining stats

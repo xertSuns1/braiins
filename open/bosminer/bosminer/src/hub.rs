@@ -26,6 +26,7 @@
 use ii_logging::macros::*;
 
 use crate::job;
+use crate::node;
 use crate::work;
 
 use futures::channel::mpsc;
@@ -42,12 +43,12 @@ impl work::ExhaustedHandler for EventHandler {
 }
 
 /// Create Solvers for frontend (pool) and backend (HW accelerator)
-pub fn build_solvers() -> (job::Solver, work::Solver) {
+pub fn build_solvers(node: node::DynInfo) -> (job::Solver, work::Solver) {
     let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
     let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
     (
         job::Solver::new(engine_sender, solution_queue_rx),
-        work::Solver::new(engine_receiver, solution_queue_tx),
+        work::Solver::new(node, engine_receiver, solution_queue_tx),
     )
 }
 
@@ -65,7 +66,7 @@ pub mod test {
     fn test_solvers_connection() {
         use std::sync::Arc;
 
-        let (job_solver, work_solver) = build_solvers();
+        let (job_solver, work_solver) = build_solvers(Arc::new(test_utils::TestInfo));
 
         let (mut job_sender, mut solution_receiver) = job_solver.split();
         let (mut work_generator, solution_sender) = work_solver.split();
