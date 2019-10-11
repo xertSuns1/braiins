@@ -40,16 +40,17 @@ use ii_logging::macros::*;
 
 use bosminer::clap;
 use bosminer::hal;
+use bosminer::node;
 use bosminer::runtime_config;
 use bosminer::shutdown;
 use bosminer::stats;
 use bosminer::work;
 
+use std::fmt;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 use lazy_static::lazy_static;
-
-use std::time::{Duration, SystemTime};
 
 use error::ErrorKind;
 use failure::ResultExt;
@@ -178,7 +179,7 @@ pub struct HashChain<VBackend> {
     /// Run-time voltage
     working_voltage: power::Voltage,
     /// Voltage controller on this hashboard
-    voltage_ctrl: power::Control<VBackend>,
+    voltage_ctrl: Mutex<power::Control<VBackend>>,
     /// Plug pin that indicates the hashboard is present
     #[allow(dead_code)]
     plug_pin: gpio::PinIn,
@@ -187,12 +188,11 @@ pub struct HashChain<VBackend> {
     /// When the heartbeat was last sent
     #[allow(dead_code)]
     last_heartbeat_sent: Option<SystemTime>,
-    #[allow(dead_code)]
     hashboard_idx: usize,
     pub command_context: command::Context,
     pub common_io: io::Common,
-    pub work_rx_io: Option<io::WorkRx>,
-    pub work_tx_io: Option<io::WorkTx>,
+    work_rx_io: Mutex<Option<io::WorkRx>>,
+    work_tx_io: Mutex<Option<io::WorkTx>>,
 }
 
 impl<VBackend> HashChain<VBackend>
@@ -246,19 +246,36 @@ where
             chip_count: 0,
             midstate_count,
             asic_difficulty,
-            voltage_ctrl: power::Control::new(voltage_ctrl_backend, hashboard_idx),
+            voltage_ctrl: Mutex::new(power::Control::new(voltage_ctrl_backend, hashboard_idx)),
             plug_pin,
             rst_pin,
             hashboard_idx,
             last_heartbeat_sent: None,
             common_io,
             command_context: command::Context::new(command_io),
-            work_rx_io: Some(work_rx_io),
-            work_tx_io: Some(work_tx_io),
+            work_rx_io: Mutex::new(Some(work_rx_io)),
+            work_tx_io: Mutex::new(Some(work_tx_io)),
             pll_frequency,
             working_voltage: voltage,
         })
     }
+
+    async fn take_work_rx_io(&self) -> io::WorkRx {
+        self.work_rx_io
+            .lock()
+            .await
+            .take()
+            .expect("work-rx io missing")
+    }
+
+    async fn take_work_tx_io(&self) -> io::WorkTx {
+        self.work_tx_io
+            .lock()
+            .await
+            .take()
+            .expect("work-tx io missing")
+    }
+
     /// Calculate work_time for this instance of HChain
     ///
     /// Returns number of ticks (suitable to be written to `WORK_TIME` register)
@@ -312,20 +329,23 @@ where
     }
 
     /// Lower voltage to working voltage (after opencore)
-    pub async fn lower_voltage(&mut self) -> error::Result<()> {
-        self.voltage_ctrl.set_voltage(self.working_voltage).await
+    pub async fn lower_voltage(&self) -> error::Result<()> {
+        self.voltage_ctrl
+            .lock()
+            .await
+            .set_voltage(self.working_voltage)
+            .await
     }
 
-    /// Initializes the complete hashboard including enumerating all chips
-    pub async fn init(&mut self) -> error::Result<()> {
-        info!("Initializing hash chain {}", self.hashboard_idx);
-        self.ip_core_init()?;
-        info!("Hashboard IP core initialized");
-        self.voltage_ctrl.reset().await?;
+    /// Initialize voltage controller
+    async fn init_voltage(&mut self) -> error::Result<()> {
+        let mut voltage_ctrl = self.voltage_ctrl.lock().await;
+
+        voltage_ctrl.reset().await?;
         info!("Voltage controller reset");
-        self.voltage_ctrl.jump_from_loader_to_app().await?;
+        voltage_ctrl.jump_from_loader_to_app().await?;
         info!("Voltage controller application started");
-        let version = self.voltage_ctrl.get_version()?;
+        let version = voltage_ctrl.get_version()?;
         info!("Voltage controller firmware version {:#04x}", version);
         // TODO accept multiple
         if version != power::EXPECTED_VOLTAGE_CTRL_VERSION {
@@ -335,20 +355,28 @@ where
                 power::EXPECTED_VOLTAGE_CTRL_VERSION.to_string(),
             ))?
         }
-        self.voltage_ctrl.set_voltage(OPEN_CORE_VOLTAGE).await?;
-        self.voltage_ctrl.enable_voltage()?;
+        voltage_ctrl.set_voltage(OPEN_CORE_VOLTAGE).await?;
+        voltage_ctrl.enable_voltage()?;
 
         // Voltage controller successfully initialized at this point, we should start sending
         // heart beats to it. Otherwise, it would shut down in about 10 seconds.
         info!("Starting voltage controller heart beat task");
-        let _ = self.voltage_ctrl.start_heart_beat_task();
+        let _ = voltage_ctrl.start_heart_beat_task();
+        Ok(())
+    }
 
+    /// Initializes the complete hashboard including enumerating all chips
+    pub async fn init(&mut self) -> error::Result<()> {
+        info!("Initializing hash chain {}", self.hashboard_idx);
+        self.ip_core_init()?;
+        info!("Hashboard IP core initialized");
+        self.init_voltage().await?;
         info!("Resetting hash board");
         self.enter_reset()?;
         // disable voltage
-        self.voltage_ctrl.disable_voltage()?;
+        self.voltage_ctrl.lock().await.disable_voltage()?;
         delay_for(Duration::from_millis(INIT_DELAY_MS)).await;
-        self.voltage_ctrl.enable_voltage()?;
+        self.voltage_ctrl.lock().await.enable_voltage()?;
         delay_for(Duration::from_millis(2 * INIT_DELAY_MS)).await;
 
         // TODO consider including a delay
@@ -504,7 +532,7 @@ where
 
     /// Initialize cores by sending open-core work with correct nbits to each core
     async fn send_init_work(
-        hash_chain: Arc<Mutex<Self>>,
+        self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         tx_fifo: &mut io::WorkTx,
     ) {
@@ -514,7 +542,7 @@ where
             "Sending out {} pieces of dummy work to initialize chips",
             NUM_WORK
         );
-        let midstate_count = hash_chain.lock().await.midstate_count.to_count();
+        let midstate_count = self.midstate_count.to_count();
         for _ in 0..NUM_WORK {
             let work = &null_work::prepare_opencore(true, midstate_count);
             let work_id = work_registry.lock().await.store_work(work.clone());
@@ -656,46 +684,31 @@ where
     }
 
     fn spawn_tx_task(
-        hash_chain: Arc<Mutex<Self>>,
+        self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
         work_generator: work::Generator,
         shutdown: shutdown::Sender,
     ) {
         tokio::spawn(async move {
-            let mut tx_fifo = hash_chain
-                .lock()
-                .await
-                .work_tx_io
-                .take()
-                .expect("work-tx io missing");
+            let mut tx_fifo = self.take_work_tx_io().await;
 
-            Self::send_init_work(hash_chain.clone(), work_registry.clone(), &mut tx_fifo).await;
-            {
-                let mut hash_chain = hash_chain.lock().await;
-                hash_chain
-                    .lower_voltage()
-                    .await
-                    .expect("lowering voltage failed");
-            }
+            Self::send_init_work(self.clone(), work_registry.clone(), &mut tx_fifo).await;
+            self.lower_voltage().await.expect("lowering voltage failed");
             Self::work_tx_task(work_registry, mining_stats, tx_fifo, work_generator).await;
             shutdown.send("no more work from workhub");
         });
     }
 
     fn spawn_rx_task(
-        hash_chain: Arc<Mutex<Self>>,
+        self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         mining_stats: Arc<Mutex<stats::Mining>>,
         solution_sender: work::SolutionSender,
     ) {
         tokio::spawn(async move {
-            let rx_fifo = hash_chain
-                .lock()
-                .await
-                .work_rx_io
-                .take()
-                .expect("work-rx io missing");
+            let rx_fifo = self.take_work_rx_io().await;
+
             Self::solution_rx_task(work_registry, mining_stats, rx_fifo, solution_sender).await;
         });
     }
@@ -712,40 +725,63 @@ where
         });
     }
 
-    pub fn start(
-        self,
+    pub async fn start(
+        self: Arc<Self>,
         work_solver: work::Solver,
         mining_stats: Arc<Mutex<stats::Mining>>,
         shutdown: shutdown::Sender,
-    ) -> Arc<Mutex<Self>> {
+    ) {
+        // Determines how big the work registry has to be
         let work_registry = Arc::new(Mutex::new(registry::WorkRegistry::new(
             self.work_tx_io
+                .lock()
+                .await
                 .as_ref()
-                .expect("io missing")
+                .expect("work-tx io missing")
                 .work_id_count(),
         )));
         let command_context = self.command_context.clone();
-        let hash_chain = Arc::new(Mutex::new(self));
         let (work_generator, work_solution) = work_solver.split();
 
         Self::spawn_tx_task(
-            hash_chain.clone(),
+            self.clone(),
             work_registry.clone(),
             mining_stats.clone(),
             work_generator,
             shutdown.clone(),
         );
         Self::spawn_rx_task(
-            hash_chain.clone(),
+            self,
             work_registry.clone(),
             mining_stats.clone(),
             work_solution,
         );
         Self::spawn_hashrate_monitor_task(command_context.clone());
         Self::spawn_temperature_monitor_task(command_context.clone());
-
-        hash_chain
     }
+}
+
+impl<VBackend> fmt::Debug for HashChain<VBackend>
+where
+    VBackend: 'static + Send + Sync + Clone + power::Backend,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Hash Board {}", self.hashboard_idx)
+    }
+}
+
+impl<VBackend> fmt::Display for HashChain<VBackend>
+where
+    VBackend: 'static + Send + Sync + Clone + power::Backend,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Hash Board {}", self.hashboard_idx)
+    }
+}
+
+impl<VBackend> node::Info for HashChain<VBackend> where
+    VBackend: 'static + Send + Sync + Clone + power::Backend
+{
 }
 
 async fn start_miner(
@@ -788,7 +824,15 @@ async fn start_miner(
     }
     // spawn worker tasks for each hash chain and start mining
     for hash_chain in hash_chains.drain(..) {
-        hash_chain.start(work_solver.clone(), mining_stats.clone(), shutdown.clone());
+        let hash_chain = Arc::new(hash_chain);
+        let hash_chain_work_solver = work_solver.branch(hash_chain.clone());
+        hash_chain
+            .start(
+                hash_chain_work_solver,
+                mining_stats.clone(),
+                shutdown.clone(),
+            )
+            .await;
     }
 }
 
@@ -827,6 +871,7 @@ impl hal::BackendSolution for Solution {
     }
 }
 
+#[derive(Debug)]
 pub struct Backend {
     pll_frequency: usize,
     voltage: f32,
@@ -896,7 +941,7 @@ impl hal::Backend for Backend {
     }
 
     fn run(
-        &self,
+        self: Arc<Self>,
         work_solver: work::Solver,
         mining_stats: Arc<Mutex<stats::Mining>>,
         shutdown: shutdown::Sender,
@@ -912,6 +957,14 @@ impl hal::Backend for Backend {
         ));
     }
 }
+
+impl fmt::Display for Backend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Bitmain Antminer S9")
+    }
+}
+
+impl node::Info for Backend {}
 
 /// Helper method that calculates baud rate clock divisor value for the specified baud rate.
 ///

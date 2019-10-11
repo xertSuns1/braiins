@@ -21,6 +21,7 @@
 // contact us at opensource@braiins.com.
 
 use std::fmt::{Debug, Display};
+use std::sync::Arc;
 
 /// Generic trait for providing information about unique location of a "node" which is abstraction
 /// for all elements that somehow transforms or provides jobs/work.
@@ -29,3 +30,12 @@ use std::fmt::{Debug, Display};
 /// All nodes implementing this trait and stored in `work::Solution` internal list will be
 /// automatically updated whenever the solution is received in `job::SolutionReceiver`
 pub trait Info: Debug + Display + Send + Sync {}
+
+/// Shared node info type
+pub type DynInfo = Arc<dyn Info>;
+
+/// Unique path describing hierarchy of components
+pub type Path = Vec<DynInfo>;
+
+/// Shared unique path describing hierarchy of components
+pub type SharedPath = Arc<Path>;

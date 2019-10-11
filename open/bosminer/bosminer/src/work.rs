@@ -28,6 +28,7 @@ mod solver;
 
 use crate::hal;
 use crate::job;
+use crate::node;
 
 use ii_bitcoin::{HashTrait, MeetsTarget};
 
@@ -84,6 +85,8 @@ pub struct Midstate {
 /// Starting with merkle_root_tail the data goes to chunk2 of SHA256.
 #[derive(Clone, Debug)]
 pub struct Assignment {
+    /// Unique path describing internal hierarchy of backend solvers
+    pub path: node::Path,
     /// Bitcoin job shared with initial network protocol and work solution
     job: Arc<dyn job::Bitcoin>,
     /// Multiple midstates can be generated for each work
@@ -95,6 +98,7 @@ pub struct Assignment {
 impl Assignment {
     pub fn new(job: Arc<dyn job::Bitcoin>, midstates: Vec<Midstate>, ntime: u32) -> Self {
         Self {
+            path: vec![],
             job,
             midstates,
             ntime,

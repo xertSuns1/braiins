@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 use std::time::SystemTime;
 
 #[derive(Debug)]
-struct TestInfo;
+pub struct TestInfo;
 
 impl fmt::Display for TestInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -45,7 +45,7 @@ impl fmt::Display for TestInfo {
 impl node::Info for TestInfo {}
 
 impl job::Bitcoin for TestBlock {
-    fn origin(&self) -> Arc<dyn node::Info> {
+    fn origin(&self) -> node::DynInfo {
         Arc::new(TestInfo)
     }
 
@@ -284,13 +284,12 @@ pub fn create_test_work_receiver() -> work::EngineReceiver {
 }
 
 pub fn create_test_work_generator() -> work::Generator {
-    work::Generator::new(create_test_work_receiver())
+    work::Generator::new(create_test_work_receiver(), vec![Arc::new(TestInfo)])
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::job::Bitcoin;
 
     use futures::executor::block_on;
     use ii_async_compat::futures;

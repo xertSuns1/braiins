@@ -32,7 +32,6 @@ use std::time::Duration;
 use std::sync::Arc;
 
 use futures::channel::mpsc;
-use futures::lock::Mutex;
 use futures::stream::StreamExt;
 
 use ii_async_compat::tokio;
@@ -59,15 +58,10 @@ fn prepare_test_work(midstate_count: usize) -> work::Assignment {
 
 /// Task that receives solutions from hardware and sends them to channel
 async fn receiver_task(
-    hash_chain: Arc<Mutex<HashChain>>,
+    hash_chain: Arc<HashChain>,
     solution_sender: mpsc::UnboundedSender<Solution>,
 ) {
-    let mut rx_io = hash_chain
-        .lock()
-        .await
-        .work_rx_io
-        .take()
-        .expect("work-rx fifo missing");
+    let mut rx_io = hash_chain.take_work_rx_io().await;
 
     loop {
         let (rx_io_out, solution) = rx_io.recv_solution().await.expect("recv solution");
@@ -81,15 +75,10 @@ async fn receiver_task(
 
 /// Task that receives work from channel and sends it to HW
 async fn sender_task(
-    hash_chain: Arc<Mutex<HashChain>>,
+    hash_chain: Arc<HashChain>,
     mut work_receiver: mpsc::UnboundedReceiver<work::Assignment>,
 ) {
-    let mut tx_io = hash_chain
-        .lock()
-        .await
-        .work_tx_io
-        .take()
-        .expect("work-tx fifo missing");
+    let mut tx_io = hash_chain.take_work_tx_io().await;
     let mut work_registry = registry::WorkRegistry::new(tx_io.work_id_count());
 
     loop {
@@ -177,7 +166,7 @@ async fn test_work_generation() {
     let _solution_sender_guard = solution_sender.clone();
 
     // Start HW
-    let hash_chain = Arc::new(Mutex::new(start_hchain().await));
+    let hash_chain = Arc::new(start_hchain().await);
 
     // start HW receiver
     tokio::spawn(receiver_task(hash_chain.clone(), solution_sender));
@@ -192,7 +181,7 @@ async fn test_work_generation() {
     // submit 2 more work items, since we are intentionally being slow all chips should send a
     // solution for the submitted work
     let more_work_count = 2usize;
-    let chip_count = hash_chain.lock().await.get_chip_count();
+    let chip_count = hash_chain.get_chip_count();
     let expected_solution_count = more_work_count * chip_count;
 
     send_and_receive_test_workloads(
