@@ -39,3 +39,24 @@ pub mod test_utils;
 pub use entry::main;
 // reexport clap which is needed in `hal::Backend::add_args`
 pub use clap;
+
+use std::fmt;
+use std::sync::Arc;
+
+use lazy_static::lazy_static;
+
+#[derive(Debug)]
+pub struct Frontend;
+
+impl fmt::Display for Frontend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "bOSminer")
+    }
+}
+
+impl node::Info for Frontend {}
+
+lazy_static! {
+    /// Shared (global) configuration structure
+    pub static ref BOSMINER: Arc<Frontend> = Arc::new(Frontend);
+}

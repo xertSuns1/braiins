@@ -40,6 +40,7 @@ use tokio::sync::watch;
 
 use std::cell::Cell;
 use std::fmt::{self, Debug};
+use std::iter;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -218,6 +219,17 @@ impl Solution {
 
         // compute hash for this solution and compare it with target
         self.hash().meets(current_target)
+    }
+
+    /// Return the whole unique path starting from job origin and ending in backend. Between this
+    /// paths is inserted given middleware info. The middleware info usually represents the miner
+    /// software itself and is used for overall statistics.
+    pub fn path(&self, middleware_path: &node::Path) -> node::Path {
+        iter::once(&self.work.job.origin())
+            .chain(middleware_path.iter())
+            .chain(self.work.path.iter())
+            .cloned()
+            .collect()
     }
 }
 
