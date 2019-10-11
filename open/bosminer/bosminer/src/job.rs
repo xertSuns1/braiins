@@ -92,12 +92,13 @@ pub struct Solver {
 
 impl Solver {
     pub fn new(
+        frontend_info: node::DynInfo,
         engine_sender: work::EngineSender,
         solution_queue_rx: mpsc::UnboundedReceiver<work::Solution>,
     ) -> Self {
         Self {
             job_sender: Sender::new(engine_sender),
-            solution_receiver: SolutionReceiver::new(solution_queue_rx),
+            solution_receiver: SolutionReceiver::new(frontend_info, solution_queue_rx),
         }
     }
 
@@ -127,15 +128,22 @@ impl Sender {
     }
 }
 
-/// Receives `work::UniqueSolution` via a channel and filters only solutions that meet the
-/// pool specified target
+/// Receives `work::Solution` via a channel and filters only solutions that meet the client/pool
+/// specified target
 pub struct SolutionReceiver {
+    _frontend_path: node::SharedPath,
     solution_channel: mpsc::UnboundedReceiver<work::Solution>,
 }
 
 impl SolutionReceiver {
-    pub fn new(solution_channel: mpsc::UnboundedReceiver<work::Solution>) -> Self {
-        Self { solution_channel }
+    pub fn new(
+        frontend_info: node::DynInfo,
+        solution_channel: mpsc::UnboundedReceiver<work::Solution>,
+    ) -> Self {
+        Self {
+            _frontend_path: node::SharedPath::new(vec![frontend_info]),
+            solution_channel,
+        }
     }
 
     fn trace_share(solution: &work::Solution, target: &ii_bitcoin::Target) {

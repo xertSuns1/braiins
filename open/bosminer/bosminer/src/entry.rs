@@ -26,6 +26,7 @@ use crate::hub;
 use crate::runtime_config;
 use crate::shutdown;
 use crate::stats;
+use crate::BOSMINER;
 
 use futures::lock::Mutex;
 use ii_async_compat::futures;
@@ -75,7 +76,7 @@ pub async fn main<T: hal::Backend>(mut backend: T) {
 
     // create job and work solvers
     let backend = Arc::new(backend);
-    let (job_solver, work_solver) = hub::build_solvers(backend.clone());
+    let (job_solver, work_solver) = hub::build_solvers(BOSMINER.clone(), backend.clone());
     // create shutdown channel
     let (shutdown_sender, _shutdown_receiver) = shutdown::channel();
     // create mining stats

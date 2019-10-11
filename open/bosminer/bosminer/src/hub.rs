@@ -43,12 +43,15 @@ impl work::ExhaustedHandler for EventHandler {
 }
 
 /// Create Solvers for frontend (pool) and backend (HW accelerator)
-pub fn build_solvers(node: node::DynInfo) -> (job::Solver, work::Solver) {
+pub fn build_solvers(
+    frontend_info: node::DynInfo,
+    backend_info: node::DynInfo,
+) -> (job::Solver, work::Solver) {
     let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
     let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
     (
-        job::Solver::new(engine_sender, solution_queue_rx),
-        work::Solver::new(node, engine_receiver, solution_queue_tx),
+        job::Solver::new(frontend_info, engine_sender, solution_queue_rx),
+        work::Solver::new(backend_info, engine_receiver, solution_queue_tx),
     )
 }
 
@@ -58,15 +61,17 @@ pub mod test {
     use crate::test_utils::{self, TestBlockBuilder as _};
 
     use futures::executor::block_on;
+    use std::sync::Arc;
 
     /// This test verifies the whole lifecycle of a mining job, its transformation into work
     /// and also collection of the solution via solution receiver. No actual mining takes place
     /// in the test
     #[test]
     fn test_solvers_connection() {
-        use std::sync::Arc;
-
-        let (job_solver, work_solver) = build_solvers(Arc::new(test_utils::TestInfo));
+        let (job_solver, work_solver) = build_solvers(
+            Arc::new(test_utils::TestInfo),
+            Arc::new(test_utils::TestInfo),
+        );
 
         let (mut job_sender, mut solution_receiver) = job_solver.split();
         let (mut work_generator, solution_sender) = work_solver.split();
@@ -112,7 +117,12 @@ pub mod test {
     fn test_job_solver_target() {
         let (engine_sender, _) = work::engine_channel(work::IgnoreEvents);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
-        let (_, mut solution_receiver) = job::Solver::new(engine_sender, solution_queue_rx).split();
+        let (_, mut solution_receiver) = job::Solver::new(
+            Arc::new(test_utils::TestInfo),
+            engine_sender,
+            solution_queue_rx,
+        )
+        .split();
 
         // default target is set to block network difficulty so all solution should pass
         for block in test_utils::TEST_BLOCKS.iter() {
