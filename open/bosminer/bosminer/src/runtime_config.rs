@@ -20,8 +20,10 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-/// This module manages bosminer runtime configuration
-/// It will be refactored into something more flexible once we decide on how to manage the configuration.
+//! This module manages bosminer runtime configuration
+//! It will be refactored into something more flexible once we decide on how to manage the
+//! configuration.
+
 use crate::config;
 use lazy_static::lazy_static;
 use std::sync::Mutex;

@@ -20,6 +20,10 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+//! This module provides top level functionality to parse command line options and run the
+//! mining protocol client (= bosminer frontend) and connect it with provided hardware
+//! specific backend.
+
 use crate::client;
 use crate::hal;
 use crate::hub;
