@@ -45,6 +45,8 @@ ENV RUSTUP_HOME="/usr/local/rustup"
 
 RUN mkdir -p $RUSTUP_HOME
 RUN bash -c "curl --proto '=https' --tlsv1.2 -sSf 'https://sh.rustup.rs' | sh /dev/stdin -y"
+
+# note that svd2rust and form binaries are no longer needed and may be removed in future
 RUN rustup toolchain install nightly-2019-10-17-x86_64-unknown-linux-gnu && \
     rustup component add rustfmt && \
     rustup component add rustfmt --toolchain nightly-2019-10-17-x86_64-unknown-linux-gnu && \

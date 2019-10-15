@@ -21,33 +21,77 @@
 // contact us at opensource@braiins.com.
 
 use std::env;
+use std::error::Error;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+// source dir. will be removed and recreated with generated source files
 const SRC_DIR: &'static str = "src";
 
 pub fn run(input_path: String) -> std::io::Result<()> {
     let current_dir = env::current_dir()?;
-    let out_dir = env::var("OUT_DIR").unwrap();
 
+    // clear up existing src/
     if Path::new(SRC_DIR).is_dir() {
-        fs::remove_dir_all(SRC_DIR)?;
+        fs::remove_dir_all(SRC_DIR).map_err(|err| {
+            std::io::Error::new(
+                err.kind(),
+                format!("removing {}: {}", SRC_DIR, err.description()),
+            )
+        })?;
     }
-    fs::create_dir(SRC_DIR)?;
-    Command::new("svd2rust")
-        .args(&["--target", "none", "-i"])
-        .arg(Path::new(&current_dir).join(&input_path))
-        .current_dir(Path::new(&out_dir))
-        .status()?;
-    Command::new("form")
-        .args(&["-i", "lib.rs", "-o"])
-        .arg(Path::new(&current_dir).join(SRC_DIR))
-        .current_dir(Path::new(&out_dir))
-        .status()?;
-    Command::new("rustfmt")
-        .arg(Path::new(&current_dir).join("src").join("lib.rs"))
-        .status()?;
+
+    fs::create_dir(SRC_DIR).map_err(|err| {
+        std::io::Error::new(
+            err.kind(),
+            format!("recreating {}: {}", SRC_DIR, err.description()),
+        )
+    })?;
+
+    // create code as single line blob
+    let input = fs::read_to_string(&input_path).map_err(|err| {
+        std::io::Error::new(
+            err.kind(),
+            format!("reading {}: {}", input_path, err.description()),
+        )
+    })?;
+
+    // NOTE: svd2rust panics on most failures anyways
+    let out = svd2rust::generate(input.as_str(), svd2rust::Target::None, false).map_err(|err| {
+        std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("generating code from {}: {:?}", input_path, err),
+        )
+    })?;
+
+    // split code blob to files
+    form::create_directory_structure(Path::new(&current_dir).join(SRC_DIR), out.lib_rs).map_err(
+        |err| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("formating code in {}: {}", SRC_DIR, err),
+            )
+        },
+    )?;
+
+    // reformat
+    let out = Command::new("rustfmt")
+        .arg(Path::new(&current_dir).join(SRC_DIR).join("lib.rs"))
+        .status()
+        .map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("reformating files in {}: {}", SRC_DIR, err),
+            )
+        })?;
+
+    if !out.success() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "rustfmt failed",
+        ));
+    }
 
     // rebuild lib.rs only if fpga-io.xml is changed
     print!("cargo:rerun-if-changed={}", input_path);
