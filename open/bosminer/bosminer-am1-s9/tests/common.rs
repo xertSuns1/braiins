@@ -22,5 +22,5 @@
 
 #[test]
 fn block_mining() {
-    bosminer::test_utils::block_mining::run(bosminer_am1_s9::Backend);
+    bosminer::test_utils::block_mining::run(bosminer_am1_s9::Backend::new());
 }

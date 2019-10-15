@@ -801,7 +801,19 @@ impl hal::BackendSolution for Solution {
     }
 }
 
-pub struct Backend;
+pub struct Backend {
+    pll_frequency: usize,
+    voltage: f32,
+}
+
+impl Backend {
+    pub fn new() -> Self {
+        Self {
+            pll_frequency: config::DEFAULT_PLL_FREQUENCY,
+            voltage: config::DEFAULT_VOLTAGE,
+        }
+    }
+}
 
 impl hal::Backend for Backend {
     const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;
@@ -820,12 +832,40 @@ impl hal::Backend for Backend {
                 .help("Disable ASIC boost (use just one midstate)")
                 .required(false),
         )
+        .arg(
+            clap::Arg::with_name("pll-frequency")
+                .long("pll-frequency")
+                .help("Set chip frequency")
+                .required(false)
+                .takes_value(true),
+        )
+        .arg(
+            clap::Arg::with_name("voltage")
+                .long("voltage")
+                .help("Set chip voltage")
+                .required(false)
+                .takes_value(true),
+        )
     }
 
     fn init(&mut self, args: &clap::ArgMatches) {
         // Set just 1 midstate if user requested disabling asicboost
         if args.is_present("disable-asic-boost") {
             runtime_config::set_midstate_count(1);
+        }
+        if args.is_present("pll-frequency") {
+            self.pll_frequency = args
+                .value_of("pll-frequency")
+                .expect("argument missing")
+                .parse::<usize>()
+                .expect("parser failed");
+        }
+        if args.is_present("voltage") {
+            self.voltage = args
+                .value_of("voltage")
+                .expect("argument missing")
+                .parse::<f32>()
+                .expect("parser failed");
         }
     }
 
