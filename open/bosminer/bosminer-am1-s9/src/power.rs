@@ -86,6 +86,7 @@ const RD_TEMP_OFFSET_VALUE: u8 = 0x23;
 pub const EXPECTED_VOLTAGE_CTRL_VERSION: u8 = 0x03;
 
 /// Bundle voltage value with methods to convert it to/from various representations
+#[derive(Clone, Copy)]
 pub struct Voltage(f32);
 
 impl Voltage {
@@ -296,7 +297,7 @@ where
     }
 
     pub async fn set_voltage(&mut self, voltage: Voltage) -> error::Result<()> {
-        trace!("Setting voltage to {}", voltage.as_volts());
+        info!("Setting voltage to {}", voltage.as_volts());
         self.write(SET_VOLTAGE, &[voltage.as_pic_value()?])?;
         await!(sleep(Self::BMMINER_DELAY));
         Ok(())
