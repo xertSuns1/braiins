@@ -70,12 +70,6 @@ pub fn main<T: hal::Backend>(mut backend: T) {
                 .help("Specify user and worker name")
                 .required(true)
                 .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("disable-asic-boost")
-                .long("disable-asic-boost")
-                .help("Disable ASIC boost (use just one midstate)")
-                .required(false),
         );
 
     // Pass pre-build arguments to backend for further modification
@@ -85,12 +79,8 @@ pub fn main<T: hal::Backend>(mut backend: T) {
     let stratum_addr = args.value_of("pool").unwrap();
     let user = args.value_of("user").unwrap();
 
-    // Set just 1 midstate if user requested disabling asicboost
-    runtime_config::set_midstate_count(if args.is_present("disable-asic-boost") {
-        1
-    } else {
-        T::DEFAULT_MIDSTATE_COUNT
-    });
+    // Set default backend midstate count
+    runtime_config::set_midstate_count(T::DEFAULT_MIDSTATE_COUNT);
 
     // Allow backend to initialize itself with cli arguments
     backend.init(&args);
