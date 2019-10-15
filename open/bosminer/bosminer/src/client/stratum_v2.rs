@@ -138,6 +138,7 @@ struct StratumEventHandler {
     job_sender: job::Sender,
     all_jobs: HashMap<u32, NewMiningJob>,
     current_prevhash_msg: Option<SetNewPrevHash>,
+    /// Mining target for the next job that is to be solved
     current_target: ii_bitcoin::Target,
 }
 
@@ -152,6 +153,10 @@ impl StratumEventHandler {
             current_target: Default::default(),
         }
     }
+
+    /// Convert new mining job message into StratumJob and send it down the line for solving.
+    ///
+    /// * `job_msg` - job message used as a base for the StratumJob
     pub fn update_job(&mut self, job_msg: &NewMiningJob) {
         let job = StratumJob::new(
             self.descriptor.clone(),

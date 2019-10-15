@@ -20,6 +20,9 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+//! This module contains common functionality related to mining protocol client and allows
+//! executing a specific type of mining protocol client instance.
+
 pub mod stratum_v2;
 
 use crate::error;

@@ -24,7 +24,7 @@ use std::fmt::{Debug, Display};
 use std::sync::Arc;
 
 /// Generic trait for providing information about unique location of a "node" which is abstraction
-/// for all elements that somehow transforms or provides jobs/work.
+/// for all elements that somehow transform or provide jobs/work.
 /// Typical path of job/work is: client/pool -> backend -> chain -> chip -> core
 /// The `node::Info` also provides interface for accounting various statistics related to shares.
 /// All nodes implementing this trait and stored in `work::Solution` internal list will be

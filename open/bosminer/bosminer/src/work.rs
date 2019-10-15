@@ -221,9 +221,9 @@ impl Solution {
         self.hash().meets(current_target)
     }
 
-    /// Return the whole unique path starting from job origin and ending in backend. Between this
-    /// paths is inserted given middleware info. The middleware info usually represents the miner
-    /// software itself and is used for overall statistics.
+    /// Return the whole unique path starting from job origin and ending in backend.
+    /// A specified `middleware_path` info can be inserted between these 2 paths. The middleware
+    /// info usually represents the miner software itself and is used for overall statistics.
     pub fn path(&self, middleware_path: &node::Path) -> node::Path {
         iter::once(&self.work.job.origin())
             .chain(middleware_path.iter())
