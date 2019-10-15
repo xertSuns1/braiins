@@ -51,6 +51,12 @@ pub trait Backend: Send + Sync + 'static {
     /// solution
     fn start_mining_stats_task(mining_stats: Arc<Mutex<stats::Mining>>);
 
+    fn add_args<'a, 'b>(&self, app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
+        app
+    }
+
+    fn init(&mut self, _args: &clap::ArgMatches) {}
+
     fn run(
         &self,
         work_solver: work::Solver,

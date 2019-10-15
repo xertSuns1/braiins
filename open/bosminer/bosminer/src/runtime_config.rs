@@ -41,10 +41,14 @@ impl RunTimeConfig {
 
 lazy_static! {
     /// Shared (global) configuration structure
-    pub static ref CONFIG: Mutex<RunTimeConfig> = Mutex::new(RunTimeConfig::new());
+    static ref CONFIG: Mutex<RunTimeConfig> = Mutex::new(RunTimeConfig::new());
 }
 
-/// This function is only temporary, until we unify midstate_count passing across s9 backend
+/// These functions are only temporary, until we unify midstate_count passing
+pub fn set_midstate_count(value: usize) {
+    CONFIG.lock().expect("config lock").midstate_count = value;
+}
+
 pub fn get_midstate_count() -> usize {
     CONFIG.lock().expect("config lock").midstate_count
 }

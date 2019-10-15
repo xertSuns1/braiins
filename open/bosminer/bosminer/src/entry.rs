@@ -49,10 +49,10 @@ async fn main_task<T: hal::Backend>(backend: T, stratum_addr: String, user: Stri
     await!(stratum_v2::run(job_solver, stratum_addr, user));
 }
 
-pub fn main<T: hal::Backend>(backend: T) {
+pub fn main<T: hal::Backend>(mut backend: T) {
     let _log_guard = ii_logging::setup_for_app();
 
-    let args = clap::App::new("bosminer")
+    let app = clap::App::new("bosminer")
         .arg(
             Arg::with_name("pool")
                 .short("p")
@@ -76,22 +76,24 @@ pub fn main<T: hal::Backend>(backend: T) {
                 .long("disable-asic-boost")
                 .help("Disable ASIC boost (use just one midstate)")
                 .required(false),
-        )
-        .get_matches();
+        );
+
+    // Pass pre-build arguments to backend for further modification
+    let args = backend.add_args(app).get_matches();
 
     // Unwraps should be ok as long as the flags are required
     let stratum_addr = args.value_of("pool").unwrap();
     let user = args.value_of("user").unwrap();
 
     // Set just 1 midstate if user requested disabling asicboost
-    runtime_config::CONFIG
-        .lock()
-        .expect("config lock failed")
-        .midstate_count = if args.is_present("disable-asic-boost") {
+    runtime_config::set_midstate_count(if args.is_present("disable-asic-boost") {
         1
     } else {
         T::DEFAULT_MIDSTATE_COUNT
-    };
+    });
+
+    // Allow backend to initialize itself with cli arguments
+    backend.init(&args);
 
     ii_async_compat::run(main_task(
         backend,
