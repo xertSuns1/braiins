@@ -23,5 +23,5 @@
 #![feature(await_macro, async_await, duration_float)]
 
 fn main() {
-    bosminer::main(bosminer_am1_s9::Backend);
+    bosminer::main(bosminer_am1_s9::Backend::new());
 }

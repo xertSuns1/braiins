@@ -26,6 +26,12 @@ use std::time::Duration;
 /// Default number of midstates
 pub const DEFAULT_MIDSTATE_COUNT: usize = 4;
 
+/// Default PLL frequency for clocking the chips
+pub const DEFAULT_PLL_FREQUENCY: usize = 650_000_000;
+
+/// Default voltage
+pub const DEFAULT_VOLTAGE: f32 = 8.8;
+
 /// Index of hashboard that is to be instantiated
 pub const S9_HASHBOARD_INDEX: usize = 8;
 
