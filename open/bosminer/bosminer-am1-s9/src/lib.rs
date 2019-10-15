@@ -40,6 +40,7 @@ pub mod test;
 
 use ii_logging::macros::*;
 
+use bosminer::clap;
 use bosminer::hal;
 use bosminer::runtime_config;
 use bosminer::shutdown;
@@ -810,6 +811,22 @@ impl hal::Backend for Backend {
     fn start_mining_stats_task(mining_stats: Arc<Mutex<stats::Mining>>) {
         ii_async_compat::spawn(stats::hashrate_meter_task_hashchain(mining_stats));
         ii_async_compat::spawn(stats::hashrate_meter_task());
+    }
+
+    fn add_args<'a, 'b>(&self, app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
+        app.arg(
+            clap::Arg::with_name("disable-asic-boost")
+                .long("disable-asic-boost")
+                .help("Disable ASIC boost (use just one midstate)")
+                .required(false),
+        )
+    }
+
+    fn init(&mut self, args: &clap::ArgMatches) {
+        // Set just 1 midstate if user requested disabling asicboost
+        if args.is_present("disable-asic-boost") {
+            runtime_config::set_midstate_count(1);
+        }
     }
 
     fn run(
