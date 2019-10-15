@@ -38,3 +38,5 @@ pub mod test_utils;
 
 // reexport main function from `entry` module
 pub use entry::main;
+// reexport clap which is needed in `hal::Backend::add_args`
+pub use clap;
