@@ -145,6 +145,8 @@ async fn start_hchain() -> HashChain {
         config::S9_HASHBOARD_INDEX,
         crate::MidstateCount::new(1),
         1,
+        config::DEFAULT_PLL_FREQUENCY,
+        crate::OPEN_CORE_VOLTAGE,
     )
     .unwrap();
     await!(hash_chain.init()).expect("h_chain init failed");

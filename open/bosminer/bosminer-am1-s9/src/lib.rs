@@ -92,11 +92,8 @@ const FPGA_IPCORE_F_CLK_SPEED_HZ: usize = 50_000_000;
 /// Divisor of the base clock. The resulting clock is connected to UART
 const FPGA_IPCORE_F_CLK_BASE_BAUD_DIV: usize = 16;
 
-/// Default PLL frequency for clocking the chips
-const DEFAULT_S9_PLL_FREQUENCY: usize = 650_000_000;
-
 /// Default initial voltage
-const INITIAL_VOLTAGE: power::Voltage = power::Voltage::from_volts(9.4);
+const OPEN_CORE_VOLTAGE: power::Voltage = power::Voltage::from_volts(9.4);
 
 /// Address of chip with connected temp sensor
 const TEMP_CHIP: ChipAddress = ChipAddress::One(61);
@@ -178,6 +175,8 @@ pub struct HashChain<VBackend> {
     asic_difficulty: usize,
     /// PLL frequency
     pll_frequency: usize,
+    /// Run-time voltage
+    working_voltage: power::Voltage,
     /// Voltage controller on this hashboard
     voltage_ctrl: power::Control<VBackend>,
     /// Plug pin that indicates the hashboard is present
@@ -213,6 +212,8 @@ where
         hashboard_idx: usize,
         midstate_count: MidstateCount,
         asic_difficulty: usize,
+        pll_frequency: usize,
+        voltage: power::Voltage,
     ) -> error::Result<Self> {
         // Hashboard creation is aborted if the pin is not present
         let plug_pin = gpio_mgr
@@ -250,11 +251,12 @@ where
             rst_pin,
             hashboard_idx,
             last_heartbeat_sent: None,
-            pll_frequency: DEFAULT_S9_PLL_FREQUENCY,
             common_io,
             command_context: command::Context::new(command_io),
             work_rx_io: Some(work_rx_io),
             work_tx_io: Some(work_tx_io),
+            pll_frequency,
+            working_voltage: voltage,
         })
     }
     /// Calculate work_time for this instance of HChain
@@ -309,6 +311,11 @@ where
         Ok(())
     }
 
+    /// Lower voltage to working voltage (after opencore)
+    pub async fn lower_voltage(&mut self) -> error::Result<()> {
+        await!(self.voltage_ctrl.set_voltage(self.working_voltage))
+    }
+
     /// Initializes the complete hashboard including enumerating all chips
     pub async fn init(&mut self) -> error::Result<()> {
         info!("Initializing hash chain {}", self.hashboard_idx);
@@ -328,7 +335,7 @@ where
                 power::EXPECTED_VOLTAGE_CTRL_VERSION.to_string(),
             ))?
         }
-        await!(self.voltage_ctrl.set_voltage(INITIAL_VOLTAGE))?;
+        await!(self.voltage_ctrl.set_voltage(OPEN_CORE_VOLTAGE))?;
         self.voltage_ctrl.enable_voltage()?;
 
         // Voltage controller successfully initialized at this point, we should start sending
@@ -358,7 +365,7 @@ where
         await!(self.command_context.set_chip_count(self.chip_count));
 
         // calculate PLL for given frequency
-        let pll = bm1387::PllReg::try_pll_from_freq(CHIP_OSC_CLK_HZ, DEFAULT_S9_PLL_FREQUENCY)?;
+        let pll = bm1387::PllReg::try_pll_from_freq(CHIP_OSC_CLK_HZ, self.pll_frequency)?;
         // set PLL
         await!(self.set_pll(&pll))?;
 
@@ -656,6 +663,10 @@ where
                 work_registry.clone(),
                 &mut tx_fifo
             ));
+            {
+                let mut hash_chain = await!(hash_chain.lock());
+                await!(hash_chain.lower_voltage()).expect("lowering voltage failed");
+            }
             await!(Self::work_tx_task(
                 work_registry,
                 mining_stats,
@@ -740,6 +751,8 @@ async fn start_miner(
     mining_stats: Arc<Mutex<stats::Mining>>,
     shutdown: shutdown::Sender,
     midstate_count: usize,
+    pll_frequency: usize,
+    voltage: power::Voltage,
 ) {
     let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = power::I2cBackend::new(0);
@@ -757,6 +770,8 @@ async fn start_miner(
             *hashboard_idx,
             MidstateCount::new(midstate_count),
             config::ASIC_DIFFICULTY,
+            pll_frequency,
+            voltage,
         )
         .unwrap();
         hash_chains.push(hash_chain);
@@ -881,6 +896,8 @@ impl hal::Backend for Backend {
             mining_stats,
             shutdown,
             runtime_config::get_midstate_count(),
+            self.pll_frequency,
+            power::Voltage::from_volts(self.voltage),
         ));
     }
 }
