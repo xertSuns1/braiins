@@ -1,0 +1,8 @@
+[package]
+name = "ii-stats"
+version = "0.1.0"
+authors = ["Braiins <braiins@braiins.com>"]
+license = "GPL-3.0-or-later"
+edition = "2018"
+
+[dependencies]
