@@ -39,8 +39,8 @@ use ii_async_compat::{tokio, tokio_executor};
 use tokio_executor::threadpool::blocking;
 
 use futures::executor::block_on;
+use futures::future::poll_fn;
 use futures::lock::Mutex;
-use futures::task::Poll;
 use ii_async_compat::futures;
 
 use std::sync::Arc;
@@ -129,22 +129,26 @@ impl hal::Backend for Backend {
         mining_stats: Arc<Mutex<stats::Mining>>,
         shutdown: shutdown::Sender,
     ) {
-        // Spawn future in blocking context which guarantees that the task is run in a separate thread
-        tokio::spawn(async move {
-            let inner = move || {
-                if let Err(e) = main_task(work_solver, mining_stats, shutdown) {
-                    error!("{}", e);
-                }
-            };
+        // wrap `main_task` parameters to Option to overcome FnOnce closure inside FnMut
+        let mut args = Some((work_solver, mining_stats, shutdown));
 
-            // The `blocking()` call is evaluated here with a simple match
-            // rather than via `poll_fn()` because the inner closure
-            // is `FnOnce` and can't be attempted multiple times anyway.
-            match blocking(inner) {
-                Poll::Ready(Err(_)) | Poll::Pending => panic!(
-                    "Could not run main_task in a blocking context. Note: The Erupter backend requires a threadpool context."),
-                _ => {},
-            }
+        // spawn future in blocking context which guarantees that the task is run in separate thread
+        tokio::spawn(async move {
+            // Because `blocking` returns `Poll`, it is intended to be used from the context of
+            // a `Future` implementation. Since we don't have a complicated requirement, we can use
+            // `poll_fn` in this case.
+            let _ = poll_fn(move |_| {
+                blocking(|| {
+                    let (work_solver, mining_stats, shutdown) = args
+                        .take()
+                        .expect("`tokio_threadpool::blocking` called FnOnce more than once");
+                    if let Err(e) = main_task(work_solver, mining_stats, shutdown) {
+                        error!("{}", e);
+                    }
+                })
+                .map_err(|_| panic!("the threadpool shut down"))
+            })
+            .await;
         });
     }
 }
