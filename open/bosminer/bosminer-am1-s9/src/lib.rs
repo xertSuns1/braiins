@@ -670,21 +670,15 @@ where
                 .take()
                 .expect("work-tx io missing");
 
-            Self::send_init_work(
-                hash_chain.clone(),
-                work_registry.clone(),
-                &mut tx_fifo
-            ).await;
+            Self::send_init_work(hash_chain.clone(), work_registry.clone(), &mut tx_fifo).await;
             {
                 let mut hash_chain = hash_chain.lock().await;
-                hash_chain.lower_voltage().await.expect("lowering voltage failed");
+                hash_chain
+                    .lower_voltage()
+                    .await
+                    .expect("lowering voltage failed");
             }
-            Self::work_tx_task(
-                work_registry,
-                mining_stats,
-                tx_fifo,
-                work_generator,
-            ).await;
+            Self::work_tx_task(work_registry, mining_stats, tx_fifo, work_generator).await;
             shutdown.send("no more work from workhub");
         });
     }
