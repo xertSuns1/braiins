@@ -1454,10 +1454,10 @@ dependencies = [
 name = "uio-async"
 version = "0.1.0"
 dependencies = [
+ "ii-async-compat 0.2.0",
  "libc 0.2.64 (registry+https://github.com/rust-lang/crates.io-index)",
  "nix 0.14.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "timeout-readwrite 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio 0.2.0-alpha.6 (git+https://github.com/tokio-rs/tokio.git)",
 ]
 
 [[package]]

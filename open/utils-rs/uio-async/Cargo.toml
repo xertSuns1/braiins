@@ -9,7 +9,13 @@ license = "MIT"
 edition = "2018"
 
 [dependencies]
+ii-async-compat = { path = "../../utils-rs/async-compat" }
 nix = "0.14.1"
 libc = "0.2"
-tokio = { git = "https://github.com/tokio-rs/tokio.git" } # FIXME: waiting for release that comes after 0.2.0-alpha.6, see ii-wire for more info
 timeout-readwrite = "0.2.1"
+
+[features]
+
+default = []
+
+disable-irq_wait_async = []
