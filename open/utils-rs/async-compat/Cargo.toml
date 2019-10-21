@@ -21,4 +21,6 @@ edition = "2018"
 tokio = { git = "https://github.com/tokio-rs/tokio.git" }
 tokio-io = { git = "https://github.com/tokio-rs/tokio.git" }
 tokio-executor = { git = "https://github.com/tokio-rs/tokio.git" }
+tokio-codec = { git = "https://github.com/tokio-rs/tokio.git" }
+tokio-net = { git = "https://github.com/tokio-rs/tokio.git" }
 futures-preview = { version = "=0.3.0-alpha.19" }

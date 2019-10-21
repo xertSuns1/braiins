@@ -500,8 +500,10 @@ version = "0.2.0"
 dependencies = [
  "futures-preview 0.3.0-alpha.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.2.0-alpha.6 (git+https://github.com/tokio-rs/tokio.git)",
+ "tokio-codec 0.2.0-alpha.6 (git+https://github.com/tokio-rs/tokio.git)",
  "tokio-executor 0.2.0-alpha.6 (git+https://github.com/tokio-rs/tokio.git)",
  "tokio-io 0.2.0-alpha.6 (git+https://github.com/tokio-rs/tokio.git)",
+ "tokio-net 0.2.0-alpha.6 (git+https://github.com/tokio-rs/tokio.git)",
 ]
 
 [[package]]
