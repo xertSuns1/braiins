@@ -9,17 +9,14 @@
 //! suitable for asynchronous I/O.  See [`DelimCodec`](struct.DelimCodec.html)
 //! for a more comprehensive example of reading the lines of a file using
 //! `futures::Stream`.
-extern crate bytes;
-extern crate libc;
-extern crate mio;
-extern crate tokio_io;
-extern crate tokio_reactor;
 
-use std::cell::RefCell;
-use std::{fs, io};
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use bytes::{BufMut, BytesMut};
-use tokio_reactor::{Handle, PollEvented};
+use std::cell::RefCell;
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::{fs, io};
+
+use ii_async_compat::{tokio_codec, tokio_net};
+use tokio_net::{driver::Handle, util::PollEvented};
 
 unsafe fn dupe_file_from_fd(old_fd: RawFd) -> io::Result<fs::File> {
     let fd = libc::fcntl(old_fd, libc::F_DUPFD_CLOEXEC, 0);
@@ -59,7 +56,7 @@ pub fn raw_stderr() -> io::Result<fs::File> {
 /// impl AsRawFd + Write for File<StdoutLock>
 /// impl AsRawFd + Write for File<StderrLock>
 /// ```
-#[deprecated(since="0.5.0", note="Use raw_std{in,out,err}()")]
+#[deprecated(since = "0.5.0", note = "Use raw_std{in,out,err}()")]
 pub struct StdFile<F>(pub F);
 
 #[allow(deprecated)]
@@ -126,39 +123,6 @@ impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
 /// ```ignore
 /// impl Evented for File<std::fs::File>;
 /// impl Evented for File<impl AsRawFd>;
-/// ```
-///
-/// ## Example: read standard input line by line
-///
-/// ```
-/// extern crate futures;
-/// extern crate tokio;
-/// extern crate tokio_io;
-/// extern crate tokio_file_unix;
-///
-/// use futures::{Future, Stream};
-/// use tokio_io::codec::FramedRead;
-/// #
-/// # fn main() {
-/// # fn test() -> std::io::Result<()> {
-///
-/// // get the standard input as a file
-/// let stdin = tokio_file_unix::raw_stdin()?;
-/// let file = tokio_file_unix::File::new_nb(stdin)?;
-/// let reader = file.into_reader(&tokio::reactor::Handle::current())?;
-///
-/// // turn it into a stream of lines and process them
-/// let future = tokio::io::lines(reader).for_each(|line| {
-///     println!("Got: {}", line);
-///     Ok(())
-/// }).map_err(|e| panic!("{:?}", e));
-///
-/// // start the event loop
-/// tokio::run(future);
-///
-/// # Ok(())
-/// # }
-/// # }
 /// ```
 ///
 /// ## Example: unsafe creation from raw file descriptor
@@ -253,20 +217,6 @@ impl<F: AsRawFd> File<F> {
     }
 }
 
-impl<F: AsRawFd + io::Read> File<F> {
-    /// Converts into a pollable object that supports `tokio_io::AsyncRead`
-    /// and `std::io::BufRead`, making it suitable for `tokio_io::io::read_*`.
-    ///
-    /// ```ignore
-    /// fn into_reader(File<std::fs::File>, &Handle) -> Result<impl AsyncRead + BufRead>;
-    /// fn into_reader(File<impl AsRawFd + Read>, &Handle) -> Result<impl AsyncRead + BufRead>;
-    /// ```
-    pub fn into_reader(self, handle: &Handle)
-                       -> io::Result<io::BufReader<PollEvented<Self>>> {
-        Ok(io::BufReader::new(self.into_io(handle)?))
-    }
-}
-
 impl<F> File<F> {
     /// Raw constructor that **does not enable nonblocking mode** on the
     /// underlying file descriptor.  This constructor should only be used if
@@ -287,11 +237,14 @@ impl<F: AsRawFd> AsRawFd for File<F> {
 }
 
 impl<F: AsRawFd> mio::Evented for File<F> {
-    fn register(&self, poll: &mio::Poll, token: mio::Token,
-                interest: mio::Ready, opts: mio::PollOpt)
-                -> io::Result<()> {
-        match mio::unix::EventedFd(&self.as_raw_fd())
-                  .register(poll, token, interest, opts) {
+    fn register(
+        &self,
+        poll: &mio::Poll,
+        token: mio::Token,
+        interest: mio::Ready,
+        opts: mio::PollOpt,
+    ) -> io::Result<()> {
+        match mio::unix::EventedFd(&self.as_raw_fd()).register(poll, token, interest, opts) {
             // this is a workaround for regular files, which are not supported
             // by epoll; they would instead cause EPERM upon registration
             Err(ref e) if e.raw_os_error() == Some(libc::EPERM) => {
@@ -301,8 +254,7 @@ impl<F: AsRawFd> mio::Evented for File<F> {
                 // to set its readiness state
                 let (r, s) = mio::Registration::new2();
                 r.register(poll, token, interest, opts)?;
-                s.set_readiness(mio::Ready::readable() |
-                                     mio::Ready::writable())?;
+                s.set_readiness(mio::Ready::readable() | mio::Ready::writable())?;
                 *self.evented.borrow_mut() = Some(r);
                 Ok(())
             }
@@ -310,20 +262,24 @@ impl<F: AsRawFd> mio::Evented for File<F> {
         }
     }
 
-    fn reregister(&self, poll: &mio::Poll, token: mio::Token,
-                  interest: mio::Ready, opts: mio::PollOpt)
-                  -> io::Result<()> {
+    fn reregister(
+        &self,
+        poll: &mio::Poll,
+        token: mio::Token,
+        interest: mio::Ready,
+        opts: mio::PollOpt,
+    ) -> io::Result<()> {
         match &*self.evented.borrow() {
-            &None => mio::unix::EventedFd(&self.as_raw_fd())
-                             .reregister(poll, token, interest, opts),
+            &None => {
+                mio::unix::EventedFd(&self.as_raw_fd()).reregister(poll, token, interest, opts)
+            }
             &Some(ref r) => r.reregister(poll, token, interest, opts),
         }
     }
 
     fn deregister(&self, poll: &mio::Poll) -> io::Result<()> {
         match &*self.evented.borrow() {
-            &None => mio::unix::EventedFd(&self.as_raw_fd())
-                             .deregister(poll),
+            &None => mio::unix::EventedFd(&self.as_raw_fd()).deregister(poll),
             &Some(ref r) => mio::Evented::deregister(r, poll),
         }
     }
@@ -360,62 +316,22 @@ impl<F: io::Seek> io::Seek for File<F> {
 /// impl Codec for DelimCodec<Newline>;
 /// impl Codec for DelimCodec<impl Into<u8> + Clone>;
 /// ```
-///
-/// ## Example: read stdin line by line
-///
-/// ```
-/// extern crate futures;
-/// extern crate tokio;
-/// extern crate tokio_io;
-/// extern crate tokio_file_unix;
-///
-/// use futures::{Future, Stream};
-/// use tokio_io::codec::FramedRead;
-/// #
-/// # fn main() {
-/// # fn test() -> std::io::Result<()> {
-///
-/// // get the standard input as a file
-/// let stdin = tokio_file_unix::raw_stdin()?;
-/// let file = tokio_file_unix::File::new_nb(stdin)?;
-/// let io = file.into_io(&tokio::reactor::Handle::default())?;
-///
-/// // turn it into a stream of lines, decoded as UTF-8
-/// let codec = tokio_file_unix::DelimCodec(tokio_file_unix::Newline);
-/// let line_stream = FramedRead::new(io, codec).and_then(|line| {
-///     String::from_utf8(line).map_err(|_| {
-///         std::io::Error::from(std::io::ErrorKind::InvalidData)
-///     })
-/// });
-///
-/// // turn it into a stream of lines and process them
-/// let future = line_stream.for_each(|line| {
-///     println!("Got: {}", line);
-///     Ok(())
-/// }).map_err(|e| panic!("{:?}", e));
-///
-/// // start the event loop
-/// tokio::run(future);
-///
-/// # Ok(())
-/// # }
-/// # }
-/// ```
 #[derive(Debug, Clone, Copy)]
 pub struct DelimCodec<D>(pub D);
 
-impl<D: Into<u8> + Clone> tokio_io::codec::Decoder for DelimCodec<D> {
+impl<D: Into<u8> + Clone> tokio_codec::Decoder for DelimCodec<D> {
     type Item = Vec<u8>;
     type Error = io::Error;
 
-    fn decode(&mut self, buf: &mut BytesMut)
-              -> Result<Option<Self::Item>, Self::Error> {
-        Ok(buf.as_ref().iter().position(|b| *b == self.0.clone().into())
-           .map(|n| buf.split_to(n + 1).as_ref().to_vec()))
+    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        Ok(buf
+            .as_ref()
+            .iter()
+            .position(|b| *b == self.0.clone().into())
+            .map(|n| buf.split_to(n + 1).as_ref().to_vec()))
     }
 
-    fn decode_eof(&mut self, buf: &mut BytesMut)
-                  -> Result<Option<Self::Item>, Self::Error> {
+    fn decode_eof(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         let buf = buf.split_off(0);
         if buf.is_empty() {
             Ok(None)
@@ -425,12 +341,11 @@ impl<D: Into<u8> + Clone> tokio_io::codec::Decoder for DelimCodec<D> {
     }
 }
 
-impl<D: Into<u8> + Clone> tokio_io::codec::Encoder for DelimCodec<D> {
+impl<D: Into<u8> + Clone> tokio_codec::Encoder for DelimCodec<D> {
     type Item = Vec<u8>;
     type Error = io::Error;
 
-    fn encode(&mut self, msg: Self::Item, buf: &mut BytesMut)
-              -> Result<(), Self::Error> {
+    fn encode(&mut self, msg: Self::Item, buf: &mut BytesMut) -> Result<(), Self::Error> {
         buf.extend(msg);
         buf.put_u8(self.0.clone().into());
         Ok(())
@@ -461,7 +376,9 @@ mod tests {
 
     pub struct RefAsRawFd<T>(pub T);
     impl<'a, T: AsRawFd> AsRawFd for RefAsRawFd<&'a T> {
-        fn as_raw_fd(&self) -> RawFd { self.0.as_raw_fd() }
+        fn as_raw_fd(&self) -> RawFd {
+            self.0.as_raw_fd()
+        }
     }
 
     #[test]

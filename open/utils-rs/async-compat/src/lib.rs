@@ -23,8 +23,10 @@
 // Re-export futures and tokio
 pub use futures;
 pub use tokio;
+pub use tokio_codec;
 pub use tokio_executor;
 pub use tokio_io;
+pub use tokio_net;
 
 use std::panic::{self, PanicInfo};
 use std::process;
