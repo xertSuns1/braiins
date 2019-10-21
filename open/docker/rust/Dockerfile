@@ -45,11 +45,9 @@ ENV RUSTUP_HOME="/usr/local/rustup"
 
 RUN mkdir -p $RUSTUP_HOME
 RUN bash -c "curl --proto '=https' --tlsv1.2 -sSf 'https://sh.rustup.rs' | sh /dev/stdin -y"
-RUN rustup toolchain install nightly-2019-05-01-x86_64-unknown-linux-gnu && \
-    rustup toolchain install nightly-2019-05-10-x86_64-unknown-linux-gnu && \
+RUN rustup toolchain install nightly-2019-10-17-x86_64-unknown-linux-gnu && \
     rustup component add rustfmt && \
-    rustup component add rustfmt --toolchain nightly-2019-05-01-x86_64-unknown-linux-gnu && \
-    rustup component add rustfmt --toolchain nightly-2019-05-10-x86_64-unknown-linux-gnu && \
+    rustup component add rustfmt --toolchain nightly-2019-10-17-x86_64-unknown-linux-gnu && \
     cargo install svd2rust --version 0.16.1 && \
     cargo install form --version 0.7.0
 # update cargo index

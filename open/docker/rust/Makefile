@@ -26,7 +26,7 @@ DOCKER_SSH_AUTH_SOCK=/ssh_auth.sock
 # NOTE: $CI_REGISTRY_IMAGE need to be set to docker registry
 
 # increment tag here and in ci config to enforce gitlab runners to fetch new images
-TAG=5
+TAG=7
 
 # prepare image
 build:

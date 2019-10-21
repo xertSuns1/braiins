@@ -28,7 +28,7 @@
 
 # templates
 .base-rust: &base-rust
-    image: $CI_REGISTRY_IMAGE/rust:5
+    image: $CI_REGISTRY_IMAGE/rust:7
 
 stages:
     - format
@@ -39,7 +39,7 @@ format:
     <<: *base-rust
     stage: format
     script:
-        - ( cd open/bosminer && run4all cargo fmt --all -- --check )
+        - ( cd open/bosminer && run4all cargo fmt -- --check )
         - ( cd open/coins && run4all cargo fmt --all -- --check )
         - ( cd open/protocols && run4all cargo fmt --all -- --check )
         - ( cd open/stratum-proxy && run4all cargo fmt --all -- --check )
