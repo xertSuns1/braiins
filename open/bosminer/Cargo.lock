@@ -1326,6 +1326,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-file-unix"
+version = "0.5.1"
+dependencies = [
+ "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ii-async-compat 0.2.0",
+ "libc 0.2.64 (registry+https://github.com/rust-lang/crates.io-index)",
+ "mio 0.6.19 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "tokio-fs"
 version = "0.2.0-alpha.6"
 source = "git+https://github.com/tokio-rs/tokio.git#4c97e9dc285290b1586a3d216c9a25c9648d6d8e"
@@ -1460,6 +1470,7 @@ dependencies = [
  "libc 0.2.64 (registry+https://github.com/rust-lang/crates.io-index)",
  "nix 0.14.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "timeout-readwrite 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-file-unix 0.5.1",
 ]
 
 [[package]]
