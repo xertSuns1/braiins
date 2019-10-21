@@ -13,9 +13,4 @@ ii-async-compat = { path = "../../utils-rs/async-compat" }
 nix = "0.14.1"
 libc = "0.2"
 timeout-readwrite = "0.2.1"
-
-[features]
-
-default = []
-
-disable-irq_wait_async = []
+tokio-file-unix = { path = "../../utils-rs/tokio-file-unix" }

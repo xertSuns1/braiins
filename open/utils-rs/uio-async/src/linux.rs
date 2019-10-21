@@ -10,7 +10,9 @@ use std::ops;
 use std::os::unix::prelude::AsRawFd;
 use std::time::{Duration, Instant};
 
-use ii_async_compat::tokio;
+use ii_async_compat::{tokio, tokio_net};
+use tokio::io::AsyncReadExt;
+use tokio_net::driver::Handle;
 
 use libc;
 use nix::sys::mman::{MapFlags, ProtFlags};
@@ -345,22 +347,11 @@ impl UioDevice {
     }
 
     pub async fn irq_wait_async(&self) -> io::Result<u32> {
-        #[cfg(not(feature = "disable-irq_wait_async"))]
-        {
-            use tokio::fs::File as TokioFile;
-            use tokio::io::AsyncReadExt;
-
-            let file = self.devfile.try_clone()?;
-            let mut file = TokioFile::from_std(file);
-            let mut buf = [0u8; 4];
-            file.read_exact(&mut buf).await?;
-            Ok(u32::from_ne_bytes(buf))
-        }
-        #[cfg(feature = "disable-irq_wait_async")]
-        {
-            tokio::timer::delay_for(Duration::from_millis(1)).await;
-            Ok(0)
-        }
+        let file = tokio_file_unix::File::new_nb(self.devfile.try_clone()?)?;
+        let mut file = file.into_io(&Handle::default())?;
+        let mut buf = [0u8; 4];
+        file.read_exact(&mut buf).await?;
+        Ok(u32::from_ne_bytes(buf))
     }
 
     pub fn irq_wait_timeout(&self, timeout: Duration) -> io::Result<Option<u32>> {
