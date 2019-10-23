@@ -15,8 +15,9 @@ use std::cell::RefCell;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::{fs, io};
 
-use ii_async_compat::{tokio_codec, tokio_net};
+use ii_async_compat::{tokio_net, tokio_util};
 use tokio_net::{driver::Handle, util::PollEvented};
+use tokio_util::codec::{Decoder, Encoder};
 
 unsafe fn dupe_file_from_fd(old_fd: RawFd) -> io::Result<fs::File> {
     let fd = libc::fcntl(old_fd, libc::F_DUPFD_CLOEXEC, 0);
@@ -212,8 +213,8 @@ impl<F: AsRawFd> File<F> {
     /// fn into_io(File<impl AsRawFd + Read>, &Handle) -> Result<impl AsyncRead>;
     /// fn into_io(File<impl AsRawFd + Write>, &Handle) -> Result<impl AsyncWrite>;
     /// ```
-    pub fn into_io(self, handle: &Handle) -> io::Result<PollEvented<Self>> {
-        PollEvented::new_with_handle(self, handle)
+    pub fn into_io(self) -> io::Result<PollEvented<Self>> {
+        PollEvented::new(self)
     }
 }
 
@@ -319,7 +320,7 @@ impl<F: io::Seek> io::Seek for File<F> {
 #[derive(Debug, Clone, Copy)]
 pub struct DelimCodec<D>(pub D);
 
-impl<D: Into<u8> + Clone> tokio_codec::Decoder for DelimCodec<D> {
+impl<D: Into<u8> + Clone> Decoder for DelimCodec<D> {
     type Item = Vec<u8>;
     type Error = io::Error;
 
@@ -341,7 +342,7 @@ impl<D: Into<u8> + Clone> tokio_codec::Decoder for DelimCodec<D> {
     }
 }
 
-impl<D: Into<u8> + Clone> tokio_codec::Encoder for DelimCodec<D> {
+impl<D: Into<u8> + Clone> Encoder for DelimCodec<D> {
     type Item = Vec<u8>;
     type Error = io::Error;
 
