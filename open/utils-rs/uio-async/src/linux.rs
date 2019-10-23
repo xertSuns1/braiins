@@ -348,7 +348,7 @@ impl UioDevice {
 
     pub async fn irq_wait_async(&self) -> io::Result<u32> {
         let file = tokio_file_unix::File::new_nb(self.devfile.try_clone()?)?;
-        let mut file = file.into_io(&Handle::default())?;
+        let mut file = file.into_io()?;
         let mut buf = [0u8; 4];
         file.read_exact(&mut buf).await?;
         Ok(u32::from_ne_bytes(buf))
