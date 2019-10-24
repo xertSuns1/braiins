@@ -54,7 +54,7 @@ pub trait Backend: node::Info + Send + Sync + 'static {
 
     /// TODO: This function is to be removed once we replace the stats module with a more robust
     /// solution
-    fn start_mining_stats_task(mining_stats: Arc<Mutex<stats::Mining>>);
+    fn start_mining_stats_task(mining_stats: Arc<Mutex<stats::MiningObsolete>>);
 
     fn add_args<'a, 'b>(&self, app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
         app
@@ -65,7 +65,7 @@ pub trait Backend: node::Info + Send + Sync + 'static {
     fn run(
         self: Arc<Self>,
         work_solver: work::Solver,
-        mining_stats: Arc<Mutex<stats::Mining>>,
+        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
         shutdown: shutdown::Sender,
     );
 }

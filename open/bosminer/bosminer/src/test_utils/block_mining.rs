@@ -321,7 +321,7 @@ pub async fn run<T: hal::Backend>(backend: T) {
         build_solvers();
 
     // create mining stats
-    let mining_stats = Arc::new(Mutex::new(stats::Mining::new()));
+    let mining_stats = Arc::new(Mutex::new(stats::MiningObsolete::new()));
 
     // create problem registry
     let registry = Arc::new(Mutex::new(Registry::new()));
