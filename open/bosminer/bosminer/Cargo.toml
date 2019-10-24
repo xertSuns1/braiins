@@ -6,9 +6,11 @@ license = "GPL-3.0-or-later"
 edition = '2018'
 
 [dependencies]
+bosminer-macros = { path = "../bosminer-macros" }
 ii-async-compat = { path = "../../utils-rs/async-compat" }
 ii-bitcoin = { path = "../../coins/bitcoin" }
 ii-logging = { path = "../../utils-rs/logging" }
+ii-stats = { path = "../../utils-rs/stats" }
 ii-stratum = { path = "../../protocols/stratum" }
 ii-wire = { path = "../../protocols/wire" }
 failure = "0.1.5"

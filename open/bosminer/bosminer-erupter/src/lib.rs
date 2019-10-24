@@ -33,6 +33,7 @@ use bosminer::node;
 use bosminer::shutdown;
 use bosminer::stats;
 use bosminer::work;
+use bosminer_macros::MiningStats;
 
 use error::ErrorKind;
 
@@ -118,8 +119,19 @@ impl hal::BackendSolution for Solution {
     }
 }
 
-#[derive(Debug)]
-pub struct Backend;
+#[derive(Debug, MiningStats)]
+pub struct Backend {
+    #[member_mining_stats]
+    mining_stats: stats::Mining,
+}
+
+impl Backend {
+    pub fn new() -> Self {
+        Self {
+            mining_stats: Default::default(),
+        }
+    }
+}
 
 impl hal::Backend for Backend {
     const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;

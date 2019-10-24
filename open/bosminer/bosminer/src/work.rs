@@ -146,6 +146,11 @@ impl Solution {
         }
     }
 
+    #[inline]
+    pub fn timestamp(&self) -> time::Instant {
+        self.timestamp
+    }
+
     pub fn job<T: job::Bitcoin>(&self) -> &T {
         self.work
             .job

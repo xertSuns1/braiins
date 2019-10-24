@@ -45,6 +45,7 @@ use bosminer::runtime_config;
 use bosminer::shutdown;
 use bosminer::stats;
 use bosminer::work;
+use bosminer_macros::MiningStats;
 
 use std::fmt;
 use std::sync::Arc;
@@ -168,6 +169,7 @@ impl MidstateCount {
 /// - memory mapping of the FPGA control interface
 /// - mining work submission and solution processing
 pub struct HashChain<VBackend> {
+    mining_stats: stats::Mining,
     /// Number of chips that have been detected
     chip_count: usize,
     /// Eliminates the need to query the IP core about the current number of configured midstates
@@ -193,6 +195,15 @@ pub struct HashChain<VBackend> {
     pub common_io: io::Common,
     work_rx_io: Mutex<Option<io::WorkRx>>,
     work_tx_io: Mutex<Option<io::WorkTx>>,
+}
+
+impl<VBackend> node::Stats for HashChain<VBackend>
+where
+    VBackend: Send + Sync,
+{
+    fn mining_stats(&self) -> &stats::Mining {
+        &self.mining_stats
+    }
 }
 
 impl<VBackend> HashChain<VBackend>
@@ -243,6 +254,7 @@ where
         let (common_io, command_io, work_rx_io, work_tx_io) = core.init_and_split()?;
 
         Ok(Self {
+            mining_stats: Default::default(),
             chip_count: 0,
             midstate_count,
             asic_difficulty,
@@ -871,8 +883,10 @@ impl hal::BackendSolution for Solution {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, MiningStats)]
 pub struct Backend {
+    #[member_mining_stats]
+    mining_stats: stats::Mining,
     pll_frequency: usize,
     voltage: f32,
 }
@@ -880,6 +894,7 @@ pub struct Backend {
 impl Backend {
     pub fn new() -> Self {
         Self {
+            mining_stats: Default::default(),
             pll_frequency: config::DEFAULT_PLL_FREQUENCY,
             voltage: config::DEFAULT_VOLTAGE,
         }

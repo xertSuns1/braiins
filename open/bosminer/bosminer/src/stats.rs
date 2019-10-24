@@ -22,15 +22,137 @@
 
 use ii_logging::macros::*;
 
-use ii_async_compat::tokio;
-use tokio::timer::delay_for;
+use crate::node;
 
-use futures::lock::Mutex;
-use ii_async_compat::futures;
+use ii_stats::WindowedTimeMean;
+
+use futures::lock::{Mutex, MutexGuard};
+use ii_async_compat::{futures, tokio};
+use tokio::timer::delay_for;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time;
+
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref DEFAULT_TIME_MEAN_INTERVALS: Vec<time::Duration> = vec![
+        time::Duration::from_secs(5),
+        time::Duration::from_secs(1 * 60),
+        time::Duration::from_secs(5 * 60),
+        time::Duration::from_secs(15 * 60),
+        time::Duration::from_secs(24 * 60 * 60),
+    ];
+}
+
+struct MeterInner {
+    /// All shares measured from the beginning of mining
+    shares: ii_bitcoin::Shares,
+    /// Approximate arithmetic mean of hashes within given time intervals (in kH/time)
+    time_means: Vec<WindowedTimeMean>,
+}
+
+#[derive(Debug)]
+pub struct Meter {
+    inner: Mutex<MeterInner>,
+}
+
+impl Meter {
+    pub fn new(intervals: &Vec<time::Duration>) -> Self {
+        Self {
+            inner: Mutex::new(MeterInner {
+                shares: Default::default(),
+                time_means: intervals
+                    .iter()
+                    .map(|&interval| WindowedTimeMean::new(interval))
+                    .collect(),
+            }),
+        }
+    }
+
+    pub async fn shares(&self) -> SharesGuard<'_> {
+        SharesGuard(self.inner.lock().await)
+    }
+
+    pub async fn time_means(&self) -> TimeMeansGuard<'_> {
+        TimeMeansGuard(self.inner.lock().await)
+    }
+
+    pub(crate) async fn account_solution(&self, target: &ii_bitcoin::Target, time: time::Instant) {
+        let mut meter = self.inner.lock().await;
+        let kilo_hashes = ii_bitcoin::Shares::new(target).into_kilo_hashes();
+
+        meter.shares.account_solution(target);
+        for time_mean in &mut meter.time_means {
+            time_mean.insert(kilo_hashes, time);
+        }
+    }
+}
+
+impl Default for Meter {
+    fn default() -> Self {
+        Self::new(DEFAULT_TIME_MEAN_INTERVALS.as_ref())
+    }
+}
+
+pub struct SharesGuard<'a>(MutexGuard<'a, MeterInner>);
+
+impl<'a> std::ops::Deref for SharesGuard<'a> {
+    type Target = ii_bitcoin::Shares;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0.shares
+    }
+}
+
+pub struct TimeMeansGuard<'a>(MutexGuard<'a, MeterInner>);
+
+impl<'a> std::ops::Deref for TimeMeansGuard<'a> {
+    type Target = Vec<WindowedTimeMean>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0.time_means
+    }
+}
+
+#[derive(Debug)]
+pub struct Mining {
+    pub start_time: time::Instant,
+    pub accepted: Meter,
+    pub rejected: Meter,
+    pub backend_error: Meter,
+}
+
+impl Mining {
+    pub fn new(start_time: time::Instant, intervals: &Vec<time::Duration>) -> Self {
+        Self {
+            start_time,
+            accepted: Meter::new(&intervals),
+            rejected: Meter::new(&intervals),
+            backend_error: Meter::new(&intervals),
+        }
+    }
+}
+
+impl Default for Mining {
+    fn default() -> Self {
+        Self::new(time::Instant::now(), DEFAULT_TIME_MEAN_INTERVALS.as_ref())
+    }
+}
+
+pub(crate) async fn account_accepted(
+    path: &node::Path,
+    solution_target: &ii_bitcoin::Target,
+    time: time::Instant,
+) {
+    for node in path {
+        node.mining_stats()
+            .accepted
+            .account_solution(solution_target, time)
+            .await;
+    }
+}
 
 /// Holds all error statistics
 #[derive(Clone, PartialEq, Eq, Default)]
@@ -79,10 +201,10 @@ fn shares_to_giga_hashes(shares: u128) -> f64 {
 }
 
 pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<MiningObsolete>>) {
-    let mut last_stat_time = Instant::now();
+    let mut last_stat_time = time::Instant::now();
     let mut old_error_stats = Default::default();
     loop {
-        delay_for(Duration::from_secs(1)).await;
+        delay_for(time::Duration::from_secs(1)).await;
 
         let mut stats = mining_stats.lock().await;
         let solved_shares = stats.unique_solutions_shares;
@@ -125,7 +247,7 @@ pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<MiningObsolet
             old_error_stats = error_stats;
         }
 
-        last_stat_time = Instant::now();
+        last_stat_time = time::Instant::now();
     }
 }
 
@@ -137,11 +259,11 @@ pub fn account_solution(target: &ii_bitcoin::Target) {
 }
 
 pub async fn hashrate_meter_task() {
-    let hashing_started = Instant::now();
+    let hashing_started = time::Instant::now();
     let mut total_shares: u128 = 0;
 
     loop {
-        delay_for(Duration::from_secs(1)).await;
+        delay_for(time::Duration::from_secs(1)).await;
 
         total_shares += SUBMITTED_SHARE_COUNTER.swap(0, Ordering::SeqCst) as u128;
         let total_hashing_time = hashing_started.elapsed();

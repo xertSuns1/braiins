@@ -9,6 +9,7 @@ edition = "2018"
 
 [dependencies]
 bosminer = { path = "../bosminer" }
+bosminer-macros = { path = "../bosminer-macros" }
 ii-async-compat = { path = "../../utils-rs/async-compat" }
 ii-bitcoin = { path = "../../coins/bitcoin" }
 ii-logging = { path = "../../utils-rs/logging" }

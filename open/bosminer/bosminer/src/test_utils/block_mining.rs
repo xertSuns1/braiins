@@ -280,7 +280,7 @@ fn build_solvers() -> (
         reschedule_receiver,
         // This is a solver that you hand off to backend
         work::Solver::new(
-            Arc::new(test_utils::TestInfo),
+            Arc::new(test_utils::TestInfo::new()),
             engine_receiver,
             solution_queue_tx,
         ),

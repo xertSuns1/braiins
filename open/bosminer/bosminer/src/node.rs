@@ -20,6 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use crate::stats;
+
 use std::fmt::{Debug, Display};
 use std::sync::Arc;
 
@@ -29,7 +31,12 @@ use std::sync::Arc;
 /// The `node::Info` also provides interface for accounting various statistics related to shares.
 /// All nodes implementing this trait and stored in `work::Solution` internal list will be
 /// automatically updated whenever the solution is received in `job::SolutionReceiver`
-pub trait Info: Debug + Display + Send + Sync {}
+pub trait Info: Debug + Display + Stats {}
+
+pub trait Stats: Send + Sync {
+    /// Return object with all statistics for current node.
+    fn mining_stats(&self) -> &stats::Mining;
+}
 
 /// Shared node info type
 pub type DynInfo = Arc<dyn Info>;

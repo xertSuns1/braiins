@@ -28,7 +28,7 @@ fn block_mining() {
 
     #[tokio::main(threadpool)]
     async fn inner() {
-        bosminer::test_utils::block_mining::run(bosminer_erupter::Backend).await;
+        bosminer::test_utils::block_mining::run(bosminer_erupter::Backend::new()).await;
     }
 
     inner();
