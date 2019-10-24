@@ -558,7 +558,7 @@ where
     /// It exits when generator returns `None`.
     async fn work_tx_task(
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        mining_stats: Arc<Mutex<stats::Mining>>,
+        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
         mut tx_fifo: io::WorkTx,
         mut work_generator: work::Generator,
     ) {
@@ -588,7 +588,7 @@ where
     /// TODO: figure out when and how to stop this task
     async fn solution_rx_task(
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        mining_stats: Arc<Mutex<stats::Mining>>,
+        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
         mut rx_fifo: io::WorkRx,
         solution_sender: work::SolutionSender,
     ) {
@@ -686,7 +686,7 @@ where
     fn spawn_tx_task(
         self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        mining_stats: Arc<Mutex<stats::Mining>>,
+        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
         work_generator: work::Generator,
         shutdown: shutdown::Sender,
     ) {
@@ -703,7 +703,7 @@ where
     fn spawn_rx_task(
         self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        mining_stats: Arc<Mutex<stats::Mining>>,
+        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
         solution_sender: work::SolutionSender,
     ) {
         tokio::spawn(async move {
@@ -728,7 +728,7 @@ where
     pub async fn start(
         self: Arc<Self>,
         work_solver: work::Solver,
-        mining_stats: Arc<Mutex<stats::Mining>>,
+        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
         shutdown: shutdown::Sender,
     ) {
         // Determines how big the work registry has to be
@@ -787,7 +787,7 @@ impl<VBackend> node::Info for HashChain<VBackend> where
 async fn start_miner(
     enabled_chains: Vec<usize>,
     work_solver: work::Solver,
-    mining_stats: Arc<Mutex<stats::Mining>>,
+    mining_stats: Arc<Mutex<stats::MiningObsolete>>,
     shutdown: shutdown::Sender,
     midstate_count: usize,
     pll_frequency: usize,
@@ -891,7 +891,7 @@ impl hal::Backend for Backend {
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
     /// Starts statistics tasks specific for S9
-    fn start_mining_stats_task(mining_stats: Arc<Mutex<stats::Mining>>) {
+    fn start_mining_stats_task(mining_stats: Arc<Mutex<stats::MiningObsolete>>) {
         tokio::spawn(stats::hashrate_meter_task_hashchain(mining_stats));
         tokio::spawn(stats::hashrate_meter_task());
     }
@@ -943,7 +943,7 @@ impl hal::Backend for Backend {
     fn run(
         self: Arc<Self>,
         work_solver: work::Solver,
-        mining_stats: Arc<Mutex<stats::Mining>>,
+        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
         shutdown: shutdown::Sender,
     ) {
         tokio::spawn(start_miner(

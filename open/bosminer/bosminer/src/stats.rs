@@ -50,7 +50,7 @@ pub struct MiningError {
 
 /// Holds all hardware-related statistics for a hashchain
 #[derive(Clone, PartialEq, Eq, Default)]
-pub struct Mining {
+pub struct MiningObsolete {
     /// Number of work items generated for the hardware
     pub work_generated: usize,
     /// Counter of unique solutions
@@ -61,7 +61,7 @@ pub struct Mining {
     pub error_stats: MiningError,
 }
 
-impl Mining {
+impl MiningObsolete {
     pub fn new() -> Self {
         Self {
             ..Default::default()
@@ -78,7 +78,7 @@ fn shares_to_giga_hashes(shares: u128) -> f64 {
     (shares << 32) as f64 * 1e-9
 }
 
-pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<Mining>>) {
+pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<MiningObsolete>>) {
     let mut last_stat_time = Instant::now();
     let mut old_error_stats = Default::default();
     loop {

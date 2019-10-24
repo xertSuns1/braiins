@@ -84,7 +84,7 @@ pub async fn main<T: hal::Backend>(mut backend: T) {
     // create shutdown channel
     let (shutdown_sender, _shutdown_receiver) = shutdown::channel();
     // create mining stats
-    let mining_stats = Arc::new(Mutex::new(stats::Mining::new()));
+    let mining_stats = Arc::new(Mutex::new(stats::MiningObsolete::new()));
 
     // start HW backend for selected target
     backend.run(work_solver, mining_stats.clone(), shutdown_sender);

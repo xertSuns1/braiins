@@ -49,7 +49,7 @@ use std::time::Duration;
 
 fn main_task(
     work_solver: work::Solver,
-    mining_stats: Arc<Mutex<stats::Mining>>,
+    mining_stats: Arc<Mutex<stats::MiningObsolete>>,
     _shutdown: shutdown::Sender,
 ) -> bosminer::error::Result<()> {
     info!("Block Erupter: finding device in USB...");
@@ -126,14 +126,14 @@ impl hal::Backend for Backend {
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
     /// Starts statistics tasks specific for block erupter
-    fn start_mining_stats_task(_mining_stats: Arc<Mutex<stats::Mining>>) {
+    fn start_mining_stats_task(_mining_stats: Arc<Mutex<stats::MiningObsolete>>) {
         tokio::spawn(stats::hashrate_meter_task());
     }
 
     fn run(
         self: Arc<Self>,
         work_solver: work::Solver,
-        mining_stats: Arc<Mutex<stats::Mining>>,
+        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
         shutdown: shutdown::Sender,
     ) {
         // Spawn the future in a separate blocking pool (for blocking operations)
