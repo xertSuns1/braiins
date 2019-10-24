@@ -38,5 +38,8 @@ pub const S9_HASHBOARD_INDEX: usize = 8;
 /// Default ASIC difficulty
 pub const ASIC_DIFFICULTY: usize = 256;
 
+/// Default hashrate interval used for statistics in seconds
+pub const DEFAULT_HASHRATE_INTERVAL: Duration = Duration::from_secs(60);
+
 /// Maximum time it takes to compute one job under normal circumstances
 pub const JOB_TIMEOUT: Duration = Duration::from_secs(5);
