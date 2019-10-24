@@ -24,7 +24,9 @@ use ii_bitcoin::HashTrait;
 
 use bosminer::job::{self, Bitcoin};
 use bosminer::node;
+use bosminer::stats;
 use bosminer::work;
+use bosminer_macros::MiningStats;
 
 use std::fmt;
 use std::sync::Arc;
@@ -56,8 +58,19 @@ impl NullJob {
     }
 }
 
-#[derive(Debug)]
-struct NullJobInfo;
+#[derive(Debug, MiningStats)]
+struct NullJobInfo {
+    #[member_mining_stats]
+    mining_stats: stats::Mining,
+}
+
+impl NullJobInfo {
+    pub fn new() -> Self {
+        Self {
+            mining_stats: Default::default(),
+        }
+    }
+}
 
 impl fmt::Display for NullJobInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -69,7 +82,7 @@ impl node::Info for NullJobInfo {}
 
 impl job::Bitcoin for NullJob {
     fn origin(&self) -> node::DynInfo {
-        Arc::new(NullJobInfo)
+        Arc::new(NullJobInfo::new())
     }
 
     fn version(&self) -> u32 {

@@ -28,6 +28,9 @@ pub mod stratum_v2;
 use crate::error;
 use crate::job;
 use crate::node;
+use crate::stats;
+
+use bosminer_macros::MiningStats;
 
 use std::fmt;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -50,8 +53,10 @@ impl fmt::Display for Protocol {
 
 /// Contains basic information about client used for obtaining jobs for solving.
 /// It is also used for statistics measurement.
-#[derive(Debug)]
+#[derive(Debug, MiningStats)]
 pub struct Descriptor {
+    #[member_mining_stats]
+    mining_stats: stats::Mining,
     pub url: String,
     pub user: String,
     pub protocol: Protocol,
@@ -77,6 +82,7 @@ pub fn parse(url: String, user: String) -> error::Result<Descriptor> {
         .ok_or("Cannot resolve any IP address")?;
 
     Ok(Descriptor {
+        mining_stats: Default::default(),
         url,
         user,
         protocol: Protocol::StratumV2,

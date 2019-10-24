@@ -154,6 +154,7 @@ dependencies = [
 name = "bosminer"
 version = "0.1.0"
 dependencies = [
+ "bosminer-macros 0.1.0",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "downcast-rs 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -161,6 +162,7 @@ dependencies = [
  "ii-async-compat 0.2.0",
  "ii-bitcoin 0.1.0",
  "ii-logging 0.1.0",
+ "ii-stats 0.1.0",
  "ii-stratum 0.1.0",
  "ii-wire 0.1.0",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -172,6 +174,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait 0.1.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "bosminer 0.1.0",
+ "bosminer-macros 0.1.0",
  "chrono 0.4.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "embedded-hal 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -193,6 +196,7 @@ name = "bosminer-erupter"
 version = "0.1.0"
 dependencies = [
  "bosminer 0.1.0",
+ "bosminer-macros 0.1.0",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "ii-async-compat 0.2.0",
  "ii-bitcoin 0.1.0",
@@ -201,6 +205,15 @@ dependencies = [
  "libusb 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "packed_struct 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "packed_struct_codegen 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "bosminer-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -609,6 +622,10 @@ dependencies = [
  "slog-envlogger 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog-term 2.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "ii-stats"
+version = "0.1.0"
 
 [[package]]
 name = "ii-stratum"

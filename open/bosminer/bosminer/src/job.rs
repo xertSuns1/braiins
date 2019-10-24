@@ -131,7 +131,7 @@ impl Sender {
 /// Receives `work::Solution` via a channel and filters only solutions that meet the client/pool
 /// specified target
 pub struct SolutionReceiver {
-    _frontend_path: node::SharedPath,
+    frontend_path: node::SharedPath,
     solution_channel: mpsc::UnboundedReceiver<work::Solution>,
 }
 
@@ -141,7 +141,7 @@ impl SolutionReceiver {
         solution_channel: mpsc::UnboundedReceiver<work::Solution>,
     ) -> Self {
         Self {
-            _frontend_path: node::SharedPath::new(vec![frontend_info]),
+            frontend_path: node::SharedPath::new(vec![frontend_info]),
             solution_channel,
         }
     }
@@ -158,8 +158,11 @@ impl SolutionReceiver {
 
     pub async fn receive(&mut self) -> Option<work::Solution> {
         while let Some(solution) = self.solution_channel.next().await {
+            let path = solution.path(&self.frontend_path);
             let current_target = solution.job_target();
+            let timestamp = solution.timestamp();
             if solution.is_valid(&current_target) {
+                stats::account_accepted(&path, &current_target, timestamp).await;
                 stats::account_solution(&current_target);
                 info!("----- Found share within current job's difficulty (diff={}) target range -----",
                       current_target.get_difficulty());

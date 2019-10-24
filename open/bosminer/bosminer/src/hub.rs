@@ -69,8 +69,8 @@ pub mod test {
     #[test]
     fn test_solvers_connection() {
         let (job_solver, work_solver) = build_solvers(
-            Arc::new(test_utils::TestInfo),
-            Arc::new(test_utils::TestInfo),
+            Arc::new(test_utils::TestInfo::new()),
+            Arc::new(test_utils::TestInfo::new()),
         );
 
         let (mut job_sender, mut solution_receiver) = job_solver.split();
@@ -118,7 +118,7 @@ pub mod test {
         let (engine_sender, _) = work::engine_channel(work::IgnoreEvents);
         let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
         let (_, mut solution_receiver) = job::Solver::new(
-            Arc::new(test_utils::TestInfo),
+            Arc::new(test_utils::TestInfo::new()),
             engine_sender,
             solution_queue_rx,
         )

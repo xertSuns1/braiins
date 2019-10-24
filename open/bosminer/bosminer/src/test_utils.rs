@@ -25,15 +25,29 @@ pub mod block_mining;
 use crate::hal;
 use crate::job::{self, Bitcoin as _};
 use crate::node;
+use crate::stats;
 use crate::work;
 
 pub use ii_bitcoin::{TestBlock, TEST_BLOCKS};
 
+use bosminer_macros::MiningStats;
+
 use std::fmt;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 
-#[derive(Debug)]
-pub struct TestInfo;
+#[derive(Debug, MiningStats)]
+pub struct TestInfo {
+    #[member_mining_stats]
+    mining_stats: stats::Mining,
+}
+
+impl TestInfo {
+    pub fn new() -> Self {
+        Self {
+            mining_stats: Default::default(),
+        }
+    }
+}
 
 impl fmt::Display for TestInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -45,7 +59,7 @@ impl node::Info for TestInfo {}
 
 impl job::Bitcoin for TestBlock {
     fn origin(&self) -> node::DynInfo {
-        Arc::new(TestInfo)
+        Arc::new(TestInfo::new())
     }
 
     fn version(&self) -> u32 {
@@ -279,7 +293,7 @@ pub fn create_test_work_receiver() -> work::EngineReceiver {
 }
 
 pub fn create_test_work_generator() -> work::Generator {
-    work::Generator::new(create_test_work_receiver(), vec![Arc::new(TestInfo)])
+    work::Generator::new(create_test_work_receiver(), vec![Arc::new(TestInfo::new())])
 }
 
 #[cfg(test)]
