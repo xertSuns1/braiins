@@ -42,7 +42,7 @@ use std::cell::Cell;
 use std::fmt::{self, Debug};
 use std::iter;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time;
 
 pub enum LoopState<T> {
     /// Mining work is exhausted
@@ -123,7 +123,7 @@ impl Assignment {
 #[derive(Clone)]
 pub struct Solution {
     /// Time stamp when it has been fetched from the solution FIFO
-    timestamp: SystemTime,
+    timestamp: time::Instant,
     /// Original mining work associated with this solution
     work: Assignment,
     /// Solution of the PoW puzzle
@@ -136,10 +136,10 @@ impl Solution {
     pub fn new(
         work: Assignment,
         solution: impl hal::BackendSolution + 'static,
-        timestamp: Option<SystemTime>,
+        timestamp: Option<time::Instant>,
     ) -> Self {
         Self {
-            timestamp: timestamp.unwrap_or_else(|| SystemTime::now()),
+            timestamp: timestamp.unwrap_or_else(|| time::Instant::now()),
             work,
             solution: Arc::new(solution),
             hash: Cell::new(None),

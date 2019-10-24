@@ -34,7 +34,7 @@ use failure::{Fail, ResultExt};
 use std::cell::RefCell;
 use std::convert::TryInto;
 use std::mem::size_of;
-use std::time::{Duration, SystemTime};
+use std::time::{self, Duration};
 
 use futures::executor::block_on;
 use ii_async_compat::futures;
@@ -195,7 +195,7 @@ impl<'a> BlockErupter<'a> {
 pub struct BlockErupterSolver<'a> {
     device: BlockErupter<'a>,
     work_generator: work::Generator,
-    work_start: SystemTime,
+    work_start: time::Instant,
     curr_work: Option<work::Assignment>,
     next_solution: Option<work::Solution>,
     solution_idx: usize,
@@ -207,7 +207,7 @@ impl<'a> BlockErupterSolver<'a> {
         Self {
             device,
             work_generator,
-            work_start: SystemTime::UNIX_EPOCH,
+            work_start: time::Instant::now(),
             curr_work: None,
             next_solution: None,
             solution_idx: 0,
@@ -228,24 +228,14 @@ impl<'a> BlockErupterSolver<'a> {
             work.ntime,
             work.bits(),
         );
-        self.work_start = SystemTime::now();
+        self.work_start = time::Instant::now();
         self.device.send_work(work_payload).unwrap_or_else(|e| {
             *self.stop_reason.get_mut() = Err(e);
         });
     }
 
-    fn wait_for_nonce(&self) -> Option<(u32, SystemTime)> {
-        let duration = match SystemTime::now().duration_since(self.work_start) {
-            Ok(value) => value,
-            Err(e) => {
-                *self.stop_reason.borrow_mut() = Err(e
-                    .context(ErrorKind::Timer(
-                        "cannot measure elapsed time of work solution",
-                    ))
-                    .into());
-                return None;
-            }
-        };
+    fn wait_for_nonce(&self) -> Option<(u32, time::Instant)> {
+        let duration = time::Instant::now().duration_since(self.work_start);
         let timeout_rem = MAX_READ_TIME.checked_sub(duration).unwrap_or(WAIT_TIMEOUT);
 
         self.device
@@ -256,13 +246,13 @@ impl<'a> BlockErupterSolver<'a> {
                 *self.stop_reason.borrow_mut() = Err(e);
                 None
             })
-            .map(|nonce| (nonce, SystemTime::now()))
+            .map(|nonce| (nonce, time::Instant::now()))
     }
 
     fn create_unique_solution(
         work: work::Assignment,
         nonce: u32,
-        timestamp: SystemTime,
+        timestamp: time::Instant,
         solution_idx: usize,
     ) -> work::Solution {
         work::Solution::new(work, Solution::new(nonce, solution_idx), Some(timestamp))
@@ -436,7 +426,7 @@ pub mod test {
             let mut timeout_rem = timeout;
             let mut nonce_found = false;
 
-            let start = SystemTime::now();
+            let start = time::Instant::now();
             loop {
                 match device
                     .wait_for_nonce(timeout_rem)
@@ -450,9 +440,7 @@ pub mod test {
                         }
                     }
                 }
-                let duration = SystemTime::now()
-                    .duration_since(start)
-                    .expect("SystemTime::duration_since failed");
+                let duration = time::Instant::now().duration_since(start);
                 timeout_rem = timeout
                     .checked_sub(duration)
                     .unwrap_or(Duration::from_millis(1));
