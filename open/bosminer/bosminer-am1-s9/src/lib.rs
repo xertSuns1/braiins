@@ -48,7 +48,7 @@ use bosminer::work;
 
 use std::fmt;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{self, Duration};
 
 use lazy_static::lazy_static;
 
@@ -187,7 +187,7 @@ pub struct HashChain<VBackend> {
     rst_pin: gpio::PinOut,
     /// When the heartbeat was last sent
     #[allow(dead_code)]
-    last_heartbeat_sent: Option<SystemTime>,
+    last_heartbeat_sent: Option<time::Instant>,
     hashboard_idx: usize,
     pub command_context: command::Context,
     pub common_io: io::Common,

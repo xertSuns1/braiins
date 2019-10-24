@@ -27,7 +27,7 @@ use std::convert::TryInto;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::{Duration, SystemTime};
+use std::time::{self, Duration};
 
 use super::error::{self, ErrorKind};
 use failure::ResultExt;
@@ -343,7 +343,7 @@ where
             .spawn(move || {
                 let mut voltage_ctrl = Self::new(hb_backend, idx);
                 loop {
-                    let now = SystemTime::now();
+                    let now = time::Instant::now();
                     voltage_ctrl
                         .send_heart_beat()
                         .expect("send_heart_beat failed");
@@ -351,10 +351,7 @@ where
                     //trace!("Heartbeat for board {}", idx);
                     // evaluate how much time it took to send the heart beat and sleep for the rest
                     // of the heart beat period
-                    let elapsed = now
-                        .elapsed()
-                        .context("cannot measure elapsed time")
-                        .unwrap();
+                    let elapsed = now.elapsed();
                     // sleep only if we have not exceeded the heart beat period. This makes the
                     // code more robust when running it in debugger to prevent underflow time
                     // subtraction

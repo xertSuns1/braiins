@@ -31,7 +31,6 @@ pub use ii_bitcoin::{TestBlock, TEST_BLOCKS};
 
 use std::fmt;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
-use std::time::SystemTime;
 
 #[derive(Debug)]
 pub struct TestInfo;
@@ -148,11 +147,7 @@ impl From<&TestBlock> for work::Assignment {
 
 impl From<&TestBlock> for work::Solution {
     fn from(test_block: &TestBlock) -> Self {
-        Self::new(
-            test_block.into(),
-            TestSolution::new(test_block),
-            Some(SystemTime::UNIX_EPOCH),
-        )
+        Self::new(test_block.into(), TestSolution::new(test_block), None)
     }
 }
 
