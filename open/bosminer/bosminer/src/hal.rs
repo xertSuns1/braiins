@@ -22,11 +22,7 @@
 
 use crate::node;
 use crate::shutdown;
-use crate::stats;
 use crate::work;
-
-use futures::lock::Mutex;
-use ii_async_compat::futures;
 
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -49,12 +45,10 @@ pub trait BackendSolution: Debug + Send + Sync {
 pub trait Backend: node::Info + Send + Sync + 'static {
     /// Number of midstates
     const DEFAULT_MIDSTATE_COUNT: usize;
+    /// Default hashrate interval used for statistics
+    const DEFAULT_HASHRATE_INTERVAL: Duration;
     /// Maximum time it takes to compute one job under normal circumstances
     const JOB_TIMEOUT: Duration;
-
-    /// TODO: This function is to be removed once we replace the stats module with a more robust
-    /// solution
-    fn start_mining_stats_task(mining_stats: Arc<Mutex<stats::MiningObsolete>>);
 
     fn add_args<'a, 'b>(&self, app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
         app
@@ -62,10 +56,5 @@ pub trait Backend: node::Info + Send + Sync + 'static {
 
     fn init(&mut self, _args: &clap::ArgMatches) {}
 
-    fn run(
-        self: Arc<Self>,
-        work_solver: work::Solver,
-        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
-        shutdown: shutdown::Sender,
-    );
+    fn run(self: Arc<Self>, work_solver: work::Solver, shutdown: shutdown::Sender);
 }

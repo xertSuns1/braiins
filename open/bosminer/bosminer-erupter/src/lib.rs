@@ -40,17 +40,12 @@ use error::ErrorKind;
 use ii_async_compat::{tokio, tokio_executor};
 use tokio_executor::blocking;
 
-use futures::executor::block_on;
-use futures::lock::Mutex;
-use ii_async_compat::futures;
-
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
 fn main_task(
     work_solver: work::Solver,
-    mining_stats: Arc<Mutex<stats::MiningObsolete>>,
     _shutdown: shutdown::Sender,
 ) -> bosminer::error::Result<()> {
     info!("Block Erupter: finding device in USB...");
@@ -69,8 +64,6 @@ fn main_task(
     // iterate until there exists any work or the error occurs
     for solution in &mut solver {
         solution_sender.send(solution);
-
-        block_on(mining_stats.lock()).unique_solutions += 1;
     }
 
     // check solver for errors
@@ -135,24 +128,15 @@ impl Backend {
 
 impl hal::Backend for Backend {
     const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;
+    const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
-    /// Starts statistics tasks specific for block erupter
-    fn start_mining_stats_task(_mining_stats: Arc<Mutex<stats::MiningObsolete>>) {
-        tokio::spawn(stats::hashrate_meter_task());
-    }
-
-    fn run(
-        self: Arc<Self>,
-        work_solver: work::Solver,
-        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
-        shutdown: shutdown::Sender,
-    ) {
+    fn run(self: Arc<Self>, work_solver: work::Solver, shutdown: shutdown::Sender) {
         // Spawn the future in a separate blocking pool (for blocking operations)
         // so that this doesn't block the regular threadpool.
         tokio::spawn(async move {
             blocking::run(move || {
-                if let Err(e) = main_task(work_solver, mining_stats, shutdown) {
+                if let Err(e) = main_task(work_solver, shutdown) {
                     error!("{}", e);
                 }
             })

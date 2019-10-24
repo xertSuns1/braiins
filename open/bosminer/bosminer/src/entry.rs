@@ -32,8 +32,7 @@ use crate::shutdown;
 use crate::stats;
 use crate::BOSMINER;
 
-use futures::lock::Mutex;
-use ii_async_compat::futures;
+use ii_async_compat::tokio;
 
 use std::sync::Arc;
 
@@ -83,13 +82,15 @@ pub async fn main<T: hal::Backend>(mut backend: T) {
     let (job_solver, work_solver) = hub::build_solvers(BOSMINER.clone(), backend.clone());
     // create shutdown channel
     let (shutdown_sender, _shutdown_receiver) = shutdown::channel();
-    // create mining stats
-    let mining_stats = Arc::new(Mutex::new(stats::MiningObsolete::new()));
 
     // start HW backend for selected target
-    backend.run(work_solver, mining_stats.clone(), shutdown_sender);
+    backend.run(work_solver, shutdown_sender);
+
     // start statistics processing
-    T::start_mining_stats_task(mining_stats);
+    tokio::spawn(stats::mining_task(
+        BOSMINER.clone(),
+        T::DEFAULT_HASHRATE_INTERVAL,
+    ));
     // start client based on user input
     client::run(job_solver, client_descriptor).await;
 }

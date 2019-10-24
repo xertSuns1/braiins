@@ -25,6 +25,7 @@ pub mod command;
 pub mod config;
 pub mod error;
 pub mod gpio;
+pub mod hw_stats;
 pub mod i2c;
 pub mod io;
 pub mod null_work;
@@ -570,7 +571,7 @@ where
     /// It exits when generator returns `None`.
     async fn work_tx_task(
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
+        mining_stats: Arc<Mutex<hw_stats::MiningObsolete>>,
         mut tx_fifo: io::WorkTx,
         mut work_generator: work::Generator,
     ) {
@@ -600,7 +601,7 @@ where
     /// TODO: figure out when and how to stop this task
     async fn solution_rx_task(
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
+        mining_stats: Arc<Mutex<hw_stats::MiningObsolete>>,
         mut rx_fifo: io::WorkRx,
         solution_sender: work::SolutionSender,
     ) {
@@ -698,7 +699,7 @@ where
     fn spawn_tx_task(
         self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
+        mining_stats: Arc<Mutex<hw_stats::MiningObsolete>>,
         work_generator: work::Generator,
         shutdown: shutdown::Sender,
     ) {
@@ -715,7 +716,7 @@ where
     fn spawn_rx_task(
         self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
+        mining_stats: Arc<Mutex<hw_stats::MiningObsolete>>,
         solution_sender: work::SolutionSender,
     ) {
         tokio::spawn(async move {
@@ -740,7 +741,7 @@ where
     pub async fn start(
         self: Arc<Self>,
         work_solver: work::Solver,
-        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
+        mining_stats: Arc<Mutex<hw_stats::MiningObsolete>>,
         shutdown: shutdown::Sender,
     ) {
         // Determines how big the work registry has to be
@@ -799,7 +800,7 @@ impl<VBackend> node::Info for HashChain<VBackend> where
 async fn start_miner(
     enabled_chains: Vec<usize>,
     work_solver: work::Solver,
-    mining_stats: Arc<Mutex<stats::MiningObsolete>>,
+    mining_stats: Arc<Mutex<hw_stats::MiningObsolete>>,
     shutdown: shutdown::Sender,
     midstate_count: usize,
     pll_frequency: usize,
@@ -903,13 +904,8 @@ impl Backend {
 
 impl hal::Backend for Backend {
     const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;
+    const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
-
-    /// Starts statistics tasks specific for S9
-    fn start_mining_stats_task(mining_stats: Arc<Mutex<stats::MiningObsolete>>) {
-        tokio::spawn(stats::hashrate_meter_task_hashchain(mining_stats));
-        tokio::spawn(stats::hashrate_meter_task());
-    }
 
     fn add_args<'a, 'b>(&self, app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
         app.arg(
@@ -955,21 +951,18 @@ impl hal::Backend for Backend {
         }
     }
 
-    fn run(
-        self: Arc<Self>,
-        work_solver: work::Solver,
-        mining_stats: Arc<Mutex<stats::MiningObsolete>>,
-        shutdown: shutdown::Sender,
-    ) {
+    fn run(self: Arc<Self>, work_solver: work::Solver, shutdown: shutdown::Sender) {
+        let mining_stats = Arc::new(Mutex::new(Default::default()));
         tokio::spawn(start_miner(
             vec![config::S9_HASHBOARD_INDEX],
             work_solver,
-            mining_stats,
+            mining_stats.clone(),
             shutdown,
             runtime_config::get_midstate_count(),
             self.pll_frequency,
             power::Voltage::from_volts(self.voltage),
         ));
+        tokio::spawn(hw_stats::hashrate_meter_task_hashchain(mining_stats));
     }
 }
 

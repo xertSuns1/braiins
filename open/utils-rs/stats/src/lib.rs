@@ -47,6 +47,11 @@ impl WindowedTimeMean {
         }
     }
 
+    #[inline]
+    pub fn interval(&self) -> time::Duration {
+        time::Duration::from_secs_f64(self.interval)
+    }
+
     /// Measure arithmetic mean at specific time from inserted samples within given time interval.
     /// The specified time shall not be less than time of previous sample.
     pub fn measure(&self, now: time::Instant) -> f64 {

@@ -30,8 +30,6 @@ use futures::lock::{Mutex, MutexGuard};
 use ii_async_compat::{futures, tokio};
 use tokio::timer::delay_for;
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use std::time;
 
 use lazy_static::lazy_static;
@@ -154,124 +152,20 @@ pub(crate) async fn account_accepted(
     }
 }
 
-/// Holds all error statistics
-#[derive(Clone, PartialEq, Eq, Default)]
-pub struct MiningError {
-    /// Number of submitted results that are not hitting ASIC target
-    pub hardware_errors: u64,
-    /// Number of stale solutions received from the hardware
-    pub stale_solutions: u64,
-    /// Unable to feed the hardware fast enough results in duplicate solutions as
-    /// multiple chips may process the same mining work
-    pub duplicate_solutions: u64,
-    /// Keep track of nonces that didn't match with previously received solutions (after
-    /// filtering hardware errors, this should really stay at 0, otherwise we have some weird
-    /// hardware problem)
-    pub mismatched_solution_nonces: u64,
-}
-
-/// Holds all hardware-related statistics for a hashchain
-#[derive(Clone, PartialEq, Eq, Default)]
-pub struct MiningObsolete {
-    /// Number of work items generated for the hardware
-    pub work_generated: usize,
-    /// Counter of unique solutions
-    pub unique_solutions: u64,
-    /// Amount of computed work in shares (for example one work computed at difficulty 64 is 64 shares)
-    pub unique_solutions_shares: u64,
-    /// Error statistics
-    pub error_stats: MiningError,
-}
-
-impl MiningObsolete {
-    pub fn new() -> Self {
-        Self {
-            ..Default::default()
-        }
-    }
-}
-
-/// Share=1 represents a space of 2^32 calculated hashes for Bitcoin
-/// mainnet (exactly 2^256/(0xffff<<208), where 0xffff<<208 is defined
-/// as target @ difficulty 1 for Bitcoin mainet).
-/// TODO: This algorithm needs be adjusted for other coins/test environments in the future
-/// Shares at dificulty X takes X times more hashes to compute.
-fn shares_to_giga_hashes(shares: u128) -> f64 {
-    (shares << 32) as f64 * 1e-9
-}
-
-pub async fn hashrate_meter_task_hashchain(mining_stats: Arc<Mutex<MiningObsolete>>) {
-    let mut last_stat_time = time::Instant::now();
-    let mut old_error_stats = Default::default();
+pub async fn mining_task(node: node::DynInfo, interval: time::Duration) {
     loop {
         delay_for(time::Duration::from_secs(1)).await;
 
-        let mut stats = mining_stats.lock().await;
-        let solved_shares = stats.unique_solutions_shares;
-        stats.unique_solutions_shares = 0;
-        let work_generated = stats.work_generated;
-        stats.work_generated = 0;
-        let unique_solutions = stats.unique_solutions;
-        stats.unique_solutions = 0;
+        let time_means = node.mining_stats().accepted.time_means().await;
+        let time_mean = time_means
+            .iter()
+            .find(|time_mean| time_mean.interval() == interval)
+            .expect("cannot find given time interval");
 
-        let hashing_time = last_stat_time.elapsed().as_secs_f64();
-
-        if solved_shares > 0 {
-            info!(
-                "Hash rate @ ASIC difficulty: {:.2} Gh/s",
-                shares_to_giga_hashes(solved_shares as u128) / hashing_time,
-            );
-        }
-        if work_generated == 0 {
-            trace!("No work is being generated!");
-        } else {
-            trace!(
-                "Hash rate of generated work: {:.2} Gh/s",
-                shares_to_giga_hashes(work_generated as u128) / hashing_time,
-            );
-        }
-        if unique_solutions == 0 {
-            trace!("No work is being solved!");
-        }
-
-        if stats.error_stats != old_error_stats {
-            let error_stats = stats.error_stats.clone();
-            info!(
-
-                "Mismatched nonce count: {}, stale solutions: {}, duplicate solutions: {}, hardware errors: {}",
-                error_stats.mismatched_solution_nonces,
-                error_stats.stale_solutions,
-                error_stats.duplicate_solutions,
-                error_stats.hardware_errors,
-            );
-            old_error_stats = error_stats;
-        }
-
-        last_stat_time = time::Instant::now();
-    }
-}
-
-static SUBMITTED_SHARE_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-pub fn account_solution(target: &ii_bitcoin::Target) {
-    let difficulty = target.get_difficulty() as u64;
-    SUBMITTED_SHARE_COUNTER.fetch_add(difficulty, Ordering::SeqCst);
-}
-
-pub async fn hashrate_meter_task() {
-    let hashing_started = time::Instant::now();
-    let mut total_shares: u128 = 0;
-
-    loop {
-        delay_for(time::Duration::from_secs(1)).await;
-
-        total_shares += SUBMITTED_SHARE_COUNTER.swap(0, Ordering::SeqCst) as u128;
-        let total_hashing_time = hashing_started.elapsed();
-        if total_shares > 0 {
-            info!(
-                "Hash rate @ pool difficulty: {:.2} Gh/s",
-                shares_to_giga_hashes(total_shares) / total_hashing_time.as_secs_f64(),
-            );
-        }
+        info!(
+            "Hash rate @ pool difficulty: {:.2} GH/{}s",
+            time_mean.measure(time::Instant::now()) * 1e-6,
+            time_mean.interval().as_secs()
+        );
     }
 }

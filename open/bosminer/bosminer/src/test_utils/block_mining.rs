@@ -33,7 +33,6 @@ use crate::hal;
 use crate::job::Bitcoin;
 use crate::runtime_config;
 use crate::shutdown;
-use crate::stats;
 use crate::test_utils;
 use crate::work;
 
@@ -320,14 +319,11 @@ pub async fn run<T: hal::Backend>(backend: T) {
     let (mut engine_sender, solution_queue_rx, mut reschedule_receiver, work_solver) =
         build_solvers();
 
-    // create mining stats
-    let mining_stats = Arc::new(Mutex::new(stats::MiningObsolete::new()));
-
     // create problem registry
     let registry = Arc::new(Mutex::new(Registry::new()));
 
     // start HW backend for selected target
-    backend.run(work_solver, mining_stats.clone(), shutdown_sender);
+    backend.run(work_solver, shutdown_sender);
 
     // start task to collect solutions and put them to registry
     tokio::spawn(collect_solutions(solution_queue_rx, registry.clone()));

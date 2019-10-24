@@ -25,5 +25,8 @@ use std::time::Duration;
 /// Number of midstates
 pub const DEFAULT_MIDSTATE_COUNT: usize = 1;
 
+/// Default hashrate interval used for statistics in seconds
+pub const DEFAULT_HASHRATE_INTERVAL: Duration = Duration::from_secs(60);
+
 /// Maximum time it takes to compute one job under normal circumstances
 pub const JOB_TIMEOUT: Duration = Duration::from_secs(30);
