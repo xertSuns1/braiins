@@ -25,7 +25,6 @@ pub mod command;
 pub mod config;
 pub mod error;
 pub mod gpio;
-pub mod hw_stats;
 pub mod i2c;
 pub mod io;
 pub mod null_work;
@@ -564,6 +563,9 @@ where
         }
     }
 
+    /// TODO: Currently this function is empty and should be used for handling hardware errors.
+    fn handle_hw_error() {}
+
     /// This task picks up work from frontend (via generator), saves it to
     /// registry (to pair with `Assignment` later) and sends it out to hw.
     /// It makes sure that TX fifo is empty before requesting work from
@@ -571,7 +573,6 @@ where
     /// It exits when generator returns `None`.
     async fn work_tx_task(
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        mining_stats: Arc<Mutex<hw_stats::MiningObsolete>>,
         mut tx_fifo: io::WorkTx,
         mut work_generator: work::Generator,
     ) {
@@ -585,8 +586,6 @@ where
                     let work_id = work_registry.lock().await.store_work(work.clone());
                     // send work is synchronous
                     tx_fifo.send_work(&work, work_id).expect("send work");
-                    let mut stats = mining_stats.lock().await;
-                    stats.work_generated += work.midstates.len();
                 }
             }
         }
@@ -601,7 +600,6 @@ where
     /// TODO: figure out when and how to stop this task
     async fn solution_rx_task(
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        mining_stats: Arc<Mutex<hw_stats::MiningObsolete>>,
         mut rx_fifo: io::WorkRx,
         solution_sender: work::SolutionSender,
     ) {
@@ -611,7 +609,6 @@ where
                 rx_fifo.recv_solution().await.expect("recv solution failed");
             rx_fifo = rx_fifo_out;
             let work_id = solution.hardware_id;
-            let mut stats = mining_stats.lock().await;
             let mut work_registry = work_registry.lock().await;
 
             let work = work_registry.find_work(work_id as usize);
@@ -622,21 +619,14 @@ where
                     // work item detected a new unique solution, we will push it for further processing
                     if let Some(unique_solution) = status.unique_solution {
                         if !status.duplicate {
-                            if !unique_solution.is_valid(&ASIC_TARGET) {
-                                warn!("Solution from hashchain not hitting ASIC target");
-                                stats.error_stats.hardware_errors += 1;
-                            }
                             solution_sender.send(unique_solution);
                         }
                     }
                     if status.duplicate {
-                        stats.error_stats.duplicate_solutions += 1;
-                    } else {
-                        stats.unique_solutions += 1;
-                        stats.unique_solutions_shares += config::ASIC_DIFFICULTY as u64;
+                        Self::handle_hw_error();
                     }
                     if status.mismatched_nonce {
-                        stats.error_stats.mismatched_solution_nonces += 1;
+                        Self::handle_hw_error();
                     }
                 }
                 None => {
@@ -644,7 +634,7 @@ where
                         "No work present for solution, ID:{:#x} {:#010x?}",
                         work_id, solution
                     );
-                    stats.error_stats.stale_solutions += 1;
+                    Self::handle_hw_error();
                 }
             }
         }
@@ -699,7 +689,6 @@ where
     fn spawn_tx_task(
         self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        mining_stats: Arc<Mutex<hw_stats::MiningObsolete>>,
         work_generator: work::Generator,
         shutdown: shutdown::Sender,
     ) {
@@ -708,7 +697,7 @@ where
 
             Self::send_init_work(self.clone(), work_registry.clone(), &mut tx_fifo).await;
             self.lower_voltage().await.expect("lowering voltage failed");
-            Self::work_tx_task(work_registry, mining_stats, tx_fifo, work_generator).await;
+            Self::work_tx_task(work_registry, tx_fifo, work_generator).await;
             shutdown.send("no more work from workhub");
         });
     }
@@ -716,13 +705,12 @@ where
     fn spawn_rx_task(
         self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        mining_stats: Arc<Mutex<hw_stats::MiningObsolete>>,
         solution_sender: work::SolutionSender,
     ) {
         tokio::spawn(async move {
             let rx_fifo = self.take_work_rx_io().await;
 
-            Self::solution_rx_task(work_registry, mining_stats, rx_fifo, solution_sender).await;
+            Self::solution_rx_task(work_registry, rx_fifo, solution_sender).await;
         });
     }
 
@@ -738,12 +726,7 @@ where
         });
     }
 
-    pub async fn start(
-        self: Arc<Self>,
-        work_solver: work::Solver,
-        mining_stats: Arc<Mutex<hw_stats::MiningObsolete>>,
-        shutdown: shutdown::Sender,
-    ) {
+    pub async fn start(self: Arc<Self>, work_solver: work::Solver, shutdown: shutdown::Sender) {
         // Determines how big the work registry has to be
         let work_registry = Arc::new(Mutex::new(registry::WorkRegistry::new(
             self.work_tx_io
@@ -759,16 +742,10 @@ where
         Self::spawn_tx_task(
             self.clone(),
             work_registry.clone(),
-            mining_stats.clone(),
             work_generator,
             shutdown.clone(),
         );
-        Self::spawn_rx_task(
-            self,
-            work_registry.clone(),
-            mining_stats.clone(),
-            work_solution,
-        );
+        Self::spawn_rx_task(self, work_registry.clone(), work_solution);
         Self::spawn_hashrate_monitor_task(command_context.clone());
         Self::spawn_temperature_monitor_task(command_context.clone());
     }
@@ -800,7 +777,6 @@ impl<VBackend> node::Info for HashChain<VBackend> where
 async fn start_miner(
     enabled_chains: Vec<usize>,
     work_solver: work::Solver,
-    mining_stats: Arc<Mutex<hw_stats::MiningObsolete>>,
     shutdown: shutdown::Sender,
     midstate_count: usize,
     pll_frequency: usize,
@@ -840,11 +816,7 @@ async fn start_miner(
         let hash_chain = Arc::new(hash_chain);
         let hash_chain_work_solver = work_solver.branch(hash_chain.clone());
         hash_chain
-            .start(
-                hash_chain_work_solver,
-                mining_stats.clone(),
-                shutdown.clone(),
-            )
+            .start(hash_chain_work_solver, shutdown.clone())
             .await;
     }
 }
@@ -952,17 +924,14 @@ impl hal::Backend for Backend {
     }
 
     fn run(self: Arc<Self>, work_solver: work::Solver, shutdown: shutdown::Sender) {
-        let mining_stats = Arc::new(Mutex::new(Default::default()));
         tokio::spawn(start_miner(
             vec![config::S9_HASHBOARD_INDEX],
             work_solver,
-            mining_stats.clone(),
             shutdown,
             runtime_config::get_midstate_count(),
             self.pll_frequency,
             power::Voltage::from_volts(self.voltage),
         ));
-        tokio::spawn(hw_stats::hashrate_meter_task_hashchain(mining_stats));
     }
 }
 
