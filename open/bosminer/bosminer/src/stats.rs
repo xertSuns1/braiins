@@ -116,19 +116,26 @@ impl<'a> std::ops::Deref for TimeMeansGuard<'a> {
 
 #[derive(Debug)]
 pub struct Mining {
+    /// The time all statistics are measured from
     pub start_time: time::Instant,
-    pub accepted: Meter,
-    pub rejected: Meter,
-    pub backend_error: Meter,
+    /// Statistics for all valid blocks on network difficulty
+    pub valid_network_diff: Meter,
+    /// Statistics for all valid jobs on job/pool difficulty
+    pub valid_job_diff: Meter,
+    /// Statistics for all valid work on backend difficulty
+    pub valid_backend_diff: Meter,
+    /// Statistics for all invalid work on backend difficulty (backend/HW error)
+    pub error_backend_diff: Meter,
 }
 
 impl Mining {
     pub fn new(start_time: time::Instant, intervals: &Vec<time::Duration>) -> Self {
         Self {
             start_time,
-            accepted: Meter::new(&intervals),
-            rejected: Meter::new(&intervals),
-            backend_error: Meter::new(&intervals),
+            valid_network_diff: Meter::new(&intervals),
+            valid_job_diff: Meter::new(&intervals),
+            valid_backend_diff: Meter::new(&intervals),
+            error_backend_diff: Meter::new(&intervals),
         }
     }
 }
@@ -139,14 +146,14 @@ impl Default for Mining {
     }
 }
 
-pub(crate) async fn account_accepted(
+pub(crate) async fn account_valid_job_diff(
     path: &node::Path,
     solution_target: &ii_bitcoin::Target,
     time: time::Instant,
 ) {
     for node in path {
         node.mining_stats()
-            .accepted
+            .valid_job_diff
             .account_solution(solution_target, time)
             .await;
     }
@@ -156,7 +163,7 @@ pub async fn mining_task(node: node::DynInfo, interval: time::Duration) {
     loop {
         delay_for(time::Duration::from_secs(1)).await;
 
-        let time_means = node.mining_stats().accepted.time_means().await;
+        let time_means = node.mining_stats().valid_job_diff.time_means().await;
         let time_mean = time_means
             .iter()
             .find(|time_mean| time_mean.interval() == interval)
