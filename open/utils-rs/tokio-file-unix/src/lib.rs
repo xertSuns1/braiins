@@ -16,7 +16,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::{fs, io};
 
 use ii_async_compat::{tokio_net, tokio_util};
-use tokio_net::{driver::Handle, util::PollEvented};
+use tokio_net::util::PollEvented;
 use tokio_util::codec::{Decoder, Encoder};
 
 unsafe fn dupe_file_from_fd(old_fd: RawFd) -> io::Result<fs::File> {

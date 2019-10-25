@@ -10,9 +10,8 @@ use std::ops;
 use std::os::unix::prelude::AsRawFd;
 use std::time::{Duration, Instant};
 
-use ii_async_compat::{tokio, tokio_net};
+use ii_async_compat::tokio;
 use tokio::io::AsyncReadExt;
-use tokio_net::driver::Handle;
 
 use libc;
 use nix::sys::mman::{MapFlags, ProtFlags};
