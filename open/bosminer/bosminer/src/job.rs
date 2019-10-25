@@ -162,7 +162,7 @@ impl SolutionReceiver {
             let current_target = solution.job_target();
             let timestamp = solution.timestamp();
             if solution.is_valid(&current_target) {
-                stats::account_accepted(&path, &current_target, timestamp).await;
+                stats::account_valid_job_diff(&path, &current_target, timestamp).await;
                 info!("----- Found share within current job's difficulty (diff={}) target range -----",
                       current_target.get_difficulty());
                 Self::trace_share(&solution, &current_target);
