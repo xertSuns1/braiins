@@ -58,7 +58,7 @@ pub fn build_solvers(
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::test_utils::{self, TestBlockBuilder as _};
+    use crate::test_utils;
 
     use futures::executor::block_on;
     use std::sync::Arc;
@@ -102,63 +102,5 @@ pub mod test {
         drop(job_sender);
         drop(solution_receiver);
         assert!(block_on(work_generator.generate()).is_some());
-    }
-
-    /// Helper function that compares 2 hashes while interpreting them as targets
-    fn double_hash_cmp(a: &ii_bitcoin::DHash, b: &ii_bitcoin::DHash) -> std::cmp::Ordering {
-        let a_target: ii_bitcoin::Target = (*a).into();
-        let b_target: ii_bitcoin::Target = (*b).into();
-        a_target.cmp(&b_target)
-    }
-
-    /// This test verifies that after changing mining target, the job solver filters the provided
-    /// solutions and yields only those that meet the target.
-    #[test]
-    fn test_job_solver_target() {
-        let (engine_sender, _) = work::engine_channel(work::IgnoreEvents);
-        let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
-        let (_, mut solution_receiver) = job::Solver::new(
-            Arc::new(test_utils::TestInfo::new()),
-            engine_sender,
-            solution_queue_rx,
-        )
-        .split();
-
-        // default target is set to block network difficulty so all solution should pass
-        for block in test_utils::TEST_BLOCKS.iter() {
-            // test block has automatic conversion into work solution
-            solution_queue_tx.unbounded_send(block.into()).unwrap();
-            // this solution should pass through job solver
-            let solution = block_on(solution_receiver.receive()).unwrap();
-            // check if the solution is equal to expected one
-            assert_eq!(block.nonce, solution.nonce());
-        }
-
-        // find test block with lowest hash which will be set as a target
-        let target_block = test_utils::TEST_BLOCKS
-            .iter()
-            .min_by(|a, b| double_hash_cmp(&a.hash, &b.hash))
-            .unwrap();
-
-        // change the target of all jobs to return from solution receiver only this block
-        let target: ii_bitcoin::Target = target_block.hash.into();
-
-        // send all solutions to the queue not to block on receiver
-        for block in test_utils::TEST_BLOCKS.iter() {
-            let block = block.change_target(target);
-            // test block has automatic conversion into work solution
-            solution_queue_tx.unbounded_send(block.into()).unwrap();
-        }
-
-        // send target block again to get two results and ensures that all blocks has been processed
-        solution_queue_tx
-            .unbounded_send(target_block.into())
-            .unwrap();
-
-        // check if the solutions is equal to expected ones
-        let solution = block_on(solution_receiver.receive()).unwrap();
-        assert_eq!(target_block.nonce, solution.nonce());
-        let solution = block_on(solution_receiver.receive()).unwrap();
-        assert_eq!(target_block.nonce, solution.nonce());
     }
 }

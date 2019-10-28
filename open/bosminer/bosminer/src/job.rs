@@ -22,12 +22,12 @@
 
 use ii_logging::macros::*;
 
-use ii_bitcoin::HashTrait;
+use ii_bitcoin::{HashTrait as _, MeetsTarget};
 
 use crate::job;
 use crate::node;
 use crate::runtime_config;
-use crate::stats;
+use crate::stats::{self, DiffTargetType};
 use crate::work;
 
 use futures::channel::mpsc;
@@ -148,6 +148,10 @@ impl SolutionReceiver {
 
     fn trace_share(solution: &work::Solution, target: &ii_bitcoin::Target) {
         info!(
+            "----- Found share within current job's difficulty (diff={}) target range -----",
+            target.get_difficulty()
+        );
+        info!(
             "nonce={:08x} bytes={}",
             solution.nonce(),
             hex::encode(&solution.get_block_header().into_bytes()[..])
@@ -159,13 +163,27 @@ impl SolutionReceiver {
     pub async fn receive(&mut self) -> Option<work::Solution> {
         while let Some(solution) = self.solution_channel.next().await {
             let path = solution.path(&self.frontend_path);
-            let current_target = solution.job_target();
-            let timestamp = solution.timestamp();
-            if solution.is_valid(&current_target) {
-                stats::account_valid_job_diff(&path, &current_target, timestamp).await;
-                info!("----- Found share within current job's difficulty (diff={}) target range -----",
-                      current_target.get_difficulty());
-                Self::trace_share(&solution, &current_target);
+            let time = solution.timestamp();
+            let hash = solution.hash();
+            let job_target = solution.job_target();
+
+            // compare block hash for given solution with all targets
+            // TODO: create tests for solution validation with all difficulty variants
+            assert!(solution.network_target() <= job_target);
+            if hash.meets(&solution.network_target()) {
+                stats::account_valid_diff(&path, &solution, time, DiffTargetType::NETWORK).await;
+            } else if hash.meets(&job_target) {
+                stats::account_valid_diff(&path, &solution, time, DiffTargetType::JOB).await;
+            } else if hash.meets(solution.backend_target()) {
+                stats::account_valid_diff(&path, &solution, time, DiffTargetType::BACKEND).await;
+                continue;
+            } else {
+                stats::account_error_backend_diff(&path, &solution.backend_target(), time).await;
+                continue;
+            }
+
+            if solution.has_valid_job() {
+                Self::trace_share(&solution, &job_target);
                 return Some(solution);
             }
         }

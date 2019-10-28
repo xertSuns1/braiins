@@ -23,6 +23,7 @@
 use ii_logging::macros::*;
 
 use crate::node;
+use crate::work;
 
 use ii_stats::WindowedTimeMean;
 
@@ -146,16 +147,49 @@ impl Default for Mining {
     }
 }
 
-pub(crate) async fn account_valid_job_diff(
+macro_rules! account_impl (
+    ($name:ident, $field:ident) => (
+        pub(crate) async fn $name(
+            path: &node::Path,
+            solution_target: &ii_bitcoin::Target,
+            time: time::Instant,
+        ) {
+            for node in path {
+                node.mining_stats()
+                    .$field
+                    .account_solution(solution_target, time)
+                    .await;
+            }
+        }
+    )
+);
+
+account_impl!(account_valid_network_diff, valid_network_diff);
+account_impl!(account_valid_job_diff, valid_job_diff);
+account_impl!(account_valid_backend_diff, valid_backend_diff);
+account_impl!(account_error_backend_diff, error_backend_diff);
+
+/// Determines in which statistics a particular solution should be accounted
+#[derive(Debug, PartialEq)]
+pub enum DiffTargetType {
+    NETWORK,
+    JOB,
+    BACKEND,
+}
+
+pub async fn account_valid_diff(
     path: &node::Path,
-    solution_target: &ii_bitcoin::Target,
+    solution: &work::Solution,
     time: time::Instant,
+    valid_diff: DiffTargetType,
 ) {
-    for node in path {
-        node.mining_stats()
-            .valid_job_diff
-            .account_solution(solution_target, time)
-            .await;
+    account_valid_backend_diff(path, solution.backend_target(), time).await;
+    if valid_diff != DiffTargetType::BACKEND {
+        account_valid_job_diff(path, &solution.job_target(), time).await;
+        if valid_diff != DiffTargetType::JOB {
+            account_valid_network_diff(path, &solution.network_target(), time).await;
+            assert_eq!(valid_diff, DiffTargetType::NETWORK)
+        }
     }
 }
 
