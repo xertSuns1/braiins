@@ -30,7 +30,7 @@ use crate::job;
 use crate::node;
 use crate::stats;
 
-use bosminer_macros::MiningStats;
+use bosminer_macros::MiningNode;
 
 use std::fmt;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -53,10 +53,10 @@ impl fmt::Display for Protocol {
 
 /// Contains basic information about client used for obtaining jobs for solving.
 /// It is also used for statistics measurement.
-#[derive(Debug, MiningStats)]
+#[derive(Debug, MiningNode)]
 pub struct Descriptor {
     #[member_mining_stats]
-    mining_stats: stats::Mining,
+    mining_stats: stats::BasicMining,
     pub url: String,
     pub user: String,
     pub protocol: Protocol,
@@ -68,10 +68,6 @@ impl fmt::Display for Descriptor {
         write!(f, "{}@{} ({})", self.url, self.user, self.protocol)
     }
 }
-
-/// Implement node info for `Descriptor` to use it for identification of unique job origin and
-/// statistics measurement.
-impl node::Info for Descriptor {}
 
 /// Create client `Descriptor` from information provided by user.
 pub fn parse(url: String, user: String) -> error::Result<Descriptor> {

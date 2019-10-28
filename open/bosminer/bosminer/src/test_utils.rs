@@ -30,15 +30,15 @@ use crate::work;
 
 pub use ii_bitcoin::{TestBlock, TEST_BLOCKS};
 
-use bosminer_macros::MiningStats;
+use bosminer_macros::MiningNode;
 
 use std::fmt;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 
-#[derive(Debug, MiningStats)]
+#[derive(Debug, MiningNode)]
 pub struct TestInfo {
     #[member_mining_stats]
-    mining_stats: stats::Mining,
+    mining_stats: stats::BasicMining,
 }
 
 impl TestInfo {
@@ -54,8 +54,6 @@ impl fmt::Display for TestInfo {
         write!(f, "Test blocks")
     }
 }
-
-impl node::Info for TestInfo {}
 
 impl job::Bitcoin for TestBlock {
     fn origin(&self) -> node::DynInfo {

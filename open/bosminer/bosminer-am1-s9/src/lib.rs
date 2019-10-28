@@ -45,7 +45,7 @@ use bosminer::runtime_config;
 use bosminer::shutdown;
 use bosminer::stats;
 use bosminer::work;
-use bosminer_macros::MiningStats;
+use bosminer_macros::MiningNode;
 
 use std::fmt;
 use std::sync::Arc;
@@ -169,7 +169,7 @@ impl MidstateCount {
 /// - memory mapping of the FPGA control interface
 /// - mining work submission and solution processing
 pub struct HashChain<VBackend> {
-    mining_stats: stats::Mining,
+    mining_stats: stats::BasicMining,
     /// Number of chips that have been detected
     chip_count: usize,
     /// Eliminates the need to query the IP core about the current number of configured midstates
@@ -201,7 +201,7 @@ impl<VBackend> node::Stats for HashChain<VBackend>
 where
     VBackend: Send + Sync,
 {
-    fn mining_stats(&self) -> &stats::Mining {
+    fn mining_stats(&self) -> &dyn stats::Mining {
         &self.mining_stats
     }
 }
@@ -856,10 +856,10 @@ impl hal::BackendSolution for Solution {
     }
 }
 
-#[derive(Debug, MiningStats)]
+#[derive(Debug, MiningNode)]
 pub struct Backend {
     #[member_mining_stats]
-    mining_stats: stats::Mining,
+    mining_stats: stats::BasicMining,
     pll_frequency: usize,
     voltage: f32,
 }
@@ -940,8 +940,6 @@ impl fmt::Display for Backend {
         write!(f, "Bitmain Antminer S9")
     }
 }
-
-impl node::Info for Backend {}
 
 /// Helper method that calculates baud rate clock divisor value for the specified baud rate.
 ///

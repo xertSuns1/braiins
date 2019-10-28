@@ -26,13 +26,13 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::DeriveInput;
 
-#[proc_macro_derive(MiningStats, attributes(member_mining_stats))]
-pub fn derive_stats(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(MiningNode, attributes(member_mining_stats))]
+pub fn derive_mining_node(input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(input).unwrap();
-    impl_derive_stats(&ast).into()
+    impl_derive_mining_node(&ast).into()
 }
 
-fn impl_derive_stats(ast: &DeriveInput) -> proc_macro2::TokenStream {
+fn impl_derive_mining_node(ast: &DeriveInput) -> proc_macro2::TokenStream {
     let name = &ast.ident;
     let generics = &ast.generics;
 
@@ -45,6 +45,8 @@ fn impl_derive_stats(ast: &DeriveInput) -> proc_macro2::TokenStream {
         .expect("missing `member_mining_stats` attribute");
 
     quote! {
+        impl#generics node::Info for #name#generics {}
+
         impl#generics node::Stats for #name#generics {
             fn mining_stats(&self) -> &stats::Mining {
                 &self.#member
