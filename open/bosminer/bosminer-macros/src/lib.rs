@@ -36,32 +36,94 @@ fn impl_derive_mining_node(ast: &DeriveInput) -> proc_macro2::TokenStream {
     let name = &ast.ident;
     let generics = &ast.generics;
 
-    let fields: Vec<_> = match ast.data {
-        syn::Data::Struct(ref data) => data.fields.iter().collect(),
-        _ => panic!("#[derive(Stats)] can only be used with braced structs"),
-    };
-
-    let member = find_member(&fields, "member_mining_stats")
-        .expect("missing `member_mining_stats` attribute");
+    let fields = get_fields(&ast, "MiningNode");
+    let mining_stats = find_member(&fields, "member_mining_stats");
 
     quote! {
         impl#generics node::Info for #name#generics {}
 
         impl#generics node::Stats for #name#generics {
+            #[inline]
             fn mining_stats(&self) -> &stats::Mining {
-                &self.#member
+                &self.#mining_stats
             }
         }
     }
 }
 
-fn find_member<'a>(fields: &Vec<&'a syn::Field>, member: &str) -> Option<&'a syn::Ident> {
-    for field in fields {
-        for attr in &field.attrs {
-            if attr.path.is_ident(member) {
-                return Some(field.ident.as_ref().expect("missing member"));
+#[proc_macro_derive(
+    MiningStats,
+    attributes(
+        member_start_time,
+        member_valid_network_diff,
+        member_valid_job_diff,
+        member_valid_backend_diff,
+        member_error_backend_diff
+    )
+)]
+pub fn derive_mining_stats(input: TokenStream) -> TokenStream {
+    let ast: DeriveInput = syn::parse(input).unwrap();
+    impl_derive_mining_stats(&ast).into()
+}
+
+fn impl_derive_mining_stats(ast: &DeriveInput) -> proc_macro2::TokenStream {
+    let name = &ast.ident;
+    let generics = &ast.generics;
+
+    let fields = get_fields(&ast, "MiningStats");
+    let start_time = find_member(&fields, "member_start_time");
+    let valid_network_diff = find_member(&fields, "member_valid_network_diff");
+    let valid_job_diff = find_member(&fields, "member_valid_job_diff");
+    let valid_backend_diff = find_member(&fields, "member_valid_backend_diff");
+    let error_backend_diff = find_member(&fields, "member_error_backend_diff");
+
+    quote! {
+        impl#generics stats::Mining for #name#generics {
+            #[inline]
+            fn start_time(&self) -> &std::time::Instant {
+                &self.#start_time
+            }
+
+            #[inline]
+            fn valid_network_diff(&self) -> &stats::Meter {
+                &self.#valid_network_diff
+            }
+
+            #[inline]
+            fn valid_job_diff(&self) -> &stats::Meter {
+                &self.#valid_job_diff
+            }
+
+            #[inline]
+            fn valid_backend_diff(&self) -> &stats::Meter {
+                &self.#valid_backend_diff
+            }
+
+            #[inline]
+            fn error_backend_diff(&self) -> &stats::Meter {
+                &self.#error_backend_diff
             }
         }
     }
-    None
+}
+
+fn get_fields<'a>(ast: &'a DeriveInput, derive_name: &str) -> &'a syn::Fields {
+    match ast.data {
+        syn::Data::Struct(ref data) => &data.fields,
+        _ => panic!(
+            "#[derive({})] can only be used with braced structs",
+            derive_name
+        ),
+    }
+}
+
+fn find_member<'a>(fields: &'a syn::Fields, member: &str) -> &'a syn::Ident {
+    for field in fields {
+        for attr in &field.attrs {
+            if attr.path.is_ident(member) {
+                return field.ident.as_ref().expect("missing member");
+            }
+        }
+    }
+    panic!("missing `{}` attribute", member);
 }
