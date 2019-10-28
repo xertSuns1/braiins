@@ -30,7 +30,7 @@ use crate::hal;
 use crate::job;
 use crate::node;
 
-use ii_bitcoin::{HashTrait, MeetsTarget};
+use ii_bitcoin::HashTrait as _;
 
 pub use solver::{Generator, SolutionSender, Solver};
 
@@ -175,13 +175,18 @@ impl Solution {
     }
 
     #[inline]
-    pub fn backend_target(&self) -> &ii_bitcoin::Target {
-        self.solution.target()
+    pub fn network_target(&self) -> ii_bitcoin::Target {
+        ii_bitcoin::Target::from_compact(self.work.job.bits()).expect("job has incorrect nbits")
     }
 
     #[inline]
     pub fn job_target(&self) -> ii_bitcoin::Target {
         self.work.job.target()
+    }
+
+    #[inline]
+    pub fn backend_target(&self) -> &ii_bitcoin::Target {
+        self.solution.target()
     }
 
     #[inline]
@@ -216,14 +221,9 @@ impl Solution {
         }
     }
 
-    pub fn is_valid(&self, current_target: &ii_bitcoin::Target) -> bool {
-        if !self.work.job.is_valid() {
-            // job is obsolete and has to be flushed
-            return false;
-        }
-
-        // compute hash for this solution and compare it with target
-        self.hash().meets(current_target)
+    #[inline]
+    pub fn has_valid_job(&self) -> bool {
+        self.work.job.is_valid()
     }
 
     /// Return the whole unique path starting from job origin and ending in backend.
