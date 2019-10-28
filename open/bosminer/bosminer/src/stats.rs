@@ -115,21 +115,29 @@ impl<'a> std::ops::Deref for TimeMeansGuard<'a> {
     }
 }
 
-#[derive(Debug)]
-pub struct Mining {
+pub trait Mining: Send + Sync {
     /// The time all statistics are measured from
-    pub start_time: time::Instant,
+    fn start_time(&self) -> &time::Instant;
     /// Statistics for all valid blocks on network difficulty
-    pub valid_network_diff: Meter,
+    fn valid_network_diff(&self) -> &Meter;
     /// Statistics for all valid jobs on job/pool difficulty
-    pub valid_job_diff: Meter,
+    fn valid_job_diff(&self) -> &Meter;
     /// Statistics for all valid work on backend difficulty
-    pub valid_backend_diff: Meter,
+    fn valid_backend_diff(&self) -> &Meter;
     /// Statistics for all invalid work on backend difficulty (backend/HW error)
+    fn error_backend_diff(&self) -> &Meter;
+}
+
+#[derive(Debug)]
+pub struct BasicMining {
+    pub start_time: time::Instant,
+    pub valid_network_diff: Meter,
+    pub valid_job_diff: Meter,
+    pub valid_backend_diff: Meter,
     pub error_backend_diff: Meter,
 }
 
-impl Mining {
+impl BasicMining {
     pub fn new(start_time: time::Instant, intervals: &Vec<time::Duration>) -> Self {
         Self {
             start_time,
@@ -141,7 +149,34 @@ impl Mining {
     }
 }
 
-impl Default for Mining {
+impl Mining for BasicMining {
+    #[inline]
+    fn start_time(&self) -> &time::Instant {
+        &self.start_time
+    }
+
+    #[inline]
+    fn valid_network_diff(&self) -> &Meter {
+        &self.valid_network_diff
+    }
+
+    #[inline]
+    fn valid_job_diff(&self) -> &Meter {
+        &self.valid_job_diff
+    }
+
+    #[inline]
+    fn valid_backend_diff(&self) -> &Meter {
+        &self.valid_backend_diff
+    }
+
+    #[inline]
+    fn error_backend_diff(&self) -> &Meter {
+        &self.error_backend_diff
+    }
+}
+
+impl Default for BasicMining {
     fn default() -> Self {
         Self::new(time::Instant::now(), DEFAULT_TIME_MEAN_INTERVALS.as_ref())
     }
@@ -156,7 +191,7 @@ macro_rules! account_impl (
         ) {
             for node in path {
                 node.mining_stats()
-                    .$field
+                    .$field()
                     .account_solution(solution_target, time)
                     .await;
             }
@@ -197,7 +232,7 @@ pub async fn mining_task(node: node::DynInfo, interval: time::Duration) {
     loop {
         delay_for(time::Duration::from_secs(1)).await;
 
-        let time_means = node.mining_stats().valid_job_diff.time_means().await;
+        let time_means = node.mining_stats().valid_job_diff().time_means().await;
         let time_mean = time_means
             .iter()
             .find(|time_mean| time_mean.interval() == interval)

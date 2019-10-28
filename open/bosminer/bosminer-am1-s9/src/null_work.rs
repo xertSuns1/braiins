@@ -26,7 +26,7 @@ use bosminer::job::{self, Bitcoin};
 use bosminer::node;
 use bosminer::stats;
 use bosminer::work;
-use bosminer_macros::MiningStats;
+use bosminer_macros::MiningNode;
 
 use std::fmt;
 use std::sync::Arc;
@@ -58,10 +58,10 @@ impl NullJob {
     }
 }
 
-#[derive(Debug, MiningStats)]
+#[derive(Debug, MiningNode)]
 struct NullJobInfo {
     #[member_mining_stats]
-    mining_stats: stats::Mining,
+    mining_stats: stats::BasicMining,
 }
 
 impl NullJobInfo {
@@ -77,8 +77,6 @@ impl fmt::Display for NullJobInfo {
         write!(f, "Antminer NULL job generator")
     }
 }
-
-impl node::Info for NullJobInfo {}
 
 impl job::Bitcoin for NullJob {
     fn origin(&self) -> node::DynInfo {

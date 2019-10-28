@@ -33,7 +33,7 @@ use bosminer::node;
 use bosminer::shutdown;
 use bosminer::stats;
 use bosminer::work;
-use bosminer_macros::MiningStats;
+use bosminer_macros::MiningNode;
 
 use error::ErrorKind;
 
@@ -112,10 +112,10 @@ impl hal::BackendSolution for Solution {
     }
 }
 
-#[derive(Debug, MiningStats)]
+#[derive(Debug, MiningNode)]
 pub struct Backend {
     #[member_mining_stats]
-    mining_stats: stats::Mining,
+    mining_stats: stats::BasicMining,
 }
 
 impl Backend {
@@ -150,5 +150,3 @@ impl fmt::Display for Backend {
         write!(f, "Block Erupter")
     }
 }
-
-impl node::Info for Backend {}

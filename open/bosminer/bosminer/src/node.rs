@@ -35,7 +35,7 @@ pub trait Info: Debug + Display + Stats {}
 
 pub trait Stats: Send + Sync {
     /// Return object with all statistics for current node.
-    fn mining_stats(&self) -> &stats::Mining;
+    fn mining_stats(&self) -> &dyn stats::Mining;
 }
 
 /// Shared node info type

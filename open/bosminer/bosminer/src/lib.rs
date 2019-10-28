@@ -40,17 +40,17 @@ pub use entry::main;
 // reexport clap which is needed in `hal::Backend::add_args`
 pub use clap;
 
-use bosminer_macros::MiningStats;
+use bosminer_macros::MiningNode;
 
 use std::fmt;
 use std::sync::Arc;
 
 use lazy_static::lazy_static;
 
-#[derive(Debug, MiningStats)]
+#[derive(Debug, MiningNode)]
 pub struct Frontend {
     #[member_mining_stats]
-    mining_stats: stats::Mining,
+    mining_stats: stats::BasicMining,
 }
 
 impl Frontend {
@@ -66,8 +66,6 @@ impl fmt::Display for Frontend {
         write!(f, "bOSminer")
     }
 }
-
-impl node::Info for Frontend {}
 
 lazy_static! {
     /// Shared (global) configuration structure
