@@ -23,7 +23,10 @@
 use ii_logging::macros::*;
 
 use crate::node;
+use crate::stats;
 use crate::work;
+
+use bosminer_macros::MiningStats;
 
 use ii_stats::WindowedTimeMean;
 
@@ -128,12 +131,17 @@ pub trait Mining: Send + Sync {
     fn error_backend_diff(&self) -> &Meter;
 }
 
-#[derive(Debug)]
+#[derive(Debug, MiningStats)]
 pub struct BasicMining {
+    #[member_start_time]
     pub start_time: time::Instant,
+    #[member_valid_network_diff]
     pub valid_network_diff: Meter,
+    #[member_valid_job_diff]
     pub valid_job_diff: Meter,
+    #[member_valid_backend_diff]
     pub valid_backend_diff: Meter,
+    #[member_error_backend_diff]
     pub error_backend_diff: Meter,
 }
 
@@ -146,33 +154,6 @@ impl BasicMining {
             valid_backend_diff: Meter::new(&intervals),
             error_backend_diff: Meter::new(&intervals),
         }
-    }
-}
-
-impl Mining for BasicMining {
-    #[inline]
-    fn start_time(&self) -> &time::Instant {
-        &self.start_time
-    }
-
-    #[inline]
-    fn valid_network_diff(&self) -> &Meter {
-        &self.valid_network_diff
-    }
-
-    #[inline]
-    fn valid_job_diff(&self) -> &Meter {
-        &self.valid_job_diff
-    }
-
-    #[inline]
-    fn valid_backend_diff(&self) -> &Meter {
-        &self.valid_backend_diff
-    }
-
-    #[inline]
-    fn error_backend_diff(&self) -> &Meter {
-        &self.error_backend_diff
     }
 }
 
