@@ -165,6 +165,57 @@ impl MidstateCount {
     }
 }
 
+/// Stateful wrapper around voltage control
+struct PowerStation {
+    voltage_ctrl: power::Control<power::SharedBackend<power::I2cBackend>>,
+    current_voltage: Option<power::Voltage>,
+}
+
+impl PowerStation {
+    pub fn new(
+        voltage_ctrl_backend: power::SharedBackend<power::I2cBackend>,
+        hashboard_idx: usize,
+    ) -> Self {
+        Self {
+            voltage_ctrl: power::Control::new(voltage_ctrl_backend, hashboard_idx),
+            current_voltage: None,
+        }
+    }
+
+    /// Set voltage (and remember what was set)
+    pub async fn set_voltage(&mut self, voltage: power::Voltage) -> error::Result<()> {
+        self.voltage_ctrl.set_voltage(voltage).await?;
+        self.current_voltage = Some(voltage);
+        Ok(())
+    }
+
+    /// Initialize voltage controller
+    pub async fn init(&mut self) -> error::Result<()> {
+        self.voltage_ctrl.reset().await?;
+        info!("Voltage controller reset");
+        self.voltage_ctrl.jump_from_loader_to_app().await?;
+        info!("Voltage controller application started");
+        let version = self.voltage_ctrl.get_version()?;
+        info!("Voltage controller firmware version {:#04x}", version);
+        // TODO accept multiple
+        if version != power::EXPECTED_VOLTAGE_CTRL_VERSION {
+            Err(ErrorKind::UnexpectedVersion(
+                "voltage controller firmware".to_string(),
+                version.to_string(),
+                power::EXPECTED_VOLTAGE_CTRL_VERSION.to_string(),
+            ))?
+        }
+        self.set_voltage(OPEN_CORE_VOLTAGE).await?;
+        self.voltage_ctrl.enable_voltage()?;
+
+        // Voltage controller successfully initialized at this point, we should start sending
+        // heart beats to it. Otherwise, it would shut down in about 10 seconds.
+        info!("Starting voltage controller heart beat task");
+        let _ = self.voltage_ctrl.start_heart_beat_task();
+        Ok(())
+    }
+}
+
 /// Hash Chain Controller provides abstraction of the FPGA interface for operating hashing boards.
 /// It is the user-space driver for the IP Core
 ///
@@ -186,7 +237,7 @@ pub struct HashChain {
     /// Run-time voltage
     working_voltage: power::Voltage,
     /// Voltage controller on this hashboard
-    voltage_ctrl: Mutex<power::Control<power::SharedBackend<power::I2cBackend>>>,
+    power_station: Mutex<PowerStation>,
     /// Plug pin that indicates the hashboard is present
     #[allow(dead_code)]
     plug_pin: gpio::PinIn,
@@ -253,7 +304,7 @@ impl HashChain {
             chip_count: 0,
             midstate_count,
             asic_difficulty,
-            voltage_ctrl: Mutex::new(power::Control::new(voltage_ctrl_backend, hashboard_idx)),
+            power_station: Mutex::new(PowerStation::new(voltage_ctrl_backend, hashboard_idx)),
             plug_pin,
             rst_pin,
             hashboard_idx,
@@ -336,43 +387,6 @@ impl HashChain {
         Ok(())
     }
 
-    /// Lower voltage to working voltage (after opencore)
-    pub async fn lower_voltage(&self) -> error::Result<()> {
-        self.voltage_ctrl
-            .lock()
-            .await
-            .set_voltage(self.working_voltage)
-            .await
-    }
-
-    /// Initialize voltage controller
-    async fn init_voltage(&mut self) -> error::Result<()> {
-        let mut voltage_ctrl = self.voltage_ctrl.lock().await;
-
-        voltage_ctrl.reset().await?;
-        info!("Voltage controller reset");
-        voltage_ctrl.jump_from_loader_to_app().await?;
-        info!("Voltage controller application started");
-        let version = voltage_ctrl.get_version()?;
-        info!("Voltage controller firmware version {:#04x}", version);
-        // TODO accept multiple
-        if version != power::EXPECTED_VOLTAGE_CTRL_VERSION {
-            Err(ErrorKind::UnexpectedVersion(
-                "voltage controller firmware".to_string(),
-                version.to_string(),
-                power::EXPECTED_VOLTAGE_CTRL_VERSION.to_string(),
-            ))?
-        }
-        voltage_ctrl.set_voltage(OPEN_CORE_VOLTAGE).await?;
-        voltage_ctrl.enable_voltage()?;
-
-        // Voltage controller successfully initialized at this point, we should start sending
-        // heart beats to it. Otherwise, it would shut down in about 10 seconds.
-        info!("Starting voltage controller heart beat task");
-        let _ = voltage_ctrl.start_heart_beat_task();
-        Ok(())
-    }
-
     /// Initializes the complete hashboard including enumerating all chips
     pub async fn init(&mut self) -> error::Result<()> {
         info!("Registering ourselves with monitor");
@@ -382,13 +396,21 @@ impl HashChain {
         info!("Initializing hash chain {}", self.hashboard_idx);
         self.ip_core_init()?;
         info!("Hashboard IP core initialized");
-        self.init_voltage().await?;
+        self.power_station.lock().await.init().await?;
         info!("Resetting hash board");
         self.enter_reset()?;
         // disable voltage
-        self.voltage_ctrl.lock().await.disable_voltage()?;
+        self.power_station
+            .lock()
+            .await
+            .voltage_ctrl
+            .disable_voltage()?;
         delay_for(Duration::from_millis(INIT_DELAY_MS)).await;
-        self.voltage_ctrl.lock().await.enable_voltage()?;
+        self.power_station
+            .lock()
+            .await
+            .voltage_ctrl
+            .enable_voltage()?;
         delay_for(Duration::from_millis(2 * INIT_DELAY_MS)).await;
 
         // TODO consider including a delay
@@ -703,7 +725,12 @@ impl HashChain {
             let mut tx_fifo = self.take_work_tx_io().await;
 
             Self::send_init_work(self.clone(), work_registry.clone(), &mut tx_fifo).await;
-            self.lower_voltage().await.expect("lowering voltage failed");
+            self.power_station
+                .lock()
+                .await
+                .set_voltage(self.working_voltage)
+                .await
+                .expect("lowering voltage failed");
             Self::work_tx_task(work_registry, tx_fifo, work_generator).await;
             shutdown.send("no more work from workhub");
         });
