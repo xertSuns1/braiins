@@ -252,6 +252,9 @@ pub struct HashChain {
     work_rx_io: Mutex<Option<io::WorkRx>>,
     work_tx_io: Mutex<Option<io::WorkTx>>,
     monitor_tx: mpsc::UnboundedSender<monitor::Message>,
+    /// Do not send open-core work if this is true (some tests that test chip initialization may
+    /// want to do this).
+    disable_init_work: bool,
 }
 
 impl HashChain {
@@ -316,6 +319,7 @@ impl HashChain {
             pll_frequency,
             working_voltage: voltage,
             monitor_tx,
+            disable_init_work: false,
         })
     }
 
@@ -438,6 +442,19 @@ impl HashChain {
         self.set_ip_core_baud_rate(TARGET_CHIP_BAUD_RATE)?;
 
         self.set_asic_diff(self.asic_difficulty).await?;
+
+        // send opencore work (at high voltage) unless someone disabled it
+        if !self.disable_init_work {
+            self.send_init_work().await;
+        }
+
+        // lower voltage to working level
+        self.power_station
+            .lock()
+            .await
+            .set_voltage(self.working_voltage)
+            .await
+            .expect("lowering voltage failed");
         Ok(())
     }
 
@@ -565,11 +582,7 @@ impl HashChain {
     }
 
     /// Initialize cores by sending open-core work with correct nbits to each core
-    async fn send_init_work(
-        self: Arc<Self>,
-        work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        tx_fifo: &mut io::WorkTx,
-    ) {
+    async fn send_init_work(&mut self) {
         // Each core gets one work
         const NUM_WORK: usize = bm1387::NUM_CORES_ON_CHIP;
         trace!(
@@ -577,9 +590,11 @@ impl HashChain {
             NUM_WORK
         );
         let midstate_count = self.midstate_count.to_count();
+        let mut work_tx_io = self.work_tx_io.lock().await;
+        let tx_fifo = work_tx_io.as_mut().expect("tx fifo missing");
         for _ in 0..NUM_WORK {
             let work = &null_work::prepare_opencore(true, midstate_count);
-            let work_id = work_registry.lock().await.store_work(work.clone());
+            let work_id = 0;
             tx_fifo.wait_for_room().await.expect("wait for tx room");
             tx_fifo.send_work(&work, work_id).expect("send work");
         }
@@ -722,15 +737,7 @@ impl HashChain {
         shutdown: shutdown::Sender,
     ) {
         tokio::spawn(async move {
-            let mut tx_fifo = self.take_work_tx_io().await;
-
-            Self::send_init_work(self.clone(), work_registry.clone(), &mut tx_fifo).await;
-            self.power_station
-                .lock()
-                .await
-                .set_voltage(self.working_voltage)
-                .await
-                .expect("lowering voltage failed");
+            let tx_fifo = self.take_work_tx_io().await;
             Self::work_tx_task(work_registry, tx_fifo, work_generator).await;
             shutdown.send("no more work from workhub");
         });
