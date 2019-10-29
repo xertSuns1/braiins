@@ -24,6 +24,7 @@ use ii_logging::macros::*;
 
 // TODO remove thread specific code
 use std::convert::TryInto;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
@@ -211,6 +212,49 @@ impl<T> Clone for SharedBackend<T> {
     }
 }
 
+/// Utility structure to signal stop condition to a thread.
+/// Do join the thread when stop condition is signaled.
+/// TODO: figure out a better mechanism
+pub struct StopSender {
+    stop: Arc<AtomicBool>,
+    join: JoinHandle<()>,
+}
+
+impl StopSender {
+    // Signalize stop
+    pub fn stop(self) {
+        self.stop.store(true, Ordering::Relaxed);
+        self.join.join().expect("joining of thread failed");
+    }
+}
+
+/// Other half of StopSender
+#[derive(Clone)]
+pub struct StopReceiver {
+    stop: Arc<AtomicBool>,
+}
+
+impl StopReceiver {
+    fn new() -> Self {
+        Self {
+            stop: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    // Check if stop has been asserted
+    fn should_stop(&self) -> bool {
+        self.stop.load(Ordering::Relaxed)
+    }
+
+    // Create StopSender out of StopReceiver (on the same condition)
+    fn into_sender(self, join: JoinHandle<()>) -> StopSender {
+        StopSender {
+            stop: self.stop.clone(),
+            join,
+        }
+    }
+}
+
 /// Represents a voltage controller for a particular hashboard
 ///
 /// NOTE: Some I2C PIC commands require explicit wait time before issuing new
@@ -335,9 +379,11 @@ where
     /// The reason is to notify the voltage controller that we are alive so that it wouldn't
     /// cut-off power supply to the hashing chips on the board.
     /// TODO threading should be only part of some test profile
-    pub fn start_heart_beat_task(&self) -> JoinHandle<()> {
+    pub fn start_heart_beat_task(&self) -> StopSender {
         let hb_backend = self.backend.clone();
         let idx = self.hashboard_idx;
+        let stop_receiver = StopReceiver::new();
+        let stop_receiver_thread = stop_receiver.clone();
         let handle = thread::Builder::new()
             .name(format!("board[{}]: Voltage Ctrl heart beat", self.hashboard_idx).into())
             .spawn(move || {
@@ -347,6 +393,11 @@ where
                     voltage_ctrl
                         .send_heart_beat()
                         .expect("send_heart_beat failed");
+
+                    // check if we should stop
+                    if stop_receiver_thread.should_stop() {
+                        break;
+                    }
 
                     //trace!("Heartbeat for board {}", idx);
                     // evaluate how much time it took to send the heart beat and sleep for the rest
@@ -361,7 +412,9 @@ where
                 }
             })
             .expect("thread spawning failed");
-        handle
+
+        // create condition sender on the same variable as receiver
+        stop_receiver.into_sender(handle)
     }
 }
 

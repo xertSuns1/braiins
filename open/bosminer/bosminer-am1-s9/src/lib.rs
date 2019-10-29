@@ -58,8 +58,12 @@ use lazy_static::lazy_static;
 use error::ErrorKind;
 use failure::ResultExt;
 
+use core::future::Future;
 use futures::channel::mpsc;
+use futures::future::select;
+use futures::future::FutureExt;
 use futures::lock::Mutex;
+use futures::stream::StreamExt;
 use ii_async_compat::futures;
 
 use bm1387::ChipAddress;
@@ -73,6 +77,7 @@ use embedded_hal::digital::v2::OutputPin;
 use ii_fpga_io_am1_s9::common::ctrl_reg::MIDSTATE_CNT_A;
 
 use ii_async_compat::tokio;
+use tokio::sync::watch;
 use tokio::timer::delay_for;
 
 /// Timing constants
@@ -165,6 +170,69 @@ impl MidstateCount {
     }
 }
 
+/// Sender of `Halt` condition
+#[derive(Clone)]
+struct HaltSender {
+    inner: Arc<Mutex<watch::Sender<bool>>>,
+}
+
+impl HaltSender {
+    /// Broadcast `Halt` condition
+    async fn do_stop(&self) {
+        self.inner
+            .lock()
+            .await
+            .broadcast(true)
+            .expect("restart broadcasting failed")
+    }
+}
+
+/// Receiver of `Halt` condition
+#[derive(Clone)]
+struct HaltReceiver {
+    inner: watch::Receiver<bool>,
+}
+
+impl HaltReceiver {
+    /// Wait for `Halt` to be broadcasted
+    async fn wait_for_halt(&mut self) {
+        loop {
+            match self.inner.next().await {
+                None => {
+                    error!("Owner dropped HaltSender, no one to stop us now! Shutting down task.");
+                    break;
+                }
+                Some(halt) => {
+                    if halt {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Spawn a new task that is dropped when `Halt` is received
+    fn spawn<F>(&self, f: F)
+    where
+        F: Future<Output = ()> + 'static + Send,
+    {
+        let mut receiver = self.clone();
+        tokio::spawn(async move {
+            select(f.boxed(), receiver.wait_for_halt().boxed()).await;
+        });
+    }
+}
+
+fn make_halt_pair() -> (HaltSender, HaltReceiver) {
+    let (tx, rx) = watch::channel(false);
+    (
+        HaltSender {
+            inner: Arc::new(Mutex::new(tx)),
+        },
+        HaltReceiver { inner: rx },
+    )
+}
+
 /// Stateful wrapper around voltage control
 struct PowerStation {
     voltage_ctrl: power::Control<power::SharedBackend<power::I2cBackend>>,
@@ -190,7 +258,7 @@ impl PowerStation {
     }
 
     /// Initialize voltage controller
-    pub async fn init(&mut self) -> error::Result<()> {
+    async fn init(&mut self, mut halt_rx: HaltReceiver) -> error::Result<()> {
         self.voltage_ctrl.reset().await?;
         info!("Voltage controller reset");
         self.voltage_ctrl.jump_from_loader_to_app().await?;
@@ -211,7 +279,17 @@ impl PowerStation {
         // Voltage controller successfully initialized at this point, we should start sending
         // heart beats to it. Otherwise, it would shut down in about 10 seconds.
         info!("Starting voltage controller heart beat task");
-        let _ = self.voltage_ctrl.start_heart_beat_task();
+        let stop_heart_beat = self.voltage_ctrl.start_heart_beat_task();
+
+        // On `Halt` we have to stop the thread sending heart beat
+        tokio::spawn(async move {
+            // Wait for halt
+            halt_rx.wait_for_halt().await;
+            // Then stop and join the thread
+            // TODO: this may take up to 1 second, figure out a way to stop it immediately
+            stop_heart_beat.stop();
+        });
+
         Ok(())
     }
 }
@@ -388,7 +466,7 @@ impl HashChain {
     }
 
     /// Initializes the complete hashboard including enumerating all chips
-    pub async fn init(&mut self) -> error::Result<()> {
+    async fn init(&mut self, halt_rx: HaltReceiver) -> error::Result<()> {
         info!("Registering ourselves with monitor");
         self.monitor_tx
             .unbounded_send(monitor::Message::On)
@@ -396,7 +474,7 @@ impl HashChain {
         info!("Initializing hash chain {}", self.hashboard_idx);
         self.ip_core_init()?;
         info!("Hashboard IP core initialized");
-        self.power_station.lock().await.init().await?;
+        self.power_station.lock().await.init(halt_rx).await?;
         info!("Resetting hash board");
         self.enter_reset()?;
         // disable voltage
@@ -731,8 +809,9 @@ impl HashChain {
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         work_generator: work::Generator,
         shutdown: shutdown::Sender,
+        halt_rx: HaltReceiver,
     ) {
-        tokio::spawn(async move {
+        halt_rx.spawn(async move {
             let tx_fifo = self.take_work_tx_io().await;
             Self::work_tx_task(work_registry, tx_fifo, work_generator).await;
             shutdown.send("no more work from workhub");
@@ -743,34 +822,37 @@ impl HashChain {
         self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         solution_sender: work::SolutionSender,
+        halt_rx: HaltReceiver,
     ) {
-        tokio::spawn(async move {
+        halt_rx.spawn(async move {
             let rx_fifo = self.take_work_rx_io().await;
 
             Self::solution_rx_task(work_registry, rx_fifo, solution_sender).await;
         });
     }
 
-    fn spawn_hashrate_monitor_task(command_context: command::Context) {
-        tokio::spawn(async move {
+    fn spawn_hashrate_monitor_task(command_context: command::Context, halt_rx: HaltReceiver) {
+        halt_rx.spawn(async move {
             Self::hashrate_monitor_task(command_context).await;
         });
     }
 
     fn spawn_temperature_monitor_task(
         command_context: command::Context,
+        halt_rx: HaltReceiver,
         monitor_tx: mpsc::UnboundedSender<monitor::Message>,
     ) {
-        tokio::spawn(async move {
+        halt_rx.spawn(async move {
             Self::temperature_monitor_task(command_context, monitor_tx).await;
         });
     }
 
-    pub async fn start(
+    async fn start(
         self: Arc<Self>,
         work_generator: work::Generator,
         work_solution: work::SolutionSender,
         shutdown: shutdown::Sender,
+        halt_rx: HaltReceiver,
     ) {
         // Determines how big the work registry has to be
         let work_registry = Arc::new(Mutex::new(registry::WorkRegistry::new(
@@ -783,15 +865,20 @@ impl HashChain {
         )));
         let command_context = self.command_context.clone();
 
-        Self::spawn_temperature_monitor_task(command_context.clone(), self.monitor_tx.clone());
         Self::spawn_tx_task(
             self.clone(),
             work_registry.clone(),
             work_generator,
             shutdown.clone(),
+            halt_rx.clone(),
         );
-        Self::spawn_rx_task(self, work_registry.clone(), work_solution);
-        Self::spawn_hashrate_monitor_task(command_context.clone());
+        Self::spawn_rx_task(self.clone(), work_registry.clone(), work_solution, halt_rx.clone());
+        Self::spawn_hashrate_monitor_task(command_context.clone(), halt_rx.clone());
+        Self::spawn_temperature_monitor_task(
+            command_context.clone(),
+            halt_rx.clone(),
+            self.monitor_tx.clone(),
+        );
     }
 }
 
@@ -815,8 +902,8 @@ struct HashChainParams {
 
 /// Hashchain and related runtime data
 struct HashChainRuntime {
-    //restart_tx: RestartSender,
-    //restart_rx: RestartReceiver,
+    halt_tx: HaltSender,
+    halt_rx: HaltReceiver,
     hash_chain: Arc<HashChain>,
 }
 
@@ -873,9 +960,13 @@ impl HashChainManager {
         )
         .expect("hashchain instantiation failed");
 
+        // construct a way to signal hashchain halt
+        let (halt_tx, mut halt_rx) = make_halt_pair();
+
         // initialize it
+        // halt is required to stop voltage heart-beat task
         hash_chain
-            .init()
+            .init(halt_rx.clone())
             .await
             .expect("hashchain initialization failed");
 
@@ -887,11 +978,19 @@ impl HashChainManager {
                 self.work_generator.clone(),
                 self.work_solution.clone(),
                 self.shutdown.clone(),
+                halt_rx.clone(),
             )
             .await;
 
         // remember we are running
-        self.runtime = Some(HashChainRuntime { hash_chain });
+        self.runtime = Some(HashChainRuntime {
+            halt_tx: halt_tx.clone(),
+            halt_rx: halt_rx.clone(),
+            hash_chain,
+        });
+
+        // Infinite wait
+        halt_rx.wait_for_halt().await;
     }
 }
 
