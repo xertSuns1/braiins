@@ -141,6 +141,8 @@ async fn start_hchain(monitor_tx: mpsc::UnboundedSender<monitor::Message>) -> Ha
         monitor_tx,
     )
     .unwrap();
+    hash_chain.disable_init_work = true;
+
     hash_chain.init().await.expect("h_chain init failed");
     hash_chain
 }
