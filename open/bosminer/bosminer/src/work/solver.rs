@@ -114,6 +114,7 @@ impl SolverBuilder {
 
 /// Generator is responsible for accepting a `WorkEngine` and draining as much
 /// `MiningWork` as possible from it.
+#[derive(Clone)]
 pub struct Generator {
     /// Unique path describing internal hierarchy of backend solvers
     path: WorkSolverPath,
