@@ -29,16 +29,20 @@ use crate::job;
 use crate::node;
 use crate::work;
 
-use ii_async_compat::tokio;
+use futures::executor::block_on;
+use futures::lock::Mutex;
+use ii_async_compat::{futures, tokio};
 use tokio::prelude::*;
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use ii_stratum::v2::framing::codec::Framing;
 use ii_stratum::v2::messages::{
     NewMiningJob, OpenStandardMiningChannel, OpenStandardMiningChannelError,
     OpenStandardMiningChannelSuccess, SetNewPrevHash, SetTarget, SetupConnection,
-    SetupConnectionError, SetupConnectionSuccess, SubmitShares, SubmitSharesSuccess,
+    SetupConnectionError, SetupConnectionSuccess, SubmitShares, SubmitSharesError,
+    SubmitSharesSuccess,
 };
 use ii_stratum::v2::types::DeviceInfo;
 use ii_stratum::v2::types::*;
@@ -132,6 +136,8 @@ impl job::Bitcoin for StratumJob {
     }
 }
 
+type SolutionQueue = Arc<Mutex<VecDeque<(work::Solution, u32)>>>;
+
 struct StratumEventHandler {
     descriptor: Arc<client::Descriptor>,
     status: Result<(), ()>,
@@ -140,10 +146,15 @@ struct StratumEventHandler {
     current_prevhash_msg: Option<SetNewPrevHash>,
     /// Mining target for the next job that is to be solved
     current_target: ii_bitcoin::Target,
+    solutions: SolutionQueue,
 }
 
 impl StratumEventHandler {
-    pub fn new(job_sender: job::Sender, descriptor: Arc<client::Descriptor>) -> Self {
+    pub fn new(
+        job_sender: job::Sender,
+        descriptor: Arc<client::Descriptor>,
+        solutions: SolutionQueue,
+    ) -> Self {
         Self {
             descriptor,
             status: Err(()),
@@ -151,6 +162,7 @@ impl StratumEventHandler {
             all_jobs: Default::default(),
             current_prevhash_msg: None,
             current_target: Default::default(),
+            solutions,
         }
     }
 
@@ -171,6 +183,74 @@ impl StratumEventHandler {
         let new_target: ii_bitcoin::Target = value.into();
         info!("changing target to {:?}", new_target);
         self.current_target = new_target;
+    }
+
+    async fn process_accepted_shares(&self, success_msg: &SubmitSharesSuccess) {
+        let now = std::time::Instant::now();
+        while let Some((solution, seq_num)) = self.solutions.lock().await.pop_front() {
+            info!(
+                "Stratum: Accepted solution #{} with nonce={:08x}.",
+                seq_num,
+                solution.nonce()
+            );
+            self.descriptor
+                .mining_stats
+                .accepted
+                .account_solution(&solution.job_target(), now)
+                .await;
+            if success_msg.last_seq_num == seq_num {
+                // all accepted solutions have been found
+                return;
+            }
+        }
+        warn!(
+            "Stratum: Last accepted solution #{} hasn't been found!",
+            success_msg.last_seq_num
+        );
+    }
+
+    async fn process_rejected_shares(&self, error_msg: &SubmitSharesError) {
+        let now = std::time::Instant::now();
+        while let Some((solution, seq_num)) = self.solutions.lock().await.pop_front() {
+            if error_msg.seq_num == seq_num {
+                info!(
+                    "Stratum: Rejected solution #{} with nonce={:08x}!",
+                    seq_num,
+                    solution.nonce()
+                );
+                self.descriptor
+                    .mining_stats
+                    .rejected
+                    .account_solution(&solution.job_target(), now)
+                    .await;
+                // the rejected solution has been found
+                return;
+            } else {
+                // preceding solutions are treated as an accepted ones
+                info!(
+                    "Stratum: Accepted solution #{} with nonce={}.",
+                    seq_num,
+                    solution.nonce()
+                );
+                self.descriptor
+                    .mining_stats
+                    .accepted
+                    .account_solution(&solution.job_target(), now)
+                    .await;
+                warn!(
+                    "Stratum: The solution #{} precedes rejected solution #{}!",
+                    seq_num, error_msg.seq_num
+                );
+                warn!(
+                    "Stratum: The solution #{} is treated as an accepted one.",
+                    seq_num
+                );
+            }
+        }
+        warn!(
+            "Stratum: Rejected solution #{} hasn't been found!",
+            error_msg.seq_num
+        );
     }
 }
 
@@ -220,6 +300,22 @@ impl Handler for StratumEventHandler {
         self.update_target(target_msg.max_target);
     }
 
+    fn visit_submit_shares_success(
+        &mut self,
+        _msg: &Message<Protocol>,
+        success_msg: &SubmitSharesSuccess,
+    ) {
+        block_on(self.process_accepted_shares(success_msg));
+    }
+
+    fn visit_submit_shares_error(
+        &mut self,
+        _msg: &Message<Protocol>,
+        error_msg: &SubmitSharesError,
+    ) {
+        block_on(self.process_rejected_shares(error_msg));
+    }
+
     fn visit_setup_connection_success(
         &mut self,
         _msg: &Message<Protocol>,
@@ -257,14 +353,20 @@ impl Handler for StratumEventHandler {
 struct StratumSolutionHandler {
     connection_tx: ConnectionTx<Framing>,
     job_solution: job::SolutionReceiver,
+    solutions: SolutionQueue,
     seq_num: u32,
 }
 
 impl StratumSolutionHandler {
-    fn new(connection_tx: ConnectionTx<Framing>, job_solution: job::SolutionReceiver) -> Self {
+    fn new(
+        connection_tx: ConnectionTx<Framing>,
+        job_solution: job::SolutionReceiver,
+        solutions: SolutionQueue,
+    ) -> Self {
         Self {
             connection_tx,
             job_solution,
+            solutions,
             seq_num: 0,
         }
     }
@@ -283,6 +385,8 @@ impl StratumSolutionHandler {
             ntime: solution.time(),
             version: solution.version(),
         };
+        // store solution with sequence number for future server acknowledge
+        self.solutions.lock().await.push_back((solution, seq_num));
         // send solutions back to the stratum server
         self.connection_tx
             .send_msg(share_msg)
@@ -445,7 +549,9 @@ async fn event_handler_task(
 
 pub async fn run(job_solver: job::Solver, descriptor: Arc<client::Descriptor>) {
     let (job_sender, job_solution) = job_solver.split();
-    let mut event_handler = StratumEventHandler::new(job_sender, descriptor.clone());
+    let solutions = Arc::new(Mutex::new(VecDeque::new()));
+    let mut event_handler =
+        StratumEventHandler::new(job_sender, descriptor.clone(), solutions.clone());
 
     let mut connection = Connection::<Framing>::connect(&descriptor.socket_addr)
         .await
@@ -468,7 +574,7 @@ pub async fn run(job_solver: job::Solver, descriptor: Arc<client::Descriptor>) {
     // run event handler in a separate task
     tokio::spawn(event_handler_task(connection_rx, event_handler));
 
-    StratumSolutionHandler::new(connection_tx, job_solution)
+    StratumSolutionHandler::new(connection_tx, job_solution, solutions)
         .run()
         .await;
 }
