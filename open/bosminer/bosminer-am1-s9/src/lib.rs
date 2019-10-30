@@ -168,7 +168,7 @@ impl MidstateCount {
 /// Main responsibilities:
 /// - memory mapping of the FPGA control interface
 /// - mining work submission and solution processing
-pub struct HashChain<VBackend> {
+pub struct HashChain {
     mining_stats: stats::BasicMining,
     /// Number of chips that have been detected
     chip_count: usize,
@@ -181,7 +181,7 @@ pub struct HashChain<VBackend> {
     /// Run-time voltage
     working_voltage: power::Voltage,
     /// Voltage controller on this hashboard
-    voltage_ctrl: Mutex<power::Control<VBackend>>,
+    voltage_ctrl: Mutex<power::Control<power::SharedBackend<power::I2cBackend>>>,
     /// Plug pin that indicates the hashboard is present
     #[allow(dead_code)]
     plug_pin: gpio::PinIn,
@@ -197,19 +197,13 @@ pub struct HashChain<VBackend> {
     work_tx_io: Mutex<Option<io::WorkTx>>,
 }
 
-impl<VBackend> node::Stats for HashChain<VBackend>
-where
-    VBackend: Send + Sync,
-{
+impl node::Stats for HashChain {
     fn mining_stats(&self) -> &dyn stats::Mining {
         &self.mining_stats
     }
 }
 
-impl<VBackend> HashChain<VBackend>
-where
-    VBackend: 'static + Clone + power::Backend,
-{
+impl HashChain {
     /// Creates a new hashboard controller with memory mapped FPGA IP core
     ///
     /// * `gpio_mgr` - gpio manager used for producing pins required for hashboard control
@@ -219,7 +213,7 @@ where
     /// * `asic_difficulty` - to what difficulty set the hardware target filter
     pub fn new(
         gpio_mgr: &gpio::ControlPinManager,
-        voltage_ctrl_backend: VBackend,
+        voltage_ctrl_backend: power::SharedBackend<power::I2cBackend>,
         hashboard_idx: usize,
         midstate_count: MidstateCount,
         asic_difficulty: usize,
@@ -751,28 +745,19 @@ where
     }
 }
 
-impl<VBackend> fmt::Debug for HashChain<VBackend>
-where
-    VBackend: 'static + Send + Sync + Clone + power::Backend,
-{
+impl fmt::Debug for HashChain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Hash Board {}", self.hashboard_idx)
     }
 }
 
-impl<VBackend> fmt::Display for HashChain<VBackend>
-where
-    VBackend: 'static + Send + Sync + Clone + power::Backend,
-{
+impl fmt::Display for HashChain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Hash Board {}", self.hashboard_idx)
     }
 }
 
-impl<VBackend> node::Info for HashChain<VBackend> where
-    VBackend: 'static + Send + Sync + Clone + power::Backend
-{
-}
+impl node::Info for HashChain {}
 
 async fn start_miner(
     enabled_chains: Vec<usize>,

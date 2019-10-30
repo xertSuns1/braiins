@@ -23,7 +23,7 @@
 use ii_logging::macros::*;
 
 use super::*;
-use crate::Solution;
+use crate::{HashChain, Solution};
 
 use bosminer::work;
 
@@ -37,9 +37,6 @@ use futures::stream::StreamExt;
 use ii_async_compat::tokio;
 use tokio::future::FutureExt;
 use tokio::timer::delay_for;
-
-/// Our local abbreviation
-type HashChain = crate::HashChain<power::SharedBackend<power::I2cBackend>>;
 
 /// Prepares sample work with empty midstates
 /// NOTE: this work has 2 valid nonces:
