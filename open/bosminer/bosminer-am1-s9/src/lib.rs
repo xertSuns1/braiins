@@ -294,6 +294,11 @@ impl PowerStation {
     }
 }
 
+pub struct HashChainPll {
+    chip_freq: Vec<Option<usize>>,
+    max_freq: Option<usize>,
+}
+
 /// Hash Chain Controller provides abstraction of the FPGA interface for operating hashing boards.
 /// It is the user-space driver for the IP Core
 ///
@@ -307,10 +312,8 @@ pub struct HashChain {
     midstate_count: MidstateCount,
     /// ASIC difficulty
     asic_difficulty: usize,
-    /// PLL frequency
-    pll_frequency: usize,
-    /// Run-time voltage
-    working_voltage: power::Voltage,
+    /// current PLL chip frequency
+    pll: Mutex<HashChainPll>,
     /// Voltage controller on this hashboard
     power_station: Mutex<PowerStation>,
     /// Plug pin that indicates the hashboard is present
@@ -346,8 +349,6 @@ impl HashChain {
         hashboard_idx: usize,
         midstate_count: MidstateCount,
         asic_difficulty: usize,
-        pll_frequency: usize,
-        voltage: power::Voltage,
         monitor_tx: mpsc::UnboundedSender<monitor::Message>,
     ) -> error::Result<Self> {
         // Hashboard creation is aborted if the pin is not present
@@ -390,10 +391,12 @@ impl HashChain {
             command_context: command::Context::new(command_io),
             work_rx_io: Mutex::new(Some(work_rx_io)),
             work_tx_io: Mutex::new(Some(work_tx_io)),
-            pll_frequency,
-            working_voltage: voltage,
             monitor_tx,
             disable_init_work: false,
+            pll: Mutex::new(HashChainPll {
+                chip_freq: [None; MAX_CHIPS_ON_CHAIN].to_vec(),
+                max_freq: None,
+            }),
         })
     }
 
@@ -417,20 +420,33 @@ impl HashChain {
     ///
     /// Returns number of ticks (suitable to be written to `WORK_TIME` register)
     #[inline]
-    fn calculate_work_time(&self) -> u32 {
+    fn calculate_work_time(&self, max_pll_frequency: usize) -> u32 {
         secs_to_fpga_ticks(calculate_work_delay_for_pll(
             self.midstate_count.to_count(),
-            self.pll_frequency,
+            max_pll_frequency,
         ))
     }
 
+    /// Set work time depending on current PLL frequency
+    ///
+    /// This method sets work time so it's fast enough at least for `new_freq`.
+    /// It internally tracks what work_time is set and when it's too slow, it increases it.
+    async fn set_work_time(&self, new_freq: usize) {
+        let mut pll = self.pll.lock().await;
+        let current_max_freq = pll.max_freq.unwrap_or(0);
+
+        if new_freq > current_max_freq {
+            let new_work_time = self.calculate_work_time(new_freq);
+            info!("Using work time: {} for freq {}", new_work_time, new_freq);
+            self.common_io.set_ip_core_work_time(new_work_time);
+            pll.max_freq = Some(new_freq);
+        }
+    }
+
     /// Helper method that initializes the FPGA IP core
-    fn ip_core_init(&mut self) -> error::Result<()> {
+    async fn ip_core_init(&mut self) -> error::Result<()> {
         // Configure IP core
         self.set_ip_core_baud_rate(INIT_CHIP_BAUD_RATE)?;
-        let work_time = self.calculate_work_time();
-        trace!("Using work time: {}", work_time);
-        self.common_io.set_ip_core_work_time(work_time);
         self.common_io.set_midstate_count();
 
         Ok(())
@@ -466,13 +482,18 @@ impl HashChain {
     }
 
     /// Initializes the complete hashboard including enumerating all chips
-    async fn init(&mut self, halt_rx: HaltReceiver) -> error::Result<()> {
+    async fn init(
+        &mut self,
+        halt_rx: HaltReceiver,
+        initial_pll_frequency: Vec<usize>,
+        initial_voltage: power::Voltage,
+    ) -> error::Result<()> {
         info!("Registering ourselves with monitor");
         self.monitor_tx
             .unbounded_send(monitor::Message::On)
             .expect("send failed");
         info!("Initializing hash chain {}", self.hashboard_idx);
-        self.ip_core_init()?;
+        self.ip_core_init().await?;
         info!("Hashboard IP core initialized");
         self.power_station.lock().await.init(halt_rx).await?;
         info!("Resetting hash board");
@@ -505,7 +526,7 @@ impl HashChain {
         self.command_context.set_chip_count(self.chip_count).await;
 
         // set PLL
-        self.set_pll(self.pll_frequency, ChipAddress::All).await?;
+        self.set_pll_table(initial_pll_frequency).await?;
 
         // configure the hashing chain to operate at desired baud rate. Note that gate block is
         // enabled to allow continuous start of chips in the chain
@@ -524,7 +545,7 @@ impl HashChain {
         self.power_station
             .lock()
             .await
-            .set_voltage(self.working_voltage)
+            .set_voltage(initial_voltage)
             .await
             .expect("lowering voltage failed");
         Ok(())
@@ -585,11 +606,43 @@ impl HashChain {
     }
 
     /// Loads PLL register with a starting value
-    async fn set_pll(&mut self, freq: usize, chip_addr: ChipAddress) -> error::Result<()> {
-        let pll = bm1387::PllReg::try_pll_from_freq(CHIP_OSC_CLK_HZ, freq)?;
+    async fn set_pll(&mut self, freq: usize, chip_id: usize) -> error::Result<()> {
+        assert!(chip_id < self.chip_count);
+
+        // check we are setting a different frequency
+        let mut pll = self.pll.lock().await;
+        if pll.chip_freq[chip_id] == Some(freq) {
+            // frequency is the same, do nothing
+            return Ok(());
+        }
+
+        // convert frequency to PLL setting register
+        let pll_reg = bm1387::PllReg::try_pll_from_freq(CHIP_OSC_CLK_HZ, freq)?;
 
         // NOTE: when PLL register is read back, it is or-ed with 0x8000_0000, not sure why
-        self.command_context.write_register(chip_addr, &pll).await
+        self.command_context
+            .write_register(ChipAddress::One(chip_id), &pll_reg)
+            .await?;
+
+        // Remember the frequency we set
+        pll.chip_freq[chip_id] = Some(freq);
+        drop(pll);
+
+        // Update worktime if necessary
+        self.set_work_time(freq).await;
+
+        Ok(())
+    }
+
+    /// Load PLL register of all chips
+    async fn set_pll_table(&mut self, freq_table: Vec<usize>) -> error::Result<()> {
+        // TODO: find a better way - how to communicate with frequency setter how many chips we have?
+        assert!(freq_table.len() >= self.chip_count);
+
+        for i in 0..self.chip_count {
+            self.set_pll(freq_table[i], i).await?;
+        }
+        Ok(())
     }
 
     /// Configure all chips in the hash chain
@@ -894,7 +947,7 @@ impl fmt::Display for HashChain {
 
 /// Mining parameters that can change run-time
 pub struct HashChainParams {
-    pll_frequency: usize,
+    pll_frequency: Vec<usize>,
     voltage: power::Voltage,
 }
 
@@ -961,8 +1014,6 @@ impl HashChainManager {
             self.hashboard_idx,
             self.midstate_count,
             self.asic_difficulty,
-            params.pll_frequency,
-            params.voltage,
             self.monitor_tx.clone(),
         )
         .expect("hashchain instantiation failed");
@@ -973,7 +1024,11 @@ impl HashChainManager {
         // initialize it
         // halt is required to stop voltage heart-beat task
         hash_chain
-            .init(halt_rx.clone())
+            .init(
+                halt_rx.clone(),
+                params.pll_frequency.clone(),
+                params.voltage.clone(),
+            )
             .await
             .expect("hashchain initialization failed");
 
@@ -1072,7 +1127,7 @@ async fn start_miner(
             shutdown: shutdown.clone(),
             runtime: None,
             params: Some(HashChainParams {
-                pll_frequency,
+                pll_frequency: vec![pll_frequency; MAX_CHIPS_ON_CHAIN],
                 voltage,
             }),
             monitor_tx: monitor::Monitor::register_hashchain(monitor.clone(), *hashboard_idx).await,

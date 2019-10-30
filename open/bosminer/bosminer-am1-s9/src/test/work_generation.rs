@@ -139,14 +139,19 @@ async fn start_hchain(
         config::S9_HASHBOARD_INDEX,
         crate::MidstateCount::new(1),
         1,
-        config::DEFAULT_PLL_FREQUENCY,
-        crate::OPEN_CORE_VOLTAGE,
         monitor_tx,
     )
     .unwrap();
     hash_chain.disable_init_work = true;
 
-    hash_chain.init(halt_rx).await.expect("h_chain init failed");
+    hash_chain
+        .init(
+            halt_rx,
+            vec![config::DEFAULT_PLL_FREQUENCY; super::MAX_CHIPS_ON_CHAIN],
+            crate::OPEN_CORE_VOLTAGE,
+        )
+        .await
+        .expect("h_chain init failed");
     hash_chain
 }
 

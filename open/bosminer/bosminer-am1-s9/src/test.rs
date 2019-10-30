@@ -58,8 +58,6 @@ fn test_hchain_ctl_instance() {
         config::S9_HASHBOARD_INDEX,
         MidstateCount::new(1),
         config::ASIC_DIFFICULTY,
-        config::DEFAULT_PLL_FREQUENCY,
-        crate::OPEN_CORE_VOLTAGE,
         monitor_sender,
     );
     match hash_chain {
