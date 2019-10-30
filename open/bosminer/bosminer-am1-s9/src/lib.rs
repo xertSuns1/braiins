@@ -504,10 +504,8 @@ impl HashChain {
         info!("Discovered {} chips", self.chip_count);
         self.command_context.set_chip_count(self.chip_count).await;
 
-        // calculate PLL for given frequency
-        let pll = bm1387::PllReg::try_pll_from_freq(CHIP_OSC_CLK_HZ, self.pll_frequency)?;
         // set PLL
-        self.set_pll(&pll).await?;
+        self.set_pll(self.pll_frequency, ChipAddress::All).await?;
 
         // configure the hashing chain to operate at desired baud rate. Note that gate block is
         // enabled to allow continuous start of chips in the chain
@@ -587,11 +585,11 @@ impl HashChain {
     }
 
     /// Loads PLL register with a starting value
-    async fn set_pll<'a>(&'a mut self, pll: &'a bm1387::PllReg) -> error::Result<()> {
+    async fn set_pll(&mut self, freq: usize, chip_addr: ChipAddress) -> error::Result<()> {
+        let pll = bm1387::PllReg::try_pll_from_freq(CHIP_OSC_CLK_HZ, freq)?;
+
         // NOTE: when PLL register is read back, it is or-ed with 0x8000_0000, not sure why
-        self.command_context
-            .write_register(ChipAddress::All, pll)
-            .await
+        self.command_context.write_register(chip_addr, &pll).await
     }
 
     /// Configure all chips in the hash chain
