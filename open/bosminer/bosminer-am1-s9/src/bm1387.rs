@@ -75,6 +75,25 @@ impl ChipAddress {
     }
 }
 
+/// This is scheme to address particular core on chain
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct CoreAddress {
+    chip: usize,
+    core: usize,
+}
+
+impl CoreAddress {
+    /// Every nonce returned by chip (except those sent by opencore) encoides address of the
+    /// chip and core that computed it (by how they divide the search space).
+    fn new(nonce: u32) -> Self {
+        let nonce = nonce as usize;
+        Self {
+            chip: (nonce >> 2) & 0x3f,
+            core: (nonce >> 24) & 0x7f,
+        }
+    }
+}
+
 /// Control or work command layout
 #[derive(PackedStruct, Debug)]
 #[packed_struct(size_bytes = "1", bit_numbering = "lsb0")]
@@ -862,6 +881,41 @@ mod test {
                 postdiv1: 1,
                 postdiv2: 1
             }
+        );
+    }
+
+    #[test]
+    fn test_core_address() {
+        assert_eq!(
+            CoreAddress::new(0xffffffff),
+            CoreAddress {
+                chip: 0x3f,
+                core: 0x7f
+            }
+        );
+        assert_eq!(
+            CoreAddress::new(0x2a105d5d),
+            CoreAddress { chip: 23, core: 42 }
+        );
+        assert_eq!(
+            CoreAddress::new(0xd25738d3),
+            CoreAddress { chip: 52, core: 82 }
+        );
+        assert_eq!(
+            CoreAddress::new(0x47268d19),
+            CoreAddress { chip: 6, core: 71 }
+        );
+        assert_eq!(
+            CoreAddress::new(0xa5e09223),
+            CoreAddress { chip: 8, core: 37 }
+        );
+        assert_eq!(
+            CoreAddress::new(0xd57c1ce4),
+            CoreAddress { chip: 57, core: 85 }
+        );
+        assert_eq!(
+            CoreAddress::new(0x40e55650),
+            CoreAddress { chip: 20, core: 64 }
         );
     }
 }
