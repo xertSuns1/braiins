@@ -90,6 +90,20 @@ pub enum ErrorKind {
     /// PLL conversion error
     #[fail(display = "PLL: {}", _0)]
     PLL(String),
+
+    /// Work or command FIFO timeout.
+    #[fail(display = "HashChain Manager: {}", _0)]
+    HashChainManager(HashChainManager),
+}
+
+#[derive(Clone, Eq, PartialEq, Debug, Fail)]
+pub enum HashChainManager {
+    #[fail(display = "Not Running")]
+    NotRunning,
+    #[fail(display = "Already Running")]
+    AlreadyRunning,
+    #[fail(display = "HashChain parameters not set")]
+    ParamsNotSet,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Fail)]
