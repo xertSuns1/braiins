@@ -930,7 +930,7 @@ struct HashChainManager {
     work_generator: work::Generator,
     work_solution: work::SolutionSender,
     shutdown: shutdown::Sender,
-    // dynamic runtime - valid only when miner is running
+    // dynamic runtime - `is_some` only when miner is running
     runtime: Option<HashChainRuntime>,
     // configuration
     params: Option<HashChainParams>,
@@ -940,11 +940,20 @@ struct HashChainManager {
 
 impl HashChainManager {
     /// Initialize and start mining on hashchain
-    async fn start(&mut self) {
-        assert!(self.params.is_some());
-        assert!(self.runtime.is_none());
-        let params = self.params.as_ref().expect("params missing");
-
+    async fn start(&mut self) -> error::Result<()> {
+        // check if we are running
+        if self.runtime.is_some() {
+            Err(ErrorKind::HashChainManager(
+                error::HashChainManager::AlreadyRunning,
+            ))?;
+        }
+        // check if params are set
+        let params = match self.params.as_ref() {
+            Some(params) => params,
+            None => Err(ErrorKind::HashChainManager(
+                error::HashChainManager::ParamsNotSet,
+            ))?,
+        };
         // make us a hash chain
         let mut hash_chain = HashChain::new(
             &self.gpio_mgr,
@@ -987,8 +996,23 @@ impl HashChainManager {
             hash_chain,
         });
 
-        // Infinite wait
-        halt_rx.wait_for_halt().await;
+        Ok(())
+    }
+
+    async fn stop(&mut self) -> error::Result<()> {
+        // check if we are running
+        let runtime = match self.runtime.as_ref() {
+            Some(runtime) => runtime,
+            None => Err(ErrorKind::HashChainManager(
+                error::HashChainManager::NotRunning,
+            ))?,
+        };
+        // stop everything
+        runtime.halt_tx.do_stop().await;
+        // drop hashchain we keep around
+        self.runtime = None;
+
+        Ok(())
     }
 }
 
@@ -1057,7 +1081,7 @@ async fn start_miner(
     }
     // start everything
     for mut hm in hms.drain(..) {
-        hm.start().await;
+        hm.start().await.expect("failed to start hashchain");
     }
 }
 
