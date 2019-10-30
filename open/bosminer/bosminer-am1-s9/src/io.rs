@@ -254,6 +254,11 @@ pub struct CommandRxTxFifos {
 
 impl CommandRxTxFifos {
     #[inline]
+    pub fn get_stat_reg(&self) -> u32 {
+        self.regs.cmd_stat_reg.read().bits()
+    }
+
+    #[inline]
     pub fn is_rx_empty(&self) -> bool {
         self.regs.cmd_stat_reg.read().rx_empty().bit()
     }
@@ -305,7 +310,15 @@ impl CommandRxTxFifos {
         match self.read().timeout(timeout).await {
             Ok(Ok(word)) => Ok(Some(word)), // Read complete on time
             Ok(Err(err)) => Err(err),       // Read I/O error
-            Err(_) => Ok(None),             // Read timeout
+            Err(_) => {
+                // Read timeout
+                if !self.is_rx_empty() {
+                    // XXX workaround when cpu is 100% full
+                    Ok(Some(self.read().await?))
+                } else {
+                    Ok(None)
+                }
+            }
         }
     }
 
