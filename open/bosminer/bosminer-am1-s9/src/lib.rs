@@ -51,7 +51,7 @@ use bosminer_macros::WorkSolverNode;
 
 use std::fmt;
 use std::sync::Arc;
-use std::time::{self, Duration};
+use std::time::{self, Duration, Instant};
 
 use lazy_static::lazy_static;
 
@@ -75,6 +75,8 @@ use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
 
 use ii_fpga_io_am1_s9::common::ctrl_reg::MIDSTATE_CNT_A;
+
+use ii_bitcoin::MeetsTarget;
 
 use ii_async_compat::tokio;
 use tokio::sync::watch;
@@ -231,6 +233,124 @@ fn make_halt_pair() -> (HaltSender, HaltReceiver) {
         },
         HaltReceiver { inner: rx },
     )
+}
+
+/// Core address space size (it should be 114, but the addresses are non-consecutive)
+const CORE_ADR_SPACE_SIZE: usize = 128;
+
+/// Per-core counters for valid nonces/errors
+#[derive(Clone, Copy)]
+pub struct CoreCounter {
+    valid: usize,
+    errors: usize,
+}
+
+impl CoreCounter {
+    pub fn reset(&mut self) {
+        self.valid = 0;
+        self.errors = 0;
+    }
+
+    pub fn new() -> Self {
+        Self {
+            valid: 0,
+            errors: 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct ChipCounter {
+    core: [CoreCounter; CORE_ADR_SPACE_SIZE],
+    valid: usize,
+    errors: usize,
+    started: Instant,
+}
+
+impl ChipCounter {
+    pub fn reset(&mut self) {
+        self.valid = 0;
+        self.errors = 0;
+        for core in self.core.iter_mut() {
+            core.reset();
+        }
+        self.started = Instant::now();
+    }
+
+    pub fn core_bitmask(&self) -> u128 {
+        let mut mask: u128 = 0;
+        for (id, core) in self.core.iter().enumerate() {
+            if core.valid > 0 {
+                mask |= 1u128 << id;
+            }
+        }
+        mask
+    }
+
+    pub fn dead_cores(&self) -> usize {
+        let mask = self.core_bitmask();
+        let mask = ((mask << 1) | (mask >> 1) | mask) & 0x1ffffffffffffff01ffffffffffffff;
+        114 - mask.count_ones() as usize
+    }
+
+    pub fn new() -> Self {
+        Self {
+            valid: 0,
+            errors: 0,
+            core: [CoreCounter::new(); CORE_ADR_SPACE_SIZE],
+            started: Instant::now(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct HashChainCounter {
+    chip: Vec<ChipCounter>,
+    valid: usize,
+    errors: usize,
+    started: Instant,
+}
+
+impl HashChainCounter {
+    pub fn reset(&mut self) {
+        self.valid = 0;
+        self.errors = 0;
+        for chip in self.chip.iter_mut() {
+            chip.reset();
+        }
+        self.started = Instant::now();
+    }
+
+    pub fn add_valid(&mut self, addr: bm1387::CoreAddress) {
+        if addr.chip >= self.chip.len() {
+            // nonce from non-existent chip
+            // TODO: what to do?
+            return;
+        }
+        self.valid += 1;
+        self.chip[addr.chip].valid += 1;
+        self.chip[addr.chip].core[addr.core].valid += 1;
+    }
+
+    pub fn add_error(&mut self, addr: bm1387::CoreAddress) {
+        if addr.chip >= self.chip.len() {
+            // nonce from non-existent chip
+            // TODO: what to do?
+            return;
+        }
+        self.errors += 1;
+        self.chip[addr.chip].errors += 1;
+        self.chip[addr.chip].core[addr.core].errors += 1;
+    }
+
+    pub fn new(chip_count: usize) -> Self {
+        Self {
+            valid: 0,
+            errors: 0,
+            started: Instant::now(),
+            chip: vec![ChipCounter::new(); chip_count],
+        }
+    }
 }
 
 /// Stateful wrapper around voltage control
@@ -734,9 +854,6 @@ impl HashChain {
         }
     }
 
-    /// TODO: Currently this function is empty and should be used for handling hardware errors.
-    fn handle_hw_error() {}
-
     /// This task picks up work from frontend (via generator), saves it to
     /// registry (to pair with `Assignment` later) and sends it out to hw.
     /// It makes sure that TX fifo is empty before requesting work from
@@ -773,6 +890,7 @@ impl HashChain {
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         mut rx_fifo: io::WorkRx,
         solution_sender: work::SolutionSender,
+        counter: Arc<Mutex<HashChainCounter>>,
     ) {
         // solution receiving/filtering part
         loop {
@@ -785,19 +903,27 @@ impl HashChain {
             let work = work_registry.find_work(work_id as usize);
             match work {
                 Some(work_item) => {
+                    let core_addr = bm1387::CoreAddress::new(solution.nonce);
                     let status = work_item.insert_solution(solution);
 
                     // work item detected a new unique solution, we will push it for further processing
                     if let Some(unique_solution) = status.unique_solution {
                         if !status.duplicate {
+                            let hash = unique_solution.hash();
+                            if !hash.meets(&ASIC_TARGET) {
+                                warn!("Solution from hashchain not hitting ASIC target");
+                                counter.lock().await.add_error(core_addr);
+                            } else {
+                                counter.lock().await.add_valid(core_addr);
+                            }
                             solution_sender.send(unique_solution);
                         }
                     }
                     if status.duplicate {
-                        Self::handle_hw_error();
+                        counter.lock().await.add_error(core_addr);
                     }
                     if status.mismatched_nonce {
-                        Self::handle_hw_error();
+                        counter.lock().await.add_error(core_addr);
                     }
                 }
                 None => {
@@ -805,7 +931,6 @@ impl HashChain {
                         "No work present for solution, ID:{:#x} {:#010x?}",
                         work_id, solution
                     );
-                    Self::handle_hw_error();
                 }
             }
         }
@@ -883,11 +1008,12 @@ impl HashChain {
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         solution_sender: work::SolutionSender,
         halt_rx: HaltReceiver,
+        counter: Arc<Mutex<HashChainCounter>>,
     ) {
         halt_rx.spawn(async move {
             let rx_fifo = self.take_work_rx_io().await;
 
-            Self::solution_rx_task(work_registry, rx_fifo, solution_sender).await;
+            Self::solution_rx_task(work_registry, rx_fifo, solution_sender, counter).await;
         });
     }
 
@@ -913,6 +1039,7 @@ impl HashChain {
         work_solution: work::SolutionSender,
         shutdown: shutdown::Sender,
         halt_rx: HaltReceiver,
+        counter: Arc<Mutex<HashChainCounter>>,
     ) {
         // Determines how big the work registry has to be
         let work_registry = Arc::new(Mutex::new(registry::WorkRegistry::new(
@@ -932,7 +1059,13 @@ impl HashChain {
             shutdown.clone(),
             halt_rx.clone(),
         );
-        Self::spawn_rx_task(self.clone(), work_registry.clone(), work_solution, halt_rx.clone());
+        Self::spawn_rx_task(
+            self.clone(),
+            work_registry.clone(),
+            work_solution,
+            halt_rx.clone(),
+            counter,
+        );
         Self::spawn_hashrate_monitor_task(command_context.clone(), halt_rx.clone());
         Self::spawn_temperature_monitor_task(
             command_context.clone(),
@@ -964,8 +1097,10 @@ pub struct HashChainParams {
 /// Hashchain and related runtime data
 pub struct HashChainRuntime {
     halt_tx: HaltSender,
+    #[allow(dead_code)]
     halt_rx: HaltReceiver,
     hash_chain: Arc<HashChain>,
+    counter: Arc<Mutex<HashChainCounter>>,
 }
 
 #[derive(Default, Debug, WorkSolverNode)]
@@ -1021,7 +1156,10 @@ impl HashChainManager {
         .expect("hashchain instantiation failed");
 
         // construct a way to signal hashchain halt
-        let (halt_tx, mut halt_rx) = make_halt_pair();
+        let (halt_tx, halt_rx) = make_halt_pair();
+
+        // make counter to track performance of chips
+        let counter = Arc::new(Mutex::new(HashChainCounter::new()));
 
         // initialize it
         // halt is required to stop voltage heart-beat task
@@ -1043,6 +1181,7 @@ impl HashChainManager {
                 self.work_solution.clone(),
                 self.shutdown.clone(),
                 halt_rx.clone(),
+                counter.clone(),
             )
             .await;
 
@@ -1051,6 +1190,7 @@ impl HashChainManager {
             halt_tx: halt_tx.clone(),
             halt_rx: halt_rx.clone(),
             hash_chain,
+            counter,
         });
 
         Ok(())
@@ -1078,6 +1218,8 @@ impl HashChainManager {
 
     /// Set parameters of hashchain (both running and stopped)
     async fn set_params(&mut self, params: &HashChainParams) -> error::Result<()> {
+        self.params = params.clone();
+
         if let Some(runtime) = self.runtime.as_ref() {
             // We are running, change parameters on a live hashchain instance as well
             runtime
