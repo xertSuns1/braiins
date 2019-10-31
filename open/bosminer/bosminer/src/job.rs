@@ -176,9 +176,11 @@ impl SolutionReceiver {
                 stats::account_valid_diff(&path, &solution, time, DiffTargetType::JOB).await;
             } else if hash.meets(solution.backend_target()) {
                 stats::account_valid_diff(&path, &solution, time, DiffTargetType::BACKEND).await;
+                // skip submitting the solution as we've only met backend difficulty
                 continue;
             } else {
                 stats::account_error_backend_diff(&path, &solution.backend_target(), time).await;
+                // skip submitting the solution as this is a backend error
                 continue;
             }
 

@@ -26,6 +26,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::DeriveInput;
 
+/// Generates implementation of node::Info and node::Stats traits for a type marked by this derive.
 #[proc_macro_derive(MiningNode, attributes(member_mining_stats))]
 pub fn derive_mining_node(input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(input).unwrap();
@@ -51,6 +52,7 @@ fn impl_derive_mining_node(ast: &DeriveInput) -> proc_macro2::TokenStream {
     }
 }
 
+/// Generates implementation of stats::Mining trait for a type marked by this derive.
 #[proc_macro_derive(
     MiningStats,
     attributes(
