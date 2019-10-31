@@ -523,7 +523,7 @@ impl PllReg {
     const MAX_FREQ: usize = 1_200_000_000;
 
     /// Simulate divider/PLL and calculate target frequency
-    fn calc(&self, xtal_freq: usize) -> usize {
+    pub fn calc(&self, xtal_freq: usize) -> usize {
         // we have to do the arithmetic in u64 (at least) to be sure
         // there wouldn't be an overflow
         (xtal_freq as u64 * self.fbdiv as u64

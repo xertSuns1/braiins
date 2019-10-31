@@ -50,7 +50,7 @@ pub trait Interface: Send + Sync {
     /// * `chip_address` can address one or more chips
     /// * register number is pulled from register type `T`
     async fn read_register<T: bm1387::Register>(
-        &mut self,
+        &self,
         chip_address: ChipAddress,
     ) -> error::Result<Vec<T>>;
 
@@ -58,7 +58,7 @@ pub trait Interface: Send + Sync {
     ///
     /// * `chip_address` can address one or more chips
     async fn write_register<'a, T: bm1387::Register>(
-        &'a mut self,
+        &'a self,
         chip_address: ChipAddress,
         value: &'a T,
     ) -> error::Result<()>;
@@ -67,7 +67,7 @@ pub trait Interface: Send + Sync {
     ///
     /// * `chip_address` can be only unicast
     async fn read_one_register<T: bm1387::Register>(
-        &mut self,
+        &self,
         chip_address: ChipAddress,
     ) -> error::Result<T> {
         assert!(!chip_address.is_broadcast());
@@ -78,7 +78,7 @@ pub trait Interface: Send + Sync {
     /// Write register(s) and read it/them back to verify they were written correctly
     /// Same as `write_register`, but followed by `read_register` on the same register.
     async fn write_register_readback<'a, T: bm1387::Register>(
-        &'a mut self,
+        &'a self,
         chip_address: ChipAddress,
         value: &'a T,
     ) -> error::Result<()> {
@@ -218,7 +218,7 @@ pub struct Context {
 #[async_trait]
 impl Interface for Context {
     async fn read_register<T: bm1387::Register>(
-        &mut self,
+        &self,
         chip_address: ChipAddress,
     ) -> error::Result<Vec<T>> {
         let mut inner = self.inner.lock().await;
@@ -226,7 +226,7 @@ impl Interface for Context {
     }
 
     async fn write_register<'a, T: bm1387::Register>(
-        &'a mut self,
+        &'a self,
         chip_address: ChipAddress,
         value: &'a T,
     ) -> error::Result<()> {
@@ -236,7 +236,7 @@ impl Interface for Context {
 }
 
 impl Context {
-    pub async fn send_raw_command(&mut self, cmd: Vec<u8>, wait: bool) {
+    pub async fn send_raw_command(&self, cmd: Vec<u8>, wait: bool) {
         let mut inner = self.inner.lock().await;
         inner.send_raw_command(cmd, wait).await
     }
