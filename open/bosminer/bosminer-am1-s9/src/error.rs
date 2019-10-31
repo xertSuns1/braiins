@@ -98,10 +98,6 @@ pub enum ErrorKind {
 
 #[derive(Clone, Eq, PartialEq, Debug, Fail)]
 pub enum HashChainManager {
-    #[fail(display = "Not Running")]
-    NotRunning,
-    #[fail(display = "Already Running")]
-    AlreadyRunning,
     #[fail(display = "HashChain parameters not set")]
     ParamsNotSet,
 }
