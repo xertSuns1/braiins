@@ -38,7 +38,7 @@ RUN apt-get update && apt-get install -y \
 
 FROM base-system AS rust-system
 
-COPY run4all projecter /usr/local/bin/
+COPY open/scripts/projecter /usr/local/bin/
 
 # poor man's packaging to not let rustup mess around with PATH
 # building under different uid will need to redefine CARGO_HOME somewhere to $HOME
@@ -46,13 +46,23 @@ ENV CARGO_HOME="/usr/local"
 ENV RUSTUP_HOME="/usr/local/rustup"
 
 RUN mkdir -p $RUSTUP_HOME
-RUN bash -c "curl --proto '=https' --tlsv1.2 -sSf 'https://sh.rustup.rs' | sh /dev/stdin -y"
+# pull in rust the 'official'  way. do not attempt to add self to $PATH, since cargo's idea of bin/ already is
+RUN bash -c "curl --proto '=https' --tlsv1.2 -sSf 'https://sh.rustup.rs' | sh /dev/stdin -y --no-modify-path"
 
-# note that svd2rust and form binaries are no longer needed and may be removed in future
 RUN rustup toolchain install nightly-2019-10-17-x86_64-unknown-linux-gnu && \
     rustup component add rustfmt && \
-    rustup component add rustfmt --toolchain nightly-2019-10-17-x86_64-unknown-linux-gnu && \
-    cargo install svd2rust --version 0.16.1 && \
-    cargo install form --version 0.7.0
-# update cargo index
-RUN cargo search --limit 0
+    rustup component add rustfmt --toolchain nightly-2019-10-17-x86_64-unknown-linux-gnu
+
+# bOS source tree. note that this step is just disposable interstage
+FROM rust-system AS rust-with-sources
+
+# assuming we are run from vcs root, grab whole project
+COPY . src
+# let all cargo projects pull cache their dependencies
+RUN ( cd src/open/ && projecter cargo fetch )
+
+# final image
+FROM rust-system AS rust
+
+# copy cached dependencies
+COPY --from=rust-with-sources /usr/local/registry /usr/local/registry

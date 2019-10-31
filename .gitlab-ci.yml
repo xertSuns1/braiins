@@ -20,15 +20,15 @@
 # of such proprietary license or if you have any other questions, please
 # contact us at opensource@braiins.com.
 
-# Simple script to run a command in all rust project subdirs
-# because find --execdir wont fail and stop the pipeline
-#
 # NOTE: script block does NOT run every dash row in a separate shell
-# run4all script run it's args in every subdirectory with cargo project (Cargo.toml)
+# projecter script run it's args in every subdirectory with cargo project (Cargo.toml)
+# unless directed to skip or ignore via local config file (ci.toml)
+# if build step starts to download dependencies, it may be prudent to rebuild the image
+# TODO: we can use --offline for cargo check/build once we get rid of git resources
 
 # templates
 .base-rust: &base-rust
-    image: $CI_REGISTRY_IMAGE/rust:8
+    image: $CI_REGISTRY_IMAGE/rust:9
 
 stages:
     - format

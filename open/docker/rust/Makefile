@@ -25,22 +25,28 @@ DOCKER_SSH_AUTH_SOCK=/ssh_auth.sock
 
 # NOTE: $CI_REGISTRY_IMAGE need to be set to docker registry
 
+NAME=rust
 # increment tag here and in ci config to enforce gitlab runners to fetch new images
-TAG=8
-
-# copy tool from outside 'cos docker is stupid
-projecter: ../../../projecter
-	cp ../../../projecter .
+TAG=9
+# place for clean git checkout
+# note that this prevents seeing/using (yet) uncomitted changes in image
+# we use stable path to be able to clean up properly in case of failed build
+# this is obviously not conductive of concurent builds, if there is ever need of one
+TMPTREE=/tmp/docker-build-$(NAME)-$(TAG)
 
 # prepare image
-build: projecter
+build:
 	test -n "$(CI_REGISTRY_IMAGE)"
-	docker build -t $(CI_REGISTRY_IMAGE)/rust:$(TAG) .
+	# clean up if previous build failed
+	-git worktree remove $(TMPTREE)
+	git worktree add $(TMPTREE) origin/bos-devel
+	docker build -t $(CI_REGISTRY_IMAGE)/$(NAME):$(TAG) -f Dockerfile $(TMPTREE)
+	git worktree remove $(TMPTREE)
 
 # push image to gitlab
 push: build
 	test -n "$(CI_REGISTRY_IMAGE)"
-	docker push $(CI_REGISTRY_IMAGE)/rust:$(TAG)
+	docker push $(CI_REGISTRY_IMAGE)/$(NAME):$(TAG)
 
 # spawn container for testing.
 # once inside you need to install git and clone git@gitlab.ii.zone:x/braiins.git
@@ -50,6 +56,6 @@ enter: build
 	-v $(HOME)/.ssh/known_hosts:$(HOME)/.ssh/known_hosts:ro \
 	-v $(SSH_AUTH_SOCK):$(DOCKER_SSH_AUTH_SOCK) \
 	-e SSH_AUTH_SOCK=$(DOCKER_SSH_AUTH_SOCK) \
-	$(CI_REGISTRY_IMAGE)/rust:$(TAG) /bin/bash
+	$(CI_REGISTRY_IMAGE)/$(NAME):$(TAG) /bin/bash
 
 .PHONY: build push enter
