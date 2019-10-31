@@ -25,12 +25,15 @@
 
 use ii_logging::macros::*;
 
+use crate::backend;
 use crate::job;
 use crate::node;
 use crate::work;
 
 use futures::channel::mpsc;
 use ii_async_compat::futures;
+
+use std::sync::Arc;
 
 /// Handle external events. Currently it is used only wor handling exhausted work from work engine.
 /// It usually signals some serious problem in backend.
@@ -43,15 +46,21 @@ impl work::ExhaustedHandler for EventHandler {
 }
 
 /// Create Solvers for frontend (pool) and backend (HW accelerator)
-pub fn build_solvers(
+pub async fn build_solvers<T: node::WorkSolver + 'static>(
     frontend_info: node::DynInfo,
-    backend_info: node::DynInfo,
+    backend_work_solver: Arc<T>,
 ) -> (job::Solver, work::Solver) {
     let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
     let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
     (
         job::Solver::new(frontend_info, engine_sender, solution_queue_rx),
-        work::Solver::new(backend_info, engine_receiver, solution_queue_tx),
+        work::Solver::create_root(
+            Arc::new(backend::BuildHierarchy),
+            backend_work_solver,
+            engine_receiver,
+            solution_queue_tx,
+        )
+        .await,
     )
 }
 
@@ -60,18 +69,19 @@ pub mod test {
     use super::*;
     use crate::test_utils;
 
-    use futures::executor::block_on;
+    use ii_async_compat::tokio;
     use std::sync::Arc;
 
     /// This test verifies the whole lifecycle of a mining job, its transformation into work
     /// and also collection of the solution via solution receiver. No actual mining takes place
     /// in the test
-    #[test]
-    fn test_solvers_connection() {
+    #[tokio::test]
+    async fn test_solvers_connection() {
         let (job_solver, work_solver) = build_solvers(
             Arc::new(test_utils::TestInfo::new()),
             Arc::new(test_utils::TestInfo::new()),
-        );
+        )
+        .await;
 
         let (mut job_sender, mut solution_receiver) = job_solver.split();
         let (mut work_generator, solution_sender) = work_solver.split();
@@ -83,13 +93,13 @@ pub mod test {
             // send prepared testing block to job solver
             job_sender.send(job);
             // work generator receives this job and prepares work from it
-            let work = block_on(work_generator.generate()).unwrap();
+            let work = work_generator.generate().await.unwrap();
             // initial value for version rolling is 0 so midstate should match with expected one
             assert_eq!(block.midstate, work.midstates[0].state);
             // test block has automatic conversion into work solution
             solution_sender.send(block.into());
             // this solution should pass through job solver
-            let solution = block_on(solution_receiver.receive()).unwrap();
+            let solution = solution_receiver.receive().await.unwrap();
             // check if the solution is equal to expected one
             assert_eq!(block.nonce, solution.nonce());
             let original_job: &test_utils::TestBlock = solution.job();
@@ -101,6 +111,6 @@ pub mod test {
         // work generator still works even if all job solvers are dropped
         drop(job_sender);
         drop(solution_receiver);
-        assert!(block_on(work_generator.generate()).is_some());
+        assert!(work_generator.generate().await.is_some());
     }
 }

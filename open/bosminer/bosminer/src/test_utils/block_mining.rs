@@ -29,6 +29,7 @@ use ii_logging::macros::*;
 
 use ii_bitcoin::HashTrait;
 
+use crate::backend;
 use crate::hal;
 use crate::job::Bitcoin;
 use crate::runtime_config;
@@ -259,7 +260,7 @@ impl Registry {
 /// - add channel to `engine_sender` that will notify us of engine being exhausted
 /// - make a channel to get solutions back
 /// - build a solver and connect everything to it
-fn build_solvers() -> (
+async fn build_solvers() -> (
     work::EngineSender,
     mpsc::UnboundedReceiver<work::Solution>,
     mpsc::UnboundedReceiver<work::DynEngine>,
@@ -278,11 +279,13 @@ fn build_solvers() -> (
         // then you will be able to receive it here)
         reschedule_receiver,
         // This is a solver that you hand off to backend
-        work::Solver::new(
+        work::Solver::create_root(
+            Arc::new(backend::IgnoreHierarchy),
             Arc::new(test_utils::TestInfo::new()),
             engine_receiver,
             solution_queue_tx,
-        ),
+        )
+        .await,
     )
 }
 
@@ -317,7 +320,7 @@ pub async fn run<T: hal::Backend>(backend: T) {
 
     // Create solver and channels to send/receive work
     let (mut engine_sender, solution_queue_rx, mut reschedule_receiver, work_solver) =
-        build_solvers();
+        build_solvers().await;
 
     // create problem registry
     let registry = Arc::new(Mutex::new(Registry::new()));

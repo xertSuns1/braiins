@@ -168,7 +168,9 @@ impl MidstateCount {
 /// Main responsibilities:
 /// - memory mapping of the FPGA control interface
 /// - mining work submission and solution processing
+#[derive(MiningNode)]
 pub struct HashChain {
+    #[member_mining_stats]
     mining_stats: stats::BasicMining,
     /// Number of chips that have been detected
     chip_count: usize,
@@ -195,12 +197,6 @@ pub struct HashChain {
     pub common_io: io::Common,
     work_rx_io: Mutex<Option<io::WorkRx>>,
     work_tx_io: Mutex<Option<io::WorkTx>>,
-}
-
-impl node::Stats for HashChain {
-    fn mining_stats(&self) -> &dyn stats::Mining {
-        &self.mining_stats
-    }
 }
 
 impl HashChain {
@@ -757,7 +753,7 @@ impl fmt::Display for HashChain {
     }
 }
 
-impl node::Info for HashChain {}
+impl node::WorkSolver for HashChain {}
 
 async fn start_miner(
     enabled_chains: Vec<usize>,
@@ -799,7 +795,7 @@ async fn start_miner(
     // spawn worker tasks for each hash chain and start mining
     for hash_chain in hash_chains.drain(..) {
         let hash_chain = Arc::new(hash_chain);
-        let hash_chain_work_solver = work_solver.branch(hash_chain.clone());
+        let hash_chain_work_solver = work_solver.branch(hash_chain.clone()).await;
         hash_chain
             .start(hash_chain_work_solver, shutdown.clone())
             .await;
@@ -919,6 +915,8 @@ impl hal::Backend for Backend {
         ));
     }
 }
+
+impl node::WorkSolver for Backend {}
 
 impl fmt::Display for Backend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

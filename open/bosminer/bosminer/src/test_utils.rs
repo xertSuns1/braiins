@@ -49,6 +49,8 @@ impl TestInfo {
     }
 }
 
+impl node::WorkSolver for TestInfo {}
+
 impl fmt::Display for TestInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Test blocks")
