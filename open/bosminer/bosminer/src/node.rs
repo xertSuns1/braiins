@@ -38,6 +38,9 @@ pub trait Stats: Send + Sync {
     fn mining_stats(&self) -> &dyn stats::Mining;
 }
 
+/// Common interface for nodes representing work solver
+pub trait WorkSolver: Info {}
+
 /// Shared node info type
 pub type DynInfo = Arc<dyn Info>;
 
@@ -46,3 +49,11 @@ pub type Path = Vec<DynInfo>;
 
 /// Shared unique path describing hierarchy of components
 pub type SharedPath = Arc<Path>;
+
+impl<T: ?Sized + Info> Info for Arc<T> {}
+
+impl<T: ?Sized + Stats> Stats for Arc<T> {
+    fn mining_stats(&self) -> &dyn stats::Mining {
+        self.as_ref().mining_stats()
+    }
+}

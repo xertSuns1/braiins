@@ -13,6 +13,7 @@ ii-logging = { path = "../../utils-rs/logging" }
 ii-stats = { path = "../../utils-rs/stats" }
 ii-stratum = { path = "../../protocols/stratum" }
 ii-wire = { path = "../../protocols/wire" }
+async-trait = "0.1.13"
 failure = "0.1.5"
 lazy_static = "1.3"
 downcast-rs = "1.0.4"

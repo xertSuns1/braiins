@@ -145,6 +145,8 @@ impl hal::Backend for Backend {
     }
 }
 
+impl node::WorkSolver for Backend {}
+
 impl fmt::Display for Backend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Block Erupter")

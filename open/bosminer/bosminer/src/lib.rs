@@ -20,6 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+pub mod backend;
 pub mod client;
 pub mod config;
 pub mod entry;

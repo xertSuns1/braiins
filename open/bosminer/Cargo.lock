@@ -146,6 +146,7 @@ dependencies = [
 name = "bosminer"
 version = "0.1.0"
 dependencies = [
+ "async-trait 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "bosminer-macros 0.1.0",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "downcast-rs 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -42,7 +42,7 @@ pub trait BackendSolution: Debug + Send + Sync {
 }
 
 /// Minimal interface for running compatible backend with bOSminer crate
-pub trait Backend: node::Info + Send + Sync + 'static {
+pub trait Backend: node::WorkSolver + Send + Sync + 'static {
     /// Number of midstates
     const DEFAULT_MIDSTATE_COUNT: usize;
     /// Default hashrate interval used for statistics
