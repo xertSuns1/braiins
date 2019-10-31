@@ -1006,9 +1006,7 @@ impl HashChainManager {
     async fn start(&mut self) -> error::Result<()> {
         // check if we are running
         if self.runtime.is_some() {
-            Err(ErrorKind::HashChainManager(
-                error::HashChainManager::AlreadyRunning,
-            ))?;
+            panic!("trying to start running chain");
         }
 
         // make us a hash chain
@@ -1063,9 +1061,7 @@ impl HashChainManager {
         // check if we are running
         let runtime = match self.runtime.as_ref() {
             Some(runtime) => runtime,
-            None => Err(ErrorKind::HashChainManager(
-                error::HashChainManager::NotRunning,
-            ))?,
+            None => panic!("trying to stop non-running chain"),
         };
         // stop everything
         runtime.halt_tx.do_stop().await;
@@ -1073,6 +1069,11 @@ impl HashChainManager {
         self.runtime = None;
 
         Ok(())
+    }
+
+    /// Return whether is hashchain running
+    fn chain_is_running(&mut self) -> bool {
+        self.runtime.is_some()
     }
 
     /// Set parameters of hashchain (both running and stopped)
