@@ -194,7 +194,8 @@ account_impl!(account_valid_job_diff, valid_job_diff);
 account_impl!(account_valid_backend_diff, valid_backend_diff);
 account_impl!(account_error_backend_diff, error_backend_diff);
 
-/// Determines in which statistics a particular solution should be accounted
+/// Describes which difficulty target a particular solution has met.
+/// It also determines in which statistics a particular solution should be accounted.
 #[derive(Debug, PartialEq)]
 pub enum DiffTargetType {
     NETWORK,
@@ -213,7 +214,11 @@ pub async fn account_valid_diff(
         account_valid_job_diff(path, &solution.job_target(), time).await;
         if valid_diff != DiffTargetType::JOB {
             account_valid_network_diff(path, &solution.network_target(), time).await;
-            assert_eq!(valid_diff, DiffTargetType::NETWORK)
+            assert_eq!(
+                valid_diff,
+                DiffTargetType::NETWORK,
+                "BUG: unexpected difficulty target type"
+            );
         }
     }
 }

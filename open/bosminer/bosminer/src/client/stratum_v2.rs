@@ -148,6 +148,10 @@ impl job::Bitcoin for StratumJob {
     }
 }
 
+/// Queue that contains pairs of solution and its assigned sequence number. It is our responsibility
+/// to keep the sequence number monotonic so that we as a stratum V2 client can easily process bulk
+/// acknowledgements. The sequence number type has been selected as u32 to match
+/// up with the protocol.
 type SolutionQueue = Arc<Mutex<VecDeque<(work::Solution, u32)>>>;
 
 struct StratumEventHandler {
@@ -241,7 +245,8 @@ impl StratumEventHandler {
                 // the rejected solution has been found
                 return;
             } else {
-                // preceding solutions are treated as an accepted ones
+                // TODO: this is currently not according to stratum V2 specification
+                // preceding solutions are treated as accepted
                 info!(
                     "Stratum: Accepted solution #{} with nonce={}.",
                     seq_num,
