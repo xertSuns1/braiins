@@ -221,7 +221,7 @@ mod test {
     impl<R: RegisterInterface> CommandInterface for SharedRegisterInterface<R> {
         /// Read register
         async fn read_register<T: bm1387::Register>(
-            &mut self,
+            &self,
             chip_address: ChipAddress,
         ) -> error::Result<Vec<T>> {
             let mut inner = self.inner.lock().await;
@@ -236,7 +236,7 @@ mod test {
 
         /// Write register
         async fn write_register<'a, T: bm1387::Register>(
-            &'a mut self,
+            &'a self,
             chip_address: ChipAddress,
             value: &'a T,
         ) -> error::Result<()> {

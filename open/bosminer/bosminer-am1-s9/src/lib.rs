@@ -252,8 +252,11 @@ impl PowerStation {
 
     /// Set voltage (and remember what was set)
     pub async fn set_voltage(&mut self, voltage: power::Voltage) -> error::Result<()> {
-        self.voltage_ctrl.set_voltage(voltage).await?;
-        self.current_voltage = Some(voltage);
+        // Check if we have to change the voltage
+        if self.current_voltage != Some(voltage) {
+            self.voltage_ctrl.set_voltage(voltage).await?;
+            self.current_voltage = Some(voltage);
+        }
         Ok(())
     }
 
@@ -606,7 +609,7 @@ impl HashChain {
     }
 
     /// Loads PLL register with a starting value
-    async fn set_pll(&mut self, freq: usize, chip_id: usize) -> error::Result<()> {
+    async fn set_pll(&self, freq: usize, chip_id: usize) -> error::Result<()> {
         assert!(chip_id < self.chip_count);
 
         // check we are setting a different frequency
@@ -619,6 +622,12 @@ impl HashChain {
         // convert frequency to PLL setting register
         let pll_reg = bm1387::PllReg::try_pll_from_freq(CHIP_OSC_CLK_HZ, freq)?;
 
+        info!(
+            "setting frequency {} MHz on chip {} (real {})",
+            freq / 1_000_000,
+            chip_id,
+            pll_reg.calc(CHIP_OSC_CLK_HZ)
+        );
         // NOTE: when PLL register is read back, it is or-ed with 0x8000_0000, not sure why
         self.command_context
             .write_register(ChipAddress::One(chip_id), &pll_reg)
@@ -635,7 +644,7 @@ impl HashChain {
     }
 
     /// Load PLL register of all chips
-    async fn set_pll_table(&mut self, freq_table: Vec<usize>) -> error::Result<()> {
+    async fn set_pll_table(&self, freq_table: Vec<usize>) -> error::Result<()> {
         // TODO: find a better way - how to communicate with frequency setter how many chips we have?
         assert!(freq_table.len() >= self.chip_count);
 
@@ -832,10 +841,10 @@ impl HashChain {
 
     /// Hashrate monitor task
     /// Fetch perodically information about hashrate
-    async fn hashrate_monitor_task(mut command_context: command::Context) {
+    async fn hashrate_monitor_task(command_context: command::Context) {
         info!("Hashrate monitor task started");
         loop {
-            delay_for(Duration::from_secs(27)).await;
+            delay_for(Duration::from_secs(5)).await;
 
             let responses = command_context
                 .read_register::<bm1387::HashrateReg>(ChipAddress::All)
@@ -946,6 +955,7 @@ impl fmt::Display for HashChain {
 }
 
 /// Mining parameters that can change run-time
+#[derive(Clone)]
 pub struct HashChainParams {
     pll_frequency: Vec<usize>,
     voltage: power::Voltage,
@@ -986,9 +996,9 @@ pub struct HashChainManager {
     // dynamic runtime - `is_some` only when miner is running
     runtime: Option<HashChainRuntime>,
     // configuration
-    params: Option<HashChainParams>,
     // monitor channel
     monitor_tx: mpsc::UnboundedSender<monitor::Message>,
+    pub params: HashChainParams,
 }
 
 impl HashChainManager {
@@ -1000,13 +1010,7 @@ impl HashChainManager {
                 error::HashChainManager::AlreadyRunning,
             ))?;
         }
-        // check if params are set
-        let params = match self.params.as_ref() {
-            Some(params) => params,
-            None => Err(ErrorKind::HashChainManager(
-                error::HashChainManager::ParamsNotSet,
-            ))?,
-        };
+
         // make us a hash chain
         let mut hash_chain = HashChain::new(
             &self.gpio_mgr,
@@ -1026,8 +1030,8 @@ impl HashChainManager {
         hash_chain
             .init(
                 halt_rx.clone(),
-                params.pll_frequency.clone(),
-                params.voltage.clone(),
+                self.params.pll_frequency.clone(),
+                self.params.voltage.clone(),
             )
             .await
             .expect("hashchain initialization failed");
@@ -1054,6 +1058,7 @@ impl HashChainManager {
         Ok(())
     }
 
+    /// Stop running hashchain
     async fn stop(&mut self) -> error::Result<()> {
         // check if we are running
         let runtime = match self.runtime.as_ref() {
@@ -1066,6 +1071,27 @@ impl HashChainManager {
         runtime.halt_tx.do_stop().await;
         // drop hashchain we keep around
         self.runtime = None;
+
+        Ok(())
+    }
+
+    /// Set parameters of hashchain (both running and stopped)
+    async fn set_params(&mut self, params: &HashChainParams) -> error::Result<()> {
+        if let Some(runtime) = self.runtime.as_ref() {
+            // We are running, change parameters on a live hashchain instance as well
+            runtime
+                .hash_chain
+                .power_station
+                .lock()
+                .await
+                .set_voltage(params.voltage)
+                .await?;
+            runtime
+                .hash_chain
+                .set_pll_table(params.pll_frequency.clone())
+                .await?;
+        }
+        self.params = params.clone();
 
         Ok(())
     }
@@ -1126,10 +1152,10 @@ async fn start_miner(
             work_solution,
             shutdown: shutdown.clone(),
             runtime: None,
-            params: Some(HashChainParams {
+            params: HashChainParams {
                 pll_frequency: vec![pll_frequency; MAX_CHIPS_ON_CHAIN],
                 voltage,
-            }),
+            },
             monitor_tx: monitor::Monitor::register_hashchain(monitor.clone(), *hashboard_idx).await,
         };
         hms.push(hm);
