@@ -76,16 +76,19 @@ impl ChipAddress {
 }
 
 /// This is scheme to address particular core on chain
+///
+/// Every nonce returned by chip (except those sent by opencore) encodes address of the
+/// chip and core that computed it, because of the way they divide the search space.
+///
+/// 'TODO: consider using packed_struct to do the mapping job + benchmark it'
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct CoreAddress {
-    chip: usize,
-    core: usize,
+    pub chip: usize,
+    pub core: usize,
 }
 
 impl CoreAddress {
-    /// Every nonce returned by chip (except those sent by opencore) encoides address of the
-    /// chip and core that computed it (by how they divide the search space).
-    fn new(nonce: u32) -> Self {
+    pub fn new(nonce: u32) -> Self {
         let nonce = nonce as usize;
         Self {
             chip: (nonce >> 2) & 0x3f,
