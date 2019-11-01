@@ -389,15 +389,15 @@ where
             .spawn(move || {
                 let mut voltage_ctrl = Self::new(hb_backend, idx);
                 loop {
-                    let now = time::Instant::now();
-                    voltage_ctrl
-                        .send_heart_beat()
-                        .expect("send_heart_beat failed");
-
                     // check if we should stop
                     if stop_receiver_thread.should_stop() {
                         break;
                     }
+
+                    let now = time::Instant::now();
+                    voltage_ctrl
+                        .send_heart_beat()
+                        .expect("send_heart_beat failed");
 
                     //trace!("Heartbeat for board {}", idx);
                     // evaluate how much time it took to send the heart beat and sleep for the rest
