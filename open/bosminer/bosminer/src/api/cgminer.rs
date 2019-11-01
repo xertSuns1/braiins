@@ -19,3 +19,17 @@
 // under a proprietary license. For more information on the terms and conditions
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
+
+use ii_async_compat::tokio;
+use tokio::timer::delay_for;
+
+use std::time;
+
+pub async fn run() {
+    // TODO: implement CGMiner API server
+    loop {
+        // this infinite loop is here because API implementation controls the bosminer and must be
+        // alive for the whole time
+        delay_for(time::Duration::from_secs(1)).await;
+    }
+}

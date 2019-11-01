@@ -38,7 +38,8 @@ use ii_async_compat::tokio;
 use tokio::prelude::*;
 use tokio::sync::watch;
 
-use std::cell::Cell;
+use once_cell::sync::OnceCell;
+
 use std::fmt::{self, Debug};
 use std::iter;
 use std::sync::Arc;
@@ -129,7 +130,7 @@ pub struct Solution {
     /// Solution of the PoW puzzle
     solution: Arc<dyn hal::BackendSolution>,
     /// Lazy evaluated double hash of this solution
-    hash: Cell<Option<ii_bitcoin::DHash>>,
+    hash: OnceCell<ii_bitcoin::DHash>,
 }
 
 impl Solution {
@@ -142,7 +143,7 @@ impl Solution {
             timestamp: timestamp.unwrap_or_else(|| time::Instant::now()),
             work,
             solution: Arc::new(solution),
-            hash: Cell::new(None),
+            hash: OnceCell::new(),
         }
     }
 
@@ -197,16 +198,8 @@ impl Solution {
     }
 
     /// Return double hash of this solution
-    pub fn hash(&self) -> ii_bitcoin::DHash {
-        match self.hash.get() {
-            Some(value) => value,
-            None => {
-                // compute hash and store it into cache for later use
-                let value = self.get_block_header().hash();
-                self.hash.set(Some(value));
-                value
-            }
-        }
+    pub fn hash(&self) -> &ii_bitcoin::DHash {
+        self.hash.get_or_init(|| self.get_block_header().hash())
     }
 
     /// Converts mining work solution to Bitcoin block header structure which is packable
@@ -364,11 +357,11 @@ pub mod test {
 
             // test lazy evaluated hash
             let hash = solution.hash();
-            assert_eq!(block.hash, hash);
+            assert_eq!(&block.hash, hash);
 
             // test if hash is the same when it is called second time
             let hash = solution.hash();
-            assert_eq!(block.hash, hash);
+            assert_eq!(&block.hash, hash);
         }
     }
 }

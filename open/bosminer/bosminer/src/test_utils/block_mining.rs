@@ -171,14 +171,14 @@ struct SolutionKey {
 impl SolutionKey {
     fn from_problem(p: Problem) -> Self {
         Self {
-            hash: p.model_solution.hash(),
+            hash: *p.model_solution.hash(),
             midstate_idx: p.target_midstate,
         }
     }
 
     fn from_solution(solution: Solution) -> Self {
         Self {
-            hash: solution.solution.hash(),
+            hash: *solution.solution.hash(),
             midstate_idx: solution.midstate_idx,
         }
     }

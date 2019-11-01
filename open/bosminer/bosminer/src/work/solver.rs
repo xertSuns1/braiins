@@ -150,7 +150,7 @@ impl Generator {
 }
 
 /// This struct is to be passed to the underlying mining backend. It allows submission of
-/// `UniqueMiningWorkSolution`
+/// `work::Solution`
 #[derive(Clone)]
 pub struct SolutionSender(mpsc::UnboundedSender<Solution>);
 
