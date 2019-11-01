@@ -49,7 +49,9 @@ lazy_static! {
 }
 
 struct MeterInner {
-    /// All shares measured from the beginning of mining
+    /// Number of solutions measured from the beginning of the mining
+    solutions: u64,
+    /// All shares measured from the beginning of the mining
     shares: ii_bitcoin::Shares,
     /// Approximate arithmetic mean of hashes within given time intervals (in kH/time)
     time_means: Vec<WindowedTimeMean>,
@@ -64,6 +66,7 @@ impl Meter {
     pub fn new(intervals: &Vec<time::Duration>) -> Self {
         Self {
             inner: Mutex::new(MeterInner {
+                solutions: 0,
                 shares: Default::default(),
                 time_means: intervals
                     .iter()
@@ -71,6 +74,10 @@ impl Meter {
                     .collect(),
             }),
         }
+    }
+
+    pub async fn solutions(&self) -> u64 {
+        self.inner.lock().await.solutions
     }
 
     pub async fn shares(&self) -> SharesGuard<'_> {
@@ -85,6 +92,8 @@ impl Meter {
         let mut meter = self.inner.lock().await;
         let kilo_hashes = ii_bitcoin::Shares::new(target).into_kilo_hashes();
 
+        // TODO: what to do when number overflows
+        meter.solutions += 1;
         meter.shares.account_solution(target);
         for time_mean in &mut meter.time_means {
             time_mean.insert(kilo_hashes, time);
