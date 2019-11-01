@@ -25,7 +25,7 @@ use ii_logging::macros::*;
 use ii_bitcoin::HashTrait;
 
 use crate::client;
-use crate::job;
+use crate::job::{self, Bitcoin as _};
 use crate::node;
 use crate::work;
 
@@ -80,13 +80,25 @@ impl StratumJob {
             id: job_msg.job_id,
             channel_id: job_msg.channel_id,
             version: job_msg.version,
-            prev_hash: ii_bitcoin::DHash::from_slice(prevhash_msg.prev_hash.as_ref()).unwrap(),
-            merkle_root: ii_bitcoin::DHash::from_slice(job_msg.merkle_root.as_ref()).unwrap(),
+            prev_hash: ii_bitcoin::DHash::from_slice(prevhash_msg.prev_hash.as_ref())
+                .expect("BUG: Stratum: incorrect size of prev hash"),
+            merkle_root: ii_bitcoin::DHash::from_slice(job_msg.merkle_root.as_ref())
+                .expect("BUG: Stratum: incorrect size of merkle root"),
             time: prevhash_msg.min_ntime,
             max_time: prevhash_msg.min_ntime + prevhash_msg.max_ntime_offset as u32,
             bits: prevhash_msg.nbits,
             target,
         }
+    }
+
+    /// Check if stratum job is valid
+    fn sanity_check(&self) -> bool {
+        let mut valid = true;
+        if let Err(msg) = ii_bitcoin::Target::from_compact(self.bits()) {
+            error!("Stratum: invalid job's nBits ({})", msg);
+            valid = false;
+        }
+        valid
     }
 }
 
@@ -176,7 +188,10 @@ impl StratumEventHandler {
             self.current_prevhash_msg.as_ref().expect("no prevhash"),
             self.current_target,
         );
-        self.job_sender.send(Arc::new(job));
+        if job.sanity_check() {
+            // send only valid jobs
+            self.job_sender.send(Arc::new(job));
+        }
     }
 
     pub fn update_target(&mut self, value: Uint256Bytes) {

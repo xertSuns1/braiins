@@ -183,6 +183,7 @@ impl SolutionReceiver {
             }
 
             if solution.has_valid_job() {
+                // TODO: Account solution to Discard meter
                 Self::trace_share(&solution, &job_target);
                 return Some(solution);
             }
