@@ -172,6 +172,9 @@ impl Default for BasicMining {
     }
 }
 
+/// Generate share accounting function for a particular difficulty level
+/// The function traverses all nodes in the path and accounts the solution in the field specific
+/// to the difficulty level given by `solution_target`
 macro_rules! account_impl (
     ($name:ident, $field:ident) => (
         pub(crate) async fn $name(
@@ -198,25 +201,29 @@ account_impl!(account_error_backend_diff, error_backend_diff);
 /// It also determines in which statistics a particular solution should be accounted.
 #[derive(Debug, PartialEq)]
 pub enum DiffTargetType {
-    NETWORK,
-    JOB,
-    BACKEND,
+    Network,
+    Job,
+    Backend,
 }
 
-pub async fn account_valid_diff(
+/// Accounts a valid `solution` to all relevant share accounting statistics based on
+/// `met_diff_target_type`. Higher level DiffTargetType also belongs to all lower level types e.g.:
+/// - solution that meets DiffTargetType::Network also belongs to DiffTargetType::{Job, Backend}
+/// - solution that meets DiffTargetType::Job also belongs to DiffTargetType::Job accounts
+pub async fn account_valid_solution(
     path: &node::Path,
     solution: &work::Solution,
     time: time::Instant,
-    valid_diff: DiffTargetType,
+    met_diff_target_type: DiffTargetType,
 ) {
     account_valid_backend_diff(path, solution.backend_target(), time).await;
-    if valid_diff != DiffTargetType::BACKEND {
+    if met_diff_target_type != DiffTargetType::Backend {
         account_valid_job_diff(path, &solution.job_target(), time).await;
-        if valid_diff != DiffTargetType::JOB {
+        if met_diff_target_type != DiffTargetType::Job {
             account_valid_network_diff(path, &solution.network_target(), time).await;
             assert_eq!(
-                valid_diff,
-                DiffTargetType::NETWORK,
+                met_diff_target_type,
+                DiffTargetType::Network,
                 "BUG: unexpected difficulty target type"
             );
         }

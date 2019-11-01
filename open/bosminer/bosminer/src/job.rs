@@ -171,11 +171,13 @@ impl SolutionReceiver {
             // TODO: create tests for solution validation with all difficulty variants
             assert!(solution.network_target() <= job_target);
             if hash.meets(&solution.network_target()) {
-                stats::account_valid_diff(&path, &solution, time, DiffTargetType::NETWORK).await;
+                stats::account_valid_solution(&path, &solution, time, DiffTargetType::Network)
+                    .await;
             } else if hash.meets(&job_target) {
-                stats::account_valid_diff(&path, &solution, time, DiffTargetType::JOB).await;
+                stats::account_valid_solution(&path, &solution, time, DiffTargetType::Job).await;
             } else if hash.meets(solution.backend_target()) {
-                stats::account_valid_diff(&path, &solution, time, DiffTargetType::BACKEND).await;
+                stats::account_valid_solution(&path, &solution, time, DiffTargetType::Backend)
+                    .await;
                 // skip submitting the solution as we've only met backend difficulty
                 continue;
             } else {
