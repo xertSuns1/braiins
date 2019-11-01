@@ -463,7 +463,7 @@ pub mod test {
         let mut block = blocks_iter.next().expect("there is no test block");
 
         for solution in &mut solver {
-            if block.hash == solution.hash() {
+            if &block.hash == solution.hash() {
                 // when solution has been found for current block then
                 // move to the next one and wait for its solution
                 block = match blocks_iter.next() {

@@ -21,3 +21,7 @@
 // contact us at opensource@braiins.com.
 
 mod cgminer;
+
+pub async fn run() {
+    cgminer::run().await
+}
