@@ -176,7 +176,9 @@ impl Solution {
 
     #[inline]
     pub fn network_target(&self) -> ii_bitcoin::Target {
-        ii_bitcoin::Target::from_compact(self.work.job.bits()).expect("job has incorrect nbits")
+        // NOTE: it is expected that job has been checked in client and is correct
+        ii_bitcoin::Target::from_compact(self.work.job.bits())
+            .expect("BUG: job has incorrect nbits")
     }
 
     #[inline]
