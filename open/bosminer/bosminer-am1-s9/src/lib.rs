@@ -969,6 +969,9 @@ impl HashChain {
         monitor_tx: mpsc::UnboundedSender<monitor::Message>,
     ) {
         info!("Temperature monitor task started");
+        // Wait some time before trying to initialize temperature controller
+        // (Otherwise RX queue might be clogged with initial work and we will not get any replies)
+        delay_for(Duration::from_secs(5)).await;
         let i2c_bus = bm1387::i2c::Bus::new_and_init(command_context, TEMP_CHIP)
             .await
             .expect("bus construction failed");
