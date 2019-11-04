@@ -405,9 +405,14 @@ impl PowerStation {
         let stop_heart_beat = self.voltage_ctrl.start_heart_beat_task();
 
         // On `Halt` we have to stop the thread sending heart beat
+        let mut voltage_ctrl = self.voltage_ctrl.clone();
         tokio::spawn(async move {
             // Wait for halt
             halt_rx.wait_for_halt().await;
+            // Turn off voltage on chain
+            voltage_ctrl
+                .disable_voltage()
+                .expect("failed disabling voltage");
             // Then stop and join the thread
             // TODO: this may take up to 1 second, figure out a way to stop it immediately
             stop_heart_beat.stop();
