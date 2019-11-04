@@ -618,7 +618,7 @@ impl HashChain {
         halt_rx: HaltReceiver,
         initial_pll_frequency: Vec<usize>,
         initial_voltage: power::Voltage,
-    ) -> error::Result<()> {
+    ) -> error::Result<Arc<Mutex<registry::WorkRegistry>>> {
         info!("Registering ourselves with monitor");
         self.monitor_tx
             .unbounded_send(monitor::Message::On)
@@ -667,9 +667,20 @@ impl HashChain {
 
         self.set_asic_diff(self.asic_difficulty).await?;
 
+        // Build shared work registry
+        // TX fifo determines the size of work registry
+        let work_registry = Arc::new(Mutex::new(registry::WorkRegistry::new(
+            self.work_tx_io
+                .lock()
+                .await
+                .as_ref()
+                .expect("work-tx io missing")
+                .work_id_count(),
+        )));
+
         // send opencore work (at high voltage) unless someone disabled it
         if !self.disable_init_work {
-            self.send_init_work().await;
+            self.send_init_work(work_registry.clone()).await;
         }
 
         // lower voltage to working level
@@ -679,7 +690,9 @@ impl HashChain {
             .set_voltage(initial_voltage)
             .await
             .expect("lowering voltage failed");
-        Ok(())
+
+        // return work registry we created
+        Ok(work_registry)
     }
 
     /// Detects the number of chips on the hashing chain and assigns an address to each chip
@@ -844,7 +857,7 @@ impl HashChain {
     }
 
     /// Initialize cores by sending open-core work with correct nbits to each core
-    async fn send_init_work(&mut self) {
+    async fn send_init_work(&mut self, work_registry: Arc<Mutex<registry::WorkRegistry>>) {
         // Each core gets one work
         const NUM_WORK: usize = bm1387::NUM_CORES_ON_CHIP;
         trace!(
@@ -856,7 +869,9 @@ impl HashChain {
         let tx_fifo = work_tx_io.as_mut().expect("tx fifo missing");
         for _ in 0..NUM_WORK {
             let work = &null_work::prepare_opencore(true, midstate_count);
-            let work_id = 0;
+            // store work to registry as "initial work" so that later we can properly ignore
+            // solutions
+            let work_id = work_registry.lock().await.store_work(work.clone(), true);
             tx_fifo.wait_for_room().await.expect("wait for tx room");
             tx_fifo.send_work(&work, work_id).expect("send work");
         }
@@ -879,7 +894,7 @@ impl HashChain {
                 None => return,
                 Some(work) => {
                     // assign `work_id` to `work`
-                    let work_id = work_registry.lock().await.store_work(work.clone());
+                    let work_id = work_registry.lock().await.store_work(work.clone(), false);
                     // send work is synchronous
                     tx_fifo.send_work(&work, work_id).expect("send work");
                 }
@@ -911,6 +926,10 @@ impl HashChain {
             let work = work_registry.find_work(work_id as usize);
             match work {
                 Some(work_item) => {
+                    // ignore initial work
+                    if work_item.initial_work {
+                        continue;
+                    }
                     let core_addr = bm1387::CoreAddress::new(solution.nonce);
                     let status = work_item.insert_solution(solution);
 
@@ -1048,16 +1067,8 @@ impl HashChain {
         shutdown: shutdown::Sender,
         halt_rx: HaltReceiver,
         counter: Arc<Mutex<HashChainCounter>>,
+        work_registry: Arc<Mutex<registry::WorkRegistry>>,
     ) {
-        // Determines how big the work registry has to be
-        let work_registry = Arc::new(Mutex::new(registry::WorkRegistry::new(
-            self.work_tx_io
-                .lock()
-                .await
-                .as_ref()
-                .expect("work-tx io missing")
-                .work_id_count(),
-        )));
         let command_context = self.command_context.clone();
 
         Self::spawn_tx_task(
@@ -1171,7 +1182,7 @@ impl HashChainManager {
 
         // initialize it
         // halt is required to stop voltage heart-beat task
-        hash_chain
+        let work_registry = hash_chain
             .init(
                 halt_rx.clone(),
                 self.params.pll_frequency.clone(),
@@ -1190,6 +1201,7 @@ impl HashChainManager {
                 self.shutdown.clone(),
                 halt_rx.clone(),
                 counter.clone(),
+                work_registry,
             )
             .await;
 
