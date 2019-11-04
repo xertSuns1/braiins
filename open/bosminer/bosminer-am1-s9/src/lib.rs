@@ -185,7 +185,10 @@ impl HaltSender {
             .lock()
             .await
             .broadcast(true)
-            .expect("restart broadcasting failed")
+            .expect("restart broadcasting failed");
+        // TODO: this is a hack, we should collect "halt status" from all receivers and return
+        // once we've collected them all.
+        delay_for(Duration::from_secs(2)).await;
     }
 }
 
