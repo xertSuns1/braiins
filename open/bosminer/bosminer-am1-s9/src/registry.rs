@@ -32,6 +32,8 @@ pub struct WorkRegistryItem {
     /// Each slot in the vector is associated with particular solution index as reported by
     /// the chips.
     solutions: std::vec::Vec<Solution>,
+    /// Flag that work is "initial" and should be regarded seriously
+    pub initial_work: bool,
 }
 
 impl WorkRegistryItem {
@@ -126,7 +128,7 @@ impl WorkRegistry {
     /// Store new work to work registry and generate `work_id` for it
     /// As a side effect, retire stale work.
     /// Returns: new `work_id`
-    pub fn store_work(&mut self, work: work::Assignment) -> usize {
+    pub fn store_work(&mut self, work: work::Assignment, initial_work: bool) -> usize {
         let work_id = self.alloc_next_work_id();
 
         // retire stale work
@@ -137,6 +139,7 @@ impl WorkRegistry {
         self.pending_work_list[work_id] = Some(WorkRegistryItem {
             work,
             solutions: std::vec::Vec::new(),
+            initial_work,
         });
 
         // return assigned work id
