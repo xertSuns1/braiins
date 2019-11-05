@@ -23,7 +23,7 @@
 use ii_logging::macros::*;
 
 use super::*;
-use crate::{HashChain, Solution};
+use crate::{FrequencySettings, HashChain, Solution};
 
 use bosminer::work;
 
@@ -81,7 +81,7 @@ async fn sender_task(
     loop {
         tx_io.wait_for_room().await.expect("wait for tx room");
         let work = work_receiver.next().await.expect("failed receiving work");
-        let work_id = work_registry.store_work(work.clone());
+        let work_id = work_registry.store_work(work.clone(), false);
         // send work is synchronous
         tx_io.send_work(&work, work_id).expect("send work");
     }
@@ -147,7 +147,7 @@ async fn start_hchain(
     hash_chain
         .init(
             halt_rx,
-            vec![config::DEFAULT_PLL_FREQUENCY; super::MAX_CHIPS_ON_CHAIN],
+            &FrequencySettings::from_frequency(config::DEFAULT_PLL_FREQUENCY),
             crate::OPEN_CORE_VOLTAGE,
         )
         .await

@@ -616,7 +616,7 @@ impl HashChain {
     async fn init(
         &mut self,
         halt_rx: HaltReceiver,
-        initial_pll_frequency: Vec<usize>,
+        initial_frequency: &FrequencySettings,
         initial_voltage: power::Voltage,
     ) -> error::Result<Arc<Mutex<registry::WorkRegistry>>> {
         info!("Registering ourselves with monitor");
@@ -657,7 +657,7 @@ impl HashChain {
         self.command_context.set_chip_count(self.chip_count).await;
 
         // set PLL
-        self.set_pll_table(initial_pll_frequency).await?;
+        self.set_pll_table(initial_frequency).await?;
 
         // configure the hashing chain to operate at desired baud rate. Note that gate block is
         // enabled to allow continuous start of chips in the chain
@@ -750,6 +750,12 @@ impl HashChain {
     }
 
     /// Loads PLL register with a starting value
+    ///
+    /// This function (and related `set_work_time`) isn't particularly nice, because it's
+    /// trying to maintain a runtime invariant of `work_time` which is related to frequency.
+    /// Maybe this code can go away if we decide not to change these things at runtime.
+    ///
+    /// Ideas: make a struct holding pll setting, implement rest atop of it.
     async fn set_pll(&self, freq: usize, chip_id: usize) -> error::Result<()> {
         assert!(chip_id < self.chip_count);
 
@@ -785,12 +791,12 @@ impl HashChain {
     }
 
     /// Load PLL register of all chips
-    async fn set_pll_table(&self, freq_table: Vec<usize>) -> error::Result<()> {
+    async fn set_pll_table(&self, frequency: &FrequencySettings) -> error::Result<()> {
         // TODO: find a better way - how to communicate with frequency setter how many chips we have?
-        assert!(freq_table.len() >= self.chip_count);
+        assert!(frequency.chip.len() >= self.chip_count);
 
         for i in 0..self.chip_count {
-            self.set_pll(freq_table[i], i).await?;
+            self.set_pll(frequency.chip[i], i).await?;
         }
         Ok(())
     }
@@ -1109,10 +1115,32 @@ impl fmt::Display for HashChain {
     }
 }
 
+#[derive(Clone)]
+pub struct FrequencySettings {
+    pub chip: Vec<usize>,
+}
+
+impl FrequencySettings {
+    /// Build frequency settings with all chips having the same frequency
+    fn from_frequency(frequency: usize) -> Self {
+        Self {
+            chip: vec![frequency; MAX_CHIPS_ON_CHAIN],
+        }
+    }
+
+    fn min(&self) -> usize {
+        *self.chip.iter().min().expect("no chips on chain")
+    }
+
+    fn max(&self) -> usize {
+        *self.chip.iter().max().expect("no chips on chain")
+    }
+}
+
 /// Mining parameters that can change run-time
 #[derive(Clone)]
 pub struct HashChainParams {
-    pll_frequency: Vec<usize>,
+    frequency: FrequencySettings,
     voltage: power::Voltage,
 }
 
@@ -1180,19 +1208,15 @@ impl HashChainManager {
         // construct a way to signal hashchain halt
         let (halt_tx, halt_rx) = make_halt_pair();
 
-        // make counter to track performance of chips
-        let counter = Arc::new(Mutex::new(HashChainCounter::new()));
-
         // initialize it
         // halt is required to stop voltage heart-beat task
         let work_registry = hash_chain
-            .init(
-                halt_rx.clone(),
-                self.params.pll_frequency.clone(),
-                self.params.voltage.clone(),
-            )
+            .init(halt_rx.clone(), &self.params.frequency, self.params.voltage)
             .await
             .expect("hashchain initialization failed");
+
+        // make counter with real number of cores
+        let counter = Arc::new(Mutex::new(HashChainCounter::new(hash_chain.chip_count)));
 
         // spawn worker tasks for hash chain and start mining
         let hash_chain = Arc::new(hash_chain);
@@ -1250,14 +1274,13 @@ impl HashChainManager {
                 .power_station
                 .lock()
                 .await
-                .set_voltage(params.voltage)
+                .set_voltage(self.params.voltage)
                 .await?;
             runtime
                 .hash_chain
-                .set_pll_table(params.pll_frequency.clone())
+                .set_pll_table(&self.params.frequency)
                 .await?;
         }
-        self.params = params.clone();
 
         Ok(())
     }
@@ -1271,7 +1294,7 @@ async fn start_miner(
     work_solver_builder: work::SolverBuilder,
     shutdown: shutdown::Sender,
     midstate_count: usize,
-    pll_frequency: usize,
+    frequency: FrequencySettings,
     voltage: power::Voltage,
 ) {
     let config = monitor::Config {
@@ -1319,7 +1342,7 @@ async fn start_miner(
             shutdown: shutdown.clone(),
             runtime: None,
             params: HashChainParams {
-                pll_frequency: vec![pll_frequency; MAX_CHIPS_ON_CHAIN],
+                frequency: frequency.clone(),
                 voltage,
             },
             monitor_tx: monitor::Monitor::register_hashchain(monitor.clone(), *hashboard_idx).await,
@@ -1440,7 +1463,7 @@ impl hal::Backend for Backend {
             work_solver_builder,
             shutdown,
             runtime_config::get_midstate_count(),
-            self.pll_frequency,
+            FrequencySettings::from_frequency(self.pll_frequency),
             power::Voltage::from_volts(self.voltage),
         ));
     }
