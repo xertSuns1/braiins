@@ -127,6 +127,12 @@
           <resetMask>0x0000000f</resetMask>
           <fields>
             <field>
+              <name>BM139X</name>
+              <access>read-write</access>
+              <description>Enable support for chips BM1391, BM1397</description>
+              <bitRange>[4:4]</bitRange>
+            </field>
+            <field>
               <name>ENABLE</name>
               <access>read-write</access>
               <description>Enable of IP core</description>
