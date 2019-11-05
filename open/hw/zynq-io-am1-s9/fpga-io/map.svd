@@ -477,5 +477,40 @@
         </register>
       </registers>
     </peripheral>
+    <peripheral>
+      <name>FAN_CTRL</name>
+      <description>Braiins Fan Controller v0.1</description>
+      <groupName>HASHCHAIN</groupName>
+      <baseAddress>0</baseAddress>
+      <size>32</size>
+      <access>read-write</access>
+      <addressBlock>
+        <offset>0</offset>
+        <size>0x14</size>
+        <usage>registers</usage>
+      </addressBlock>
+      <registers>
+        <register>
+          <dim>4</dim>
+          <dimIncrement>4</dimIncrement>
+          <name>FAN[%s]_RPS</name>
+          <description>Fan Rotation Speed (in revolutions per second)</description>
+          <addressOffset>0x00</addressOffset>
+          <size>32</size>
+          <access>read-only</access>
+          <resetValue>0x0</resetValue>
+          <resetMask>0xffffffff</resetMask>
+        </register>
+        <register>
+          <name>FAN_PWM</name>
+          <description>PWM Duty Cycle Register</description>
+          <addressOffset>0x10</addressOffset>
+          <size>8</size>
+          <access>read-write</access>
+          <resetValue>0x0</resetValue>
+          <resetMask>0xffffffff</resetMask>
+        </register>
+      </registers>
+    </peripheral>
   </peripherals>
 </device>

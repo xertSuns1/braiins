@@ -24,6 +24,7 @@ mod bm1387;
 pub mod command;
 pub mod config;
 pub mod error;
+pub mod fan;
 pub mod gpio;
 pub mod i2c;
 pub mod io;
@@ -633,6 +634,7 @@ impl HashChain {
     /// Temperature monitor task
     async fn temperature_monitor_task(command_context: command::Context) {
         info!("Temperature monitor task started");
+        let fan_control = fan::Control::new().expect("failed initializing fan controller");
         let i2c_bus = bm1387::i2c::Bus::new_and_init(command_context, TEMP_CHIP)
             .await
             .expect("bus construction failed");
@@ -647,6 +649,7 @@ impl HashChain {
                 .await
                 .expect("failed to read temperature");
             info!("{:?}", temp);
+            info!("{:?}", fan_control.read_feedback());
             delay_for(Duration::from_secs(5)).await;
         }
     }
