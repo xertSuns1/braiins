@@ -165,8 +165,8 @@ mod test {
         let work1 = null_work::prepare(0);
         let work2 = null_work::prepare(1);
 
-        assert_eq!(registry.store_work(work1), 0);
-        assert_eq!(registry.store_work(work2), 1);
+        assert_eq!(registry.store_work(work1, false), 0);
+        assert_eq!(registry.store_work(work2, false), 1);
         assert!(registry.find_work(0).is_some());
         assert!(registry.find_work(1).is_some());
         assert!(registry.find_work(2).is_none());
@@ -182,7 +182,7 @@ mod test {
         // we store more than REGISTRY_SIZE items so it has to roll over
         for i in 0..NUM_WORK_ITEMS {
             let work = null_work::prepare(i as u64);
-            assert_eq!(registry.store_work(work), i % REGISTRY_SIZE);
+            assert_eq!(registry.store_work(work, false), i % REGISTRY_SIZE);
         }
 
         // verify that half of registry is empty, half used
@@ -205,10 +205,37 @@ mod test {
         const REGISTRY_SIZE: usize = 4;
         let mut registry = WorkRegistry::new(REGISTRY_SIZE);
         let work = null_work::prepare(0);
-        assert_eq!(registry.store_work(work.clone()), 0);
-        assert_eq!(registry.store_work(work.clone()), 1);
-        assert_eq!(registry.store_work(work.clone()), 2);
-        assert_eq!(registry.store_work(work.clone()), 3);
-        assert_eq!(registry.store_work(work.clone()), 0);
+        assert_eq!(registry.store_work(work.clone(), false), 0);
+        assert_eq!(registry.store_work(work.clone(), false), 1);
+        assert_eq!(registry.store_work(work.clone(), false), 2);
+        assert_eq!(registry.store_work(work.clone(), false), 3);
+        assert_eq!(registry.store_work(work.clone(), false), 0);
+    }
+
+    /// Test that `initial_work` flag propagates to `WorkRegistryItem`
+    #[test]
+    fn test_initial_work() {
+        let mut registry = WorkRegistry::new(4);
+        let work1 = null_work::prepare(0);
+        let work2 = null_work::prepare(0);
+
+        assert_eq!(registry.store_work(work1, true), 0);
+        assert_eq!(registry.store_work(work2, false), 1);
+        assert_eq!(
+            registry
+                .find_work(0)
+                .as_ref()
+                .expect("work not found")
+                .initial_work,
+            true
+        );
+        assert_eq!(
+            registry
+                .find_work(1)
+                .as_ref()
+                .expect("work not found")
+                .initial_work,
+            false
+        );
     }
 }
