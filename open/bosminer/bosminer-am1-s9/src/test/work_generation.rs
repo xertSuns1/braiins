@@ -139,7 +139,7 @@ async fn start_hchain(
         &gpio_mgr,
         voltage_ctrl_backend.clone(),
         config::S9_HASHBOARD_INDEX,
-        crate::MidstateCount::new(1),
+        MidstateCount::new(1),
         1,
         monitor_tx,
     )

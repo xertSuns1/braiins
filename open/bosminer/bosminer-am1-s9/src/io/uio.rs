@@ -75,7 +75,7 @@ impl Device {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{io, MidstateCount};
+    use crate::{bm1387::MidstateCount, io};
     use std::time::Duration;
 
     /// Read timeout
