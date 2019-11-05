@@ -26,6 +26,7 @@ pub mod config;
 pub mod error;
 pub mod fan;
 pub mod gpio;
+pub mod halt;
 pub mod i2c;
 pub mod io;
 pub mod monitor;
@@ -58,12 +59,8 @@ use lazy_static::lazy_static;
 use error::ErrorKind;
 use failure::ResultExt;
 
-use core::future::Future;
 use futures::channel::mpsc;
-use futures::future::select;
-use futures::future::FutureExt;
 use futures::lock::Mutex;
-use futures::stream::StreamExt;
 use ii_async_compat::futures;
 
 use bm1387::ChipAddress;
@@ -79,7 +76,6 @@ use ii_fpga_io_am1_s9::common::ctrl_reg::MIDSTATE_CNT_A;
 use ii_bitcoin::MeetsTarget;
 
 use ii_async_compat::tokio;
-use tokio::sync::watch;
 use tokio::timer::delay_for;
 
 /// Timing constants
@@ -170,72 +166,6 @@ impl MidstateCount {
     fn to_mask(&self) -> usize {
         (1 << self.log2) - 1
     }
-}
-
-/// Sender of `Halt` condition
-#[derive(Clone)]
-struct HaltSender {
-    inner: Arc<Mutex<watch::Sender<bool>>>,
-}
-
-impl HaltSender {
-    /// Broadcast `Halt` condition
-    async fn do_stop(&self) {
-        self.inner
-            .lock()
-            .await
-            .broadcast(true)
-            .expect("restart broadcasting failed");
-        // TODO: this is a hack, we should collect "halt status" from all receivers and return
-        // once we've collected them all.
-        delay_for(Duration::from_secs(2)).await;
-    }
-}
-
-/// Receiver of `Halt` condition
-#[derive(Clone)]
-struct HaltReceiver {
-    inner: watch::Receiver<bool>,
-}
-
-impl HaltReceiver {
-    /// Wait for `Halt` to be broadcasted
-    async fn wait_for_halt(&mut self) {
-        loop {
-            match self.inner.next().await {
-                None => {
-                    error!("Owner dropped HaltSender, no one to stop us now! Shutting down task.");
-                    break;
-                }
-                Some(halt) => {
-                    if halt {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    /// Spawn a new task that is dropped when `Halt` is received
-    fn spawn<F>(&self, f: F)
-    where
-        F: Future<Output = ()> + 'static + Send,
-    {
-        let mut receiver = self.clone();
-        tokio::spawn(async move {
-            select(f.boxed(), receiver.wait_for_halt().boxed()).await;
-        });
-    }
-}
-
-fn make_halt_pair() -> (HaltSender, HaltReceiver) {
-    let (tx, rx) = watch::channel(false);
-    (
-        HaltSender {
-            inner: Arc::new(Mutex::new(tx)),
-        },
-        HaltReceiver { inner: rx },
-    )
 }
 
 /// Core address space size (it should be 114, but the addresses are non-consecutive)
@@ -384,7 +314,7 @@ impl PowerStation {
     }
 
     /// Initialize voltage controller
-    async fn init(&mut self, mut halt_rx: HaltReceiver) -> error::Result<()> {
+    pub async fn init(&mut self, mut halt_rx: halt::Receiver) -> error::Result<()> {
         self.voltage_ctrl.reset().await?;
         info!("Voltage controller reset");
         self.voltage_ctrl.jump_from_loader_to_app().await?;
@@ -615,7 +545,7 @@ impl HashChain {
     /// Initializes the complete hashboard including enumerating all chips
     async fn init(
         &mut self,
-        halt_rx: HaltReceiver,
+        halt_rx: halt::Receiver,
         initial_frequency: &FrequencySettings,
         initial_voltage: power::Voltage,
     ) -> error::Result<Arc<Mutex<registry::WorkRegistry>>> {
@@ -1030,7 +960,7 @@ impl HashChain {
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         work_generator: work::Generator,
         shutdown: shutdown::Sender,
-        halt_rx: HaltReceiver,
+        halt_rx: halt::Receiver,
     ) {
         halt_rx.spawn(async move {
             let tx_fifo = self.take_work_tx_io().await;
@@ -1043,7 +973,7 @@ impl HashChain {
         self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         solution_sender: work::SolutionSender,
-        halt_rx: HaltReceiver,
+        halt_rx: halt::Receiver,
         counter: Arc<Mutex<HashChainCounter>>,
     ) {
         halt_rx.spawn(async move {
@@ -1053,7 +983,7 @@ impl HashChain {
         });
     }
 
-    fn spawn_hashrate_monitor_task(command_context: command::Context, halt_rx: HaltReceiver) {
+    fn spawn_hashrate_monitor_task(command_context: command::Context, halt_rx: halt::Receiver) {
         halt_rx.spawn(async move {
             Self::hashrate_monitor_task(command_context).await;
         });
@@ -1061,7 +991,7 @@ impl HashChain {
 
     fn spawn_temperature_monitor_task(
         command_context: command::Context,
-        halt_rx: HaltReceiver,
+        halt_rx: halt::Receiver,
         monitor_tx: mpsc::UnboundedSender<monitor::Message>,
     ) {
         halt_rx.spawn(async move {
@@ -1074,7 +1004,7 @@ impl HashChain {
         work_generator: work::Generator,
         work_solution: work::SolutionSender,
         shutdown: shutdown::Sender,
-        halt_rx: HaltReceiver,
+        halt_rx: halt::Receiver,
         counter: Arc<Mutex<HashChainCounter>>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
     ) {
@@ -1146,9 +1076,10 @@ pub struct HashChainParams {
 
 /// Hashchain and related runtime data
 pub struct HashChainRuntime {
-    halt_tx: HaltSender,
+    halt_tx: halt::Sender,
+    // we need to keep the halt receiver around, otherwise the "stop-notify" channel closes when chain ends
     #[allow(dead_code)]
-    halt_rx: HaltReceiver,
+    halt_rx: halt::Receiver,
     hash_chain: Arc<HashChain>,
     counter: Arc<Mutex<HashChainCounter>>,
 }
@@ -1206,7 +1137,7 @@ impl HashChainManager {
         .expect("hashchain instantiation failed");
 
         // construct a way to signal hashchain halt
-        let (halt_tx, halt_rx) = make_halt_pair();
+        let (halt_tx, halt_rx) = halt::make_pair();
 
         // initialize it
         // halt is required to stop voltage heart-beat task
@@ -1308,7 +1239,6 @@ async fn start_miner(
         }),
     };
     let monitor = monitor::Monitor::new(config);
-    let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = power::I2cBackend::new(0);
     let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
     let mut hms = Vec::new();
