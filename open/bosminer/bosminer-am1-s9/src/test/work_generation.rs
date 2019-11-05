@@ -23,6 +23,8 @@
 use ii_logging::macros::*;
 
 use super::*;
+use crate::bm1387::MidstateCount;
+use crate::halt;
 use crate::{FrequencySettings, HashChain, Solution};
 
 use bosminer::work;
@@ -126,7 +128,7 @@ async fn send_and_receive_test_workloads<'a>(
 }
 
 async fn start_hchain(
-    halt_rx: HaltReceiver,
+    halt_rx: halt::Receiver,
     monitor_tx: mpsc::UnboundedSender<monitor::Message>,
 ) -> HashChain {
     let gpio_mgr = gpio::ControlPinManager::new();
@@ -171,7 +173,7 @@ async fn test_work_generation() {
     let (monitor_sender, monitor_receiver) = mpsc::unbounded();
 
     // Create halt transport
-    let (_halt_tx, halt_rx) = make_halt_pair();
+    let (_halt_tx, halt_rx) = halt::make_pair();
 
     // Guard lives until the end of the block
     let _work_sender_guard = work_sender.clone();
