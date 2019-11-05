@@ -28,6 +28,8 @@ use packed_struct::prelude::*;
 use packed_struct_codegen::PackedStruct;
 use packed_struct_codegen::{PrimitiveEnum_u16, PrimitiveEnum_u8};
 
+use ii_fpga_io_am1_s9::common::ctrl_reg::MIDSTATE_CNT_A;
+
 use std::convert::TryInto;
 use std::default::Default;
 use std::fmt::Debug;
@@ -44,6 +46,62 @@ pub const CHIP_OSC_CLK_BASE_BAUD_DIV: usize = 8;
 
 /// How many cores are on the chip
 pub const NUM_CORES_ON_CHIP: usize = 114;
+
+/// `MidstateCount` represents the number of midstates S9 FPGA sends to chips.
+/// This information needs to be accessible to everyone that processes `work_id`.
+///
+/// `MidstateCount` provides methods to encode number of midstates in various ways:
+///  * bitmask to mask out parts of `solution_id`
+///  * base-2 logarithm of number of midstates
+///  * FPGA configuration value (which is base-2 logarithm, but as an enum)
+///
+/// `MidstateCount` is always valid - creation of `MidstateCount` object that isn't
+/// supported by hardware shouldn't be possible.
+#[derive(Debug, Clone, Copy)]
+pub struct MidstateCount {
+    /// internal representation is base-2 logarithm of number of midstates
+    log2: usize,
+}
+
+impl MidstateCount {
+    /// Construct Self, panic if number of midstates is not valid for this hw
+    pub fn new(count: usize) -> Self {
+        match count {
+            1 => Self { log2: 0 },
+            2 => Self { log2: 1 },
+            4 => Self { log2: 2 },
+            _ => panic!("Unsupported S9 midstate count {}", count),
+        }
+    }
+
+    /// Return midstate count encoded for FPGA
+    pub fn to_reg(&self) -> MIDSTATE_CNT_A {
+        match self.log2 {
+            0 => MIDSTATE_CNT_A::ONE,
+            1 => MIDSTATE_CNT_A::TWO,
+            2 => MIDSTATE_CNT_A::FOUR,
+            _ => panic!("invalid internal midstate count logarithm"),
+        }
+    }
+
+    /// Return midstate count
+    #[inline]
+    pub fn to_count(&self) -> usize {
+        1 << self.log2
+    }
+
+    /// Return log2 of midstate count
+    #[inline]
+    pub fn to_bits(&self) -> usize {
+        self.log2
+    }
+
+    /// Return midstate count mask (to get midstate_idx bits from `work_id`)
+    #[inline]
+    pub fn to_mask(&self) -> usize {
+        (1 << self.log2) - 1
+    }
+}
 
 /// This enum is a bridge between chip address representation as we tend to
 /// think about it (addresses `0..=62`) and how the hardware addresses them
@@ -920,5 +978,28 @@ mod test {
             CoreAddress::new(0x40e55650),
             CoreAddress { chip: 20, core: 64 }
         );
+    }
+
+    #[test]
+    fn test_midstate_count_instance() {
+        MidstateCount::new(1);
+        MidstateCount::new(2);
+        MidstateCount::new(4);
+    }
+
+    /// #[test] TODO: fix panic handler
+    /// #[should_panic]
+    #[allow(dead_code)]
+    fn test_midstate_count_instance_fail() {
+        MidstateCount::new(3);
+    }
+
+    #[test]
+    fn test_midstate_count_conversion() {
+        use ii_fpga_io_am1_s9::common::ctrl_reg::MIDSTATE_CNT_A;
+
+        assert_eq!(MidstateCount::new(4).to_mask(), 3);
+        assert_eq!(MidstateCount::new(2).to_count(), 2);
+        assert_eq!(MidstateCount::new(4).to_reg(), MIDSTATE_CNT_A::FOUR);
     }
 }

@@ -63,15 +63,13 @@ use futures::channel::mpsc;
 use futures::lock::Mutex;
 use ii_async_compat::futures;
 
-use bm1387::ChipAddress;
+use bm1387::{ChipAddress, MidstateCount};
 use command::Interface;
 
 use packed_struct::PackedStruct;
 
 use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
-
-use ii_fpga_io_am1_s9::common::ctrl_reg::MIDSTATE_CNT_A;
 
 use ii_bitcoin::MeetsTarget;
 
@@ -110,62 +108,6 @@ lazy_static! {
     /// What is our target?
     static ref ASIC_TARGET: ii_bitcoin::Target =
         ii_bitcoin::Target::from_pool_difficulty(config::ASIC_DIFFICULTY);
-}
-
-/// `MidstateCount` represents the number of midstates S9 FPGA sends to chips.
-/// This information needs to be accessible to everyone that processes `work_id`.
-///
-/// `MidstateCount` provides methods to encode number of midstates in various ways:
-///  * bitmask to mask out parts of `solution_id`
-///  * base-2 logarithm of number of midstates
-///  * FPGA configuration value (which is base-2 logarithm, but as an enum)
-///
-/// `MidstateCount` is always valid - creation of `MidstateCount` object that isn't
-/// supported by hardware shouldn't be possible.
-#[derive(Debug, Clone, Copy)]
-pub struct MidstateCount {
-    /// internal representation is base-2 logarithm of number of midstates
-    log2: usize,
-}
-
-impl MidstateCount {
-    /// Construct Self, panic if number of midstates is not valid for this hw
-    fn new(count: usize) -> Self {
-        match count {
-            1 => Self { log2: 0 },
-            2 => Self { log2: 1 },
-            4 => Self { log2: 2 },
-            _ => panic!("Unsupported S9 Midstate count {}", count),
-        }
-    }
-
-    /// Return midstate count encoded for FPGA
-    fn to_reg(&self) -> MIDSTATE_CNT_A {
-        match self.log2 {
-            0 => MIDSTATE_CNT_A::ONE,
-            1 => MIDSTATE_CNT_A::TWO,
-            2 => MIDSTATE_CNT_A::FOUR,
-            _ => panic!("invalid internal midstate count logarithm"),
-        }
-    }
-
-    /// Return midstate count
-    #[inline]
-    fn to_count(&self) -> usize {
-        1 << self.log2
-    }
-
-    /// Return log2 of midstate count
-    #[inline]
-    fn to_bits(&self) -> usize {
-        self.log2
-    }
-
-    /// Return midstate count mask (to get midstate_idx bits from `work_id`)
-    #[inline]
-    fn to_mask(&self) -> usize {
-        (1 << self.log2) - 1
-    }
 }
 
 /// Core address space size (it should be 114, but the addresses are non-consecutive)

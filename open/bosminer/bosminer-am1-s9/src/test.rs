@@ -25,28 +25,6 @@ pub mod work_generation;
 use super::*;
 
 #[test]
-fn test_midstate_count_instance() {
-    MidstateCount::new(1);
-    MidstateCount::new(2);
-    MidstateCount::new(4);
-}
-
-#[test]
-#[should_panic]
-fn test_midstate_count_instance_fail() {
-    MidstateCount::new(3);
-}
-
-#[test]
-fn test_midstate_count_conversion() {
-    use ii_fpga_io_am1_s9::common::ctrl_reg::MIDSTATE_CNT_A;
-
-    assert_eq!(MidstateCount::new(4).to_mask(), 3);
-    assert_eq!(MidstateCount::new(2).to_count(), 2);
-    assert_eq!(MidstateCount::new(4).to_reg(), MIDSTATE_CNT_A::FOUR);
-}
-
-#[test]
 fn test_hchain_ctl_instance() {
     let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = power::I2cBackend::new(0);

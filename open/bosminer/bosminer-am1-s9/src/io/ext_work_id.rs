@@ -20,7 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use crate::MidstateCount;
+use crate::bm1387::MidstateCount;
 
 /// This structure represents address of a single work midstate in FPGA core.
 /// The address is compound of `work_id` and `midstate_idx`.
