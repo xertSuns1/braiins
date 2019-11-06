@@ -72,10 +72,10 @@ pub enum Measurement {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Temperature {
     /// Local temperature is always present
-    local: f32,
+    pub local: f32,
 
     /// Remote aka external sensor - may fail or not be present at all
-    remote: Measurement,
+    pub remote: Measurement,
 }
 
 /// Definition of a (i2c) driver that can construct (i2c) sensors

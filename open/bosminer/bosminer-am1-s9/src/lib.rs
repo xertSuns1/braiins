@@ -32,6 +32,7 @@ pub mod null_work;
 pub mod power;
 pub mod registry;
 pub mod sensor;
+pub mod temp_control;
 pub mod utils;
 
 #[cfg(test)]
@@ -635,6 +636,8 @@ impl HashChain {
     async fn temperature_monitor_task(command_context: command::Context) {
         info!("Temperature monitor task started");
         let fan_control = fan::Control::new().expect("failed initializing fan controller");
+        let mut temp_control = temp_control::TempControl::new();
+        temp_control.set_target(80.0);
         let i2c_bus = bm1387::i2c::Bus::new_and_init(command_context, TEMP_CHIP)
             .await
             .expect("bus construction failed");
@@ -650,6 +653,11 @@ impl HashChain {
                 .expect("failed to read temperature");
             info!("{:?}", temp);
             info!("{:?}", fan_control.read_feedback());
+            if let sensor::Measurement::Ok(temp) = temp.remote {
+                let pwm = temp_control.update(temp.into()) as usize;
+                info!("pid output: temp={} pwm={:?}", temp, pwm);
+                fan_control.set_pwm(pwm);
+            }
             delay_for(Duration::from_secs(5)).await;
         }
     }
