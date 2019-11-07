@@ -56,6 +56,8 @@ impl fmt::Display for Protocol {
 pub struct Stats {
     #[member_start_time]
     pub start_time: time::Instant,
+    #[member_last_share]
+    pub last_share: stats::LastShare,
     /// Shares accepted by remote server
     pub accepted: stats::Meter,
     /// Shares rejected by remote server
@@ -74,6 +76,7 @@ impl Stats {
     pub fn new() -> Self {
         Self {
             start_time: time::Instant::now(),
+            last_share: Default::default(),
             accepted: Default::default(),
             rejected: Default::default(),
             valid_network_diff: Default::default(),

@@ -166,9 +166,57 @@ impl Default for Meter {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct LastShareSnapshot {
+    /// Time when the last share has been submitted
+    pub time: time::SystemTime,
+    /// Difficulty of the last share
+    pub difficulty: usize,
+}
+
+impl LastShareSnapshot {
+    pub fn get_unix_time(&self) -> Result<u32, time::SystemTimeError> {
+        self.time
+            .duration_since(time::UNIX_EPOCH)
+            .map(|duration| duration.as_secs() as u32)
+    }
+}
+
+#[derive(Debug)]
+pub struct LastShare {
+    inner: Mutex<Option<LastShareSnapshot>>,
+}
+
+impl LastShare {
+    pub async fn take_snapshot(&self) -> Option<LastShareSnapshot> {
+        self.inner.lock().await.clone()
+    }
+
+    pub(crate) async fn account_solution(
+        &self,
+        target: &ii_bitcoin::Target,
+        time: time::SystemTime,
+    ) {
+        *self.inner.lock().await = Some(LastShareSnapshot {
+            time,
+            difficulty: target.get_difficulty(),
+        })
+    }
+}
+
+impl Default for LastShare {
+    fn default() -> Self {
+        Self {
+            inner: Mutex::new(None),
+        }
+    }
+}
+
 pub trait Mining: Send + Sync {
     /// The time all statistics are measured from
     fn start_time(&self) -> &time::Instant;
+    /// Information about last valid share with at least job difficulty
+    fn last_share(&self) -> &LastShare;
     /// Statistics for all valid blocks on network difficulty
     fn valid_network_diff(&self) -> &Meter;
     /// Statistics for all valid jobs on job/pool difficulty
@@ -183,6 +231,8 @@ pub trait Mining: Send + Sync {
 pub struct BasicMining {
     #[member_start_time]
     pub start_time: time::Instant,
+    #[member_last_share]
+    pub last_share: LastShare,
     #[member_valid_network_diff]
     pub valid_network_diff: Meter,
     #[member_valid_job_diff]
@@ -197,6 +247,7 @@ impl BasicMining {
     pub fn new(start_time: time::Instant, intervals: &Vec<time::Duration>) -> Self {
         Self {
             start_time,
+            last_share: Default::default(),
             valid_network_diff: Meter::new(&intervals),
             valid_job_diff: Meter::new(&intervals),
             valid_backend_diff: Meter::new(&intervals),
@@ -257,14 +308,23 @@ pub async fn account_valid_solution(
 ) {
     account_valid_backend_diff(path, solution.backend_target(), time).await;
     if met_diff_target_type != DiffTargetType::Backend {
-        account_valid_job_diff(path, &solution.job_target(), time).await;
+        let target: ii_bitcoin::Target = solution.job_target();
+        account_valid_job_diff(path, &target, time).await;
         if met_diff_target_type != DiffTargetType::Job {
-            account_valid_network_diff(path, &solution.network_target(), time).await;
+            account_valid_network_diff(path, &target, time).await;
             assert_eq!(
                 met_diff_target_type,
                 DiffTargetType::Network,
                 "BUG: unexpected difficulty target type"
             );
+        }
+        // use only job difficulty for accounting the last share even if a hash of the solution
+        // meets higher difficulties
+        for node in path {
+            node.mining_stats()
+                .last_share()
+                .account_solution(&target, time::SystemTime::now())
+                .await;
         }
     }
 }
