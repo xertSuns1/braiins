@@ -125,7 +125,7 @@ async fn send_and_receive_test_workloads<'a>(
     );
 }
 
-async fn start_hchain() -> HashChain {
+async fn start_hchain(monitor_tx: mpsc::UnboundedSender<monitor::Message>) -> HashChain {
     let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = power::I2cBackend::new(0);
     let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
@@ -138,6 +138,7 @@ async fn start_hchain() -> HashChain {
         1,
         config::DEFAULT_PLL_FREQUENCY,
         crate::OPEN_CORE_VOLTAGE,
+        monitor_tx,
     )
     .unwrap();
     hash_chain.init().await.expect("h_chain init failed");
@@ -157,13 +158,14 @@ async fn test_work_generation() {
     // Create channels
     let (solution_sender, mut solution_receiver) = mpsc::unbounded();
     let (work_sender, work_receiver) = mpsc::unbounded();
+    let (monitor_sender, monitor_receiver) = mpsc::unbounded();
 
     // Guard lives until the end of the block
     let _work_sender_guard = work_sender.clone();
     let _solution_sender_guard = solution_sender.clone();
 
     // Start HW
-    let hash_chain = Arc::new(start_hchain().await);
+    let hash_chain = Arc::new(start_hchain(monitor_sender).await);
 
     // start HW receiver
     tokio::spawn(receiver_task(hash_chain.clone(), solution_sender));

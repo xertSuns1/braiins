@@ -22,10 +22,27 @@
 
 //! This module is responsible for reading fan feedback and setting fan PWM in FPGA controller.
 
+pub mod pid;
+
 use crate::error::{self, ErrorKind};
 use failure::ResultExt;
 
 use uio_async;
+
+/// Structure representing PWM of fan
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Speed(usize);
+
+impl Speed {
+    pub const FULL_SPEED: Self = Self(100);
+    pub const STOPPED: Self = Self(0);
+
+    pub fn new(speed: usize) -> Self {
+        assert!(speed <= 100);
+
+        Speed(speed)
+    }
+}
 
 /// Speed of fans read from feedback pins
 #[derive(Debug)]
@@ -72,10 +89,12 @@ impl Control {
     }
 
     /// Set PWM for fans in percent (0 means fans stopped, 100 means fans on full)
-    pub fn set_pwm(&self, pwm: usize) {
+    pub fn set_speed(&self, speed: Speed) {
         // Only lower 8 bits of FAN_PWM register are considered, so writing 256 would stop fans,
         // hence the assert.
-        assert!(pwm <= 100);
-        self.regs.fan_pwm.write(|w| unsafe { w.bits(pwm as u8) })
+        assert!(speed.0 <= 100);
+        self.regs
+            .fan_pwm
+            .write(|w| unsafe { w.bits(speed.0 as u8) })
     }
 }

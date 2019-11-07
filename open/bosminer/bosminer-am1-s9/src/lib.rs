@@ -28,11 +28,11 @@ pub mod fan;
 pub mod gpio;
 pub mod i2c;
 pub mod io;
+pub mod monitor;
 pub mod null_work;
 pub mod power;
 pub mod registry;
 pub mod sensor;
-pub mod temp_control;
 pub mod utils;
 
 #[cfg(test)]
@@ -58,6 +58,7 @@ use lazy_static::lazy_static;
 use error::ErrorKind;
 use failure::ResultExt;
 
+use futures::channel::mpsc;
 use futures::lock::Mutex;
 use ii_async_compat::futures;
 
@@ -199,6 +200,7 @@ pub struct HashChain {
     pub common_io: io::Common,
     work_rx_io: Mutex<Option<io::WorkRx>>,
     work_tx_io: Mutex<Option<io::WorkTx>>,
+    monitor_tx: mpsc::UnboundedSender<monitor::Message>,
 }
 
 impl HashChain {
@@ -217,6 +219,7 @@ impl HashChain {
         asic_difficulty: usize,
         pll_frequency: usize,
         voltage: power::Voltage,
+        monitor_tx: mpsc::UnboundedSender<monitor::Message>,
     ) -> error::Result<Self> {
         // Hashboard creation is aborted if the pin is not present
         let plug_pin = gpio_mgr
@@ -261,6 +264,7 @@ impl HashChain {
             work_tx_io: Mutex::new(Some(work_tx_io)),
             pll_frequency,
             working_voltage: voltage,
+            monitor_tx,
         })
     }
 
@@ -371,6 +375,10 @@ impl HashChain {
 
     /// Initializes the complete hashboard including enumerating all chips
     pub async fn init(&mut self) -> error::Result<()> {
+        info!("Registering ourselves with monitor");
+        self.monitor_tx
+            .unbounded_send(monitor::Message::On)
+            .expect("send failed");
         info!("Initializing hash chain {}", self.hashboard_idx);
         self.ip_core_init()?;
         info!("Hashboard IP core initialized");
@@ -633,11 +641,11 @@ impl HashChain {
     }
 
     /// Temperature monitor task
-    async fn temperature_monitor_task(command_context: command::Context) {
+    async fn temperature_monitor_task(
+        command_context: command::Context,
+        monitor_tx: mpsc::UnboundedSender<monitor::Message>,
+    ) {
         info!("Temperature monitor task started");
-        let fan_control = fan::Control::new().expect("failed initializing fan controller");
-        let mut temp_control = temp_control::TempControl::new();
-        temp_control.set_target(80.0);
         let i2c_bus = bm1387::i2c::Bus::new_and_init(command_context, TEMP_CHIP)
             .await
             .expect("bus construction failed");
@@ -651,13 +659,11 @@ impl HashChain {
                 .read_temperature()
                 .await
                 .expect("failed to read temperature");
-            info!("{:?}", temp);
-            info!("{:?}", fan_control.read_feedback());
-            if let sensor::Measurement::Ok(temp) = temp.remote {
-                let pwm = temp_control.update(temp.into()) as usize;
-                info!("pid output: temp={} pwm={:?}", temp, pwm);
-                fan_control.set_pwm(pwm);
-            }
+            info!("Measured temperature: {:?}", temp);
+            monitor_tx
+                .unbounded_send(monitor::Message::Running(temp))
+                .expect("send failed");
+            // TODO: sync this delay with monitor task
             delay_for(Duration::from_secs(5)).await;
         }
     }
@@ -721,9 +727,12 @@ impl HashChain {
         });
     }
 
-    fn spawn_temperature_monitor_task(command_context: command::Context) {
+    fn spawn_temperature_monitor_task(
+        command_context: command::Context,
+        monitor_tx: mpsc::UnboundedSender<monitor::Message>,
+    ) {
         tokio::spawn(async move {
-            Self::temperature_monitor_task(command_context).await;
+            Self::temperature_monitor_task(command_context, monitor_tx).await;
         });
     }
 
@@ -744,6 +753,7 @@ impl HashChain {
         let command_context = self.command_context.clone();
         let (work_generator, work_solution) = work_solver_builder.split();
 
+        Self::spawn_temperature_monitor_task(command_context.clone(), self.monitor_tx.clone());
         Self::spawn_tx_task(
             self.clone(),
             work_registry.clone(),
@@ -752,7 +762,6 @@ impl HashChain {
         );
         Self::spawn_rx_task(self, work_registry.clone(), work_solution);
         Self::spawn_hashrate_monitor_task(command_context.clone());
-        Self::spawn_temperature_monitor_task(command_context.clone());
     }
 }
 
@@ -776,6 +785,17 @@ async fn start_miner(
     pll_frequency: usize,
     voltage: power::Voltage,
 ) {
+    let config = monitor::Config {
+        temp_config: Some(monitor::TempControlConfig {
+            dangerous_temp: 110.0,
+            hot_temp: 95.0,
+        }),
+        fan_config: Some(monitor::FanControlConfig {
+            mode: monitor::FanControlMode::TargetTemperature(75.0),
+            min_fans: 2,
+        }),
+    };
+    let monitor = monitor::Monitor::new(config);
     let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = power::I2cBackend::new(0);
     let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
@@ -794,6 +814,7 @@ async fn start_miner(
             config::ASIC_DIFFICULTY,
             pll_frequency,
             voltage,
+            monitor::Monitor::register_hashchain(monitor.clone(), *hashboard_idx).await,
         )
         .unwrap();
         hash_chains.push(hash_chain);
