@@ -25,6 +25,7 @@
 use std::time;
 
 /// Calculation of approximate arithmetic mean within given time interval
+#[derive(Debug, Clone, Copy)]
 pub struct WindowedTimeMean {
     /// Time interval in seconds for arithmetic mean measurement
     interval: f64,

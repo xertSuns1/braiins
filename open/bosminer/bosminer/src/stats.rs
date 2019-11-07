@@ -30,7 +30,7 @@ use bosminer_macros::MiningStats;
 
 use ii_stats::WindowedTimeMean;
 
-use futures::lock::{Mutex, MutexGuard};
+use futures::lock::Mutex;
 use ii_async_compat::{futures, tokio};
 use tokio::timer::delay_for;
 
@@ -48,24 +48,79 @@ lazy_static! {
     ];
 }
 
-struct MeterInner {
+#[derive(Debug, Clone)]
+pub struct MeterSnapshot {
     /// Number of solutions measured from the beginning of the mining
-    solutions: u64,
+    pub solutions: u64,
     /// All shares measured from the beginning of the mining
-    shares: ii_bitcoin::Shares,
+    pub shares: ii_bitcoin::Shares,
     /// Approximate arithmetic mean of hashes within given time intervals (in kH/time)
     time_means: Vec<WindowedTimeMean>,
 }
 
+impl MeterSnapshot {
+    fn get_time_mean(&self, interval: time::Duration) -> &WindowedTimeMean {
+        self.time_means
+            .iter()
+            .find(|time_mean| time_mean.interval() == interval)
+            .expect("cannot find given time interval")
+    }
+
+    #[inline]
+    pub fn to_kilo_hashes(
+        &self,
+        interval: time::Duration,
+        now: time::Instant,
+    ) -> ii_bitcoin::HashesUnit {
+        ii_bitcoin::HashesUnit::KiloHashes(self.get_time_mean(interval).measure(now))
+    }
+
+    #[inline]
+    pub fn to_mega_hashes(
+        &self,
+        interval: time::Duration,
+        now: time::Instant,
+    ) -> ii_bitcoin::HashesUnit {
+        self.to_kilo_hashes(interval, now).into_mega_hashes()
+    }
+
+    #[inline]
+    pub fn to_giga_hashes(
+        &self,
+        interval: time::Duration,
+        now: time::Instant,
+    ) -> ii_bitcoin::HashesUnit {
+        self.to_kilo_hashes(interval, now).into_giga_hashes()
+    }
+
+    #[inline]
+    pub fn to_tera_hashes(
+        &self,
+        interval: time::Duration,
+        now: time::Instant,
+    ) -> ii_bitcoin::HashesUnit {
+        self.to_kilo_hashes(interval, now).into_tera_hashes()
+    }
+
+    #[inline]
+    pub fn to_pretty_hashes(
+        &self,
+        interval: time::Duration,
+        now: time::Instant,
+    ) -> ii_bitcoin::HashesUnit {
+        self.to_kilo_hashes(interval, now).into_pretty_hashes()
+    }
+}
+
 #[derive(Debug)]
 pub struct Meter {
-    inner: Mutex<MeterInner>,
+    inner: Mutex<MeterSnapshot>,
 }
 
 impl Meter {
     pub fn new(intervals: &Vec<time::Duration>) -> Self {
         Self {
-            inner: Mutex::new(MeterInner {
+            inner: Mutex::new(MeterSnapshot {
                 solutions: 0,
                 shares: Default::default(),
                 time_means: intervals
@@ -76,21 +131,15 @@ impl Meter {
         }
     }
 
-    pub async fn solutions(&self) -> u64 {
-        self.inner.lock().await.solutions
-    }
-
-    pub async fn shares(&self) -> SharesGuard<'_> {
-        SharesGuard(self.inner.lock().await)
-    }
-
-    pub async fn time_means(&self) -> TimeMeansGuard<'_> {
-        TimeMeansGuard(self.inner.lock().await)
+    pub async fn take_snapshot(&self) -> MeterSnapshot {
+        self.inner.lock().await.clone()
     }
 
     pub(crate) async fn account_solution(&self, target: &ii_bitcoin::Target, time: time::Instant) {
         let mut meter = self.inner.lock().await;
-        let kilo_hashes = ii_bitcoin::Shares::new(target).into_kilo_hashes();
+        let kilo_hashes = ii_bitcoin::Shares::new(target)
+            .into_kilo_hashes()
+            .into_f64();
 
         // TODO: what to do when number overflows
         meter.solutions += 1;
@@ -104,26 +153,6 @@ impl Meter {
 impl Default for Meter {
     fn default() -> Self {
         Self::new(DEFAULT_TIME_MEAN_INTERVALS.as_ref())
-    }
-}
-
-pub struct SharesGuard<'a>(MutexGuard<'a, MeterInner>);
-
-impl<'a> std::ops::Deref for SharesGuard<'a> {
-    type Target = ii_bitcoin::Shares;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0.shares
-    }
-}
-
-pub struct TimeMeansGuard<'a>(MutexGuard<'a, MeterInner>);
-
-impl<'a> std::ops::Deref for TimeMeansGuard<'a> {
-    type Target = Vec<WindowedTimeMean>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0.time_means
     }
 }
 
@@ -233,17 +262,12 @@ pub async fn account_valid_solution(
 pub async fn mining_task(node: node::DynInfo, interval: time::Duration) {
     loop {
         delay_for(time::Duration::from_secs(1)).await;
-
-        let time_means = node.mining_stats().valid_job_diff().time_means().await;
-        let time_mean = time_means
-            .iter()
-            .find(|time_mean| time_mean.interval() == interval)
-            .expect("cannot find given time interval");
+        let valid_job_diff = node.mining_stats().valid_job_diff().take_snapshot().await;
 
         info!(
-            "Hash rate @ pool difficulty: {:.2} GH/{}s",
-            time_mean.measure(time::Instant::now()) * 1e-6,
-            time_mean.interval().as_secs()
+            "Hash rate @ pool difficulty: {}/{}s",
+            valid_job_diff.to_pretty_hashes(interval, time::Instant::now()),
+            interval.as_secs()
         );
     }
 }
