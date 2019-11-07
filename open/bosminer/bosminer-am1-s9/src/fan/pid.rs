@@ -20,6 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use super::Speed;
 use pid_control::{Controller, PIDController};
 use std::time::Instant;
 
@@ -70,7 +71,7 @@ impl TempControl {
         // kp/ki/kd constants are negative because the PID works in reverse direction
         // (the lower the PWM, the higher the temperature)
         let mut pid = OffsetedPIDController::new(-5.0, -0.03, -0.015, 70.0);
-        pid.set_limits(0.0, 100.0);
+        pid.set_limits(1.0, 100.0);
 
         Self {
             pid,
@@ -82,25 +83,26 @@ impl TempControl {
         self.pid.set_target(target);
     }
 
-    pub fn update(&mut self, temperature: f64) -> f64 {
+    pub fn update(&mut self, temperature: f64) -> Speed {
         let pwm = self
             .pid
             .update(temperature, self.last_update.elapsed().as_secs_f64());
         self.last_update = Instant::now();
-        pwm
+        Speed::new(pwm as usize)
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use approx::relative_eq;
 
     /// Verify that offset is added to the results of PID controller computation
     #[test]
     fn test_pid_offset() {
         let mut pid = OffsetedPIDController::new(0.0, 0.0, 0.0, 50.0);
-        assert_eq!(pid.update(0.0, 1.0), 50.0);
+        relative_eq!(pid.update(0.0, 1.0), 50.0);
         pid.set_limits(60.0, 60.0);
-        assert_eq!(pid.update(0.0, 1.0), 60.0);
+        relative_eq!(pid.update(0.0, 1.0), 60.0);
     }
 }

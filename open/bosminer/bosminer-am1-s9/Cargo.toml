@@ -25,6 +25,7 @@ chrono = "0.4.9"
 async-trait = "0.1.13"
 inventory = "0.1.4"
 pid_control = "0.7.2"
+approx = "0.3.2"
 
 [dependencies.embedded-hal]
 version = "0.2.0"
