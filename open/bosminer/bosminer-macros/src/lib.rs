@@ -57,6 +57,7 @@ fn impl_derive_mining_node(ast: &DeriveInput) -> proc_macro2::TokenStream {
     MiningStats,
     attributes(
         member_start_time,
+        member_last_share,
         member_valid_network_diff,
         member_valid_job_diff,
         member_valid_backend_diff,
@@ -74,6 +75,7 @@ fn impl_derive_mining_stats(ast: &DeriveInput) -> proc_macro2::TokenStream {
 
     let fields = get_fields(&ast, "MiningStats");
     let start_time = find_member(&fields, "member_start_time");
+    let last_share = find_member(&fields, "member_last_share");
     let valid_network_diff = find_member(&fields, "member_valid_network_diff");
     let valid_job_diff = find_member(&fields, "member_valid_job_diff");
     let valid_backend_diff = find_member(&fields, "member_valid_backend_diff");
@@ -84,6 +86,11 @@ fn impl_derive_mining_stats(ast: &DeriveInput) -> proc_macro2::TokenStream {
             #[inline]
             fn start_time(&self) -> &std::time::Instant {
                 &self.#start_time
+            }
+
+            #[inline]
+            fn last_share(&self) -> &stats::LastShare {
+                &self.#last_share
             }
 
             #[inline]
