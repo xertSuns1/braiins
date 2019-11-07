@@ -36,17 +36,27 @@ use tokio::timer::delay_for;
 
 use std::time;
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
-lazy_static! {
-    static ref DEFAULT_TIME_MEAN_INTERVALS: Vec<time::Duration> = vec![
-        time::Duration::from_secs(5),
-        time::Duration::from_secs(1 * 60),
-        time::Duration::from_secs(5 * 60),
-        time::Duration::from_secs(15 * 60),
-        time::Duration::from_secs(24 * 60 * 60),
-    ];
-}
+pub static TIME_MEAN_INTERVAL_5S: Lazy<time::Duration> = Lazy::new(|| time::Duration::from_secs(5));
+pub static TIME_MEAN_INTERVAL_1M: Lazy<time::Duration> =
+    Lazy::new(|| time::Duration::from_secs(1 * 60));
+pub static TIME_MEAN_INTERVAL_5M: Lazy<time::Duration> =
+    Lazy::new(|| time::Duration::from_secs(5 * 60));
+pub static TIME_MEAN_INTERVAL_15M: Lazy<time::Duration> =
+    Lazy::new(|| time::Duration::from_secs(15 * 60));
+pub static TIME_MEAN_INTERVAL_24H: Lazy<time::Duration> =
+    Lazy::new(|| time::Duration::from_secs(24 * 60 * 60));
+
+static DEFAULT_TIME_MEAN_INTERVALS: Lazy<Vec<time::Duration>> = Lazy::new(|| {
+    vec![
+        *TIME_MEAN_INTERVAL_5S,
+        *TIME_MEAN_INTERVAL_1M,
+        *TIME_MEAN_INTERVAL_5M,
+        *TIME_MEAN_INTERVAL_15M,
+        *TIME_MEAN_INTERVAL_24H,
+    ]
+});
 
 #[derive(Debug, Clone)]
 pub struct MeterSnapshot {
