@@ -33,7 +33,7 @@ use bosminer::node;
 use bosminer::shutdown;
 use bosminer::stats;
 use bosminer::work;
-use bosminer_macros::MiningNode;
+use bosminer_macros::WorkSolverNode;
 
 use error::ErrorKind;
 
@@ -112,16 +112,16 @@ impl hal::BackendSolution for Solution {
     }
 }
 
-#[derive(Debug, MiningNode)]
+#[derive(Debug, WorkSolverNode)]
 pub struct Backend {
-    #[member_mining_stats]
-    mining_stats: stats::BasicMining,
+    #[member_work_solver_stats]
+    work_solver_stats: stats::BasicWorkSolver,
 }
 
 impl Backend {
     pub fn new() -> Self {
         Self {
-            mining_stats: Default::default(),
+            work_solver_stats: Default::default(),
         }
     }
 }
@@ -144,8 +144,6 @@ impl hal::Backend for Backend {
         });
     }
 }
-
-impl node::WorkSolver for Backend {}
 
 impl fmt::Display for Backend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

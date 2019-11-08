@@ -29,16 +29,17 @@ use ii_async_compat::futures;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time;
+
+type WorkSolverPath = Vec<Arc<dyn node::WorkSolver>>;
 
 /// Compound object that is supposed to be sent down to the mining backend that can in turn solve
 /// any generated work and submit solutions.
 pub struct Solver {
     /// Flag indicating that this is work hub (special case of work solver)
     hub: AtomicBool,
-    /// Backend node associated with this work solver/hub
-    node: Arc<dyn node::WorkSolver>,
     /// Unique path describing internal hierarchy of backend solvers
-    path: node::Path,
+    path: WorkSolverPath,
     /// Shared engine receiver needed for creating `Generator`
     engine_receiver: EngineReceiver,
     /// Solution submission channel for the underlying mining backend
@@ -70,7 +71,6 @@ impl Solver {
 
         Self {
             hub: AtomicBool::new(false),
-            node: node.clone(),
             path: vec![node],
             engine_receiver,
             solution_sender: SolutionSender(solution_queue_tx),
@@ -85,14 +85,20 @@ impl Solver {
         // mark work solver which new one is branched from as a work hub
         let first_child = !self.hub.compare_and_swap(false, true, Ordering::Relaxed);
         self.hierarchy_builder
-            .branch(first_child, self.node.clone(), node.clone())
+            .branch(
+                first_child,
+                self.path
+                    .last()
+                    .expect("BUG: empty path in `work::Solver`")
+                    .clone(),
+                node.clone(),
+            )
             .await;
 
         let mut path = self.path.clone();
         path.push(node.clone());
         Self {
             hub: AtomicBool::new(false),
-            node,
             path,
             engine_receiver: self.engine_receiver.clone(),
             solution_sender: self.solution_sender.clone(),
@@ -105,15 +111,15 @@ impl Solver {
 /// `MiningWork` as possible from it.
 pub struct Generator {
     /// Unique path describing internal hierarchy of backend solvers
-    path: node::SharedPath,
+    path: WorkSolverPath,
     /// Source of trait objects that implement `WorkEngine` interface
     engine_receiver: EngineReceiver,
 }
 
 impl Generator {
-    pub fn new(engine_receiver: EngineReceiver, path: node::Path) -> Self {
+    pub fn new(engine_receiver: EngineReceiver, path: WorkSolverPath) -> Self {
         Self {
-            path: node::SharedPath::new(path),
+            path,
             engine_receiver,
         }
     }
@@ -143,7 +149,15 @@ impl Generator {
                     value
                 }
             };
-            work.path.extend(self.path.iter().cloned());
+            let now = time::SystemTime::now();
+            for node in self.path.iter() {
+                // Arc does not support dynamic casting to trait bounds so there must be used
+                // another Arc indirection with implemented `node::Info` trait.
+                // This blanket implementation can be found in the module `crate::node`:
+                // impl<T: ?Sized + Info> Info for Arc<T> {}
+                work.path.push(Arc::new(node.clone()));
+                node.work_solver_stats().last_work_time().touch(now).await;
+            }
             return Some(work);
         }
     }

@@ -45,7 +45,7 @@ use bosminer::runtime_config;
 use bosminer::shutdown;
 use bosminer::stats;
 use bosminer::work;
-use bosminer_macros::MiningNode;
+use bosminer_macros::WorkSolverNode;
 
 use std::fmt;
 use std::sync::Arc;
@@ -168,10 +168,10 @@ impl MidstateCount {
 /// Main responsibilities:
 /// - memory mapping of the FPGA control interface
 /// - mining work submission and solution processing
-#[derive(MiningNode)]
+#[derive(WorkSolverNode)]
 pub struct HashChain {
-    #[member_mining_stats]
-    mining_stats: stats::BasicMining,
+    #[member_work_solver_stats]
+    work_solver_stats: stats::BasicWorkSolver,
     /// Number of chips that have been detected
     chip_count: usize,
     /// Eliminates the need to query the IP core about the current number of configured midstates
@@ -244,7 +244,7 @@ impl HashChain {
         let (common_io, command_io, work_rx_io, work_tx_io) = core.init_and_split()?;
 
         Ok(Self {
-            mining_stats: Default::default(),
+            work_solver_stats: Default::default(),
             chip_count: 0,
             midstate_count,
             asic_difficulty,
@@ -753,8 +753,6 @@ impl fmt::Display for HashChain {
     }
 }
 
-impl node::WorkSolver for HashChain {}
-
 async fn start_miner(
     enabled_chains: Vec<usize>,
     work_solver: work::Solver,
@@ -837,10 +835,10 @@ impl hal::BackendSolution for Solution {
     }
 }
 
-#[derive(Debug, MiningNode)]
+#[derive(Debug, WorkSolverNode)]
 pub struct Backend {
-    #[member_mining_stats]
-    mining_stats: stats::BasicMining,
+    #[member_work_solver_stats]
+    work_solver_stats: stats::BasicWorkSolver,
     pll_frequency: usize,
     voltage: f32,
 }
@@ -848,7 +846,7 @@ pub struct Backend {
 impl Backend {
     pub fn new() -> Self {
         Self {
-            mining_stats: Default::default(),
+            work_solver_stats: Default::default(),
             pll_frequency: config::DEFAULT_PLL_FREQUENCY,
             voltage: config::DEFAULT_VOLTAGE,
         }
@@ -915,8 +913,6 @@ impl hal::Backend for Backend {
         ));
     }
 }
-
-impl node::WorkSolver for Backend {}
 
 impl fmt::Display for Backend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
