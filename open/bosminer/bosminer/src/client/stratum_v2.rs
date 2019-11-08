@@ -200,7 +200,11 @@ impl StratumEventHandler {
 
     pub fn update_target(&mut self, value: Uint256Bytes) {
         let new_target: ii_bitcoin::Target = value.into();
-        info!("changing target to {:?}", new_target);
+        info!(
+            "Stratum: changing target to {} diff={}",
+            new_target,
+            new_target.get_difficulty()
+        );
         self.current_target = new_target;
     }
 
@@ -208,7 +212,7 @@ impl StratumEventHandler {
         let now = std::time::Instant::now();
         while let Some((solution, seq_num)) = self.solutions.lock().await.pop_front() {
             info!(
-                "Stratum: Accepted solution #{} with nonce={:08x}.",
+                "Stratum: accepted solution #{} with nonce={:08x}",
                 seq_num,
                 solution.nonce()
             );
@@ -223,7 +227,7 @@ impl StratumEventHandler {
             }
         }
         warn!(
-            "Stratum: Last accepted solution #{} hasn't been found!",
+            "Stratum: last accepted solution #{} hasn't been found!",
             success_msg.last_seq_num
         );
     }
@@ -233,7 +237,7 @@ impl StratumEventHandler {
         while let Some((solution, seq_num)) = self.solutions.lock().await.pop_front() {
             if error_msg.seq_num == seq_num {
                 info!(
-                    "Stratum: Rejected solution #{} with nonce={:08x}!",
+                    "Stratum: rejected solution #{} with nonce={:08x}!",
                     seq_num,
                     solution.nonce()
                 );
@@ -248,7 +252,7 @@ impl StratumEventHandler {
                 // TODO: this is currently not according to stratum V2 specification
                 // preceding solutions are treated as accepted
                 info!(
-                    "Stratum: Accepted solution #{} with nonce={}.",
+                    "Stratum: accepted solution #{} with nonce={}",
                     seq_num,
                     solution.nonce()
                 );
@@ -258,17 +262,17 @@ impl StratumEventHandler {
                     .account_solution(&solution.job_target(), now)
                     .await;
                 warn!(
-                    "Stratum: The solution #{} precedes rejected solution #{}!",
+                    "Stratum: the solution #{} precedes rejected solution #{}!",
                     seq_num, error_msg.seq_num
                 );
                 warn!(
-                    "Stratum: The solution #{} is treated as an accepted one.",
+                    "Stratum: the solution #{} is treated as an accepted one",
                     seq_num
                 );
             }
         }
         warn!(
-            "Stratum: Rejected solution #{} hasn't been found!",
+            "Stratum: rejected solution #{} hasn't been found!",
             error_msg.seq_num
         );
     }
