@@ -136,9 +136,8 @@ mod test {
     }
 
     /// Verify non existing
-    /// #[test] TODO: fix panic handler
-    /// #[should_panic]
-    #[allow(dead_code)]
+    #[test]
+    #[should_panic]
     fn test_get_pin_in_check_plug_pin_doesnt_exist() {
         let ctrl_pin_manager = ControlPinManager::new();
         for i in [0usize, 10].iter() {
