@@ -590,9 +590,8 @@ mod test {
         assert_eq!(one.to_hw_addr(), 0x24);
     }
 
-    /// #[test] TODO: fix panic handler
-    /// #[should_panic]
-    #[allow(dead_code)]
+    #[test]
+    #[should_panic]
     fn test_chip_address_too_big() {
         // address is too big to fit in a u8
         ChipAddress::One(0x40).to_hw_addr();

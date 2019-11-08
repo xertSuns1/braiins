@@ -49,9 +49,8 @@ RUN mkdir -p $RUSTUP_HOME
 # pull in rust the 'official'  way. do not attempt to add self to $PATH, since cargo's idea of bin/ already is
 RUN bash -c "curl --proto '=https' --tlsv1.2 -sSf 'https://sh.rustup.rs' | sh /dev/stdin -y --no-modify-path"
 
-RUN rustup toolchain install nightly-2019-10-17-x86_64-unknown-linux-gnu && \
-    rustup component add rustfmt && \
-    rustup component add rustfmt --toolchain nightly-2019-10-17-x86_64-unknown-linux-gnu
+RUN rustup toolchain install beta-2019-11-06 && \
+    rustup component add rustfmt
 
 # bOS source tree. note that this step is just disposable interstage
 FROM rust-system AS rust-with-sources

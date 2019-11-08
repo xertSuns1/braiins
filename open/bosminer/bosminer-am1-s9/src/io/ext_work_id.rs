@@ -124,17 +124,15 @@ pub mod test_utils {
     }
 
     /// Test that trying to serialize `ExtWorkId` that would overflow the 16bit field will panic
-    /// #[test] TODO: fix panic handler
-    /// #[should_panic]
-    #[allow(dead_code)]
+    #[test]
+    #[should_panic]
     fn test_to_hw_fail() {
         ExtWorkId::new(0x8765, 2).to_hw(MidstateCount::new(2));
     }
 
     /// Test that trying to serialize `ExtWorkId` with too high `midstate_idx` would fail
-    /// #[test] TODO: fix panic handler
-    /// #[should_panic]
-    #[allow(dead_code)]
+    #[test]
+    #[should_panic]
     fn test_to_hw_fail_2() {
         ExtWorkId::new(0x8765, 1).to_hw(MidstateCount::new(1));
     }

@@ -28,7 +28,7 @@
 
 # templates
 .base-rust: &base-rust
-    image: $CI_REGISTRY_IMAGE/rust:9
+    image: $CI_REGISTRY_IMAGE/rust:10
 
 stages:
     - format
