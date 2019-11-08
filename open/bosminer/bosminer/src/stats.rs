@@ -26,7 +26,7 @@ use crate::node;
 use crate::stats;
 use crate::work;
 
-use bosminer_macros::MiningStats;
+use bosminer_macros::{MiningStats, WorkSolverStats};
 
 use ii_stats::WindowedTimeMean;
 
@@ -174,14 +174,6 @@ pub struct LastShareSnapshot {
     pub difficulty: usize,
 }
 
-impl LastShareSnapshot {
-    pub fn get_unix_time(&self) -> Result<u32, time::SystemTimeError> {
-        self.time
-            .duration_since(time::UNIX_EPOCH)
-            .map(|duration| duration.as_secs() as u32)
-    }
-}
-
 #[derive(Debug)]
 pub struct LastShare {
     inner: Mutex<Option<LastShareSnapshot>>,
@@ -197,10 +189,10 @@ impl LastShare {
         target: &ii_bitcoin::Target,
         time: time::SystemTime,
     ) {
-        *self.inner.lock().await = Some(LastShareSnapshot {
+        self.inner.lock().await.replace(LastShareSnapshot {
             time,
             difficulty: target.get_difficulty(),
-        })
+        });
     }
 }
 
@@ -209,6 +201,48 @@ impl Default for LastShare {
         Self {
             inner: Mutex::new(None),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct Timestamp {
+    inner: Mutex<Option<time::SystemTime>>,
+}
+
+impl Timestamp {
+    pub fn new<T: Into<Option<time::SystemTime>>>(time: T) -> Self {
+        Self {
+            inner: Mutex::new(time.into()),
+        }
+    }
+
+    pub async fn take_snapshot(&self) -> Option<time::SystemTime> {
+        *self.inner.lock().await
+    }
+
+    pub async fn touch<T: Into<Option<time::SystemTime>>>(&self, time: T) {
+        self.inner
+            .lock()
+            .await
+            .replace(time.into().unwrap_or_else(|| time::SystemTime::now()));
+    }
+}
+
+impl Default for Timestamp {
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
+
+pub trait UnixTime {
+    fn get_unix_time(&self) -> Result<u32, String>;
+}
+
+impl UnixTime for time::SystemTime {
+    fn get_unix_time(&self) -> Result<u32, String> {
+        self.duration_since(time::UNIX_EPOCH)
+            .map(|duration| duration.as_secs() as u32)
+            .map_err(|e| format!("{}", e))
     }
 }
 
@@ -225,6 +259,11 @@ pub trait Mining: Send + Sync {
     fn valid_backend_diff(&self) -> &Meter;
     /// Statistics for all invalid work on backend difficulty (backend/HW error)
     fn error_backend_diff(&self) -> &Meter;
+}
+
+pub trait WorkSolver: Mining {
+    /// The time when the device get last work for solution
+    fn last_work_time(&self) -> &Timestamp;
 }
 
 #[derive(Debug, MiningStats)]
@@ -257,6 +296,44 @@ impl BasicMining {
 }
 
 impl Default for BasicMining {
+    fn default() -> Self {
+        Self::new(time::Instant::now(), DEFAULT_TIME_MEAN_INTERVALS.as_ref())
+    }
+}
+
+#[derive(Debug, WorkSolverStats)]
+pub struct BasicWorkSolver {
+    #[member_start_time]
+    pub start_time: time::Instant,
+    #[member_last_work_time]
+    pub last_work_time: Timestamp,
+    #[member_last_share]
+    pub last_share: LastShare,
+    #[member_valid_network_diff]
+    pub valid_network_diff: Meter,
+    #[member_valid_job_diff]
+    pub valid_job_diff: Meter,
+    #[member_valid_backend_diff]
+    pub valid_backend_diff: Meter,
+    #[member_error_backend_diff]
+    pub error_backend_diff: Meter,
+}
+
+impl BasicWorkSolver {
+    pub fn new(start_time: time::Instant, intervals: &Vec<time::Duration>) -> Self {
+        Self {
+            start_time,
+            last_share: Default::default(),
+            last_work_time: Default::default(),
+            valid_network_diff: Meter::new(&intervals),
+            valid_job_diff: Meter::new(&intervals),
+            valid_backend_diff: Meter::new(&intervals),
+            error_backend_diff: Meter::new(&intervals),
+        }
+    }
+}
+
+impl Default for BasicWorkSolver {
     fn default() -> Self {
         Self::new(time::Instant::now(), DEFAULT_TIME_MEAN_INTERVALS.as_ref())
     }

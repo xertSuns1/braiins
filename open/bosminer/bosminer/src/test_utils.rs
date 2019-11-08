@@ -30,26 +30,24 @@ use crate::work;
 
 pub use ii_bitcoin::{TestBlock, TEST_BLOCKS};
 
-use bosminer_macros::MiningNode;
+use bosminer_macros::WorkSolverNode;
 
 use std::fmt;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 
-#[derive(Debug, MiningNode)]
+#[derive(Debug, WorkSolverNode)]
 pub struct TestInfo {
-    #[member_mining_stats]
-    mining_stats: stats::BasicMining,
+    #[member_work_solver_stats]
+    work_solver_stats: stats::BasicWorkSolver,
 }
 
 impl TestInfo {
     pub fn new() -> Self {
         Self {
-            mining_stats: Default::default(),
+            work_solver_stats: Default::default(),
         }
     }
 }
-
-impl node::WorkSolver for TestInfo {}
 
 impl fmt::Display for TestInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

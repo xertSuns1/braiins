@@ -34,12 +34,17 @@ use std::sync::Arc;
 pub trait Info: Debug + Display + Stats {}
 
 pub trait Stats: Send + Sync {
-    /// Return object with all statistics for current node.
+    /// Return object with general mining statistics.
     fn mining_stats(&self) -> &dyn stats::Mining;
 }
 
 /// Common interface for nodes representing work solver
-pub trait WorkSolver: Info {}
+pub trait WorkSolver: Info + WorkSolverStats {}
+
+pub trait WorkSolverStats: Stats {
+    /// Return object with work solver specific statistics.
+    fn work_solver_stats(&self) -> &dyn stats::WorkSolver;
+}
 
 /// Shared node info type
 pub type DynInfo = Arc<dyn Info>;

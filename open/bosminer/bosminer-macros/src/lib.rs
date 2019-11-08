@@ -26,19 +26,24 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::DeriveInput;
 
-/// Generates implementation of node::Info and node::Stats traits for a type marked by this derive.
+/// Generates implementation of `node::Info` and `node::Stats` traits for a type marked by this
+/// derive.
 #[proc_macro_derive(MiningNode, attributes(member_mining_stats))]
 pub fn derive_mining_node(input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(input).unwrap();
-    impl_derive_mining_node(&ast).into()
+    impl_derive_mining_node(&ast, "MiningNode", "member_mining_stats").into()
 }
 
-fn impl_derive_mining_node(ast: &DeriveInput) -> proc_macro2::TokenStream {
+fn impl_derive_mining_node(
+    ast: &DeriveInput,
+    derive_name: &str,
+    stats_name: &str,
+) -> proc_macro2::TokenStream {
     let name = &ast.ident;
     let generics = &ast.generics;
 
-    let fields = get_fields(&ast, "MiningNode");
-    let mining_stats = find_member(&fields, "member_mining_stats");
+    let fields = get_fields(&ast, derive_name);
+    let mining_stats = find_member(&fields, stats_name);
 
     quote! {
         impl#generics node::Info for #name#generics {}
@@ -52,7 +57,40 @@ fn impl_derive_mining_node(ast: &DeriveInput) -> proc_macro2::TokenStream {
     }
 }
 
-/// Generates implementation of stats::Mining trait for a type marked by this derive.
+/// Generates implementation of `node::Info`, `node::WorkSolver` and `node::WorkSolverStats` traits
+/// for a type marked by this derive.
+#[proc_macro_derive(WorkSolverNode, attributes(member_work_solver_stats))]
+pub fn derive_work_solver_node(input: TokenStream) -> TokenStream {
+    let ast: DeriveInput = syn::parse(input).unwrap();
+    let stream = impl_derive_mining_node(&ast, "MiningNode", "member_work_solver_stats");
+    impl_derive_work_solver_node(&ast, stream, "WorkSolver").into()
+}
+
+fn impl_derive_work_solver_node(
+    ast: &DeriveInput,
+    mut stream: proc_macro2::TokenStream,
+    derive_name: &str,
+) -> proc_macro2::TokenStream {
+    let name = &ast.ident;
+    let generics = &ast.generics;
+
+    let fields = get_fields(&ast, derive_name);
+    let work_solver_stats = find_member(&fields, "member_work_solver_stats");
+
+    stream.extend(quote! {
+        impl#generics node::WorkSolver for #name#generics {}
+
+        impl#generics node::WorkSolverStats for #name#generics {
+            #[inline]
+            fn work_solver_stats(&self) -> &stats::WorkSolver {
+                &self.#work_solver_stats
+            }
+        }
+    });
+    stream
+}
+
+/// Generates implementation of `stats::Mining` trait for a type marked by this derive.
 #[proc_macro_derive(
     MiningStats,
     attributes(
@@ -66,14 +104,14 @@ fn impl_derive_mining_node(ast: &DeriveInput) -> proc_macro2::TokenStream {
 )]
 pub fn derive_mining_stats(input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(input).unwrap();
-    impl_derive_mining_stats(&ast).into()
+    impl_derive_mining_stats(&ast, "MiningStats").into()
 }
 
-fn impl_derive_mining_stats(ast: &DeriveInput) -> proc_macro2::TokenStream {
+fn impl_derive_mining_stats(ast: &DeriveInput, derive_name: &str) -> proc_macro2::TokenStream {
     let name = &ast.ident;
     let generics = &ast.generics;
 
-    let fields = get_fields(&ast, "MiningStats");
+    let fields = get_fields(&ast, derive_name);
     let start_time = find_member(&fields, "member_start_time");
     let last_share = find_member(&fields, "member_last_share");
     let valid_network_diff = find_member(&fields, "member_valid_network_diff");
@@ -114,6 +152,46 @@ fn impl_derive_mining_stats(ast: &DeriveInput) -> proc_macro2::TokenStream {
             }
         }
     }
+}
+
+/// Generates implementation of `stats::WorkSolver` trait for a type marked by this derive.
+#[proc_macro_derive(
+    WorkSolverStats,
+    attributes(
+        member_start_time,
+        member_last_work_time,
+        member_last_share,
+        member_valid_network_diff,
+        member_valid_job_diff,
+        member_valid_backend_diff,
+        member_error_backend_diff
+    )
+)]
+pub fn derive_work_solver_stats(input: TokenStream) -> TokenStream {
+    let ast: DeriveInput = syn::parse(input).unwrap();
+    let stream = impl_derive_mining_stats(&ast, "WorkSolverStats");
+    impl_derive_work_solver_stats(&ast, stream, "WorkSolverStats").into()
+}
+
+fn impl_derive_work_solver_stats(
+    ast: &DeriveInput,
+    mut stream: proc_macro2::TokenStream,
+    derive_name: &str,
+) -> proc_macro2::TokenStream {
+    let name = &ast.ident;
+    let generics = &ast.generics;
+
+    let fields = get_fields(&ast, derive_name);
+    let last_work_time = find_member(&fields, "member_last_work_time");
+
+    stream.extend(quote! {
+        impl#generics stats::WorkSolver for #name#generics {
+            fn last_work_time(&self) -> &stats::Timestamp {
+                &self.#last_work_time
+            }
+        }
+    });
+    stream
 }
 
 fn get_fields<'a>(ast: &'a DeriveInput, derive_name: &str) -> &'a syn::Fields {
