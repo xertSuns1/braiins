@@ -60,7 +60,8 @@ impl Solver {
         )
     }
 
-    /// Construct new work solver from engine receiver and associated channel to send the results
+    /// Construct new work solver from `engine_receiver` and associated channel `solution_queue_tx`
+    /// to submit mining results.
     pub(crate) async fn create_root<T: node::WorkSolver + 'static>(
         hierarchy_builder: Arc<dyn backend::HierarchyBuilder>,
         node: Arc<T>,

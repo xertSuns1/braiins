@@ -20,8 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-//! This module contains common functionality related to mining protocol client and allows
-//! executing a specific type of mining protocol client instance.
+//! This module contains dynamically built backend hierarchy
 
 use crate::node;
 
@@ -45,6 +44,7 @@ pub trait HierarchyBuilder: Send + Sync {
     );
 }
 
+/// This struct is intended mainly for tests to ignore backend hierarchy completely
 pub struct IgnoreHierarchy;
 
 #[async_trait]
@@ -60,6 +60,9 @@ impl HierarchyBuilder for IgnoreHierarchy {
     }
 }
 
+/// This struct is the default hierarchy builder for bOSminer. It collects all work solvers and
+/// work hubs (special case of solver which only routes work to its child nodes and is useful for
+/// statistics aggregation and group control)
 pub struct BuildHierarchy;
 
 #[async_trait]
@@ -82,6 +85,7 @@ impl HierarchyBuilder for BuildHierarchy {
     }
 }
 
+/// Helper method that puts a `work_solver` node into a specified `container`
 fn push_work_solver(
     container: &mut Vec<Arc<dyn node::WorkSolver>>,
     work_solver: Arc<dyn node::WorkSolver>,

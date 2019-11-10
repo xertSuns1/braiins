@@ -38,7 +38,8 @@ pub trait Stats: Send + Sync {
     fn mining_stats(&self) -> &dyn stats::Mining;
 }
 
-/// Common interface for nodes representing work solver
+/// Common interface for nodes with ability to solve generated work and providing common
+/// interface for mining control
 pub trait WorkSolver: Info + WorkSolverStats {}
 
 pub trait WorkSolverStats: Stats {
