@@ -1,0 +1,38 @@
+@startuml
+
+interface node::Stats {
+  mining_stats(&self) -> &dyn stats::Mining
+}
+
+interface node::Info {
+}
+
+interface node::WorkSolver {
+}
+
+interface node::WorkSolverStats {
+  fn work_solver_stats(&self) -> &dyn stats::WorkSolver;
+}
+
+interface hal::Backend
+
+node::Stats <|-- node::Info
+node::Stats <|-- node::WorkSolverStats
+node::Info <|-- node::WorkSolver
+node::WorkSolverStats <|-- node::WorkSolver
+node::WorkSolver <|-- hal::Backend
+
+interface stats::Mining {
+    fn start_time(&self) -> &time::Instant;
+    fn last_share(&self) -> &LastShare;
+    fn valid_network_diff(&self) -> &Meter;
+    fn valid_job_diff(&self) -> &Meter;
+    fn valid_backend_diff(&self) -> &Meter;
+    fn error_backend_diff(&self) -> &Meter;
+}
+
+interface stats::WorkSolver
+
+stats::Mining <|-- stats::WorkSolver
+
+@enduml
