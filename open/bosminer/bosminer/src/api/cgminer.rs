@@ -20,6 +20,9 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+//! This module implements CGMiner compatible API server to control bOSminer and to extract
+//! statistics from it.
+
 use ii_async_compat::tokio;
 use tokio::timer::delay_for;
 

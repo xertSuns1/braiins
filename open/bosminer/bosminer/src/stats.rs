@@ -58,6 +58,7 @@ static DEFAULT_TIME_MEAN_INTERVALS: Lazy<Vec<time::Duration>> = Lazy::new(|| {
     ]
 });
 
+/// Represents a snapshot of all statistics at an instant
 #[derive(Debug, Clone)]
 pub struct MeterSnapshot {
     /// Number of solutions measured from the beginning of the mining
