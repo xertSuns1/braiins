@@ -210,19 +210,13 @@ pub struct Config {
     pub temp_config: Option<TempControlConfig>,
 }
 
-#[derive(Debug, PartialEq)]
-pub struct PIDParams {
-    target_temp: f32,
-    input_temp: f32,
-}
-
 /// Output of the decision process
 #[derive(Debug, PartialEq)]
 pub enum ControlDecision {
     /// Fail state - shutdown miner
     Shutdown(&'static str),
     /// Pass these parameters to PID and let it calculate fan speed
-    UsePid(PIDParams),
+    UsePid { target_temp: f32, input_temp: f32 },
     /// Use fixed speed
     UseFixedSpeed(fan::Speed),
     /// Do nothing (only valid when fan control is disabled)
@@ -247,10 +241,10 @@ impl ControlDecision {
                     if input_temp >= temp_config.hot_temp {
                         return Self::UseFixedSpeed(fan::Speed::FULL_SPEED);
                     }
-                    return Self::UsePid(PIDParams {
+                    return Self::UsePid {
                         target_temp: *target_temp,
                         input_temp,
-                    });
+                    };
                 }
             },
         }
@@ -428,10 +422,10 @@ impl Monitor {
                 ControlDecision::UseFixedSpeed(fan_speed) => {
                     monitor.set_fan_speed(fan_speed);
                 }
-                ControlDecision::UsePid(PIDParams {
+                ControlDecision::UsePid {
                     target_temp,
                     input_temp,
-                }) => {
+                } => {
                     monitor.pid.set_target(target_temp.into());
                     let speed = monitor.pid.update(input_temp.into());
                     info!(
