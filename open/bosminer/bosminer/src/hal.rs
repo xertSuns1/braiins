@@ -56,5 +56,5 @@ pub trait Backend: node::WorkSolver + Send + Sync + 'static {
 
     fn init(&mut self, _args: &clap::ArgMatches) {}
 
-    fn run(self: Arc<Self>, work_solver: work::Solver, shutdown: shutdown::Sender);
+    fn run(self: Arc<Self>, work_solver_builder: work::SolverBuilder, shutdown: shutdown::Sender);
 }

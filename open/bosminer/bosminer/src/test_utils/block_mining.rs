@@ -264,7 +264,7 @@ async fn build_solvers() -> (
     work::EngineSender,
     mpsc::UnboundedReceiver<work::Solution>,
     mpsc::UnboundedReceiver<work::DynEngine>,
-    work::Solver,
+    work::SolverBuilder,
 ) {
     let (reschedule_sender, reschedule_receiver) = mpsc::unbounded();
     let (engine_sender, engine_receiver) =
@@ -279,7 +279,7 @@ async fn build_solvers() -> (
         // then you will be able to receive it here)
         reschedule_receiver,
         // This is a solver that you hand off to backend
-        work::Solver::create_root(
+        work::SolverBuilder::create_root(
             Arc::new(backend::IgnoreHierarchy),
             Arc::new(test_utils::TestInfo::new()),
             engine_receiver,

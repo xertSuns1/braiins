@@ -33,9 +33,12 @@ use std::time;
 
 type WorkSolverPath = Vec<Arc<dyn node::WorkSolver>>;
 
-/// Compound object that is supposed to be sent down to the mining backend that can in turn solve
-/// any generated work and submit solutions.
-pub struct Solver {
+/// Compound object that is supposed to be sent down to the mining backend for building hierarchy
+/// of work solvers and work hubs (special case of solver which only routes work to its child nodes
+/// and is useful for statistics aggregation and group control). Work solvers can be in turn split
+/// to `work::Generator` and `work::SolutionSender` that can solve any generated work and submit
+/// its solutions.
+pub struct SolverBuilder {
     /// Flag indicating that this is work hub (special case of work solver)
     hub: AtomicBool,
     /// Unique path describing internal hierarchy of backend solvers
@@ -44,10 +47,11 @@ pub struct Solver {
     engine_receiver: EngineReceiver,
     /// Solution submission channel for the underlying mining backend
     solution_sender: SolutionSender,
+    /// Custom hierarchy builder object driven by `SolverBuilder`
     hierarchy_builder: Arc<dyn backend::HierarchyBuilder>,
 }
 
-impl Solver {
+impl SolverBuilder {
     pub fn split(self) -> (Generator, SolutionSender) {
         assert_eq!(
             self.hub.load(Ordering::Relaxed),

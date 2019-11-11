@@ -32,7 +32,7 @@ use crate::node;
 
 use ii_bitcoin::HashTrait as _;
 
-pub use solver::{Generator, SolutionSender, Solver};
+pub use solver::{Generator, SolutionSender, SolverBuilder};
 
 use ii_async_compat::tokio;
 use tokio::prelude::*;

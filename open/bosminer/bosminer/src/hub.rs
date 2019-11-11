@@ -49,12 +49,12 @@ impl work::ExhaustedHandler for EventHandler {
 pub async fn build_solvers<T: node::WorkSolver + 'static>(
     frontend_info: node::DynInfo,
     backend_work_solver: Arc<T>,
-) -> (job::Solver, work::Solver) {
+) -> (job::Solver, work::SolverBuilder) {
     let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
     let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
     (
         job::Solver::new(frontend_info, engine_sender, solution_queue_rx),
-        work::Solver::create_root(
+        work::SolverBuilder::create_root(
             Arc::new(backend::BuildHierarchy),
             backend_work_solver,
             engine_receiver,
