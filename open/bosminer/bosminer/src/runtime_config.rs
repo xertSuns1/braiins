@@ -25,8 +25,10 @@
 //! configuration.
 
 use crate::config;
-use lazy_static::lazy_static;
+
 use std::sync::Mutex;
+
+use once_cell::sync::Lazy;
 
 /// Structure representing miner configuration
 pub struct RunTimeConfig {
@@ -41,10 +43,8 @@ impl RunTimeConfig {
     }
 }
 
-lazy_static! {
-    /// Shared (global) configuration structure
-    static ref CONFIG: Mutex<RunTimeConfig> = Mutex::new(RunTimeConfig::new());
-}
+/// Shared (global) configuration structure
+static CONFIG: Lazy<Mutex<RunTimeConfig>> = Lazy::new(|| Mutex::new(RunTimeConfig::new()));
 
 /// These functions are only temporary, until we unify midstate_count passing
 pub fn set_midstate_count(value: usize) {

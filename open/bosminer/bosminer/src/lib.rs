@@ -47,7 +47,7 @@ use bosminer_macros::MiningNode;
 use std::fmt;
 use std::sync::Arc;
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 #[derive(Debug, MiningNode)]
 pub struct Frontend {
@@ -69,7 +69,5 @@ impl fmt::Display for Frontend {
     }
 }
 
-lazy_static! {
-    /// Shared (global) configuration structure
-    pub static ref BOSMINER: Arc<Frontend> = Arc::new(Frontend::new());
-}
+/// Shared (global) configuration structure
+pub static BOSMINER: Lazy<Arc<Frontend>> = Lazy::new(|| Arc::new(Frontend::new()));
