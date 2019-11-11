@@ -30,7 +30,7 @@ use ii_async_compat::futures;
 
 use std::sync::Arc;
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 #[async_trait]
 pub trait HierarchyBuilder: Send + Sync {
@@ -128,7 +128,8 @@ pub(crate) async fn get_work_solvers() -> Vec<Arc<dyn node::WorkSolver>> {
     WORK_SOLVERS.lock().await.iter().cloned().collect()
 }
 
-lazy_static! {
-    static ref WORK_HUBS: Mutex<Vec<Arc<dyn node::WorkSolver>>> = Mutex::new(Vec::new());
-    static ref WORK_SOLVERS: Mutex<Vec<Arc<dyn node::WorkSolver>>> = Mutex::new(Vec::new());
-}
+/// Global lists for distinguishing between work solvers which do real work and work hubs which are
+/// only for aggregation and group control. Also CGMiner API reports devices which corresponds to
+/// work solver nodes.
+static WORK_HUBS: Lazy<Mutex<Vec<Arc<dyn node::WorkSolver>>>> = Lazy::new(|| Mutex::new(vec![]));
+static WORK_SOLVERS: Lazy<Mutex<Vec<Arc<dyn node::WorkSolver>>>> = Lazy::new(|| Mutex::new(vec![]));
