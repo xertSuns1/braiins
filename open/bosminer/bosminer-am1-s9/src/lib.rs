@@ -893,13 +893,13 @@ impl fmt::Display for HashChain {
 }
 
 /// Mining parameters that can change run-time
-struct HashChainParams {
+pub struct HashChainParams {
     pll_frequency: usize,
     voltage: power::Voltage,
 }
 
 /// Hashchain and related runtime data
-struct HashChainRuntime {
+pub struct HashChainRuntime {
     halt_tx: HaltSender,
     halt_rx: HaltReceiver,
     hash_chain: Arc<HashChain>,
@@ -919,7 +919,7 @@ impl fmt::Display for HashChainNode {
 }
 
 /// Hashchain manager that can start and stop instances of hashchain
-struct HashChainManager {
+pub struct HashChainManager {
     // init
     gpio_mgr: gpio::ControlPinManager,
     voltage_ctrl_backend: power::SharedBackend<power::I2cBackend>,
