@@ -716,7 +716,11 @@ impl HashChain {
         });
     }
 
-    pub async fn start(self: Arc<Self>, work_solver: work::Solver, shutdown: shutdown::Sender) {
+    pub async fn start(
+        self: Arc<Self>,
+        work_solver_builder: work::SolverBuilder,
+        shutdown: shutdown::Sender,
+    ) {
         // Determines how big the work registry has to be
         let work_registry = Arc::new(Mutex::new(registry::WorkRegistry::new(
             self.work_tx_io
@@ -727,7 +731,7 @@ impl HashChain {
                 .work_id_count(),
         )));
         let command_context = self.command_context.clone();
-        let (work_generator, work_solution) = work_solver.split();
+        let (work_generator, work_solution) = work_solver_builder.split();
 
         Self::spawn_tx_task(
             self.clone(),
@@ -755,7 +759,7 @@ impl fmt::Display for HashChain {
 
 async fn start_miner(
     enabled_chains: Vec<usize>,
-    work_solver: work::Solver,
+    work_solver_builder: work::SolverBuilder,
     shutdown: shutdown::Sender,
     midstate_count: usize,
     pll_frequency: usize,
@@ -793,9 +797,9 @@ async fn start_miner(
     // spawn worker tasks for each hash chain and start mining
     for hash_chain in hash_chains.drain(..) {
         let hash_chain = Arc::new(hash_chain);
-        let hash_chain_work_solver = work_solver.branch(hash_chain.clone()).await;
+        let hash_chain_work_solver_builder = work_solver_builder.branch(hash_chain.clone()).await;
         hash_chain
-            .start(hash_chain_work_solver, shutdown.clone())
+            .start(hash_chain_work_solver_builder, shutdown.clone())
             .await;
     }
 }
@@ -902,10 +906,10 @@ impl hal::Backend for Backend {
         }
     }
 
-    fn run(self: Arc<Self>, work_solver: work::Solver, shutdown: shutdown::Sender) {
+    fn run(self: Arc<Self>, work_solver_builder: work::SolverBuilder, shutdown: shutdown::Sender) {
         tokio::spawn(start_miner(
             vec![config::S9_HASHBOARD_INDEX],
-            work_solver,
+            work_solver_builder,
             shutdown,
             runtime_config::get_midstate_count(),
             self.pll_frequency,

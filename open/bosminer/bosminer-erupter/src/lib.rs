@@ -45,7 +45,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 fn main_task(
-    work_solver: work::Solver,
+    work_solver_builder: work::SolverBuilder,
     _shutdown: shutdown::Sender,
 ) -> bosminer::error::Result<()> {
     info!("Block Erupter: finding device in USB...");
@@ -58,7 +58,7 @@ fn main_task(
     device.init()?;
     info!("Block Erupter: initialized and ready to solve the work!");
 
-    let (generator, solution_sender) = work_solver.split();
+    let (generator, solution_sender) = work_solver_builder.split();
     let mut solver = device.into_solver(generator);
 
     // iterate until there exists any work or the error occurs
@@ -131,12 +131,12 @@ impl hal::Backend for Backend {
     const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
-    fn run(self: Arc<Self>, work_solver: work::Solver, shutdown: shutdown::Sender) {
+    fn run(self: Arc<Self>, work_solver_builder: work::SolverBuilder, shutdown: shutdown::Sender) {
         // Spawn the future in a separate blocking pool (for blocking operations)
         // so that this doesn't block the regular threadpool.
         tokio::spawn(async move {
             blocking::run(move || {
-                if let Err(e) = main_task(work_solver, shutdown) {
+                if let Err(e) = main_task(work_solver_builder, shutdown) {
                     error!("{}", e);
                 }
             })
