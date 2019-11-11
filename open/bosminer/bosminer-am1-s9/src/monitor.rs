@@ -108,7 +108,7 @@ impl ChainState {
         *self = ChainState::Broken("bad state transition");
     }
 
-    /// React on an incomming message by changing modifying state. All messages
+    /// React on an incoming message by changing modifying state. All messages
     /// have follow pattern `[Off -> On -> Running*]*`
     ///
     /// `now` is timestamp of `message` reception (passed explicitly as argument
@@ -239,7 +239,9 @@ impl ControlDecision {
         match &fan_config.mode {
             FanControlMode::FixedSpeed(pwm) => return Self::UseFixedSpeed(*pwm),
             FanControlMode::TargetTemperature(target_temp) => match temp {
-                ChainTemperature::Failed => panic!("should be catched earlier in this function"),
+                ChainTemperature::Failed => {
+                    panic!("BUG: should've been caught earlier in this function")
+                }
                 ChainTemperature::Unknown => return Self::UseFixedSpeed(fan::Speed::FULL_SPEED),
                 ChainTemperature::Ok(input_temp) => {
                     if input_temp >= temp_config.hot_temp {
