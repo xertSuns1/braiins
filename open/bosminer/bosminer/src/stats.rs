@@ -413,9 +413,10 @@ pub async fn mining_task(node: node::DynInfo, interval: time::Duration) {
         let valid_job_diff = node.mining_stats().valid_job_diff().take_snapshot().await;
 
         info!(
-            "Hash rate @ pool difficulty: {}/{}s",
-            valid_job_diff.to_pretty_hashes(interval, time::Instant::now()),
-            interval.as_secs()
+            "Hash rate ({} s avg.) for '{}' @ pool difficulty: {}/s",
+            interval.as_secs(),
+            node,
+            valid_job_diff.to_pretty_hashes(interval, time::Instant::now())
         );
     }
 }
