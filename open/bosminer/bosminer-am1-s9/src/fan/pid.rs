@@ -20,49 +20,17 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+//! Implementation of fan control using PID
+
+mod offset_pid;
+
 use super::Speed;
-use pid_control::{Controller, PIDController};
+use offset_pid::OffsetPIDController;
+use pid_control::Controller;
 use std::time::Instant;
 
-/// TODO: maybe separate into own module?
-struct OffsetedPIDController {
-    pid: PIDController,
-    offset: f64,
-}
-
-impl OffsetedPIDController {
-    pub fn new(p_gain: f64, i_gain: f64, d_gain: f64, offset: f64) -> Self {
-        Self {
-            pid: PIDController::new(p_gain, i_gain, d_gain),
-            offset,
-        }
-    }
-
-    pub fn set_limits(&mut self, min: f64, max: f64) {
-        self.pid.set_limits(min - self.offset, max - self.offset);
-    }
-}
-
-impl Controller for OffsetedPIDController {
-    fn set_target(&mut self, target: f64) {
-        self.pid.set_target(target);
-    }
-
-    fn target(&self) -> f64 {
-        self.pid.target()
-    }
-
-    fn update(&mut self, value: f64, delta_t: f64) -> f64 {
-        self.pid.update(value, delta_t) + self.offset
-    }
-
-    fn reset(&mut self) {
-        self.pid.reset()
-    }
-}
-
 pub struct TempControl {
-    pid: OffsetedPIDController,
+    pid: OffsetPIDController,
     last_update: Instant,
 }
 
@@ -70,7 +38,7 @@ impl TempControl {
     pub fn new() -> Self {
         // kp/ki/kd constants are negative because the PID works in reverse direction
         // (the lower the PWM, the higher the temperature)
-        let mut pid = OffsetedPIDController::new(-5.0, -0.03, -0.015, 70.0);
+        let mut pid = OffsetPIDController::new(-5.0, -0.03, -0.015, 70.0);
         pid.set_limits(1.0, 100.0);
 
         Self {
@@ -89,20 +57,5 @@ impl TempControl {
             .update(temperature, self.last_update.elapsed().as_secs_f64());
         self.last_update = Instant::now();
         Speed::new(pwm as usize)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use approx::relative_eq;
-
-    /// Verify that offset is added to the results of PID controller computation
-    #[test]
-    fn test_pid_offset() {
-        let mut pid = OffsetedPIDController::new(0.0, 0.0, 0.0, 50.0);
-        relative_eq!(pid.update(0.0, 1.0), 50.0);
-        pid.set_limits(60.0, 60.0);
-        relative_eq!(pid.update(0.0, 1.0), 60.0);
     }
 }
