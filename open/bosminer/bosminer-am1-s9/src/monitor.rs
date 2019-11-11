@@ -138,12 +138,12 @@ impl ChainState {
     fn tick(&mut self, now: Instant) {
         match *self {
             ChainState::On(at) => {
-                if now - at >= START_TIMEOUT {
+                if now.duration_since(at) >= START_TIMEOUT {
                     *self = ChainState::Broken("took too long to start");
                 }
             }
             ChainState::Running(at, _) => {
-                if now - at >= RUN_UPDATE_TIMEOUT {
+                if now.duration_since(at) >= RUN_UPDATE_TIMEOUT {
                     *self = ChainState::Broken("failed to set update in time");
                 }
             }
