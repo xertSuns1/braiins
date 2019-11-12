@@ -1,0 +1,80 @@
+@startuml
+
+start
+if (Fan control disabled) then (yes)
+	if (Temp control disabled) then (yes)
+		:OK;
+		detach
+	else (no)
+			partition TEMP_DANGER {
+		if (Sensors have failed) then (yes)
+			:Shutdown;
+			detach
+		elseif (Sensors have unknown value) then (yes)
+			:OK;
+			detach
+		else (no)
+			if (Dangerous temperature) then (yes)
+				:Shutdown;
+				detach
+			else (no)
+			endif
+		endif
+			}
+				:OK;
+				detach
+	endif
+else
+	if (Temp control disabled) then (yes)
+		partition FAN_DANGER {
+		if (Enough fans?) then (no)
+			:Shutdown;
+			detach
+		else (yes)
+		endif
+		}
+		partition decide_fan_control_notemp {
+			:FAN = user set value;
+			detach
+		}
+	else (no)
+		partition decide_fan_control {
+		partition TEMP_DANGER {
+		if (Sensors have failed) then (yes)
+			:Shutdown;
+			detach
+		elseif (Sensors have unknown value) then (yes)
+			:FAN = 100%;
+			detach
+		else (no)
+			if (Dangerous temperature) then (yes)
+				:Shutdown;
+				detach
+			else (no)
+			endif
+		endif
+		}
+			partition FAN_DANGER {
+				if (Enough fans?) then (no)
+					:Shutdown;
+					detach
+				else (yes)
+				endif
+			}
+			if (Fixed speed fan?) then (yes)
+				:FAN = user set value;
+				detach
+			else (no)
+				if (Hot temperature?) then (yes)
+					:FAN = 100%;
+					detach
+				else (no)
+					:FAN = PID(temperature);
+					detach;
+				endif
+			endif
+		}
+	endif
+endif
+
+@enduml
