@@ -375,8 +375,8 @@ impl Monitor {
 
     /// Shutdown miner
     /// TODO: do a more graceful shutdown
-    fn shutdown(&self) {
-        panic!("Monitor task declared miner shutdown");
+    fn shutdown(&self, reason: String) {
+        panic!(format!("Monitor task declared miner shutdown: {}", reason));
     }
 
     /// Set fan speed
@@ -400,9 +400,12 @@ impl Monitor {
 
                 if let ChainState::Broken(reason) = chain.state {
                     // TODO: here comes "Shutdown"
-                    error!("Chain {} is broken: {}", chain.hashboard_idx, reason);
-                    monitor.shutdown();
+                    monitor.shutdown(format!(
+                        "Chain {} is broken: {}",
+                        chain.hashboard_idx, reason
+                    ));
                 }
+                info!("chain {}: {:?}", chain.hashboard_idx, chain.state);
                 acc.add_chain_temp(chain.state.get_temp());
             }
 
@@ -419,8 +422,7 @@ impl Monitor {
             info!("Monitor: decision={:?}", decision);
             match decision {
                 ControlDecision::Shutdown(reason) => {
-                    error!("Monitor: {}", reason);
-                    monitor.shutdown();
+                    monitor.shutdown(reason.into());
                 }
                 ControlDecision::UseFixedSpeed(fan_speed) => {
                     monitor.set_fan_speed(fan_speed);
