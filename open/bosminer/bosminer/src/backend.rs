@@ -36,6 +36,8 @@ use once_cell::sync::Lazy;
 pub trait HierarchyBuilder: Send + Sync {
     async fn add_root(&self, work_solver: Arc<dyn node::WorkSolver>);
 
+    /// Creates new level of hierarchy. `work_hub` is the parent of the new node `work_solver`.
+    /// `first_child` indicates that `work_solver` is its first ancestor.
     async fn branch(
         &self,
         first_child: bool,
