@@ -83,18 +83,18 @@ impl SolverBuilder {
         }
     }
 
-    /// Create another solver based on previous one.
+    /// Create another solver builder based on previous one (`node`).
     /// It provides generic way how to describe hierarchy in various backends.
     /// Each solver has unique path described by generic node info.
     pub async fn branch<T: node::WorkSolver + 'static>(&self, node: Arc<T>) -> Self {
-        // mark work solver which new one is branched from as a work hub
+        // mark work solver builder as work hub during branching of the first child
         let first_child = !self.hub.compare_and_swap(false, true, Ordering::Relaxed);
         self.hierarchy_builder
             .branch(
                 first_child,
                 self.path
                     .last()
-                    .expect("BUG: empty path in `work::Solver`")
+                    .expect("BUG: empty path in `work::SolverBuilder`")
                     .clone(),
                 node.clone(),
             )

@@ -45,7 +45,9 @@ impl work::ExhaustedHandler for EventHandler {
     }
 }
 
-/// Create Solvers for frontend (pool) and backend (HW accelerator)
+/// Create job solver for frontend (pool) and work solver builder for backend (as we expect a
+/// hierarchical structure in backends)
+/// `backend_work_solver` is the root of the work solver hierarchy
 pub async fn build_solvers<T: node::WorkSolver + 'static>(
     frontend_info: node::DynInfo,
     backend_work_solver: Arc<T>,
