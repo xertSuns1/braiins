@@ -57,6 +57,10 @@ impl fmt::Display for Protocol {
 pub struct Stats {
     #[member_start_time]
     pub start_time: time::Instant,
+    /// Number of valid jobs received from remote server
+    pub valid_jobs: stats::Counter,
+    /// Number of invalid jobs received from remote server
+    pub invalid_jobs: stats::Counter,
     #[member_last_share]
     pub last_share: stats::LastShare,
     #[member_best_share]
@@ -65,6 +69,8 @@ pub struct Stats {
     pub accepted: stats::Meter,
     /// Shares rejected by remote server
     pub rejected: stats::Meter,
+    /// Valid shares rejected by remote server or discarded due to some error
+    pub stale: stats::Meter,
     #[member_valid_network_diff]
     pub valid_network_diff: stats::Meter,
     #[member_valid_job_diff]
@@ -79,10 +85,13 @@ impl Stats {
     pub fn new() -> Self {
         Self {
             start_time: time::Instant::now(),
+            valid_jobs: Default::default(),
+            invalid_jobs: Default::default(),
             last_share: Default::default(),
             best_share: Default::default(),
             accepted: Default::default(),
             rejected: Default::default(),
+            stale: Default::default(),
             valid_network_diff: Default::default(),
             valid_job_diff: Default::default(),
             valid_backend_diff: Default::default(),
@@ -96,7 +105,7 @@ impl Stats {
 #[derive(Debug, MiningNode)]
 pub struct Descriptor {
     #[member_mining_stats]
-    pub mining_stats: Stats,
+    pub client_stats: Stats,
     pub url: String,
     pub user: String,
     pub protocol: Protocol,
@@ -118,7 +127,7 @@ pub fn parse(url: String, user: String) -> error::Result<Descriptor> {
         .ok_or("Cannot resolve any IP address")?;
 
     Ok(Descriptor {
-        mining_stats: Stats::new(),
+        client_stats: Stats::new(),
         url,
         user,
         protocol: Protocol::StratumV2,
