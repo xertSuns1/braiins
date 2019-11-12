@@ -275,6 +275,33 @@ impl Default for BestShare {
 }
 
 #[derive(Debug)]
+pub struct Counter {
+    inner: AtomicUsize,
+}
+
+impl Counter {
+    pub fn new(value: usize) -> Self {
+        Self {
+            inner: AtomicUsize::new(value),
+        }
+    }
+
+    pub fn take_snapshot(&self) -> Snapshot<usize> {
+        Snapshot::new(self.inner.load(Ordering::Relaxed))
+    }
+
+    pub fn inc(&self) {
+        self.inner.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+impl Default for Counter {
+    fn default() -> Self {
+        Self::new(0)
+    }
+}
+
+#[derive(Debug)]
 pub struct Timestamp {
     inner: Mutex<Option<time::SystemTime>>,
 }
@@ -335,6 +362,8 @@ pub trait Mining: Send + Sync {
 pub trait WorkSolver: Mining {
     /// The time when the device get last work for solution
     fn last_work_time(&self) -> &Timestamp;
+    /// Number of work generated from jobs by rolling or with extra nonce
+    fn generated_work(&self) -> &Counter;
 }
 
 #[derive(Debug, MiningStats)]
@@ -381,6 +410,8 @@ pub struct BasicWorkSolver {
     pub start_time: time::Instant,
     #[member_last_work_time]
     pub last_work_time: Timestamp,
+    #[member_generated_work]
+    pub generated_work: Counter,
     #[member_last_share]
     pub last_share: LastShare,
     #[member_best_share]
@@ -402,6 +433,7 @@ impl BasicWorkSolver {
             last_share: Default::default(),
             best_share: Default::default(),
             last_work_time: Default::default(),
+            generated_work: Default::default(),
             valid_network_diff: Meter::new(&intervals),
             valid_job_diff: Meter::new(&intervals),
             valid_backend_diff: Meter::new(&intervals),

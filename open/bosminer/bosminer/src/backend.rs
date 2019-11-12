@@ -70,7 +70,7 @@ pub struct BuildHierarchy;
 #[async_trait]
 impl HierarchyBuilder for BuildHierarchy {
     async fn add_root(&self, work_solver: Arc<dyn node::WorkSolver>) {
-        add_work_solver(work_solver).await;
+        add_root_hub(work_solver).await;
     }
 
     async fn branch(
@@ -102,6 +102,12 @@ fn push_work_solver(
     container.push(work_solver);
 }
 
+async fn add_root_hub(root_hub: Arc<dyn node::WorkSolver>) {
+    if let Some(_) = ROOT_HUB.lock().await.replace(root_hub) {
+        panic!("BUG: root hub already present in the registry");
+    }
+}
+
 async fn add_work_solver(work_solver: Arc<dyn node::WorkSolver>) {
     push_work_solver(&mut *WORK_SOLVERS.lock().await, work_solver)
 }
@@ -126,9 +132,17 @@ async fn branch_work_solver(
 }
 
 #[allow(dead_code)]
+pub(crate) async fn get_root_hub() -> Option<Arc<dyn node::WorkSolver>> {
+    ROOT_HUB.lock().await.clone()
+}
+
+#[allow(dead_code)]
 pub(crate) async fn get_work_solvers() -> Vec<Arc<dyn node::WorkSolver>> {
     WORK_SOLVERS.lock().await.iter().cloned().collect()
 }
+
+/// Special work hub which represents the whole backend
+static ROOT_HUB: Lazy<Mutex<Option<Arc<dyn node::WorkSolver>>>> = Lazy::new(|| Mutex::new(None));
 
 /// Global lists for distinguishing between work solvers which do real work and work hubs which are
 /// only for aggregation and group control. Also CGMiner API reports devices which corresponds to

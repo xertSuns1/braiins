@@ -167,6 +167,7 @@ fn impl_derive_mining_stats(ast: &DeriveInput, derive_name: &str) -> proc_macro2
     attributes(
         member_start_time,
         member_last_work_time,
+        member_generated_work,
         member_last_share,
         member_best_share,
         member_valid_network_diff,
@@ -191,11 +192,16 @@ fn impl_derive_work_solver_stats(
 
     let fields = get_fields(&ast, derive_name);
     let last_work_time = find_member(&fields, "member_last_work_time");
+    let generated_work = find_member(&fields, "member_generated_work");
 
     stream.extend(quote! {
         impl#generics stats::WorkSolver for #name#generics {
             fn last_work_time(&self) -> &stats::Timestamp {
                 &self.#last_work_time
+            }
+
+            fn generated_work(&self) -> &stats::Counter {
+                &self.#generated_work
             }
         }
     });
