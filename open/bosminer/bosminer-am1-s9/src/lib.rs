@@ -1125,6 +1125,12 @@ impl HashChainManager {
         };
         // stop everything
         runtime.halt_tx.do_stop().await;
+
+        // tell monitor we are done
+        self.monitor_tx
+            .unbounded_send(monitor::Message::Off)
+            .expect("send failed");
+
         // drop hashchain we keep around
         self.runtime = None;
 
