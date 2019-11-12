@@ -48,3 +48,4 @@ check:
         RUSTFLAGS: "-D warnings"
     script:
         - ./open/scripts/projecter cargo check
+        - ./open/scripts/projecter cargo test

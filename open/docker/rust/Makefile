@@ -37,10 +37,14 @@ TMPTREE=/tmp/docker-build-$(NAME)-$(TAG)
 # prepare image
 build:
 	test -n "$(CI_REGISTRY_IMAGE)"
-	# clean up if previous build failed
+	# clean up if previous build failed, in a way compatible with older git versions
 	rm -fr $(TMPTREE)
+	git worktree prune
 	git worktree add $(TMPTREE) origin/bos-devel
-	docker build -t $(CI_REGISTRY_IMAGE)/$(NAME):$(TAG) -f Dockerfile $(TMPTREE)
+	# production image
+	docker build --no-cache -f Dockerfile -t $(CI_REGISTRY_IMAGE)/$(NAME):$(TAG) $(TMPTREE)
+	# dev image with sources layer
+	docker build -f Dockerfile --target=rust-with-sources -t $(CI_REGISTRY_IMAGE)/$(NAME)-src:$(TAG) $(TMPTREE)
 	rm -fr $(TMPTREE)
 	git worktree prune
 
@@ -50,13 +54,13 @@ push: build
 	docker push $(CI_REGISTRY_IMAGE)/$(NAME):$(TAG)
 
 # spawn container for testing.
-# once inside you need to install git and clone git@gitlab.ii.zone:x/braiins.git
+# clean bos-devel branch is at /src
 enter: build
 	test -n "$(CI_REGISTRY_IMAGE)"
 	docker run --rm -ti --pid=host \
 	-v $(HOME)/.ssh/known_hosts:$(HOME)/.ssh/known_hosts:ro \
 	-v $(SSH_AUTH_SOCK):$(DOCKER_SSH_AUTH_SOCK) \
 	-e SSH_AUTH_SOCK=$(DOCKER_SSH_AUTH_SOCK) \
-	$(CI_REGISTRY_IMAGE)/$(NAME):$(TAG) /bin/bash
+	$(CI_REGISTRY_IMAGE)/$(NAME)-src:$(TAG) /bin/bash
 
 .PHONY: build push enter

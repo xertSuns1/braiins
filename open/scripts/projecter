@@ -117,7 +117,7 @@ def run(projdir, command):
 
 
 def out(s, *args, **kargs):
-    print('projecter: ' + s.format(*args, **kargs))
+    print('projecter: ' + s.format(*args, **kargs), flush=True)
 
 
 class Result:
