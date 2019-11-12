@@ -26,6 +26,7 @@
 pub mod stratum_v2;
 
 use crate::error;
+use crate::hub;
 use crate::job;
 use crate::node;
 use crate::stats;
@@ -127,7 +128,9 @@ pub fn parse(url: String, user: String) -> error::Result<Descriptor> {
 
 /// Run relevant client implementing a protocol set in `Descriptor`
 pub async fn run(job_solver: job::Solver, descriptor: Descriptor) {
+    let descriptor = Arc::new(descriptor);
+    hub::add_client(descriptor.clone()).await;
     match descriptor.protocol {
-        Protocol::StratumV2 => stratum_v2::run(job_solver, Arc::new(descriptor)).await,
+        Protocol::StratumV2 => stratum_v2::run(job_solver, descriptor).await,
     };
 }

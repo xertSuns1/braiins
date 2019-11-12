@@ -26,14 +26,18 @@
 use ii_logging::macros::*;
 
 use crate::backend;
+use crate::client;
 use crate::job;
 use crate::node;
 use crate::work;
 
 use futures::channel::mpsc;
+use futures::lock::Mutex;
 use ii_async_compat::futures;
 
 use std::sync::Arc;
+
+use once_cell::sync::Lazy;
 
 /// Handle external events. Currently it is used only wor handling exhausted work from work engine.
 /// It usually signals some serious problem in backend.
@@ -65,6 +69,25 @@ pub async fn build_solvers<T: node::WorkSolver + 'static>(
         .await,
     )
 }
+
+pub(crate) async fn add_client(client: Arc<client::Descriptor>) {
+    let container = &mut *CLIENTS.lock().await;
+    assert!(
+        container
+            .iter()
+            .find(|old| Arc::ptr_eq(old, &client))
+            .is_none(),
+        "BUG: client already present in the registry"
+    );
+    container.push(client);
+}
+
+#[allow(dead_code)]
+pub(crate) async fn get_clients() -> Vec<Arc<client::Descriptor>> {
+    CLIENTS.lock().await.iter().cloned().collect()
+}
+
+static CLIENTS: Lazy<Mutex<Vec<Arc<client::Descriptor>>>> = Lazy::new(|| Mutex::new(vec![]));
 
 #[cfg(test)]
 pub mod test {
