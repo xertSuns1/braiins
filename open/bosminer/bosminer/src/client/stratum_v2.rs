@@ -29,6 +29,7 @@ use crate::job::{self, Bitcoin as _};
 use crate::node;
 use crate::work;
 
+use async_trait::async_trait;
 use futures::executor::block_on;
 use futures::lock::Mutex;
 use ii_async_compat::{futures, tokio};
@@ -278,6 +279,7 @@ impl StratumEventHandler {
     }
 }
 
+#[async_trait]
 impl Handler for StratumEventHandler {
     // The rules for prevhash/mining job pairing are (currently) as follows:
     //  - when mining job comes
@@ -288,7 +290,7 @@ impl Handler for StratumEventHandler {
     //      - start mining the job it references (by job id)
     //      - flush all other jobs
 
-    fn visit_new_mining_job(&mut self, _msg: &Message<Protocol>, job_msg: &NewMiningJob) {
+    async fn visit_new_mining_job(&mut self, _msg: &Message<Protocol>, job_msg: &NewMiningJob) {
         // all jobs since last `prevmsg` have to be stored in job table
         self.all_jobs.insert(job_msg.job_id, job_msg.clone());
         // TODO: close connection when maximal capacity of `all_jobs` has been reached
@@ -299,7 +301,11 @@ impl Handler for StratumEventHandler {
         }
     }
 
-    fn visit_set_new_prev_hash(&mut self, _msg: &Message<Protocol>, prevhash_msg: &SetNewPrevHash) {
+    async fn visit_set_new_prev_hash(
+        &mut self,
+        _msg: &Message<Protocol>,
+        prevhash_msg: &SetNewPrevHash,
+    ) {
         self.current_prevhash_msg.replace(prevhash_msg.clone());
 
         // find the future job with ID referenced in prevhash_msg
@@ -320,11 +326,11 @@ impl Handler for StratumEventHandler {
         self.update_job(&future_job_msg);
     }
 
-    fn visit_set_target(&mut self, _msg: &Message<Protocol>, target_msg: &SetTarget) {
+    async fn visit_set_target(&mut self, _msg: &Message<Protocol>, target_msg: &SetTarget) {
         self.update_target(target_msg.max_target);
     }
 
-    fn visit_submit_shares_success(
+    async fn visit_submit_shares_success(
         &mut self,
         _msg: &Message<Protocol>,
         success_msg: &SubmitSharesSuccess,
@@ -332,7 +338,7 @@ impl Handler for StratumEventHandler {
         block_on(self.process_accepted_shares(success_msg));
     }
 
-    fn visit_submit_shares_error(
+    async fn visit_submit_shares_error(
         &mut self,
         _msg: &Message<Protocol>,
         error_msg: &SubmitSharesError,
@@ -340,7 +346,7 @@ impl Handler for StratumEventHandler {
         block_on(self.process_rejected_shares(error_msg));
     }
 
-    fn visit_setup_connection_success(
+    async fn visit_setup_connection_success(
         &mut self,
         _msg: &Message<Protocol>,
         _success_msg: &SetupConnectionSuccess,
@@ -348,7 +354,7 @@ impl Handler for StratumEventHandler {
         self.status = Ok(());
     }
 
-    fn visit_setup_connection_error(
+    async fn visit_setup_connection_error(
         &mut self,
         _msg: &Message<Protocol>,
         _error_msg: &SetupConnectionError,
@@ -356,7 +362,7 @@ impl Handler for StratumEventHandler {
         self.status = Err(());
     }
 
-    fn visit_open_standard_mining_channel_success(
+    async fn visit_open_standard_mining_channel_success(
         &mut self,
         _msg: &Message<Protocol>,
         success_msg: &OpenStandardMiningChannelSuccess,
@@ -365,7 +371,7 @@ impl Handler for StratumEventHandler {
         self.status = Ok(());
     }
 
-    fn visit_open_standard_mining_channel_error(
+    async fn visit_open_standard_mining_channel_error(
         &mut self,
         _msg: &Message<Protocol>,
         _error_msg: &OpenStandardMiningChannelError,
@@ -457,7 +463,7 @@ async fn setup_mining_connection<'a>(
         .expect("Cannot receive response for stratum setup mining connection")
         .unwrap();
     event_handler.status = Err(());
-    response_msg.accept(event_handler);
+    response_msg.accept(event_handler).await;
     event_handler.status
 }
 
@@ -483,7 +489,7 @@ async fn open_channel<'a>(
         .expect("Cannot receive response for stratum open channel")
         .unwrap();
     event_handler.status = Err(());
-    response_msg.accept(event_handler);
+    response_msg.accept(event_handler).await;
     event_handler.status
 }
 
@@ -493,15 +499,16 @@ impl StringifyV2 {
     fn new() -> Self {
         Self(None)
     }
-    fn print(response_msg: &<Framing as ii_wire::Framing>::Rx) -> String {
+    async fn print(response_msg: &<Framing as ii_wire::Framing>::Rx) -> String {
         let mut handler = Self::new();
-        response_msg.accept(&mut handler);
+        response_msg.accept(&mut handler).await;
         handler.0.unwrap_or_else(|| "?unknown?".to_string())
     }
 }
 
+#[async_trait]
 impl Handler for StringifyV2 {
-    fn visit_setup_connection(
+    async fn visit_setup_connection(
         &mut self,
         _msg: &ii_wire::Message<Protocol>,
         payload: &SetupConnection,
@@ -509,7 +516,7 @@ impl Handler for StringifyV2 {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_setup_connection_success(
+    async fn visit_setup_connection_success(
         &mut self,
         _msg: &ii_wire::Message<Protocol>,
         payload: &SetupConnectionSuccess,
@@ -517,7 +524,7 @@ impl Handler for StringifyV2 {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_open_standard_mining_channel(
+    async fn visit_open_standard_mining_channel(
         &mut self,
         _msg: &ii_wire::Message<Protocol>,
         payload: &OpenStandardMiningChannel,
@@ -525,7 +532,7 @@ impl Handler for StringifyV2 {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_open_standard_mining_channel_success(
+    async fn visit_open_standard_mining_channel_success(
         &mut self,
         _msg: &ii_wire::Message<Protocol>,
         payload: &OpenStandardMiningChannelSuccess,
@@ -533,11 +540,15 @@ impl Handler for StringifyV2 {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_new_mining_job(&mut self, _msg: &ii_wire::Message<Protocol>, payload: &NewMiningJob) {
+    async fn visit_new_mining_job(
+        &mut self,
+        _msg: &ii_wire::Message<Protocol>,
+        payload: &NewMiningJob,
+    ) {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_set_new_prev_hash(
+    async fn visit_set_new_prev_hash(
         &mut self,
         _msg: &ii_wire::Message<Protocol>,
         payload: &SetNewPrevHash,
@@ -545,13 +556,19 @@ impl Handler for StringifyV2 {
         self.0 = Some(format!("{:?}", payload));
     }
 
-    fn visit_set_target(&mut self, _msg: &ii_wire::Message<Protocol>, payload: &SetTarget) {
+    async fn visit_set_target(&mut self, _msg: &ii_wire::Message<Protocol>, payload: &SetTarget) {
         self.0 = Some(format!("{:?}", payload));
     }
-    fn visit_submit_shares(&mut self, _msg: &ii_wire::Message<Protocol>, payload: &SubmitShares) {
+
+    async fn visit_submit_shares(
+        &mut self,
+        _msg: &ii_wire::Message<Protocol>,
+        payload: &SubmitShares,
+    ) {
         self.0 = Some(format!("{:?}", payload));
     }
-    fn visit_submit_shares_success(
+
+    async fn visit_submit_shares_success(
         &mut self,
         _msg: &ii_wire::Message<Protocol>,
         payload: &SubmitSharesSuccess,
@@ -566,8 +583,8 @@ async fn event_handler_task(
 ) {
     while let Some(msg) = connection_rx.next().await {
         let msg = msg.unwrap();
-        trace!("handling message {}", StringifyV2::print(&msg));
-        msg.accept(&mut event_handler);
+        trace!("handling message {}", StringifyV2::print(&msg).await);
+        msg.accept(&mut event_handler).await;
     }
 }
 
