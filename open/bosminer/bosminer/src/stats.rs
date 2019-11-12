@@ -59,6 +59,29 @@ static DEFAULT_TIME_MEAN_INTERVALS: Lazy<Vec<time::Duration>> = Lazy::new(|| {
     ]
 });
 
+/// Auxiliary structure for adding time to snapshots
+pub struct Snapshot<T> {
+    pub snapshot_time: time::Instant,
+    inner: T,
+}
+
+impl<T> Snapshot<T> {
+    pub fn new(inner: T) -> Self {
+        Self {
+            snapshot_time: time::Instant::now(),
+            inner,
+        }
+    }
+}
+
+impl<T> std::ops::Deref for Snapshot<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
 /// Represents a snapshot of all statistics at an instant
 #[derive(Debug, Clone)]
 pub struct MeterSnapshot {
@@ -143,8 +166,8 @@ impl Meter {
         }
     }
 
-    pub async fn take_snapshot(&self) -> MeterSnapshot {
-        self.inner.lock().await.clone()
+    pub async fn take_snapshot(&self) -> Snapshot<MeterSnapshot> {
+        Snapshot::new(self.inner.lock().await.clone())
     }
 
     pub(crate) async fn account_solution(&self, target: &ii_bitcoin::Target, time: time::Instant) {
@@ -182,8 +205,12 @@ pub struct LastShare {
 }
 
 impl LastShare {
-    pub async fn take_snapshot(&self) -> Option<LastShareSnapshot> {
-        self.inner.lock().await.clone()
+    pub async fn take_snapshot(&self) -> Option<Snapshot<LastShareSnapshot>> {
+        self.inner
+            .lock()
+            .await
+            .clone()
+            .map(|inner| Snapshot::new(inner))
     }
 
     pub(crate) async fn account_solution(
@@ -213,13 +240,12 @@ pub struct BestShare {
 
 impl BestShare {
     const INVALID_DIFFICULTY: usize = 0;
-
-    pub fn take_snapshot(&self) -> Option<usize> {
+    pub fn take_snapshot(&self) -> Option<Snapshot<usize>> {
         let difficulty = self.inner.load(Ordering::Relaxed);
         if difficulty == Self::INVALID_DIFFICULTY {
             None
         } else {
-            Some(difficulty)
+            Some(Snapshot::new(difficulty))
         }
     }
 
@@ -260,8 +286,8 @@ impl Timestamp {
         }
     }
 
-    pub async fn take_snapshot(&self) -> Option<time::SystemTime> {
-        *self.inner.lock().await
+    pub async fn take_snapshot(&self) -> Option<Snapshot<time::SystemTime>> {
+        self.inner.lock().await.map(|inner| Snapshot::new(inner))
     }
 
     pub async fn touch<T: Into<Option<time::SystemTime>>>(&self, time: T) {
