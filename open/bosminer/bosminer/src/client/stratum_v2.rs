@@ -192,9 +192,13 @@ impl StratumEventHandler {
             self.current_prevhash_msg.as_ref().expect("no prevhash"),
             self.current_target,
         );
+        // TODO: move it to the job sender
         if job.sanity_check() {
             // send only valid jobs
+            self.descriptor.client_stats.valid_jobs.inc();
             self.job_sender.send(Arc::new(job));
+        } else {
+            self.descriptor.client_stats.invalid_jobs.inc();
         }
     }
 
@@ -217,7 +221,7 @@ impl StratumEventHandler {
                 solution.nonce()
             );
             self.descriptor
-                .mining_stats
+                .client_stats
                 .accepted
                 .account_solution(&solution.job_target(), now)
                 .await;
@@ -242,7 +246,7 @@ impl StratumEventHandler {
                     solution.nonce()
                 );
                 self.descriptor
-                    .mining_stats
+                    .client_stats
                     .rejected
                     .account_solution(&solution.job_target(), now)
                     .await;
@@ -257,7 +261,7 @@ impl StratumEventHandler {
                     solution.nonce()
                 );
                 self.descriptor
-                    .mining_stats
+                    .client_stats
                     .accepted
                     .account_solution(&solution.job_target(), now)
                     .await;
