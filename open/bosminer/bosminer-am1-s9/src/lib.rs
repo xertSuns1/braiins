@@ -791,7 +791,7 @@ async fn start_miner(
             hot_temp: 95.0,
         }),
         fan_config: Some(monitor::FanControlConfig {
-            mode: monitor::FanControlMode::TargetTemperature(75.0),
+            mode: monitor::FanControlMode::FixedSpeed(fan::Speed::FULL_SPEED),
             min_fans: 2,
         }),
     };
