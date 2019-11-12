@@ -190,4 +190,7 @@ async fn test_work_generation() {
         expected_solution_count,
     )
     .await;
+
+    // This keeps monitor alive so hashchain can start
+    drop(monitor_receiver);
 }
