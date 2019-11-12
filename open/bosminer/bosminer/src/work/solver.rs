@@ -156,12 +156,14 @@ impl Generator {
             };
             let now = time::SystemTime::now();
             for node in self.path.iter() {
+                let work_solver_stats = node.work_solver_stats();
                 // Arc does not support dynamic casting to trait bounds so there must be used
                 // another Arc indirection with implemented `node::Info` trait.
                 // This blanket implementation can be found in the module `crate::node`:
                 // impl<T: ?Sized + Info> Info for Arc<T> {}
                 work.path.push(Arc::new(node.clone()));
-                node.work_solver_stats().last_work_time().touch(now).await;
+                work_solver_stats.generated_work().inc();
+                work_solver_stats.last_work_time().touch(now).await;
             }
             return Some(work);
         }
