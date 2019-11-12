@@ -378,7 +378,7 @@ impl Monitor {
 
     /// Set fan speed
     fn set_fan_speed(&self, fan_speed: fan::Speed) {
-        info!("Monitor: {:?}", fan_speed);
+        info!("Monitor: setting fan to {:?}", fan_speed);
         self.fan_control.set_speed(fan_speed);
     }
 
@@ -407,13 +407,13 @@ impl Monitor {
             let fan_feedback = monitor.fan_control.read_feedback();
             let num_fans = fan_feedback.num_fans_running();
             info!(
-                "fan={:?} num_fans={} acc={:?}",
+                "Monitor: fan={:?} num_fans={} acc.temp.={:?}",
                 fan_feedback, num_fans, acc.temp
             );
 
             // all right, temperature has been aggregated, decide what to do
             let decision = ControlDecision::decide(&monitor.config, num_fans, acc.temp);
-            info!("decision={:?}", decision);
+            info!("Monitor: decision={:?}", decision);
             match decision {
                 ControlDecision::Shutdown(reason) => {
                     error!("Monitor: {}", reason);
