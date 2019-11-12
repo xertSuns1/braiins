@@ -38,13 +38,24 @@ impl TempControl {
     pub fn new() -> Self {
         // kp/ki/kd constants are negative because the PID works in reverse direction
         // (the lower the PWM, the higher the temperature)
-        let mut pid = OffsetPIDController::new(-5.0, -0.03, -0.015, 70.0);
-        pid.set_limits(1.0, 100.0);
+        let pid = OffsetPIDController::new(-5.0, -0.03, -0.015, 70.0);
 
-        Self {
+        let mut temp_control = Self {
             pid,
             last_update: Instant::now(),
-        }
+        };
+        temp_control.set_warm_up_limits();
+        return temp_control;
+    }
+
+    // set fan limits when warming up
+    pub fn set_warm_up_limits(&mut self) {
+        self.pid.set_limits(60.0, 100.0);
+    }
+
+    // set fan limits when in operation
+    pub fn set_normal_limits(&mut self) {
+        self.pid.set_limits(1.0, 100.0);
     }
 
     pub fn set_target(&mut self, target: f64) {

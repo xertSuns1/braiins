@@ -46,6 +46,8 @@ const START_TIMEOUT: Duration = Duration::from_secs(120);
 const RUN_UPDATE_TIMEOUT: Duration = Duration::from_secs(10);
 /// How often check timeouts and adjust PID
 const TICK_LENGTH: Duration = Duration::from_secs(5);
+/// How long does it take until miner warm up? We won't let it tu turn fans off until then...
+const WARM_UP_PERIOD: Duration = Duration::from_secs(90);
 
 /// A message from hashchain
 ///
@@ -97,7 +99,11 @@ impl ChainTemperature {
 #[derive(Debug, Clone, PartialEq)]
 enum ChainState {
     On(Instant),
-    Running(Instant, sensor::Temperature),
+    Running {
+        started: Instant,
+        last_heartbeat: Instant,
+        temperature: sensor::Temperature,
+    },
     Off,
     Broken(&'static str),
 }
@@ -119,14 +125,18 @@ impl ChainState {
                 ChainState::Off => *self = ChainState::On(now),
                 _ => self.bad_transition(),
             },
-            Message::Running(temp) => match *self {
-                ChainState::Running(_, _) | ChainState::On(_) => {
-                    *self = ChainState::Running(now, temp)
+            Message::Running(temperature) => match *self {
+                ChainState::Running { started, .. } | ChainState::On(started) => {
+                    *self = ChainState::Running {
+                        started,
+                        last_heartbeat: now,
+                        temperature,
+                    }
                 }
                 _ => self.bad_transition(),
             },
             Message::Off => match *self {
-                ChainState::Running(_, _) => *self = ChainState::Off,
+                ChainState::Running { .. } => *self = ChainState::Off,
                 _ => self.bad_transition(),
             },
         }
@@ -137,13 +147,13 @@ impl ChainState {
     /// it's sending "heartbeats" often enought.
     fn tick(&mut self, now: Instant) {
         match *self {
-            ChainState::On(at) => {
-                if now.duration_since(at) >= START_TIMEOUT {
+            ChainState::On(started) => {
+                if now.duration_since(started) >= START_TIMEOUT {
                     *self = ChainState::Broken("took too long to start");
                 }
             }
-            ChainState::Running(at, _) => {
-                if now.duration_since(at) >= RUN_UPDATE_TIMEOUT {
+            ChainState::Running { last_heartbeat, .. } => {
+                if now.duration_since(last_heartbeat) >= RUN_UPDATE_TIMEOUT {
                     *self = ChainState::Broken("failed to set update in time");
                 }
             }
@@ -159,7 +169,19 @@ impl ChainState {
             ChainState::On(_) => ChainTemperature::Unknown,
             ChainState::Off => ChainTemperature::Unknown,
             ChainState::Broken(_) => ChainTemperature::Failed,
-            ChainState::Running(_, temp) => ChainTemperature::from_s9_sensor(temp.clone()),
+            ChainState::Running { temperature, .. } => {
+                ChainTemperature::from_s9_sensor(temperature.clone())
+            }
+        }
+    }
+
+    /// Is hashchain warming up?
+    fn is_warming_up(&self, now: Instant) -> bool {
+        match self {
+            // chain state stays in "warming up" state until it sends heartbeat
+            ChainState::On(_) => true,
+            ChainState::Running { started, .. } => now.duration_since(*started) <= WARM_UP_PERIOD,
+            _ => false,
         }
     }
 }
@@ -394,6 +416,7 @@ impl Monitor {
             // decide hashchain state and collect temperatures
             let mut monitor = monitor.lock().await;
             let mut acc = TemperatureAccumulator::new();
+            let mut miner_warming_up = false;
             for chain in monitor.chains.iter() {
                 let mut chain = chain.lock().await;
                 chain.state.tick(Instant::now());
@@ -407,6 +430,7 @@ impl Monitor {
                 }
                 info!("chain {}: {:?}", chain.hashboard_idx, chain.state);
                 acc.add_chain_temp(chain.state.get_temp());
+                miner_warming_up |= chain.state.is_warming_up(Instant::now());
             }
 
             // Read fans
@@ -431,6 +455,11 @@ impl Monitor {
                     target_temp,
                     input_temp,
                 } => {
+                    if miner_warming_up {
+                        monitor.pid.set_warm_up_limits();
+                    } else {
+                        monitor.pid.set_normal_limits();
+                    }
                     monitor.pid.set_target(target_temp.into());
                     let speed = monitor.pid.update(input_temp.into());
                     info!(
@@ -525,6 +554,11 @@ mod test {
         };
         let now = Instant::now();
         let later = now + Duration::from_secs(1);
+        let running_state = ChainState::Running {
+            started: now,
+            last_heartbeat: now,
+            temperature: temp.clone(),
+        };
 
         //assert_eq!(send(ChainState::Running(now, temp), later, Message::Off), ChainState::Off);
         assert_variant!(send(ChainState::Off, later, Message::On), ChainState::On(_));
@@ -543,7 +577,7 @@ mod test {
         );
         assert_variant!(
             send(ChainState::On(now), later, Message::Running(temp.clone())),
-            ChainState::Running(_, _)
+            ChainState::Running{ .. }
         );
         assert_variant!(
             send(ChainState::On(now), later, Message::Off),
@@ -551,21 +585,45 @@ mod test {
         );
 
         assert_variant!(
-            send(ChainState::Running(now, temp.clone()), later, Message::On),
+            send(running_state.clone(), later, Message::On),
             ChainState::Broken(_)
         );
         assert_variant!(
             send(
-                ChainState::Running(now, temp.clone()),
+                running_state.clone(),
                 later,
                 Message::Running(temp.clone())
             ),
-            ChainState::Running(_, _)
+            ChainState::Running { .. }
         );
         assert_variant!(
-            send(ChainState::Running(now, temp.clone()), later, Message::Off),
+            send(running_state.clone(), later, Message::Off),
             ChainState::Off
         );
+    }
+
+    /// Test "warm up" period
+    #[test]
+    fn test_monitor_warm_up() {
+        let temp = sensor::Temperature {
+            local: 10.0,
+            remote: sensor::Measurement::Ok(22.0),
+        };
+        let now = Instant::now();
+        let later = now + Duration::from_secs(20);
+        let warmed_time = now + Duration::from_secs(200);
+        let running_state = ChainState::Running {
+            started: now,
+            last_heartbeat: now,
+            temperature: temp.clone(),
+        };
+
+        assert_eq!(ChainState::Off.is_warming_up(now), false);
+        assert_eq!(ChainState::On(now).is_warming_up(now), true);
+        assert_eq!(ChainState::On(now).is_warming_up(warmed_time), true);
+        assert_eq!(running_state.clone().is_warming_up(now), true);
+        assert_eq!(running_state.clone().is_warming_up(later), true);
+        assert_eq!(running_state.clone().is_warming_up(warmed_time), false);
     }
 
     fn tick(mut state: ChainState, later: Instant) -> ChainState {
@@ -583,21 +641,23 @@ mod test {
         let now = Instant::now();
         let long = now + Duration::from_secs(10_000);
         let short = now + Duration::from_secs(2);
+        let running_state = ChainState::Running {
+            started: now,
+            last_heartbeat: now,
+            temperature: temp.clone(),
+        };
 
         // test that chains break when no-one updates them for long (unless they are turned off)
         assert_variant!(tick(ChainState::Off, long), ChainState::Off);
         assert_variant!(tick(ChainState::On(now), long), ChainState::Broken(_));
-        assert_variant!(
-            tick(ChainState::Running(now, temp.clone()), long),
-            ChainState::Broken(_)
-        );
+        assert_variant!(tick(running_state.clone(), long), ChainState::Broken(_));
 
         // passing of short time is OK
         assert_variant!(tick(ChainState::Off, short), ChainState::Off);
         assert_variant!(tick(ChainState::On(now), short), ChainState::On(_));
         assert_variant!(
-            tick(ChainState::Running(now, temp.clone()), short),
-            ChainState::Running(_, _)
+            tick(running_state.clone(), short),
+            ChainState::Running{..}
         );
 
         // different states have different update timeouts
@@ -606,10 +666,7 @@ mod test {
             ChainState::On(_)
         );
         assert_variant!(
-            tick(
-                ChainState::Running(now, temp.clone()),
-                now + Duration::from_secs(20)
-            ),
+            tick(running_state.clone(), now + Duration::from_secs(20)),
             ChainState::Broken(_)
         );
     }
