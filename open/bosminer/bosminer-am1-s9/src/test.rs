@@ -51,7 +51,7 @@ fn test_hchain_ctl_instance() {
     let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = power::I2cBackend::new(0);
     let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
-    let (monitor_sender, monitor_receiver) = mpsc::unbounded();
+    let (monitor_sender, _monitor_receiver) = mpsc::unbounded();
     let hash_chain = HashChain::new(
         &gpio_mgr,
         voltage_ctrl_backend,
