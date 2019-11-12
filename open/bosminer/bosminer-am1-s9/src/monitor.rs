@@ -265,6 +265,7 @@ impl ControlDecision {
     /// Decide what to do depending on temperature/fan feedback.
     /// This function has been factored out of the main control code to facilitate testing.
     fn decide(config: &Config, num_fans: usize, temp: ChainTemperature) -> Self {
+        // This section is labeled `TEMP_DANGER` in the diagram
         // Check for dangerous temperature or dead sensors
         if let Some(temp_config) = config.temp_config.as_ref() {
             match temp {
@@ -286,6 +287,8 @@ impl ControlDecision {
             } else {
                 Self::decide_fan_control_notemp(fan_config)
             };
+            // This section is labeled `FAN_DANGER` in the diagram
+            //
             // Check `min_fans` are spinning _unless_ we have been explicitly configured to
             // turn them off.
             //
