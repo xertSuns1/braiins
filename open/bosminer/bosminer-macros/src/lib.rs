@@ -96,6 +96,7 @@ fn impl_derive_work_solver_node(
     attributes(
         member_start_time,
         member_last_share,
+        member_best_share,
         member_valid_network_diff,
         member_valid_job_diff,
         member_valid_backend_diff,
@@ -114,6 +115,7 @@ fn impl_derive_mining_stats(ast: &DeriveInput, derive_name: &str) -> proc_macro2
     let fields = get_fields(&ast, derive_name);
     let start_time = find_member(&fields, "member_start_time");
     let last_share = find_member(&fields, "member_last_share");
+    let best_share = find_member(&fields, "member_best_share");
     let valid_network_diff = find_member(&fields, "member_valid_network_diff");
     let valid_job_diff = find_member(&fields, "member_valid_job_diff");
     let valid_backend_diff = find_member(&fields, "member_valid_backend_diff");
@@ -129,6 +131,11 @@ fn impl_derive_mining_stats(ast: &DeriveInput, derive_name: &str) -> proc_macro2
             #[inline]
             fn last_share(&self) -> &stats::LastShare {
                 &self.#last_share
+            }
+
+            #[inline]
+            fn best_share(&self) -> &stats::BestShare {
+                &self.#best_share
             }
 
             #[inline]
@@ -161,6 +168,7 @@ fn impl_derive_mining_stats(ast: &DeriveInput, derive_name: &str) -> proc_macro2
         member_start_time,
         member_last_work_time,
         member_last_share,
+        member_best_share,
         member_valid_network_diff,
         member_valid_job_diff,
         member_valid_backend_diff,
