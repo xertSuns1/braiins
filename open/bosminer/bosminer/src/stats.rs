@@ -34,6 +34,7 @@ use futures::lock::Mutex;
 use ii_async_compat::{futures, tokio};
 use tokio::timer::delay_for;
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time;
 
 use once_cell::sync::Lazy;
@@ -206,6 +207,48 @@ impl Default for LastShare {
 }
 
 #[derive(Debug)]
+pub struct BestShare {
+    inner: AtomicUsize,
+}
+
+impl BestShare {
+    const INVALID_DIFFICULTY: usize = 0;
+
+    pub fn take_snapshot(&self) -> Option<usize> {
+        let difficulty = self.inner.load(Ordering::Relaxed);
+        if difficulty == Self::INVALID_DIFFICULTY {
+            None
+        } else {
+            Some(difficulty)
+        }
+    }
+
+    pub(crate) fn account_solution(&self, target: &ii_bitcoin::Target) {
+        let new_diff = target.get_difficulty();
+        let mut old_diff = self.inner.load(Ordering::Relaxed);
+
+        while old_diff < new_diff {
+            let prev_diff = self
+                .inner
+                .compare_and_swap(old_diff, new_diff, Ordering::Relaxed);
+            if old_diff == prev_diff {
+                break;
+            } else {
+                old_diff = prev_diff;
+            }
+        }
+    }
+}
+
+impl Default for BestShare {
+    fn default() -> Self {
+        Self {
+            inner: AtomicUsize::new(Self::INVALID_DIFFICULTY),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Timestamp {
     inner: Mutex<Option<time::SystemTime>>,
 }
@@ -252,6 +295,7 @@ pub trait Mining: Send + Sync {
     fn start_time(&self) -> &time::Instant;
     /// Information about last valid share with at least job difficulty
     fn last_share(&self) -> &LastShare;
+    fn best_share(&self) -> &BestShare;
     /// Statistics for all valid blocks on network difficulty
     fn valid_network_diff(&self) -> &Meter;
     /// Statistics for all valid jobs on job/pool difficulty
@@ -273,6 +317,8 @@ pub struct BasicMining {
     pub start_time: time::Instant,
     #[member_last_share]
     pub last_share: LastShare,
+    #[member_best_share]
+    pub best_share: BestShare,
     #[member_valid_network_diff]
     pub valid_network_diff: Meter,
     #[member_valid_job_diff]
@@ -288,6 +334,7 @@ impl BasicMining {
         Self {
             start_time,
             last_share: Default::default(),
+            best_share: Default::default(),
             valid_network_diff: Meter::new(&intervals),
             valid_job_diff: Meter::new(&intervals),
             valid_backend_diff: Meter::new(&intervals),
@@ -310,6 +357,8 @@ pub struct BasicWorkSolver {
     pub last_work_time: Timestamp,
     #[member_last_share]
     pub last_share: LastShare,
+    #[member_best_share]
+    pub best_share: BestShare,
     #[member_valid_network_diff]
     pub valid_network_diff: Meter,
     #[member_valid_job_diff]
@@ -325,6 +374,7 @@ impl BasicWorkSolver {
         Self {
             start_time,
             last_share: Default::default(),
+            best_share: Default::default(),
             last_work_time: Default::default(),
             valid_network_diff: Meter::new(&intervals),
             valid_job_diff: Meter::new(&intervals),
@@ -399,10 +449,12 @@ pub async fn account_valid_solution(
         // use only job difficulty for accounting the last share even if a hash of the solution
         // meets higher difficulties
         for node in path {
-            node.mining_stats()
+            let mining_stats = node.mining_stats();
+            mining_stats
                 .last_share()
                 .account_solution(&target, time::SystemTime::now())
                 .await;
+            mining_stats.best_share().account_solution(&target);
         }
     }
 }

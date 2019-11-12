@@ -58,6 +58,8 @@ pub struct Stats {
     pub start_time: time::Instant,
     #[member_last_share]
     pub last_share: stats::LastShare,
+    #[member_best_share]
+    pub best_share: stats::BestShare,
     /// Shares accepted by remote server
     pub accepted: stats::Meter,
     /// Shares rejected by remote server
@@ -77,6 +79,7 @@ impl Stats {
         Self {
             start_time: time::Instant::now(),
             last_share: Default::default(),
+            best_share: Default::default(),
             accepted: Default::default(),
             rejected: Default::default(),
             valid_network_diff: Default::default(),
