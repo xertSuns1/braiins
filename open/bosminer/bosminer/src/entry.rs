@@ -80,12 +80,13 @@ pub async fn main<T: hal::Backend>(mut backend: T) {
 
     // create job and work solvers
     let backend = Arc::new(backend);
-    let (job_solver, work_solver) = hub::build_solvers(BOSMINER.clone(), backend.clone()).await;
+    let (job_solver, work_solver_builder) =
+        hub::build_solvers(BOSMINER.clone(), backend.clone()).await;
     // create shutdown channel
     let (shutdown_sender, _shutdown_receiver) = shutdown::channel();
 
     // start HW backend for selected target
-    backend.run(work_solver, shutdown_sender);
+    backend.run(work_solver_builder, shutdown_sender);
 
     // start statistics processing
     tokio::spawn(stats::mining_task(
