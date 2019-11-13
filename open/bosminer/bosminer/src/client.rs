@@ -28,14 +28,9 @@ pub mod stratum_v2;
 use crate::error;
 use crate::hub;
 use crate::job;
-use crate::node;
-use crate::stats;
-
-use bosminer_macros::ClientNode;
 
 use std::fmt;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::sync::Arc;
 
 use failure::ResultExt;
 
@@ -53,31 +48,12 @@ impl fmt::Display for Protocol {
 }
 
 /// Contains basic information about client used for obtaining jobs for solving.
-/// It is also used for statistics measurement.
-#[derive(Debug, ClientNode)]
+#[derive(Debug)]
 pub struct Descriptor {
-    #[member_client_stats]
-    pub client_stats: stats::BasicClient,
     pub url: String,
     pub user: String,
     pub protocol: Protocol,
     pub socket_addr: SocketAddr,
-}
-
-impl node::Client for Descriptor {
-    fn url(&self) -> String {
-        self.url.clone()
-    }
-
-    fn user(&self) -> String {
-        self.user.clone()
-    }
-}
-
-impl fmt::Display for Descriptor {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}@{} ({})", self.url, self.user, self.protocol)
-    }
 }
 
 /// Create client `Descriptor` from information provided by user.
@@ -89,7 +65,6 @@ pub fn parse(url: String, user: String) -> error::Result<Descriptor> {
         .ok_or("Cannot resolve any IP address")?;
 
     Ok(Descriptor {
-        client_stats: Default::default(),
         url,
         user,
         protocol: Protocol::StratumV2,
@@ -99,9 +74,8 @@ pub fn parse(url: String, user: String) -> error::Result<Descriptor> {
 
 /// Run relevant client implementing a protocol set in `Descriptor`
 pub async fn run(job_solver: job::Solver, descriptor: Descriptor) {
-    let descriptor = Arc::new(descriptor);
-    hub::add_client(descriptor.clone()).await;
-    match descriptor.protocol {
-        Protocol::StratumV2 => stratum_v2::run(job_solver, descriptor).await,
-    };
+    hub::add_client(match descriptor.protocol {
+        Protocol::StratumV2 => stratum_v2::run(job_solver, descriptor),
+    })
+    .await;
 }

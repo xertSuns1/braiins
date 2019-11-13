@@ -26,8 +26,11 @@ use ii_bitcoin::HashTrait;
 
 use crate::client;
 use crate::job::{self, Bitcoin as _};
-use crate::node;
+use crate::node::{self, ClientStats as _};
+use crate::stats;
 use crate::work;
+
+use bosminer_macros::ClientNode;
 
 use async_trait::async_trait;
 use futures::lock::Mutex;
@@ -35,6 +38,7 @@ use ii_async_compat::{futures, tokio};
 use tokio::prelude::*;
 
 use std::collections::VecDeque;
+use std::fmt;
 use std::sync::Arc;
 
 use ii_stratum::v2::framing::codec::Framing;
@@ -56,7 +60,7 @@ const VERSION_MASK: u32 = 0x1fffe000;
 
 #[derive(Debug, Clone)]
 struct StratumJob {
-    descriptor: Arc<client::Descriptor>,
+    client: Arc<StratumClient>,
     id: u32,
     channel_id: u32,
     version: u32,
@@ -70,13 +74,13 @@ struct StratumJob {
 
 impl StratumJob {
     pub fn new(
-        descriptor: Arc<client::Descriptor>,
+        client: Arc<StratumClient>,
         job_msg: &NewMiningJob,
         prevhash_msg: &SetNewPrevHash,
         target: ii_bitcoin::Target,
     ) -> Self {
         Self {
-            descriptor,
+            client,
             id: job_msg.job_id,
             channel_id: job_msg.channel_id,
             version: job_msg.version,
@@ -104,7 +108,7 @@ impl StratumJob {
 
 impl job::Bitcoin for StratumJob {
     fn origin(&self) -> node::DynInfo {
-        self.descriptor.clone()
+        self.client.clone()
     }
 
     fn version(&self) -> u32 {
@@ -154,8 +158,44 @@ impl job::Bitcoin for StratumJob {
 /// up with the protocol.
 type SolutionQueue = Arc<Mutex<VecDeque<(work::Solution, u32)>>>;
 
+#[derive(Debug, ClientNode)]
+struct StratumClient {
+    pub descriptor: client::Descriptor,
+    #[member_client_stats]
+    client_stats: stats::BasicClient,
+}
+
+impl StratumClient {
+    pub fn new(descriptor: client::Descriptor) -> Self {
+        Self {
+            descriptor,
+            client_stats: Default::default(),
+        }
+    }
+}
+
+impl node::Client for StratumClient {
+    fn url(&self) -> String {
+        self.descriptor.url.clone()
+    }
+
+    fn user(&self) -> String {
+        self.descriptor.user.clone()
+    }
+}
+
+impl fmt::Display for StratumClient {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}@{} ({})",
+            self.descriptor.url, self.descriptor.user, self.descriptor.protocol
+        )
+    }
+}
+
 struct StratumEventHandler {
-    descriptor: Arc<client::Descriptor>,
+    client: Arc<StratumClient>,
     status: Result<(), ()>,
     job_sender: job::Sender,
     all_jobs: HashMap<u32, NewMiningJob>,
@@ -168,11 +208,11 @@ struct StratumEventHandler {
 impl StratumEventHandler {
     pub fn new(
         job_sender: job::Sender,
-        descriptor: Arc<client::Descriptor>,
+        client: Arc<StratumClient>,
         solutions: SolutionQueue,
     ) -> Self {
         Self {
-            descriptor,
+            client,
             status: Err(()),
             job_sender,
             all_jobs: Default::default(),
@@ -187,7 +227,7 @@ impl StratumEventHandler {
     /// * `job_msg` - job message used as a base for the StratumJob
     pub fn update_job(&mut self, job_msg: &NewMiningJob) {
         let job = StratumJob::new(
-            self.descriptor.clone(),
+            self.client.clone(),
             job_msg,
             self.current_prevhash_msg.as_ref().expect("no prevhash"),
             self.current_target,
@@ -195,10 +235,10 @@ impl StratumEventHandler {
         // TODO: move it to the job sender
         if job.sanity_check() {
             // send only valid jobs
-            self.descriptor.client_stats.valid_jobs.inc();
+            self.client.client_stats().valid_jobs().inc();
             self.job_sender.send(Arc::new(job));
         } else {
-            self.descriptor.client_stats.invalid_jobs.inc();
+            self.client.client_stats().invalid_jobs().inc();
         }
     }
 
@@ -220,7 +260,7 @@ impl StratumEventHandler {
                 seq_num,
                 solution.nonce()
             );
-            self.descriptor
+            self.client
                 .client_stats
                 .accepted
                 .account_solution(&solution.job_target(), now)
@@ -245,7 +285,7 @@ impl StratumEventHandler {
                     seq_num,
                     solution.nonce()
                 );
-                self.descriptor
+                self.client
                     .client_stats
                     .rejected
                     .account_solution(&solution.job_target(), now)
@@ -260,7 +300,7 @@ impl StratumEventHandler {
                     seq_num,
                     solution.nonce()
                 );
-                self.descriptor
+                self.client
                     .client_stats
                     .accepted
                     .account_solution(&solution.job_target(), now)
@@ -496,129 +536,52 @@ async fn open_channel<'a>(
     event_handler.status
 }
 
-pub struct StringifyV2(Option<String>);
-
-impl StringifyV2 {
-    fn new() -> Self {
-        Self(None)
-    }
-    async fn print(response_msg: &<Framing as ii_wire::Framing>::Rx) -> String {
-        let mut handler = Self::new();
-        response_msg.accept(&mut handler).await;
-        handler.0.unwrap_or_else(|| "?unknown?".to_string())
-    }
-}
-
-#[async_trait]
-impl Handler for StringifyV2 {
-    async fn visit_setup_connection(
-        &mut self,
-        _msg: &ii_wire::Message<Protocol>,
-        payload: &SetupConnection,
-    ) {
-        self.0 = Some(format!("{:?}", payload));
-    }
-
-    async fn visit_setup_connection_success(
-        &mut self,
-        _msg: &ii_wire::Message<Protocol>,
-        payload: &SetupConnectionSuccess,
-    ) {
-        self.0 = Some(format!("{:?}", payload));
-    }
-
-    async fn visit_open_standard_mining_channel(
-        &mut self,
-        _msg: &ii_wire::Message<Protocol>,
-        payload: &OpenStandardMiningChannel,
-    ) {
-        self.0 = Some(format!("{:?}", payload));
-    }
-
-    async fn visit_open_standard_mining_channel_success(
-        &mut self,
-        _msg: &ii_wire::Message<Protocol>,
-        payload: &OpenStandardMiningChannelSuccess,
-    ) {
-        self.0 = Some(format!("{:?}", payload));
-    }
-
-    async fn visit_new_mining_job(
-        &mut self,
-        _msg: &ii_wire::Message<Protocol>,
-        payload: &NewMiningJob,
-    ) {
-        self.0 = Some(format!("{:?}", payload));
-    }
-
-    async fn visit_set_new_prev_hash(
-        &mut self,
-        _msg: &ii_wire::Message<Protocol>,
-        payload: &SetNewPrevHash,
-    ) {
-        self.0 = Some(format!("{:?}", payload));
-    }
-
-    async fn visit_set_target(&mut self, _msg: &ii_wire::Message<Protocol>, payload: &SetTarget) {
-        self.0 = Some(format!("{:?}", payload));
-    }
-
-    async fn visit_submit_shares(
-        &mut self,
-        _msg: &ii_wire::Message<Protocol>,
-        payload: &SubmitShares,
-    ) {
-        self.0 = Some(format!("{:?}", payload));
-    }
-
-    async fn visit_submit_shares_success(
-        &mut self,
-        _msg: &ii_wire::Message<Protocol>,
-        payload: &SubmitSharesSuccess,
-    ) {
-        self.0 = Some(format!("{:?}", payload));
-    }
-}
-
 async fn event_handler_task(
     mut connection_rx: ConnectionRx<Framing>,
     mut event_handler: StratumEventHandler,
 ) {
     while let Some(msg) = connection_rx.next().await {
         let msg = msg.unwrap();
-        trace!("handling message {}", StringifyV2::print(&msg).await);
         msg.accept(&mut event_handler).await;
     }
 }
 
-pub async fn run(job_solver: job::Solver, descriptor: Arc<client::Descriptor>) {
+async fn init(job_solver: job::Solver, client: Arc<StratumClient>) {
     let (job_sender, job_solution) = job_solver.split();
     let solutions = Arc::new(Mutex::new(VecDeque::new()));
-    let mut event_handler =
-        StratumEventHandler::new(job_sender, descriptor.clone(), solutions.clone());
+    let mut event_handler = StratumEventHandler::new(job_sender, client.clone(), solutions.clone());
 
-    let mut connection = Connection::<Framing>::connect(&descriptor.socket_addr)
+    let mut connection = Connection::<Framing>::connect(&client.descriptor.socket_addr)
         .await
         .expect("Cannot connect to stratum server");
 
     setup_mining_connection(
         &mut connection,
         &mut event_handler,
-        descriptor.url.clone(),
-        descriptor.socket_addr.port() as usize,
+        client.descriptor.url.clone(),
+        client.descriptor.socket_addr.port() as usize,
     )
     .await
     .expect("Cannot setup stratum mining connection");
-    open_channel(&mut connection, &mut event_handler, descriptor.user.clone())
-        .await
-        .expect("Cannot open stratum channel");
+    open_channel(
+        &mut connection,
+        &mut event_handler,
+        client.descriptor.user.clone(),
+    )
+    .await
+    .expect("Cannot open stratum channel");
 
     let (connection_rx, connection_tx) = connection.split();
 
     // run event handler in a separate task
     tokio::spawn(event_handler_task(connection_rx, event_handler));
-
     StratumSolutionHandler::new(connection_tx, job_solution, solutions)
         .run()
         .await;
+}
+
+pub fn run(job_solver: job::Solver, descriptor: client::Descriptor) -> Arc<dyn node::Client> {
+    let client = Arc::new(StratumClient::new(descriptor));
+    tokio::spawn(init(job_solver, client.clone()));
+    client
 }
