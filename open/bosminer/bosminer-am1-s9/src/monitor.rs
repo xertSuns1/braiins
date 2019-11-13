@@ -66,7 +66,7 @@ pub enum Message {
 
 /// Interpreted hashchain temperature
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum ChainTemperature {
+pub enum ChainTemperature {
     /// Temperature unknown... in a good way (hashchain initializing, etc.)
     Unknown,
     /// Temperature unknown... in a bad way (miner caught fire, etc.)
@@ -164,7 +164,7 @@ impl ChainState {
     /// Return hashchain temperature as seen from our point of view. For example,
     /// `Broken` miner doesn't have a valid temperature reading even though it sent
     /// some numbers a while ago.
-    fn get_temp(&self) -> ChainTemperature {
+    fn get_temperature(&self) -> ChainTemperature {
         match self {
             ChainState::On(_) => ChainTemperature::Unknown,
             ChainState::Off => ChainTemperature::Unknown,
@@ -375,7 +375,7 @@ pub struct Monitor {
     /// Each chain is registered here
     chains: Vec<Arc<Mutex<Chain>>>,
     /// temp/fan control configuration
-    config: Config,
+    pub config: Config,
     /// Fan controller - can set RPM or read feedback
     fan_control: fan::Control,
     /// PID that controls fan with hashchain temperature as input
@@ -409,6 +409,16 @@ impl Monitor {
         self.fan_control.set_speed(fan_speed);
     }
 
+    pub async fn get_chain_temperatures(monitor: Arc<Mutex<Self>>) -> Vec<ChainTemperature> {
+        let mut temperatures = Vec::new();
+        let monitor = monitor.lock().await;
+        for chain in monitor.chains.iter() {
+            let chain = chain.lock().await;
+            temperatures.push(chain.state.get_temperature());
+        }
+        temperatures
+    }
+
     /// Task performing temp control
     async fn tick_task(monitor: Arc<Mutex<Self>>) {
         loop {
@@ -417,7 +427,7 @@ impl Monitor {
 
             // decide hashchain state and collect temperatures
             let mut monitor = monitor.lock().await;
-            let mut acc = TemperatureAccumulator::new();
+            let mut cumulative_temperature = TemperatureAccumulator::new();
             let mut miner_warming_up = false;
             for chain in monitor.chains.iter() {
                 let mut chain = chain.lock().await;
@@ -431,7 +441,7 @@ impl Monitor {
                     ));
                 }
                 info!("chain {}: {:?}", chain.hashboard_idx, chain.state);
-                acc.add_chain_temp(chain.state.get_temp());
+                cumulative_temperature.add_chain_temp(chain.state.get_temperature());
                 miner_warming_up |= chain.state.is_warming_up(Instant::now());
             }
 
@@ -440,11 +450,15 @@ impl Monitor {
             let num_fans_running = fan_feedback.num_fans_running();
             info!(
                 "Monitor: fan={:?} num_fans={} acc.temp.={:?}",
-                fan_feedback, num_fans_running, acc.temp
+                fan_feedback, num_fans_running, cumulative_temperature.temp,
             );
 
             // all right, temperature has been aggregated, decide what to do
-            let decision = ControlDecision::decide(&monitor.config, num_fans_running, acc.temp);
+            let decision = ControlDecision::decide(
+                &monitor.config,
+                num_fans_running,
+                cumulative_temperature.temp,
+            );
             info!("Monitor: decision={:?}", decision);
             match decision {
                 ControlDecision::Shutdown(reason) => {
