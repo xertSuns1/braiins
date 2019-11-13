@@ -26,7 +26,7 @@ use crate::node;
 use crate::stats;
 use crate::work;
 
-use bosminer_macros::{MiningStats, WorkSolverStats};
+use bosminer_macros::{ClientStats, MiningStats, WorkSolverStats};
 
 use ii_stats::WindowedTimeMean;
 
@@ -359,6 +359,21 @@ pub trait Mining: Send + Sync {
     fn error_backend_diff(&self) -> &Meter;
 }
 
+pub trait Client: Mining {
+    /// Number of valid jobs received from remote server
+    fn valid_jobs(&self) -> &Counter;
+    /// Number of invalid jobs received from remote server
+    fn invalid_jobs(&self) -> &Counter;
+    /// Number of work generated from jobs by rolling or with extra nonce
+    fn generated_work(&self) -> &Counter;
+    /// Shares accepted by remote server
+    fn accepted(&self) -> &Meter;
+    /// Shares rejected by remote server
+    fn rejected(&self) -> &Meter;
+    /// Valid shares rejected by remote server or discarded due to some error
+    fn stale(&self) -> &Meter;
+}
+
 pub trait WorkSolver: Mining {
     /// The time when the device get last work for solution
     fn last_work_time(&self) -> &Timestamp;
@@ -399,6 +414,62 @@ impl BasicMining {
 }
 
 impl Default for BasicMining {
+    fn default() -> Self {
+        Self::new(time::Instant::now(), DEFAULT_TIME_MEAN_INTERVALS.as_ref())
+    }
+}
+
+#[derive(Debug, ClientStats)]
+pub struct BasicClient {
+    #[member_start_time]
+    pub start_time: time::Instant,
+    #[member_valid_jobs]
+    pub valid_jobs: stats::Counter,
+    #[member_invalid_jobs]
+    pub invalid_jobs: stats::Counter,
+    #[member_generated_work]
+    pub generated_work: Counter,
+    #[member_last_share]
+    pub last_share: LastShare,
+    #[member_best_share]
+    pub best_share: BestShare,
+    #[member_accepted]
+    pub accepted: stats::Meter,
+    #[member_rejected]
+    pub rejected: stats::Meter,
+    #[member_stale]
+    pub stale: stats::Meter,
+    #[member_valid_network_diff]
+    pub valid_network_diff: Meter,
+    #[member_valid_job_diff]
+    pub valid_job_diff: Meter,
+    #[member_valid_backend_diff]
+    pub valid_backend_diff: Meter,
+    #[member_error_backend_diff]
+    pub error_backend_diff: Meter,
+}
+
+impl BasicClient {
+    pub fn new(start_time: time::Instant, intervals: &Vec<time::Duration>) -> Self {
+        Self {
+            start_time,
+            valid_jobs: Default::default(),
+            invalid_jobs: Default::default(),
+            generated_work: Default::default(),
+            last_share: Default::default(),
+            best_share: Default::default(),
+            accepted: Meter::new(&intervals),
+            rejected: Meter::new(&intervals),
+            stale: Default::default(),
+            valid_network_diff: Meter::new(&intervals),
+            valid_job_diff: Meter::new(&intervals),
+            valid_backend_diff: Meter::new(&intervals),
+            error_backend_diff: Meter::new(&intervals),
+        }
+    }
+}
+
+impl Default for BasicClient {
     fn default() -> Self {
         Self::new(time::Instant::now(), DEFAULT_TIME_MEAN_INTERVALS.as_ref())
     }
