@@ -98,3 +98,40 @@ impl Control {
             .write(|w| unsafe { w.bits(speed.0 as u8) })
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_fan_speed() {
+        assert_eq!(Speed::STOPPED.0, 0);
+        assert_eq!(Speed::FULL_SPEED.0, 100);
+        assert_eq!(Speed::new(70).0, 70);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_fan_speed_fail() {
+        Speed::new(101);
+    }
+
+    #[test]
+    fn test_feedback_fan_count() {
+        assert_eq!(
+            Feedback {
+                rpm: vec![50, 0, 11, 0, 0]
+            }
+            .num_fans_running(),
+            2
+        );
+        assert_eq!(
+            Feedback {
+                rpm: vec![0, 0, 0, 0, 0]
+            }
+            .num_fans_running(),
+            0
+        );
+        assert_eq!(Feedback { rpm: Vec::new() }.num_fans_running(), 0);
+    }
+}
