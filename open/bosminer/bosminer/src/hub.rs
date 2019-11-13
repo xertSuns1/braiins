@@ -26,7 +26,6 @@
 use ii_logging::macros::*;
 
 use crate::backend;
-use crate::client;
 use crate::job;
 use crate::node;
 use crate::work;
@@ -70,7 +69,7 @@ pub async fn build_solvers<T: node::WorkSolver + 'static>(
     )
 }
 
-pub(crate) async fn add_client(client: Arc<client::Descriptor>) {
+pub(crate) async fn add_client(client: Arc<dyn node::Client>) {
     let container = &mut *CLIENTS.lock().await;
     assert!(
         container
@@ -83,11 +82,11 @@ pub(crate) async fn add_client(client: Arc<client::Descriptor>) {
 }
 
 #[allow(dead_code)]
-pub(crate) async fn get_clients() -> Vec<Arc<client::Descriptor>> {
+pub(crate) async fn get_clients() -> Vec<Arc<dyn node::Client>> {
     CLIENTS.lock().await.iter().cloned().collect()
 }
 
-static CLIENTS: Lazy<Mutex<Vec<Arc<client::Descriptor>>>> = Lazy::new(|| Mutex::new(vec![]));
+static CLIENTS: Lazy<Mutex<Vec<Arc<dyn node::Client>>>> = Lazy::new(|| Mutex::new(vec![]));
 
 #[cfg(test)]
 pub mod test {

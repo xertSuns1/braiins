@@ -57,13 +57,46 @@ fn impl_derive_mining_node(
     }
 }
 
-/// Generates implementation of `node::Info`, `node::WorkSolver` and `node::WorkSolverStats` traits
+/// Generates implementation of `node::Stats` and `node::ClientStats` traits
+/// for a type marked by this derive.
+#[proc_macro_derive(ClientNode, attributes(member_client_stats))]
+pub fn derive_client_node(input: TokenStream) -> TokenStream {
+    let derive_name = "ClientNode";
+    let ast: DeriveInput = syn::parse(input).unwrap();
+    let stream = impl_derive_mining_node(&ast, derive_name, "member_client_stats");
+    impl_derive_client_node(&ast, stream, derive_name).into()
+}
+
+fn impl_derive_client_node(
+    ast: &DeriveInput,
+    mut stream: proc_macro2::TokenStream,
+    derive_name: &str,
+) -> proc_macro2::TokenStream {
+    let name = &ast.ident;
+    let generics = &ast.generics;
+
+    let fields = get_fields(&ast, derive_name);
+    let client_stats = find_member(&fields, "member_client_stats");
+
+    stream.extend(quote! {
+        impl#generics node::ClientStats for #name#generics {
+            #[inline]
+            fn client_stats(&self) -> &stats::Client {
+                &self.#client_stats
+            }
+        }
+    });
+    stream
+}
+
+/// Generates implementation of `node::Stats`, `node::WorkSolver` and `node::WorkSolverStats` traits
 /// for a type marked by this derive.
 #[proc_macro_derive(WorkSolverNode, attributes(member_work_solver_stats))]
 pub fn derive_work_solver_node(input: TokenStream) -> TokenStream {
+    let derive_name = "WorkSolverNode";
     let ast: DeriveInput = syn::parse(input).unwrap();
-    let stream = impl_derive_mining_node(&ast, "MiningNode", "member_work_solver_stats");
-    impl_derive_work_solver_node(&ast, stream, "WorkSolver").into()
+    let stream = impl_derive_mining_node(&ast, derive_name, "member_work_solver_stats");
+    impl_derive_work_solver_node(&ast, stream, derive_name).into()
 }
 
 fn impl_derive_work_solver_node(

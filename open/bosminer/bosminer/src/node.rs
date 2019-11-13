@@ -34,16 +34,30 @@ use std::sync::Arc;
 pub trait Info: Debug + Display + Stats {}
 
 pub trait Stats: Send + Sync {
-    /// Return object with general mining statistics.
+    /// Return object with general mining statistics
     fn mining_stats(&self) -> &dyn stats::Mining;
 }
 
-/// Common interface for nodes with ability to solve generated work and providing common
-/// interface for mining control
+/// Common interface for client nodes with ability to generate new jobs (usually client connected
+/// to remote pool)
+pub trait Client: Info + ClientStats {
+    /// Return URL of remote server
+    fn url(&self) -> String;
+    /// Return user name used for connection to remote server
+    fn user(&self) -> String;
+}
+
+pub trait ClientStats: Stats {
+    /// Return object with client specific statistics
+    fn client_stats(&self) -> &dyn stats::Client;
+}
+
+/// Common interface for nodes with ability to solve generated work and providing common interface
+/// for mining control
 pub trait WorkSolver: Info + WorkSolverStats {}
 
 pub trait WorkSolverStats: Stats {
-    /// Return object with work solver specific statistics.
+    /// Return object with work solver specific statistics
     fn work_solver_stats(&self) -> &dyn stats::WorkSolver;
 }
 
