@@ -94,7 +94,7 @@ pub async fn main<T: hal::Backend>(mut backend: T) {
         T::DEFAULT_HASHRATE_INTERVAL,
     ));
     // start client based on user input
-    tokio::spawn(client::run(job_solver, client_descriptor));
+    client::run(job_solver, client_descriptor).await;
     // the bosminer is controlled with API which also controls when the miner will end
     api::run().await;
 }
