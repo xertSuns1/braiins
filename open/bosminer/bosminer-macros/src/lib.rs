@@ -161,6 +161,84 @@ fn impl_derive_mining_stats(ast: &DeriveInput, derive_name: &str) -> proc_macro2
     }
 }
 
+/// Generates implementation of `stats::Client` trait for a type marked by this derive.
+#[proc_macro_derive(
+    ClientStats,
+    attributes(
+        member_start_time,
+        member_valid_jobs,
+        member_invalid_jobs,
+        member_generated_work,
+        member_last_share,
+        member_best_share,
+        member_accepted,
+        member_rejected,
+        member_stale,
+        member_valid_network_diff,
+        member_valid_job_diff,
+        member_valid_backend_diff,
+        member_error_backend_diff
+    )
+)]
+pub fn derive_client_stats(input: TokenStream) -> TokenStream {
+    let derive_name = "ClientStats";
+    let ast: DeriveInput = syn::parse(input).unwrap();
+    let stream = impl_derive_mining_stats(&ast, derive_name);
+    impl_derive_client_stats(&ast, stream, derive_name).into()
+}
+
+fn impl_derive_client_stats(
+    ast: &DeriveInput,
+    mut stream: proc_macro2::TokenStream,
+    derive_name: &str,
+) -> proc_macro2::TokenStream {
+    let name = &ast.ident;
+    let generics = &ast.generics;
+
+    let fields = get_fields(&ast, derive_name);
+    let valid_jobs = find_member(&fields, "member_valid_jobs");
+    let invalid_jobs = find_member(&fields, "member_invalid_jobs");
+    let generated_work = find_member(&fields, "member_generated_work");
+    let accepted = find_member(&fields, "member_accepted");
+    let rejected = find_member(&fields, "member_rejected");
+    let stale = find_member(&fields, "member_stale");
+
+    stream.extend(quote! {
+        impl#generics stats::Client for #name#generics {
+            #[inline]
+            fn valid_jobs(&self) -> &stats::Counter {
+                &self.#valid_jobs
+            }
+
+            #[inline]
+            fn invalid_jobs(&self) -> &stats::Counter {
+                &self.#invalid_jobs
+            }
+
+            #[inline]
+            fn generated_work(&self) -> &stats::Counter {
+                &self.#generated_work
+            }
+
+            #[inline]
+            fn accepted(&self) -> &stats::Meter {
+                &self.#accepted
+            }
+
+            #[inline]
+            fn rejected(&self) -> &stats::Meter {
+                &self.#rejected
+            }
+
+            #[inline]
+            fn stale(&self) -> &stats::Meter {
+                &self.#stale
+            }
+        }
+    });
+    stream
+}
+
 /// Generates implementation of `stats::WorkSolver` trait for a type marked by this derive.
 #[proc_macro_derive(
     WorkSolverStats,
@@ -177,9 +255,10 @@ fn impl_derive_mining_stats(ast: &DeriveInput, derive_name: &str) -> proc_macro2
     )
 )]
 pub fn derive_work_solver_stats(input: TokenStream) -> TokenStream {
+    let derive_name = "WorkSolverStats";
     let ast: DeriveInput = syn::parse(input).unwrap();
-    let stream = impl_derive_mining_stats(&ast, "WorkSolverStats");
-    impl_derive_work_solver_stats(&ast, stream, "WorkSolverStats").into()
+    let stream = impl_derive_mining_stats(&ast, derive_name);
+    impl_derive_work_solver_stats(&ast, stream, derive_name).into()
 }
 
 fn impl_derive_work_solver_stats(
@@ -196,10 +275,12 @@ fn impl_derive_work_solver_stats(
 
     stream.extend(quote! {
         impl#generics stats::WorkSolver for #name#generics {
+            #[inline]
             fn last_work_time(&self) -> &stats::Timestamp {
                 &self.#last_work_time
             }
 
+            #[inline]
             fn generated_work(&self) -> &stats::Counter {
                 &self.#generated_work
             }
