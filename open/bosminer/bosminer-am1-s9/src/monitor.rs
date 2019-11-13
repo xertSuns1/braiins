@@ -670,4 +670,55 @@ mod test {
             ChainState::Broken(_)
         );
     }
+
+    fn test_acc(temp1: ChainTemperature, temp2: ChainTemperature) -> ChainTemperature {
+        let mut state = TemperatureAccumulator { temp: temp1 };
+        state.add_chain_temp(temp2);
+        state.temp
+    }
+
+    /// Test temperature accumulator
+    #[test]
+    fn test_monitor_temp_acc() {
+        assert_eq!(
+            test_acc(ChainTemperature::Unknown, ChainTemperature::Unknown),
+            ChainTemperature::Unknown
+        );
+        assert_eq!(
+            test_acc(ChainTemperature::Failed, ChainTemperature::Unknown),
+            ChainTemperature::Failed
+        );
+        assert_eq!(
+            test_acc(ChainTemperature::Ok(10.0), ChainTemperature::Unknown),
+            ChainTemperature::Ok(10.0)
+        );
+        assert_eq!(
+            test_acc(ChainTemperature::Unknown, ChainTemperature::Failed),
+            ChainTemperature::Failed
+        );
+        assert_eq!(
+            test_acc(ChainTemperature::Failed, ChainTemperature::Failed),
+            ChainTemperature::Failed
+        );
+        assert_eq!(
+            test_acc(ChainTemperature::Ok(10.0), ChainTemperature::Failed),
+            ChainTemperature::Failed
+        );
+        assert_eq!(
+            test_acc(ChainTemperature::Unknown, ChainTemperature::Ok(20.0)),
+            ChainTemperature::Ok(20.0)
+        );
+        assert_eq!(
+            test_acc(ChainTemperature::Failed, ChainTemperature::Ok(20.0)),
+            ChainTemperature::Failed
+        );
+        assert_eq!(
+            test_acc(ChainTemperature::Ok(10.0), ChainTemperature::Ok(20.0)),
+            ChainTemperature::Ok(20.0)
+        );
+        assert_eq!(
+            test_acc(ChainTemperature::Ok(10.0), ChainTemperature::Ok(5.0)),
+            ChainTemperature::Ok(10.0)
+        );
+    }
 }
