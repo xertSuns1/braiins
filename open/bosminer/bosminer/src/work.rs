@@ -107,7 +107,14 @@ impl Assignment {
         }
     }
 
+    /// Return origin from which the work has been generated
+    #[inline]
+    pub fn origin(&self) -> Arc<dyn node::Client> {
+        self.job.origin()
+    }
+
     /// Return merkle root tail
+    #[inline]
     pub fn merkle_root_tail(&self) -> u32 {
         self.job.merkle_root_tail()
     }
@@ -116,6 +123,12 @@ impl Assignment {
     #[inline]
     pub fn bits(&self) -> u32 {
         self.job.bits()
+    }
+
+    /// Return number of generated work associated within this work assignment
+    #[inline]
+    pub fn generated_work_amount(&self) -> usize {
+        self.midstates.len()
     }
 }
 

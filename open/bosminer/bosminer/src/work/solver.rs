@@ -154,6 +154,13 @@ impl Generator {
                     value
                 }
             };
+            // determine how much work has been generated for current work assignment
+            let work_amount = work.generated_work_amount();
+            work.origin()
+                .client_stats()
+                .generated_work()
+                .add(work_amount);
+
             let now = time::SystemTime::now();
             for node in self.path.iter() {
                 let work_solver_stats = node.work_solver_stats();
@@ -162,7 +169,7 @@ impl Generator {
                 // This blanket implementation can be found in the module `crate::node`:
                 // impl<T: ?Sized + Info> Info for Arc<T> {}
                 work.path.push(Arc::new(node.clone()));
-                work_solver_stats.generated_work().inc();
+                work_solver_stats.generated_work().add(work_amount);
                 work_solver_stats.last_work_time().touch(now).await;
             }
             return Some(work);

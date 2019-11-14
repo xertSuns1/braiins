@@ -290,8 +290,14 @@ impl Counter {
         Snapshot::new(self.inner.load(Ordering::Relaxed))
     }
 
+    #[inline]
     pub fn inc(&self) {
         self.inner.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub fn add(&self, count: usize) {
+        self.inner.fetch_add(count, Ordering::Relaxed);
     }
 }
 
