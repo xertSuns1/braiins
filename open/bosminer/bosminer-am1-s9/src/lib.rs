@@ -104,6 +104,9 @@ const OPEN_CORE_VOLTAGE: power::Voltage = power::Voltage::from_volts(9.4);
 /// Address of chip with connected temp sensor
 const TEMP_CHIP: ChipAddress = ChipAddress::One(61);
 
+/// Timeout for completion of haschain halt
+const HALT_TIMEOUT: Duration = Duration::from_secs(2);
+
 lazy_static! {
     /// What is our target?
     static ref ASIC_TARGET: ii_bitcoin::Target =
@@ -256,7 +259,7 @@ impl PowerStation {
     }
 
     /// Initialize voltage controller
-    pub async fn init(&mut self, mut halt_rx: halt::Receiver) -> error::Result<()> {
+    pub async fn init(&mut self, halt_receiver: halt::Receiver) -> error::Result<()> {
         self.voltage_ctrl.reset().await?;
         info!("Voltage controller reset");
         self.voltage_ctrl.jump_from_loader_to_app().await?;
@@ -281,16 +284,22 @@ impl PowerStation {
 
         // On `Halt` we have to stop the thread sending heart beat
         let mut voltage_ctrl = self.voltage_ctrl.clone();
+        let notify_receiver = halt_receiver
+            .register_client("voltage controller".into())
+            .await;
         tokio::spawn(async move {
             // Wait for halt
-            halt_rx.wait_for_halt().await;
-            // Turn off voltage on chain
-            voltage_ctrl
-                .disable_voltage()
-                .expect("failed disabling voltage");
-            // Then stop and join the thread
-            // TODO: this may take up to 1 second, figure out a way to stop it immediately
-            stop_heart_beat.stop();
+            if let Some(done_sender) = notify_receiver.wait_for_halt().await {
+                // Turn off voltage on chain
+                voltage_ctrl
+                    .disable_voltage()
+                    .expect("failed disabling voltage");
+                // Then stop and join the thread
+                // TODO: this may take up to 1 second, figure out a way to stop it immediately
+                stop_heart_beat.stop();
+                // notify halt sender that we are done
+                done_sender.confirm();
+            }
         });
 
         Ok(())
@@ -487,7 +496,7 @@ impl HashChain {
     /// Initializes the complete hashboard including enumerating all chips
     async fn init(
         &mut self,
-        halt_rx: halt::Receiver,
+        halt_receiver: halt::Receiver,
         initial_frequency: &FrequencySettings,
         initial_voltage: power::Voltage,
     ) -> error::Result<Arc<Mutex<registry::WorkRegistry>>> {
@@ -498,7 +507,7 @@ impl HashChain {
         info!("Initializing hash chain {}", self.hashboard_idx);
         self.ip_core_init().await?;
         info!("Hashboard IP core initialized");
-        self.power_station.lock().await.init(halt_rx).await?;
+        self.power_station.lock().await.init(halt_receiver).await?;
         info!("Resetting hash board");
         self.enter_reset()?;
         // disable voltage
@@ -897,48 +906,63 @@ impl HashChain {
         }
     }
 
-    fn spawn_tx_task(
+    async fn spawn_tx_task(
         self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         work_generator: work::Generator,
         shutdown: shutdown::Sender,
-        halt_rx: halt::Receiver,
+        halt_receiver: halt::Receiver,
     ) {
-        halt_rx.spawn(async move {
-            let tx_fifo = self.take_work_tx_io().await;
-            Self::work_tx_task(work_registry, tx_fifo, work_generator).await;
-            shutdown.send("no more work from workhub");
-        });
+        halt_receiver
+            .register_client("work tx".into())
+            .await
+            .spawn(async move {
+                let tx_fifo = self.take_work_tx_io().await;
+                Self::work_tx_task(work_registry, tx_fifo, work_generator).await;
+                shutdown.send("no more work from workhub");
+            });
     }
 
-    fn spawn_rx_task(
+    async fn spawn_rx_task(
         self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         solution_sender: work::SolutionSender,
-        halt_rx: halt::Receiver,
+        halt_receiver: halt::Receiver,
         counter: Arc<Mutex<HashChainCounter>>,
     ) {
-        halt_rx.spawn(async move {
-            let rx_fifo = self.take_work_rx_io().await;
+        halt_receiver
+            .register_client("work rx".into())
+            .await
+            .spawn(async move {
+                let rx_fifo = self.take_work_rx_io().await;
 
-            Self::solution_rx_task(work_registry, rx_fifo, solution_sender, counter).await;
-        });
+                Self::solution_rx_task(work_registry, rx_fifo, solution_sender, counter).await;
+            });
     }
 
-    fn spawn_hashrate_monitor_task(command_context: command::Context, halt_rx: halt::Receiver) {
-        halt_rx.spawn(async move {
-            Self::hashrate_monitor_task(command_context).await;
-        });
-    }
-
-    fn spawn_temperature_monitor_task(
+    async fn spawn_hashrate_monitor_task(
         command_context: command::Context,
-        halt_rx: halt::Receiver,
+        halt_receiver: halt::Receiver,
+    ) {
+        halt_receiver
+            .register_client("hashrate monitor".into())
+            .await
+            .spawn(async move {
+                Self::hashrate_monitor_task(command_context).await;
+            });
+    }
+
+    async fn spawn_temperature_monitor_task(
+        command_context: command::Context,
+        halt_receiver: halt::Receiver,
         monitor_tx: mpsc::UnboundedSender<monitor::Message>,
     ) {
-        halt_rx.spawn(async move {
-            Self::temperature_monitor_task(command_context, monitor_tx).await;
-        });
+        halt_receiver
+            .register_client("temperature monitor".into())
+            .await
+            .spawn(async move {
+                Self::temperature_monitor_task(command_context, monitor_tx).await;
+            });
     }
 
     async fn start(
@@ -946,7 +970,7 @@ impl HashChain {
         work_generator: work::Generator,
         work_solution: work::SolutionSender,
         shutdown: shutdown::Sender,
-        halt_rx: halt::Receiver,
+        halt_receiver: halt::Receiver,
         counter: Arc<Mutex<HashChainCounter>>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
     ) {
@@ -957,21 +981,24 @@ impl HashChain {
             work_registry.clone(),
             work_generator,
             shutdown.clone(),
-            halt_rx.clone(),
-        );
+            halt_receiver.clone(),
+        )
+        .await;
         Self::spawn_rx_task(
             self.clone(),
             work_registry.clone(),
             work_solution,
-            halt_rx.clone(),
+            halt_receiver.clone(),
             counter,
-        );
-        Self::spawn_hashrate_monitor_task(command_context.clone(), halt_rx.clone());
+        )
+        .await;
+        Self::spawn_hashrate_monitor_task(command_context.clone(), halt_receiver.clone()).await;
         Self::spawn_temperature_monitor_task(
             command_context.clone(),
-            halt_rx.clone(),
+            halt_receiver.clone(),
             self.monitor_tx.clone(),
-        );
+        )
+        .await;
     }
 }
 
@@ -1018,10 +1045,10 @@ pub struct HashChainParams {
 
 /// Hashchain and related runtime data
 pub struct HashChainRuntime {
-    halt_tx: halt::Sender,
+    halt_sender: Arc<halt::Sender>,
     // we need to keep the halt receiver around, otherwise the "stop-notify" channel closes when chain ends
     #[allow(dead_code)]
-    halt_rx: halt::Receiver,
+    halt_receiver: halt::Receiver,
     hash_chain: Arc<HashChain>,
     counter: Arc<Mutex<HashChainCounter>>,
 }
@@ -1079,12 +1106,16 @@ impl HashChainManager {
         .expect("hashchain instantiation failed");
 
         // construct a way to signal hashchain halt
-        let (halt_tx, halt_rx) = halt::make_pair();
+        let (halt_sender, halt_receiver) = halt::make_pair(HALT_TIMEOUT);
 
         // initialize it
         // halt is required to stop voltage heart-beat task
         let work_registry = hash_chain
-            .init(halt_rx.clone(), &self.params.frequency, self.params.voltage)
+            .init(
+                halt_receiver.clone(),
+                &self.params.frequency,
+                self.params.voltage,
+            )
             .await
             .expect("hashchain initialization failed");
 
@@ -1099,7 +1130,7 @@ impl HashChainManager {
                 self.work_generator.clone(),
                 self.work_solution.clone(),
                 self.shutdown.clone(),
-                halt_rx.clone(),
+                halt_receiver.clone(),
                 counter.clone(),
                 work_registry,
             )
@@ -1107,8 +1138,8 @@ impl HashChainManager {
 
         // remember we are running
         self.runtime = Some(HashChainRuntime {
-            halt_tx: halt_tx.clone(),
-            halt_rx: halt_rx.clone(),
+            halt_sender: halt_sender.clone(),
+            halt_receiver: halt_receiver.clone(),
             hash_chain,
             counter,
         });
@@ -1124,7 +1155,7 @@ impl HashChainManager {
             None => panic!("trying to stop non-running chain"),
         };
         // stop everything
-        runtime.halt_tx.do_stop().await;
+        runtime.halt_sender.clone().send_halt().await;
 
         // tell monitor we are done
         self.monitor_tx
