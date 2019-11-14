@@ -102,8 +102,8 @@ pub mod test {
     #[tokio::test]
     async fn test_solvers_connection() {
         let (job_solver, work_solver) = build_solvers(
-            Arc::new(test_utils::TestInfo::new()),
-            Arc::new(test_utils::TestInfo::new()),
+            Arc::new(test_utils::TestNode::new()),
+            Arc::new(test_utils::TestWorkSolver::new()),
         )
         .await;
 

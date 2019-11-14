@@ -281,7 +281,7 @@ async fn build_solvers() -> (
         // This is a solver that you hand off to backend
         work::SolverBuilder::create_root(
             Arc::new(backend::IgnoreHierarchy),
-            Arc::new(test_utils::TestInfo::new()),
+            Arc::new(test_utils::TestWorkSolver::new()),
             engine_receiver,
             solution_queue_tx,
         )

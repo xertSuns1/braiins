@@ -20,6 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use crate::client;
 use crate::stats;
 
 use std::fmt::{Debug, Display};
@@ -41,10 +42,10 @@ pub trait Stats: Send + Sync {
 /// Common interface for client nodes with ability to generate new jobs (usually client connected
 /// to remote pool)
 pub trait Client: Info + ClientStats {
-    /// Return URL of remote server
-    fn url(&self) -> String;
-    /// Return user name used for connection to remote server
-    fn user(&self) -> String;
+    /// Return basic information about client used for connection to remote server
+    fn descriptor(&self) -> Option<&client::Descriptor> {
+        None
+    }
 }
 
 pub trait ClientStats: Stats {

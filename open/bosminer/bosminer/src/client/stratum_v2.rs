@@ -107,7 +107,7 @@ impl StratumJob {
 }
 
 impl job::Bitcoin for StratumJob {
-    fn origin(&self) -> node::DynInfo {
+    fn origin(&self) -> Arc<dyn node::Client> {
         self.client.clone()
     }
 
@@ -160,7 +160,7 @@ type SolutionQueue = Arc<Mutex<VecDeque<(work::Solution, u32)>>>;
 
 #[derive(Debug, ClientNode)]
 struct StratumClient {
-    pub descriptor: client::Descriptor,
+    descriptor: client::Descriptor,
     #[member_client_stats]
     client_stats: stats::BasicClient,
 }
@@ -175,12 +175,8 @@ impl StratumClient {
 }
 
 impl node::Client for StratumClient {
-    fn url(&self) -> String {
-        self.descriptor.url.clone()
-    }
-
-    fn user(&self) -> String {
-        self.descriptor.user.clone()
+    fn descriptor(&self) -> Option<&client::Descriptor> {
+        Some(&self.descriptor)
     }
 }
 
