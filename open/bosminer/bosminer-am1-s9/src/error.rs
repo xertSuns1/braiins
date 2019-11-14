@@ -94,6 +94,10 @@ pub enum ErrorKind {
     /// Work or command FIFO timeout.
     #[fail(display = "HashChain Manager: {}", _0)]
     HashChainManager(HashChainManager),
+
+    /// Work or command FIFO timeout.
+    #[fail(display = "Halt: {}", _0)]
+    Halt(String),
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Fail)]

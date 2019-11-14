@@ -173,7 +173,7 @@ async fn test_work_generation() {
     let (monitor_sender, monitor_receiver) = mpsc::unbounded();
 
     // Create halt transport
-    let (_halt_tx, halt_rx) = halt::make_pair();
+    let (_halt_tx, halt_rx) = halt::make_pair(Duration::from_secs(5));
 
     // Guard lives until the end of the block
     let _work_sender_guard = work_sender.clone();
