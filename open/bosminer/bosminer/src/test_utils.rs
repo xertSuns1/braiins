@@ -35,6 +35,8 @@ use bosminer_macros::{ClientNode, MiningNode, WorkSolverNode};
 use std::fmt;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 
+use async_trait::async_trait;
+
 #[derive(Debug, MiningNode)]
 pub struct TestNode {
     #[member_mining_stats]
@@ -69,7 +71,12 @@ impl TestClient {
     }
 }
 
-impl node::Client for TestClient {}
+#[async_trait]
+impl node::Client for TestClient {
+    async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
+        None
+    }
+}
 
 impl fmt::Display for TestClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

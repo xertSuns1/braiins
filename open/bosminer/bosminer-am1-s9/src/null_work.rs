@@ -31,6 +31,8 @@ use bosminer_macros::ClientNode;
 use std::fmt;
 use std::sync::Arc;
 
+use async_trait::async_trait;
+
 /// NullJob to be used for chip initialization and tests
 #[derive(Debug, Copy, Clone)]
 pub struct NullJob {
@@ -72,7 +74,12 @@ impl NullJobClient {
     }
 }
 
-impl node::Client for NullJobClient {}
+#[async_trait]
+impl node::Client for NullJobClient {
+    async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
+        None
+    }
+}
 
 impl fmt::Display for NullJobClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

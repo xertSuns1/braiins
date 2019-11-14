@@ -21,10 +21,13 @@
 // contact us at opensource@braiins.com.
 
 use crate::client;
+use crate::job;
 use crate::stats;
 
 use std::fmt::{Debug, Display};
 use std::sync::Arc;
+
+use async_trait::async_trait;
 
 /// Generic trait for providing information about unique location of a "node" which is abstraction
 /// for all elements that somehow transform or provide jobs/work.
@@ -41,11 +44,15 @@ pub trait Stats: Send + Sync {
 
 /// Common interface for client nodes with ability to generate new jobs (usually client connected
 /// to remote pool)
+#[async_trait]
 pub trait Client: Info + ClientStats {
     /// Return basic information about client used for connection to remote server
     fn descriptor(&self) -> Option<&client::Descriptor> {
         None
     }
+
+    /// Return latest received job
+    async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>>;
 }
 
 pub trait ClientStats: Stats {
