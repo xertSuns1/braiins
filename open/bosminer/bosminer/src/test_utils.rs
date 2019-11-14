@@ -30,18 +30,60 @@ use crate::work;
 
 pub use ii_bitcoin::{TestBlock, TEST_BLOCKS};
 
-use bosminer_macros::WorkSolverNode;
+use bosminer_macros::{ClientNode, MiningNode, WorkSolverNode};
 
 use std::fmt;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 
+#[derive(Debug, MiningNode)]
+pub struct TestNode {
+    #[member_mining_stats]
+    mining_stats: stats::BasicMining,
+}
+
+impl TestNode {
+    pub fn new() -> Self {
+        Self {
+            mining_stats: Default::default(),
+        }
+    }
+}
+
+impl fmt::Display for TestNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Test generic node")
+    }
+}
+
+#[derive(Debug, ClientNode)]
+pub struct TestClient {
+    #[member_client_stats]
+    client_stats: stats::BasicClient,
+}
+
+impl TestClient {
+    pub fn new() -> Self {
+        Self {
+            client_stats: Default::default(),
+        }
+    }
+}
+
+impl node::Client for TestClient {}
+
+impl fmt::Display for TestClient {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Test client")
+    }
+}
+
 #[derive(Debug, WorkSolverNode)]
-pub struct TestInfo {
+pub struct TestWorkSolver {
     #[member_work_solver_stats]
     work_solver_stats: stats::BasicWorkSolver,
 }
 
-impl TestInfo {
+impl TestWorkSolver {
     pub fn new() -> Self {
         Self {
             work_solver_stats: Default::default(),
@@ -49,15 +91,15 @@ impl TestInfo {
     }
 }
 
-impl fmt::Display for TestInfo {
+impl fmt::Display for TestWorkSolver {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Test blocks")
+        write!(f, "Test work solver")
     }
 }
 
 impl job::Bitcoin for TestBlock {
-    fn origin(&self) -> node::DynInfo {
-        Arc::new(TestInfo::new())
+    fn origin(&self) -> Arc<dyn node::Client> {
+        Arc::new(TestClient::new())
     }
 
     fn version(&self) -> u32 {
@@ -291,7 +333,10 @@ pub fn create_test_work_receiver() -> work::EngineReceiver {
 }
 
 pub fn create_test_work_generator() -> work::Generator {
-    work::Generator::new(create_test_work_receiver(), vec![Arc::new(TestInfo::new())])
+    work::Generator::new(
+        create_test_work_receiver(),
+        vec![Arc::new(TestWorkSolver::new())],
+    )
 }
 
 #[cfg(test)]

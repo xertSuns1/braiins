@@ -46,7 +46,7 @@ use downcast_rs::{impl_downcast, Downcast};
 /// and hide protocol specific details.
 pub trait Bitcoin: Debug + Downcast + Send + Sync {
     /// Information about origin where the job has been created
-    fn origin(&self) -> node::DynInfo;
+    fn origin(&self) -> Arc<dyn node::Client>;
     /// Original version field that reflects the current network consensus
     fn version(&self) -> u32;
     /// Bit-mask with general purpose bits which can be freely manipulated (specified by BIP320)

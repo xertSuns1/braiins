@@ -225,7 +225,12 @@ impl Solution {
     /// A specified `middleware_path` info can be inserted between these 2 paths. The middleware
     /// info usually represents the miner software itself and is used for overall statistics.
     pub fn path(&self, middleware_path: &node::Path) -> node::Path {
-        iter::once(&self.work.job.origin())
+        // Arc does not support dynamic casting to trait bounds so there must be used another Arc
+        // indirection with implemented `node::Info` trait.
+        // This blanket implementation can be found in the module `crate::node`:
+        // impl<T: ?Sized + Info> Info for Arc<T> {}
+        let job_origin: node::DynInfo = Arc::new(self.work.job.origin());
+        iter::once(&job_origin)
             .chain(middleware_path.iter())
             .chain(self.work.path.iter())
             .cloned()
