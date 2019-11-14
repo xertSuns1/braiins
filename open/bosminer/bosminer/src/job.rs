@@ -118,7 +118,28 @@ impl Sender {
         Self { engine_sender }
     }
 
+    /// Check if the job has valid attributes
+    fn job_sanity_check(job: &Arc<dyn job::Bitcoin>) -> bool {
+        let mut valid = true;
+        if let Err(msg) = ii_bitcoin::Target::from_compact(job.bits()) {
+            error!(
+                "Invalid job's nBits ({}) received from '{}'",
+                msg,
+                job.origin()
+            );
+            valid = false;
+        }
+        valid
+    }
+
     pub fn send(&mut self, job: Arc<dyn job::Bitcoin>) {
+        if !Self::job_sanity_check(&job) {
+            job.origin().client_stats().invalid_jobs().inc();
+            return;
+        }
+
+        // send only jobs with correct data
+        job.origin().client_stats().valid_jobs().inc();
         info!("--- broadcasting new job ---");
         let engine = Arc::new(work::engine::VersionRolling::new(
             job,

@@ -25,8 +25,8 @@ use ii_logging::macros::*;
 use ii_bitcoin::HashTrait;
 
 use crate::client;
-use crate::job::{self, Bitcoin as _};
-use crate::node::{self, ClientStats as _};
+use crate::job;
+use crate::node;
 use crate::stats;
 use crate::work;
 
@@ -93,16 +93,6 @@ impl StratumJob {
             bits: prevhash_msg.nbits,
             target,
         }
-    }
-
-    /// Check if stratum job is valid
-    fn sanity_check(&self) -> bool {
-        let mut valid = true;
-        if let Err(msg) = ii_bitcoin::Target::from_compact(self.bits()) {
-            error!("Stratum: invalid job's nBits ({})", msg);
-            valid = false;
-        }
-        valid
     }
 }
 
@@ -240,14 +230,7 @@ impl StratumEventHandler {
             self.current_target,
         ));
         self.client.update_last_job(job.clone()).await;
-        // TODO: move it to the job sender
-        if job.sanity_check() {
-            // send only valid jobs
-            self.client.client_stats().valid_jobs().inc();
-            self.job_sender.send(job);
-        } else {
-            self.client.client_stats().invalid_jobs().inc();
-        }
+        self.job_sender.send(job);
     }
 
     pub fn update_target(&mut self, value: Uint256Bytes) {
