@@ -30,7 +30,6 @@ use crate::node;
 use crate::work;
 
 use async_trait::async_trait;
-use futures::executor::block_on;
 use futures::lock::Mutex;
 use ii_async_compat::{futures, tokio};
 use tokio::prelude::*;
@@ -335,7 +334,7 @@ impl Handler for StratumEventHandler {
         _msg: &Message<Protocol>,
         success_msg: &SubmitSharesSuccess,
     ) {
-        block_on(self.process_accepted_shares(success_msg));
+        self.process_accepted_shares(success_msg).await;
     }
 
     async fn visit_submit_shares_error(
@@ -343,7 +342,7 @@ impl Handler for StratumEventHandler {
         _msg: &Message<Protocol>,
         error_msg: &SubmitSharesError,
     ) {
-        block_on(self.process_rejected_shares(error_msg));
+        self.process_rejected_shares(error_msg).await;
     }
 
     async fn visit_setup_connection_success(
