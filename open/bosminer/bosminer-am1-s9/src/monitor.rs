@@ -26,6 +26,7 @@
 use ii_logging::macros::*;
 
 use crate::fan;
+use crate::halt;
 use crate::sensor::{self, Measurement};
 
 use std::sync::Arc;
@@ -400,27 +401,41 @@ pub struct Monitor {
     fan_control: fan::Control,
     /// PID that controls fan with hashchain temperature as input
     pid: fan::pid::TempControl,
+    /// Way to shutdown the miner
+    miner_shutdown: Arc<halt::Sender>,
+    /// All monitor sub-tasks are started in this context
+    halt_receiver: halt::Receiver,
 }
 
 impl Monitor {
-    pub fn new(config: Config) -> Arc<Mutex<Self>> {
+    pub async fn new(
+        config: Config,
+        miner_shutdown: Arc<halt::Sender>,
+        halt_receiver: halt::Receiver,
+    ) -> Arc<Mutex<Self>> {
         let monitor = Arc::new(Mutex::new(Self {
             chains: Vec::new(),
             config,
             fan_control: fan::Control::new().expect("failed initializing fan controller"),
             pid: fan::pid::TempControl::new(),
+            miner_shutdown,
+            halt_receiver: halt_receiver.clone(),
         }));
 
-        tokio::spawn(Self::tick_task(monitor.clone()));
+        halt_receiver
+            .register_client("monitor tick task".into())
+            .await
+            .spawn(Self::tick_task(monitor.clone()));
 
-        // start tasks etc
+        // return self
         monitor
     }
 
     /// Shutdown miner
     /// TODO: do a more graceful shutdown
-    fn shutdown(&self, reason: String) {
-        panic!(format!("Monitor task declared miner shutdown: {}", reason));
+    async fn shutdown(&self, reason: String) {
+        error!("Monitor task declared miner shutdown: {}", reason);
+        self.miner_shutdown.clone().send_halt().await;
     }
 
     /// Set fan speed
@@ -455,10 +470,8 @@ impl Monitor {
 
                 if let ChainState::Broken(reason) = chain.state {
                     // TODO: here comes "Shutdown"
-                    monitor.shutdown(format!(
-                        "Chain {} is broken: {}",
-                        chain.hashboard_idx, reason
-                    ));
+                    let reason = format!("Chain {} is broken: {}", chain.hashboard_idx, reason);
+                    monitor.shutdown(reason).await;
                 }
                 info!("chain {}: {:?}", chain.hashboard_idx, chain.state);
                 cumulative_temperature.add_chain_temp(chain.state.get_temperature());
@@ -482,7 +495,7 @@ impl Monitor {
             info!("Monitor: decision={:?} reason={}", decision, reason);
             match decision {
                 ControlDecision::Shutdown => {
-                    monitor.shutdown(reason.into());
+                    monitor.shutdown(reason.into()).await;
                 }
                 ControlDecision::UseFixedSpeed(fan_speed) => {
                     monitor.set_fan_speed(fan_speed);
@@ -523,13 +536,17 @@ impl Monitor {
         monitor: Arc<Mutex<Self>>,
         hashboard_idx: usize,
     ) -> mpsc::UnboundedSender<Message> {
+        let (tx, rx) = mpsc::unbounded();
         let chain = Arc::new(Mutex::new(Chain::new(hashboard_idx)));
         {
             let mut monitor = monitor.lock().await;
             monitor.chains.push(chain.clone());
+            monitor
+                .halt_receiver
+                .register_client("monitor event recv task".into())
+                .await
+                .spawn(Self::recv_task(chain, rx));
         }
-        let (tx, rx) = mpsc::unbounded();
-        tokio::spawn(Self::recv_task(chain, rx));
         tx
     }
 }

@@ -284,12 +284,11 @@ impl PowerStation {
 
         // On `Halt` we have to stop the thread sending heart beat
         let mut voltage_ctrl = self.voltage_ctrl.clone();
-        let notify_receiver = halt_receiver
+        halt_receiver
             .register_client("voltage controller".into())
-            .await;
-        tokio::spawn(async move {
-            // Wait for halt
-            if let Some(done_sender) = notify_receiver.wait_for_halt().await {
+            .await
+            .spawn_halt_handler(async move {
+                info!("Disabling voltage");
                 // Turn off voltage on chain
                 voltage_ctrl
                     .disable_voltage()
@@ -297,10 +296,7 @@ impl PowerStation {
                 // Then stop and join the thread
                 // TODO: this may take up to 1 second, figure out a way to stop it immediately
                 stop_heart_beat.stop();
-                // notify halt sender that we are done
-                done_sender.confirm();
-            }
-        });
+            });
 
         Ok(())
     }
@@ -1027,10 +1023,12 @@ impl FrequencySettings {
         }
     }
 
+    #[allow(dead_code)]
     fn min(&self) -> usize {
         *self.chip.iter().min().expect("no chips on chain")
     }
 
+    #[allow(dead_code)]
     fn max(&self) -> usize {
         *self.chip.iter().max().expect("no chips on chain")
     }
@@ -1049,7 +1047,9 @@ pub struct HashChainRuntime {
     // we need to keep the halt receiver around, otherwise the "stop-notify" channel closes when chain ends
     #[allow(dead_code)]
     halt_receiver: halt::Receiver,
+    #[allow(dead_code)]
     hash_chain: Arc<HashChain>,
+    #[allow(dead_code)]
     counter: Arc<Mutex<HashChainCounter>>,
 }
 
@@ -1174,6 +1174,7 @@ impl HashChainManager {
     }
 
     /// Set parameters of hashchain (both running and stopped)
+    #[allow(dead_code)]
     async fn set_params(&mut self, params: &HashChainParams) -> error::Result<()> {
         self.params = params.clone();
 
@@ -1194,6 +1195,16 @@ impl HashChainManager {
 
         Ok(())
     }
+
+    async fn termination_handler(hash_chain_manager: Arc<Mutex<Self>>) {
+        let mut hash_chain_manager = hash_chain_manager.lock().await;
+        if hash_chain_manager.chain_is_running() {
+            hash_chain_manager
+                .stop()
+                .await
+                .expect("failed to stop chain");
+        }
+    }
 }
 
 /// Start miner
@@ -1207,6 +1218,7 @@ async fn start_miner(
     frequency: FrequencySettings,
     voltage: power::Voltage,
 ) {
+    let (halt_sender, halt_receiver) = halt::make_pair(HALT_TIMEOUT);
     let config = monitor::Config {
         temp_config: Some(monitor::TempControlConfig {
             dangerous_temp: 110.0,
@@ -1217,7 +1229,7 @@ async fn start_miner(
             min_fans: 2,
         }),
     };
-    let monitor = monitor::Monitor::new(config);
+    let monitor = monitor::Monitor::new(config, halt_sender.clone(), halt_receiver.clone()).await;
     let voltage_ctrl_backend = power::I2cBackend::new(0);
     let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
     let mut hms = Vec::new();
@@ -1259,8 +1271,27 @@ async fn start_miner(
         hms.push(hm);
     }
     // start everything
-    for mut hm in hms.drain(..) {
-        hm.start().await.expect("failed to start hashchain");
+    for (_id, hash_chain_manager) in hms.drain(..).enumerate() {
+        let halt_receiver = halt_receiver.clone();
+        tokio::spawn(async move {
+            let hash_chain_manager = Arc::new(Mutex::new(hash_chain_manager));
+
+            // Register handler stop hashchain when miner is stopped
+            halt_receiver
+                .register_client("hashchain".into())
+                .await
+                .spawn_halt_handler(HashChainManager::termination_handler(
+                    hash_chain_manager.clone(),
+                ));
+
+            // afterwards, start hashchain
+            hash_chain_manager
+                .lock()
+                .await
+                .start()
+                .await
+                .expect("failed to start hashchain");
+        });
     }
 }
 
