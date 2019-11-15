@@ -44,7 +44,7 @@ use ii_stratum::v2::framing::codec::Framing;
 use ii_stratum::v2::messages::{
     NewMiningJob, OpenStandardMiningChannel, OpenStandardMiningChannelError,
     OpenStandardMiningChannelSuccess, SetNewPrevHash, SetTarget, SetupConnection,
-    SetupConnectionError, SetupConnectionSuccess, SubmitShares, SubmitSharesError,
+    SetupConnectionError, SetupConnectionSuccess, SubmitSharesError, SubmitSharesStandard,
     SubmitSharesSuccess,
 };
 use ii_stratum::v2::types::DeviceInfo;
@@ -66,7 +66,6 @@ pub struct StratumJob {
     prev_hash: ii_bitcoin::DHash,
     merkle_root: ii_bitcoin::DHash,
     time: u32,
-    max_time: u32,
     bits: u32,
     target: ii_bitcoin::Target,
 }
@@ -88,7 +87,6 @@ impl StratumJob {
             merkle_root: ii_bitcoin::DHash::from_slice(job_msg.merkle_root.as_ref())
                 .expect("BUG: Stratum: incorrect size of merkle root"),
             time: prevhash_msg.min_ntime,
-            max_time: prevhash_msg.min_ntime + prevhash_msg.max_ntime_offset as u32,
             bits: prevhash_msg.nbits,
             target,
         }
@@ -121,7 +119,7 @@ impl job::Bitcoin for StratumJob {
     }
 
     fn max_time(&self) -> u32 {
-        self.max_time
+        self.time // TODO: max_time field was removed from SetNewPrevHash message
     }
 
     fn bits(&self) -> u32 {
@@ -372,7 +370,7 @@ impl StratumSolutionHandler {
         let seq_num = self.seq_num;
         self.seq_num = self.seq_num.wrapping_add(1);
 
-        let share_msg = SubmitShares {
+        let share_msg = SubmitSharesStandard {
             channel_id: job.channel_id,
             seq_num,
             job_id: job.id,
@@ -421,11 +419,10 @@ impl StratumConnectionHandler {
         connection: &mut Connection<Framing>,
     ) -> Result<(), ()> {
         let setup_msg = SetupConnection {
-            max_version: 0,
-            min_version: 0,
+            protocol: 0,
+            max_version: 2,
+            min_version: 2,
             flags: 0,
-            // TODO-DOC: Pubkey spec not finalized yet
-            expected_pubkey: PubKey::new(),
             endpoint_host: Str0_255::from_string(self.client.descriptor.url.clone()),
             endpoint_port: self.client.descriptor.socket_addr.port() as u16,
             device: DeviceInfo {
