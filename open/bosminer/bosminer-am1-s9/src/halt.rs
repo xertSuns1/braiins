@@ -86,6 +86,18 @@ impl NotifyReceiver {
         self.notify_rx.next().await
     }
 
+    pub fn spawn_halt_handler<F>(self, f: F)
+    where
+        F: Future<Output = ()> + 'static + Send,
+    {
+        tokio::spawn(async move {
+            if let Some(done_sender) = self.wait_for_halt().await {
+                f.await;
+                done_sender.confirm();
+            }
+        });
+    }
+
     /// Spawn a new task that is dropped when `Halt` is received
     pub fn spawn<F>(self, f: F)
     where
