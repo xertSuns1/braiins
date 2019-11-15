@@ -28,7 +28,7 @@
 
 # templates
 .base-rust: &base-rust
-    image: $CI_REGISTRY_IMAGE/rust:10
+    image: $CI_REGISTRY_IMAGE/rust:11
 
 stages:
     - format
@@ -48,4 +48,5 @@ check:
         RUSTFLAGS: "-D warnings"
     script:
         - ./open/scripts/projecter cargo check
+        - (cd open/bosminer/bosminer-am1-s9 && cargo test -- --host=${TEST_DEVICE_S9} --path=/tmp/ci )
         - ./open/scripts/projecter cargo test

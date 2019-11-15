@@ -14,23 +14,15 @@
 
 Install python modules:
 
-Setup virtual env if don't want to install packages into ~/.local or to the
-system.
-```shell
-virtualenv --python=/usr/bin/python3 .venv
-```
+- python toml parser (https://github.com/uiri/toml)
 
-```shell
+This is used by deployment helper script, you can skip it if you plan to use different deployment method.
 
-python3 -m pip3 install -r scripts/requirements.txt
-```
 
 Install cargo utilities:
 
 ```shell
-cargo install svd2rust
-cargo install form
-rustup component add rustfmt-preview
+rustup component add rustfmt
 ```
 
 Install target toolchain for the project:
@@ -48,6 +40,15 @@ rustup target add arm-unknown-linux-musleabi
 cd to/braiins-os/
 eval $(./bb.py toolchain 2>/dev/null)
 ```
+
+- alternatively, you can download prebuilt toolchain from openwrt (https://downloads.openwrt.org/releases/17.01.6/targets/zynq/generic/lede-sdk-17.01.6-zynq_gcc-5.4.0_musl-1.1.16_eabi.Linux-x86_64.tar.xz) and set up environment:
+
+```shell
+export PATH="$PATH:/_sdk_path_/staging_dir/toolchain-arm_cortex-a9+neon_gcc-5.4.0_musl-1.1.16_eabi/bin"
+export STAGING_DIR="/_sdk_path_/staging_dir/toolchain-arm_cortex-a9+neon_gcc-5.4.0_musl-1.1.16_eabi"
+export CROSS_COMPILE="arm-openwrt-linux"
+```
+  this avoids lots of time and space to build complete BrainsOS, but you can only build bosminer binary.
 
 - build:
 

@@ -27,7 +27,7 @@ DOCKER_SSH_AUTH_SOCK=/ssh_auth.sock
 
 NAME=rust
 # increment tag here and in ci config to enforce gitlab runners to fetch new images
-TAG=10
+TAG=11
 # place for clean git checkout
 # note that this prevents seeing/using (yet) uncomitted changes in image
 # we use stable path to be able to clean up properly in case of failed build
