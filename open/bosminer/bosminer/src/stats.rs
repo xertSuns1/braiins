@@ -317,6 +317,7 @@ macro_rules! atomic_counter_impl (
     )
 );
 
+/// An atomic counter that supports timestamped snapshotting
 #[derive(Debug)]
 pub struct Counter<T> {
     inner: T,

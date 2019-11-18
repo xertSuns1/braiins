@@ -4,7 +4,16 @@ interface node::Stats {
   mining_stats(&self) -> &dyn stats::Mining
 }
 
+interface node::ClientStats {
+    fn client_stats(&self) -> &dyn stats::Client;
+}
+
 interface node::Info {
+}
+
+interface node::Client {
+    fn descriptor(&self) -> Option<&client::Descriptor>
+    async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>>;
 }
 
 interface node::WorkSolver {
@@ -19,8 +28,11 @@ interface hal::Backend
 node::Stats <|-- node::Info
 node::Stats <|-- node::WorkSolverStats
 node::Info <|-- node::WorkSolver
+node::Info <|-- node::Client
 node::WorkSolverStats <|-- node::WorkSolver
 node::WorkSolver <|-- hal::Backend
+node::Stats <|-- node::ClientStats
+node::ClientStats <|-- node::Client
 
 interface stats::Mining {
     fn start_time(&self) -> &time::Instant;
@@ -31,8 +43,17 @@ interface stats::Mining {
     fn error_backend_diff(&self) -> &Meter;
 }
 
+interface stats::Client {
+    fn valid_jobs(&self) -> &Counter;
+    fn invalid_jobs(&self) -> &Counter;
+    fn generated_work(&self) -> &Counter;
+    fn accepted(&self) -> &Meter;
+    fn rejected(&self) -> &Meter;
+    fn stale(&self) -> &Meter;
+}
+
 interface stats::WorkSolver
 
 stats::Mining <|-- stats::WorkSolver
-
+stats::Mining <|-- stats::Client
 @enduml
