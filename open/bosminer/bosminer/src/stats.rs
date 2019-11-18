@@ -34,7 +34,8 @@ use futures::lock::Mutex;
 use ii_async_compat::{futures, tokio};
 use tokio::timer::delay_for;
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::fmt::Debug;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time;
 
 use once_cell::sync::Lazy;
@@ -274,38 +275,92 @@ impl Default for BestShare {
     }
 }
 
-#[derive(Debug)]
-pub struct Counter {
-    inner: AtomicUsize,
+pub trait AtomicCounter: Debug {
+    /// The underlying type
+    type Type: Default;
+
+    /// Create new instance of atomic counter initialized to given value
+    fn new(value: Self::Type) -> Self;
+    /// Increment the current value
+    fn inc(&self);
+    /// Adds to the current value
+    fn add(&self, value: Self::Type);
+    /// Loads a value from the atomic type
+    fn load(&self) -> Self::Type;
 }
 
-impl Counter {
-    pub fn new(value: usize) -> Self {
+macro_rules! atomic_counter_impl (
+    ($atomic_type:path, $base_type:path) => (
+        impl AtomicCounter for $atomic_type {
+            type Type = $base_type;
+
+            #[inline]
+            fn new(value: Self::Type) -> Self {
+                Self::new(value)
+            }
+
+            #[inline]
+            fn inc(&self) {
+                self.add(1);
+            }
+
+            #[inline]
+            fn add(&self, value: Self::Type) {
+                self.fetch_add(value, Ordering::Relaxed);
+            }
+
+            #[inline]
+            fn load(&self) -> Self::Type {
+                self.load(Ordering::Relaxed)
+            }
+        }
+    )
+);
+
+#[derive(Debug)]
+pub struct Counter<T> {
+    inner: T,
+}
+
+impl<T> Counter<T>
+where
+    T: AtomicCounter,
+{
+    pub fn new(value: T::Type) -> Self {
         Self {
-            inner: AtomicUsize::new(value),
+            inner: T::new(value),
         }
     }
 
-    pub fn take_snapshot(&self) -> Snapshot<usize> {
-        Snapshot::new(self.inner.load(Ordering::Relaxed))
+    pub fn take_snapshot(&self) -> Snapshot<T::Type> {
+        Snapshot::new(self.inner.load())
     }
 
     #[inline]
     pub fn inc(&self) {
-        self.inner.fetch_add(1, Ordering::Relaxed);
+        self.inner.inc();
     }
 
     #[inline]
-    pub fn add(&self, count: usize) {
-        self.inner.fetch_add(count, Ordering::Relaxed);
+    pub fn add(&self, count: T::Type) {
+        self.inner.add(count);
     }
 }
 
-impl Default for Counter {
+impl<T> Default for Counter<T>
+where
+    T: AtomicCounter,
+{
     fn default() -> Self {
-        Self::new(0)
+        Self::new(Default::default())
     }
 }
+
+atomic_counter_impl!(AtomicU64, u64);
+atomic_counter_impl!(AtomicUsize, usize);
+
+pub type CounterU64 = Counter<AtomicU64>;
+pub type CounterUsize = Counter<AtomicUsize>;
 
 #[derive(Debug)]
 pub struct Timestamp {
@@ -367,11 +422,11 @@ pub trait Mining: Send + Sync {
 
 pub trait Client: Mining {
     /// Number of valid jobs received from remote server
-    fn valid_jobs(&self) -> &Counter;
+    fn valid_jobs(&self) -> &CounterUsize;
     /// Number of invalid jobs received from remote server
-    fn invalid_jobs(&self) -> &Counter;
+    fn invalid_jobs(&self) -> &CounterUsize;
     /// Number of work generated from jobs by rolling or with extra nonce
-    fn generated_work(&self) -> &Counter;
+    fn generated_work(&self) -> &CounterU64;
     /// Shares accepted by remote server
     fn accepted(&self) -> &Meter;
     /// Shares rejected by remote server
@@ -384,7 +439,7 @@ pub trait WorkSolver: Mining {
     /// The time when the device get last work for solution
     fn last_work_time(&self) -> &Timestamp;
     /// Number of work generated from jobs by rolling or with extra nonce
-    fn generated_work(&self) -> &Counter;
+    fn generated_work(&self) -> &CounterU64;
 }
 
 #[derive(Debug, MiningStats)]
@@ -430,11 +485,11 @@ pub struct BasicClient {
     #[member_start_time]
     pub start_time: time::Instant,
     #[member_valid_jobs]
-    pub valid_jobs: stats::Counter,
+    pub valid_jobs: stats::CounterUsize,
     #[member_invalid_jobs]
-    pub invalid_jobs: stats::Counter,
+    pub invalid_jobs: stats::CounterUsize,
     #[member_generated_work]
-    pub generated_work: Counter,
+    pub generated_work: CounterU64,
     #[member_last_share]
     pub last_share: LastShare,
     #[member_best_share]
@@ -488,7 +543,7 @@ pub struct BasicWorkSolver {
     #[member_last_work_time]
     pub last_work_time: Timestamp,
     #[member_generated_work]
-    pub generated_work: Counter,
+    pub generated_work: CounterU64,
     #[member_last_share]
     pub last_share: LastShare,
     #[member_best_share]
