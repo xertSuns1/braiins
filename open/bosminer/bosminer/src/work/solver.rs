@@ -155,7 +155,7 @@ impl Generator {
                 }
             };
             // determine how much work has been generated for current work assignment
-            let work_amount = work.generated_work_amount();
+            let work_amount = work.generated_work_amount() as u64;
             work.origin()
                 .client_stats()
                 .generated_work()

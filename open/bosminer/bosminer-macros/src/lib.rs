@@ -239,17 +239,17 @@ fn impl_derive_client_stats(
     stream.extend(quote! {
         impl#generics stats::Client for #name#generics {
             #[inline]
-            fn valid_jobs(&self) -> &stats::Counter {
+            fn valid_jobs(&self) -> &stats::CounterUsize {
                 &self.#valid_jobs
             }
 
             #[inline]
-            fn invalid_jobs(&self) -> &stats::Counter {
+            fn invalid_jobs(&self) -> &stats::CounterUsize {
                 &self.#invalid_jobs
             }
 
             #[inline]
-            fn generated_work(&self) -> &stats::Counter {
+            fn generated_work(&self) -> &stats::CounterU64 {
                 &self.#generated_work
             }
 
@@ -314,7 +314,7 @@ fn impl_derive_work_solver_stats(
             }
 
             #[inline]
-            fn generated_work(&self) -> &stats::Counter {
+            fn generated_work(&self) -> &stats::CounterU64 {
                 &self.#generated_work
             }
         }
