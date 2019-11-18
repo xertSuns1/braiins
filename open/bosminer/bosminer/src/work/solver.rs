@@ -70,7 +70,7 @@ impl SolverBuilder {
         hierarchy_builder: Arc<dyn backend::HierarchyBuilder>,
         node: Arc<T>,
         engine_receiver: EngineReceiver,
-        solution_queue_tx: mpsc::UnboundedSender<Solution>,
+        solution_sender: mpsc::UnboundedSender<Solution>,
     ) -> Self {
         hierarchy_builder.add_root(node.clone()).await;
 
@@ -78,7 +78,7 @@ impl SolverBuilder {
             hub: AtomicBool::new(false),
             path: vec![node],
             engine_receiver,
-            solution_sender: SolutionSender(solution_queue_tx),
+            solution_sender: SolutionSender(solution_sender),
             hierarchy_builder,
         }
     }

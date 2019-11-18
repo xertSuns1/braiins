@@ -94,11 +94,11 @@ impl Solver {
     pub fn new(
         frontend_info: node::DynInfo,
         engine_sender: work::EngineSender,
-        solution_queue_rx: mpsc::UnboundedReceiver<work::Solution>,
+        solution_receiver: mpsc::UnboundedReceiver<work::Solution>,
     ) -> Self {
         Self {
             job_sender: Sender::new(engine_sender),
-            solution_receiver: SolutionReceiver::new(frontend_info, solution_queue_rx),
+            solution_receiver: SolutionReceiver::new(frontend_info, solution_receiver),
         }
     }
 

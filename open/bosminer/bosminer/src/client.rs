@@ -27,7 +27,6 @@ pub mod stratum_v2;
 
 use crate::error;
 use crate::hub;
-use crate::job;
 
 use std::fmt;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -73,8 +72,8 @@ pub fn parse(url: String, user: String) -> error::Result<Descriptor> {
 }
 
 /// Run relevant client implementing a protocol set in `Descriptor`
-pub async fn run(job_solver: job::Solver, descriptor: Descriptor) {
-    hub::add_client(match descriptor.protocol {
+pub async fn run(core: &mut hub::Core, descriptor: Descriptor) {
+    core.add_client(|job_solver| match descriptor.protocol {
         Protocol::StratumV2 => stratum_v2::run(job_solver, descriptor),
     })
     .await;

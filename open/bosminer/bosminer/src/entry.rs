@@ -29,13 +29,10 @@ use crate::client;
 use crate::hal;
 use crate::hub;
 use crate::runtime_config;
-use crate::shutdown;
 use crate::stats;
 use crate::BOSMINER;
 
 use ii_async_compat::tokio;
-
-use std::sync::Arc;
 
 use clap::{self, Arg};
 
@@ -78,23 +75,20 @@ pub async fn main<T: hal::Backend>(mut backend: T) {
     // Allow backend to initialize itself with cli arguments
     backend.init(&args);
 
-    // create job and work solvers
-    let backend = Arc::new(backend);
-    let (job_solver, work_solver_builder) =
-        hub::build_solvers(BOSMINER.clone(), backend.clone()).await;
-    // create shutdown channel
-    let (shutdown_sender, _shutdown_receiver) = shutdown::channel();
+    // Initialize hub core which manages all resources
+    let mut core = hub::Core::new(BOSMINER.clone());
 
-    // start HW backend for selected target
-    backend.run(work_solver_builder, shutdown_sender);
+    core.add_backend(backend).await;
 
     // start statistics processing
     tokio::spawn(stats::mining_task(
         BOSMINER.clone(),
         T::DEFAULT_HASHRATE_INTERVAL,
     ));
+
     // start client based on user input
-    client::run(job_solver, client_descriptor).await;
+    client::run(&mut core, client_descriptor).await;
+
     // the bosminer is controlled with API which also controls when the miner will end
     api::run().await;
 }
