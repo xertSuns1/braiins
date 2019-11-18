@@ -156,11 +156,13 @@ impl Generator {
             };
             // determine how much work has been generated for current work assignment
             let work_amount = work.generated_work_amount() as u64;
+            // account generated work on the client side
             work.origin()
                 .client_stats()
                 .generated_work()
                 .add(work_amount);
 
+            // account generated work in all work solvers in the path
             let now = time::SystemTime::now();
             for node in self.path.iter() {
                 let work_solver_stats = node.work_solver_stats();

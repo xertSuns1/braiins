@@ -86,6 +86,7 @@ pub(crate) async fn get_clients() -> Vec<Arc<dyn node::Client>> {
     CLIENTS.lock().await.iter().cloned().collect()
 }
 
+/// Registry of clients that are able to supply new jobs for mining
 static CLIENTS: Lazy<Mutex<Vec<Arc<dyn node::Client>>>> = Lazy::new(|| Mutex::new(vec![]));
 
 #[cfg(test)]
