@@ -26,8 +26,10 @@
 use ii_logging::macros::*;
 
 use crate::backend;
+use crate::hal;
 use crate::job;
 use crate::node;
+use crate::shutdown;
 use crate::work;
 
 use futures::channel::mpsc;
@@ -48,28 +50,65 @@ impl work::ExhaustedHandler for EventHandler {
     }
 }
 
-/// Create job solver for frontend (pool) and work solver builder for backend (as we expect a
-/// hierarchical structure in backends)
-/// `backend_work_solver` is the root of the work solver hierarchy
-pub async fn build_solvers<T: node::WorkSolver + 'static>(
+pub struct Core {
     frontend_info: node::DynInfo,
-    backend_work_solver: Arc<T>,
-) -> (job::Solver, work::SolverBuilder) {
-    let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
-    let (solution_queue_tx, solution_queue_rx) = mpsc::unbounded();
-    (
-        job::Solver::new(frontend_info, engine_sender, solution_queue_rx),
-        work::SolverBuilder::create_root(
-            Arc::new(backend::BuildHierarchy),
-            backend_work_solver,
-            engine_receiver,
-            solution_queue_tx,
-        )
-        .await,
-    )
+    engine_sender: Option<work::EngineSender>,
+    engine_receiver: work::EngineReceiver,
+    solution_sender: mpsc::UnboundedSender<work::Solution>,
+    solution_receiver: Option<mpsc::UnboundedReceiver<work::Solution>>,
 }
 
-pub(crate) async fn add_client(client: Arc<dyn node::Client>) {
+impl Core {
+    pub fn new(frontend_info: node::DynInfo) -> Self {
+        let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
+        let (solution_sender, solution_receiver) = mpsc::unbounded();
+
+        Self {
+            frontend_info,
+            engine_sender: Some(engine_sender),
+            engine_receiver,
+            solution_sender,
+            solution_receiver: Some(solution_receiver),
+        }
+    }
+
+    pub async fn add_backend<T: hal::Backend>(&self, backend: T) {
+        let backend = Arc::new(backend);
+        let (shutdown_sender, _shutdown_receiver) = shutdown::channel();
+
+        let work_solver_builder = work::SolverBuilder::create_root(
+            Arc::new(backend::BuildHierarchy),
+            backend.clone(),
+            self.engine_receiver.clone(),
+            self.solution_sender.clone(),
+        )
+        .await;
+
+        // immediately start HW backend for selected target
+        backend.run(work_solver_builder, shutdown_sender);
+    }
+
+    pub async fn add_client<F>(&mut self, create: F) -> Arc<dyn node::Client>
+    where
+        F: FnOnce(job::Solver) -> Arc<dyn node::Client>,
+    {
+        let job_solver = job::Solver::new(
+            self.frontend_info.clone(),
+            self.engine_sender
+                .take()
+                .expect("BUG: missing engine sender"),
+            self.solution_receiver
+                .take()
+                .expect("BUG: missing solution receiver"),
+        );
+
+        let client = create(job_solver);
+        add_client(client.clone()).await;
+        client
+    }
+}
+
+async fn add_client(client: Arc<dyn node::Client>) {
     let container = &mut *CLIENTS.lock().await;
     assert!(
         container
@@ -96,6 +135,27 @@ pub mod test {
 
     use ii_async_compat::tokio;
     use std::sync::Arc;
+
+    /// Create job solver for frontend (pool) and work solver builder for backend (as we expect a
+    /// hierarchical structure in backends)
+    /// `backend_work_solver` is the root of the work solver hierarchy
+    async fn build_solvers<T: node::WorkSolver + 'static>(
+        frontend_info: node::DynInfo,
+        backend_work_solver: Arc<T>,
+    ) -> (job::Solver, work::SolverBuilder) {
+        let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
+        let (solution_sender, solution_receiver) = mpsc::unbounded();
+        (
+            job::Solver::new(frontend_info, engine_sender, solution_receiver),
+            work::SolverBuilder::create_root(
+                Arc::new(backend::BuildHierarchy),
+                backend_work_solver,
+                engine_receiver,
+                solution_sender,
+            )
+            .await,
+        )
+    }
 
     /// This test verifies the whole lifecycle of a mining job, its transformation into work
     /// and also collection of the solution via solution receiver. No actual mining takes place
