@@ -59,7 +59,7 @@ use std::collections::HashMap;
 const VERSION_MASK: u32 = 0x1fffe000;
 
 #[derive(Debug, Clone)]
-struct StratumJob {
+pub struct StratumJob {
     client: Arc<StratumClient>,
     id: u32,
     channel_id: u32,
@@ -180,7 +180,7 @@ impl StratumEventHandler {
     /// Convert new mining job message into StratumJob and send it down the line for solving.
     ///
     /// * `job_msg` - job message used as a base for the StratumJob
-    pub async fn update_job(&mut self, job_msg: &NewMiningJob) {
+    async fn update_job(&mut self, job_msg: &NewMiningJob) {
         let job = Arc::new(StratumJob::new(
             self.client.clone(),
             job_msg,
@@ -191,7 +191,7 @@ impl StratumEventHandler {
         self.job_sender.send(job);
     }
 
-    pub fn update_target(&mut self, value: Uint256Bytes) {
+    fn update_target(&mut self, value: Uint256Bytes) {
         let new_target: ii_bitcoin::Target = value.into();
         info!(
             "Stratum: changing target to {} diff={}",
@@ -270,7 +270,7 @@ impl StratumEventHandler {
         );
     }
 
-    pub async fn run(mut self) {
+    async fn run(mut self) {
         while let Some(msg) = self.connection_rx.next().await {
             let msg = msg.unwrap();
             msg.accept(&mut self).await;
@@ -404,7 +404,7 @@ impl StratumSolutionHandler {
 
 struct StratumConnectionHandler {
     client: Arc<StratumClient>,
-    pub init_target: ii_bitcoin::Target,
+    init_target: ii_bitcoin::Target,
     status: Result<(), ()>,
 }
 
@@ -524,7 +524,7 @@ impl Handler for StratumConnectionHandler {
 }
 
 #[derive(Debug, ClientNode)]
-struct StratumClient {
+pub struct StratumClient {
     descriptor: client::Descriptor,
     #[member_client_stats]
     client_stats: stats::BasicClient,
@@ -547,7 +547,7 @@ impl StratumClient {
         }
     }
 
-    pub async fn take_job_sender(&self) -> job::Sender {
+    async fn take_job_sender(&self) -> job::Sender {
         self.job_sender
             .lock()
             .await
@@ -555,7 +555,7 @@ impl StratumClient {
             .expect("BUG: missing job sender")
     }
 
-    pub async fn take_solution_receiver(&self) -> job::SolutionReceiver {
+    async fn take_solution_receiver(&self) -> job::SolutionReceiver {
         self.solution_receiver
             .lock()
             .await
@@ -563,11 +563,11 @@ impl StratumClient {
             .expect("BUG: missing solution receiver")
     }
 
-    pub async fn update_last_job(&self, job: Arc<StratumJob>) {
+    async fn update_last_job(&self, job: Arc<StratumJob>) {
         self.last_job.lock().await.replace(job);
     }
 
-    pub async fn run(self: Arc<Self>) {
+    async fn run(self: Arc<Self>) {
         let (connection, init_target) = StratumConnectionHandler::new(self.clone())
             .connect()
             .await
@@ -601,6 +601,10 @@ impl node::Client for StratumClient {
             .as_ref()
             .map(|job| job.clone() as Arc<dyn job::Bitcoin>)
     }
+
+    fn enable(self: Arc<Self>) {
+        tokio::spawn(self.clone().run());
+    }
 }
 
 impl fmt::Display for StratumClient {
@@ -611,10 +615,4 @@ impl fmt::Display for StratumClient {
             self.descriptor.url, self.descriptor.user, self.descriptor.protocol
         )
     }
-}
-
-pub fn run(job_solver: job::Solver, descriptor: client::Descriptor) -> Arc<dyn node::Client> {
-    let client = Arc::new(StratumClient::new(descriptor, job_solver));
-    tokio::spawn(client.clone().run());
-    client
 }
