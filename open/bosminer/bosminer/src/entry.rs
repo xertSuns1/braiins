@@ -38,7 +38,7 @@ use std::sync::Arc;
 
 use clap::{self, Arg};
 
-pub async fn main<T: hal::Backend>(mut backend: T) {
+pub async fn main<T: hal::Backend>(backend: T) {
     let _log_guard = ii_logging::setup_for_app();
 
     let app = clap::App::new("bosminer")
@@ -62,7 +62,7 @@ pub async fn main<T: hal::Backend>(mut backend: T) {
         );
 
     // Pass pre-build arguments to backend for further modification
-    let args = backend.add_args(app).get_matches();
+    let args = T::add_args(app).get_matches();
 
     // Unwraps should be ok as long as the flags are required
     let url = args.value_of("pool").unwrap().to_string();
@@ -74,13 +74,10 @@ pub async fn main<T: hal::Backend>(mut backend: T) {
     // Set default backend midstate count
     runtime_config::set_midstate_count(T::DEFAULT_MIDSTATE_COUNT);
 
-    // Allow backend to initialize itself with cli arguments
-    backend.init(&args);
-
     // Initialize hub core which manages all resources
     let core = Arc::new(hub::Core::new(BOSMINER.clone()));
 
-    core.add_backend(backend).await;
+    core.add_backend(backend, args).await;
 
     // start statistics processing
     tokio::spawn(stats::mining_task(

@@ -27,6 +27,7 @@ pub mod icarus;
 
 use ii_logging::macros::*;
 
+use bosminer::clap;
 use bosminer::error::backend::ResultExt;
 use bosminer::hal;
 use bosminer::node;
@@ -131,7 +132,12 @@ impl hal::Backend for Backend {
     const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
-    fn run(self: Arc<Self>, work_solver_builder: work::SolverBuilder, shutdown: shutdown::Sender) {
+    fn run(
+        self: Arc<Self>,
+        _args: &clap::ArgMatches,
+        work_solver_builder: work::SolverBuilder,
+        shutdown: shutdown::Sender,
+    ) {
         // Spawn the future in a separate blocking pool (for blocking operations)
         // so that this doesn't block the regular threadpool.
         tokio::spawn(async move {

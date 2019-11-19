@@ -326,7 +326,7 @@ pub async fn run<T: hal::Backend>(backend: T) {
     let registry = Arc::new(Mutex::new(Registry::new()));
 
     // start HW backend for selected target
-    backend.run(work_solver, shutdown_sender);
+    backend.run(&Default::default(), work_solver, shutdown_sender);
 
     // start task to collect solutions and put them to registry
     tokio::spawn(collect_solutions(solution_queue_rx, registry.clone()));

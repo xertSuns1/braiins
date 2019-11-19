@@ -76,7 +76,7 @@ impl Core {
         }
     }
 
-    pub async fn add_backend<T: hal::Backend>(&self, backend: T) {
+    pub async fn add_backend<T: hal::Backend>(&self, backend: T, args: clap::ArgMatches<'_>) {
         let backend = Arc::new(backend);
         let (shutdown_sender, _shutdown_receiver) = shutdown::channel();
 
@@ -89,7 +89,7 @@ impl Core {
         .await;
 
         // immediately start HW backend for selected target
-        backend.run(work_solver_builder, shutdown_sender);
+        backend.run(&args, work_solver_builder, shutdown_sender);
     }
 
     pub async fn add_client<F, T>(&self, create: F) -> Arc<dyn node::Client>
