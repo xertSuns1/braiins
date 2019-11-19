@@ -1216,20 +1216,53 @@ impl hal::BackendSolution for Solution {
     }
 }
 
+struct Configuration {
+    pll_frequency: usize,
+    voltage: f32,
+}
+
+impl Configuration {
+    fn parse(&mut self, args: &clap::ArgMatches) {
+        // Set just 1 midstate if user requested disabling asicboost
+        if args.is_present("disable-asic-boost") {
+            runtime_config::set_midstate_count(1);
+        }
+        if args.is_present("pll-frequency") {
+            self.pll_frequency = args
+                .value_of("pll-frequency")
+                .expect("argument missing")
+                .parse::<usize>()
+                .expect("parser failed");
+        }
+        if args.is_present("voltage") {
+            self.voltage = args
+                .value_of("voltage")
+                .expect("argument missing")
+                .parse::<f32>()
+                .expect("parser failed");
+        }
+    }
+}
+
+impl Default for Configuration {
+    fn default() -> Self {
+        Self {
+            pll_frequency: config::DEFAULT_PLL_FREQUENCY,
+            voltage: config::DEFAULT_VOLTAGE,
+        }
+    }
+}
+
 #[derive(Debug, WorkSolverNode)]
 pub struct Backend {
     #[member_work_solver_stats]
     work_solver_stats: stats::BasicWorkSolver,
-    pll_frequency: usize,
-    voltage: f32,
 }
 
 impl Backend {
     pub fn new() -> Self {
         Self {
             work_solver_stats: Default::default(),
-            pll_frequency: config::DEFAULT_PLL_FREQUENCY,
-            voltage: config::DEFAULT_VOLTAGE,
         }
     }
 }
@@ -1239,7 +1272,7 @@ impl hal::Backend for Backend {
     const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
-    fn add_args<'a, 'b>(&self, app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
+    fn add_args<'a, 'b>(app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
         app.arg(
             clap::Arg::with_name("disable-asic-boost")
                 .long("disable-asic-boost")
@@ -1262,35 +1295,22 @@ impl hal::Backend for Backend {
         )
     }
 
-    fn init(&mut self, args: &clap::ArgMatches) {
-        // Set just 1 midstate if user requested disabling asicboost
-        if args.is_present("disable-asic-boost") {
-            runtime_config::set_midstate_count(1);
-        }
-        if args.is_present("pll-frequency") {
-            self.pll_frequency = args
-                .value_of("pll-frequency")
-                .expect("argument missing")
-                .parse::<usize>()
-                .expect("parser failed");
-        }
-        if args.is_present("voltage") {
-            self.voltage = args
-                .value_of("voltage")
-                .expect("argument missing")
-                .parse::<f32>()
-                .expect("parser failed");
-        }
-    }
+    fn run(
+        self: Arc<Self>,
+        args: &clap::ArgMatches,
+        work_solver_builder: work::SolverBuilder,
+        shutdown: shutdown::Sender,
+    ) {
+        let mut configuration: Configuration = Default::default();
+        configuration.parse(args);
 
-    fn run(self: Arc<Self>, work_solver_builder: work::SolverBuilder, shutdown: shutdown::Sender) {
         tokio::spawn(start_miner(
             vec![config::S9_HASHBOARD_INDEX],
             work_solver_builder,
             shutdown,
             runtime_config::get_midstate_count(),
-            FrequencySettings::from_frequency(self.pll_frequency),
-            power::Voltage::from_volts(self.voltage),
+            FrequencySettings::from_frequency(configuration.pll_frequency),
+            power::Voltage::from_volts(configuration.voltage),
         ));
     }
 }

@@ -50,11 +50,14 @@ pub trait Backend: node::WorkSolver + Send + Sync + 'static {
     /// Maximum time it takes to compute one job under normal circumstances
     const JOB_TIMEOUT: Duration;
 
-    fn add_args<'a, 'b>(&self, app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
+    fn add_args<'a, 'b>(app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
         app
     }
 
-    fn init(&mut self, _args: &clap::ArgMatches) {}
-
-    fn run(self: Arc<Self>, work_solver_builder: work::SolverBuilder, shutdown: shutdown::Sender);
+    fn run(
+        self: Arc<Self>,
+        _args: &clap::ArgMatches,
+        work_solver_builder: work::SolverBuilder,
+        shutdown: shutdown::Sender,
+    );
 }
