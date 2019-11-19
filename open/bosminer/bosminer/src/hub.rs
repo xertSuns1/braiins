@@ -26,6 +26,7 @@
 use ii_logging::macros::*;
 
 use crate::backend;
+use crate::client;
 use crate::hal;
 use crate::job;
 use crate::node;
@@ -55,7 +56,7 @@ pub struct Core {
     solution_sender: mpsc::UnboundedSender<work::Solution>,
     solution_receiver: Mutex<Option<mpsc::UnboundedReceiver<work::Solution>>>,
     /// Registry of clients that are able to supply new jobs for mining
-    clients: Mutex<Vec<Arc<dyn node::Client>>>,
+    clients: client::Registry,
 }
 
 impl Core {
@@ -69,7 +70,7 @@ impl Core {
             engine_receiver,
             solution_sender,
             solution_receiver: Mutex::new(Some(solution_receiver)),
-            clients: Mutex::new(vec![]),
+            clients: client::Registry::new(),
         }
     }
 
@@ -87,18 +88,6 @@ impl Core {
 
         // immediately start HW backend for selected target
         backend.run(work_solver_builder, shutdown_sender);
-    }
-
-    async fn register_client(&self, client: Arc<dyn node::Client>) {
-        let container = &mut *self.clients.lock().await;
-        assert!(
-            container
-                .iter()
-                .find(|old| Arc::ptr_eq(old, &client))
-                .is_none(),
-            "BUG: client already present in the registry"
-        );
-        container.push(client);
     }
 
     pub async fn add_client<F>(self: Arc<Self>, create: F) -> Arc<dyn node::Client>
@@ -120,12 +109,13 @@ impl Core {
         );
 
         let client = create(job_solver);
-        self.register_client(client.clone()).await;
+        self.clients.register_client(client.clone()).await;
         client
     }
 
+    #[inline]
     pub async fn get_clients(self: Arc<Self>) -> Vec<Arc<dyn node::Client>> {
-        self.clients.lock().await.iter().cloned().collect()
+        self.clients.get_clients().await
     }
 }
 

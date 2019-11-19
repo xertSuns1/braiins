@@ -27,6 +27,10 @@ pub mod stratum_v2;
 
 use crate::error;
 use crate::hub;
+use crate::node;
+
+use futures::lock::Mutex;
+use ii_async_compat::futures;
 
 use std::fmt;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -70,6 +74,34 @@ pub fn parse(url: String, user: String) -> error::Result<Descriptor> {
         protocol: Protocol::StratumV2,
         socket_addr,
     })
+}
+
+pub struct Registry {
+    list: Mutex<Vec<Arc<dyn node::Client>>>,
+}
+
+impl Registry {
+    pub fn new() -> Self {
+        Self {
+            list: Mutex::new(vec![]),
+        }
+    }
+
+    pub async fn register_client(&self, client: Arc<dyn node::Client>) {
+        let container = &mut *self.list.lock().await;
+        assert!(
+            container
+                .iter()
+                .find(|old| Arc::ptr_eq(old, &client))
+                .is_none(),
+            "BUG: client already present in the registry"
+        );
+        container.push(client);
+    }
+
+    pub async fn get_clients(&self) -> Vec<Arc<dyn node::Client>> {
+        self.list.lock().await.iter().cloned().collect()
+    }
 }
 
 /// Run relevant client implementing a protocol set in `Descriptor`
