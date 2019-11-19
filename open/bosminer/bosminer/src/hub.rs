@@ -55,8 +55,9 @@ pub struct Core {
     engine_receiver: work::EngineReceiver,
     solution_sender: mpsc::UnboundedSender<work::Solution>,
     solution_receiver: Mutex<Option<mpsc::UnboundedReceiver<work::Solution>>>,
+    backend_registry: Arc<backend::Registry>,
     /// Registry of clients that are able to supply new jobs for mining
-    clients: client::Registry,
+    client_registry: client::Registry,
 }
 
 impl Core {
@@ -70,7 +71,8 @@ impl Core {
             engine_receiver,
             solution_sender,
             solution_receiver: Mutex::new(Some(solution_receiver)),
-            clients: client::Registry::new(),
+            backend_registry: Arc::new(backend::Registry::new()),
+            client_registry: client::Registry::new(),
         }
     }
 
@@ -79,7 +81,7 @@ impl Core {
         let (shutdown_sender, _shutdown_receiver) = shutdown::channel();
 
         let work_solver_builder = work::SolverBuilder::create_root(
-            Arc::new(backend::BuildHierarchy),
+            self.backend_registry.clone(),
             backend.clone(),
             self.engine_receiver.clone(),
             self.solution_sender.clone(),
@@ -109,13 +111,28 @@ impl Core {
         );
 
         let client = create(job_solver);
-        self.clients.register_client(client.clone()).await;
+        self.client_registry.register_client(client.clone()).await;
         client
     }
 
     #[inline]
-    pub async fn get_clients(self: Arc<Self>) -> Vec<Arc<dyn node::Client>> {
-        self.clients.get_clients().await
+    pub async fn get_root_hub(&self) -> Option<Arc<dyn node::WorkSolver>> {
+        self.backend_registry.get_root_hub().await
+    }
+
+    #[inline]
+    pub async fn get_work_hubs(&self) -> Vec<Arc<dyn node::WorkSolver>> {
+        self.backend_registry.get_work_hubs().await
+    }
+
+    #[inline]
+    pub async fn get_work_solvers(&self) -> Vec<Arc<dyn node::WorkSolver>> {
+        self.backend_registry.get_work_solvers().await
+    }
+
+    #[inline]
+    pub async fn get_clients(&self) -> Vec<Arc<dyn node::Client>> {
+        self.client_registry.get_clients().await
     }
 }
 
@@ -139,7 +156,7 @@ pub mod test {
         (
             job::Solver::new(frontend_info, engine_sender, solution_receiver),
             work::SolverBuilder::create_root(
-                Arc::new(backend::BuildHierarchy),
+                Arc::new(backend::Registry::new()),
                 backend_work_solver,
                 engine_receiver,
                 solution_sender,

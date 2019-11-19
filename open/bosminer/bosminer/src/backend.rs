@@ -30,8 +30,6 @@ use ii_async_compat::futures;
 
 use std::sync::Arc;
 
-use once_cell::sync::Lazy;
-
 #[async_trait]
 pub trait HierarchyBuilder: Send + Sync {
     async fn add_root(&self, work_solver: Arc<dyn node::WorkSolver>);
@@ -62,15 +60,97 @@ impl HierarchyBuilder for IgnoreHierarchy {
     }
 }
 
-/// This struct is the default hierarchy builder for bOSminer. It collects all work solvers and
-/// work hubs (special case of solver which only routes work to its child nodes and is useful for
-/// statistics aggregation and group control)
-pub struct BuildHierarchy;
+/// This structure contains list of backend nodes and is also the default hierarchy builder for the
+/// bOSminer. It collects all work solvers and work hubs (special case of solver which only routes
+/// work to its child nodes and is useful for statistics aggregation and group control)
+pub struct Registry {
+    /// Special work hub which represents the whole backend
+    root_hub: Mutex<Option<Arc<dyn node::WorkSolver>>>,
+    /// List of all work hubs which are useful for statistics aggregation and group control
+    work_hubs: Mutex<Vec<Arc<dyn node::WorkSolver>>>,
+    /// List of work solvers which do real work and usually represents physical HW
+    work_solvers: Mutex<Vec<Arc<dyn node::WorkSolver>>>,
+}
+
+impl Registry {
+    pub fn new() -> Self {
+        Registry {
+            root_hub: Mutex::new(None),
+            work_hubs: Mutex::new(vec![]),
+            work_solvers: Mutex::new(vec![]),
+        }
+    }
+
+    /// Helper method that puts a `work_solver` node into a specified `container`
+    fn push_work_solver(
+        &self,
+        container: &mut Vec<Arc<dyn node::WorkSolver>>,
+        work_solver: Arc<dyn node::WorkSolver>,
+    ) {
+        assert!(
+            container
+                .iter()
+                .find(|old| Arc::ptr_eq(old, &work_solver))
+                .is_none(),
+            "BUG: work solver already present in the registry"
+        );
+        container.push(work_solver);
+    }
+
+    async fn register_root_hub(&self, root_hub: Arc<dyn node::WorkSolver>) {
+        if let Some(_) = self.root_hub.lock().await.replace(root_hub) {
+            panic!("BUG: root hub already present in the registry");
+        }
+    }
+
+    async fn register_work_hub(&self, work_hub: Arc<dyn node::WorkSolver>) {
+        self.push_work_solver(&mut *self.work_hubs.lock().await, work_hub);
+    }
+
+    async fn register_work_solver(&self, work_solver: Arc<dyn node::WorkSolver>) {
+        self.push_work_solver(&mut *self.work_solvers.lock().await, work_solver);
+    }
+
+    async fn branch_work_solver(
+        &self,
+        work_hub: Arc<dyn node::WorkSolver>,
+        work_solver: Arc<dyn node::WorkSolver>,
+    ) {
+        let mut work_solvers = self.work_solvers.lock().await;
+
+        match work_solvers
+            .iter_mut()
+            .rev()
+            .find(|old_work_solver| Arc::ptr_eq(old_work_solver, &work_hub))
+        {
+            None => work_solvers.push(work_solver),
+            Some(old_work_solver) => {
+                *old_work_solver = work_solver;
+                self.register_work_hub(work_hub).await;
+            }
+        }
+    }
+
+    #[inline]
+    pub async fn get_root_hub(&self) -> Option<Arc<dyn node::WorkSolver>> {
+        self.root_hub.lock().await.clone()
+    }
+
+    #[inline]
+    pub async fn get_work_hubs(&self) -> Vec<Arc<dyn node::WorkSolver>> {
+        self.work_hubs.lock().await.iter().cloned().collect()
+    }
+
+    #[inline]
+    pub async fn get_work_solvers(&self) -> Vec<Arc<dyn node::WorkSolver>> {
+        self.work_solvers.lock().await.iter().cloned().collect()
+    }
+}
 
 #[async_trait]
-impl HierarchyBuilder for BuildHierarchy {
+impl HierarchyBuilder for Registry {
     async fn add_root(&self, work_solver: Arc<dyn node::WorkSolver>) {
-        add_root_hub(work_solver).await;
+        self.register_root_hub(work_solver).await;
     }
 
     async fn branch(
@@ -80,72 +160,9 @@ impl HierarchyBuilder for BuildHierarchy {
         work_solver: Arc<dyn node::WorkSolver>,
     ) {
         if first_child {
-            branch_work_solver(work_hub, work_solver).await;
+            self.branch_work_solver(work_hub, work_solver).await;
         } else {
-            add_work_solver(work_solver).await;
+            self.register_work_solver(work_solver).await;
         }
     }
 }
-
-/// Helper method that puts a `work_solver` node into a specified `container`
-fn push_work_solver(
-    container: &mut Vec<Arc<dyn node::WorkSolver>>,
-    work_solver: Arc<dyn node::WorkSolver>,
-) {
-    assert!(
-        container
-            .iter()
-            .find(|old| Arc::ptr_eq(old, &work_solver))
-            .is_none(),
-        "BUG: work solver already present in the registry"
-    );
-    container.push(work_solver);
-}
-
-async fn add_root_hub(root_hub: Arc<dyn node::WorkSolver>) {
-    if let Some(_) = ROOT_HUB.lock().await.replace(root_hub) {
-        panic!("BUG: root hub already present in the registry");
-    }
-}
-
-async fn add_work_solver(work_solver: Arc<dyn node::WorkSolver>) {
-    push_work_solver(&mut *WORK_SOLVERS.lock().await, work_solver)
-}
-
-async fn branch_work_solver(
-    work_hub: Arc<dyn node::WorkSolver>,
-    work_solver: Arc<dyn node::WorkSolver>,
-) {
-    let mut work_solvers = WORK_SOLVERS.lock().await;
-
-    match work_solvers
-        .iter_mut()
-        .rev()
-        .find(|old_work_solver| Arc::ptr_eq(old_work_solver, &work_hub))
-    {
-        None => work_solvers.push(work_solver),
-        Some(old_work_solver) => {
-            *old_work_solver = work_solver;
-            push_work_solver(&mut *WORK_HUBS.lock().await, work_hub);
-        }
-    }
-}
-
-#[allow(dead_code)]
-pub(crate) async fn get_root_hub() -> Option<Arc<dyn node::WorkSolver>> {
-    ROOT_HUB.lock().await.clone()
-}
-
-#[allow(dead_code)]
-pub(crate) async fn get_work_solvers() -> Vec<Arc<dyn node::WorkSolver>> {
-    WORK_SOLVERS.lock().await.iter().cloned().collect()
-}
-
-/// Special work hub which represents the whole backend
-static ROOT_HUB: Lazy<Mutex<Option<Arc<dyn node::WorkSolver>>>> = Lazy::new(|| Mutex::new(None));
-
-/// Global lists for distinguishing between work solvers which do real work and work hubs which are
-/// only for aggregation and group control. Also CGMiner API reports devices which corresponds to
-/// work solver nodes.
-static WORK_HUBS: Lazy<Mutex<Vec<Arc<dyn node::WorkSolver>>>> = Lazy::new(|| Mutex::new(vec![]));
-static WORK_SOLVERS: Lazy<Mutex<Vec<Arc<dyn node::WorkSolver>>>> = Lazy::new(|| Mutex::new(vec![]));
