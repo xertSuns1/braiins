@@ -38,7 +38,7 @@ impl TempControl {
     pub fn new() -> Self {
         // kp/ki/kd constants are negative because the PID works in reverse direction
         // (the lower the PWM, the higher the temperature)
-        let pid = OffsetPIDController::new(-5.0, -0.03, -0.015, 70.0);
+        let pid = OffsetPIDController::new(-5.0, -0.3, -0.15, 70.0);
 
         let mut temp_control = Self {
             pid,
