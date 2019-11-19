@@ -755,6 +755,7 @@ dependencies = [
  "ii-bitcoin 0.1.0",
  "ii-logging 0.1.0",
  "ii-wire 0.1.0",
+ "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "packed_struct 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "packed_struct_codegen 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",
