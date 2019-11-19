@@ -76,6 +76,8 @@ impl node::Client for TestClient {
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
         None
     }
+
+    fn enable(self: Arc<Self>) {}
 }
 
 impl fmt::Display for TestClient {

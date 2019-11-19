@@ -79,6 +79,8 @@ impl node::Client for NullJobClient {
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
         None
     }
+
+    fn enable(self: Arc<Self>) {}
 }
 
 impl fmt::Display for NullJobClient {

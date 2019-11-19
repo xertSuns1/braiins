@@ -53,6 +53,8 @@ pub trait Client: Info + ClientStats {
 
     /// Return latest received job
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>>;
+    /// Try to enable client (default state of client node should be disabled)
+    fn enable(self: Arc<Self>);
 }
 
 pub trait ClientStats: Stats {

@@ -104,10 +104,10 @@ impl Registry {
     }
 }
 
-/// Run relevant client implementing a protocol set in `Descriptor`
-pub async fn run(core: Arc<hub::Core>, descriptor: Descriptor) {
+/// Register relevant client implementing based on a protocol set in `Descriptor`
+pub async fn register(core: &Arc<hub::Core>, descriptor: Descriptor) -> Arc<dyn node::Client> {
     core.add_client(|job_solver| match descriptor.protocol {
-        Protocol::StratumV2 => stratum_v2::run(job_solver, descriptor),
+        Protocol::StratumV2 => stratum_v2::StratumClient::new(descriptor, job_solver),
     })
-    .await;
+    .await
 }

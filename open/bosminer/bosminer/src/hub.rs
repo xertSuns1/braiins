@@ -92,9 +92,10 @@ impl Core {
         backend.run(work_solver_builder, shutdown_sender);
     }
 
-    pub async fn add_client<F>(self: Arc<Self>, create: F) -> Arc<dyn node::Client>
+    pub async fn add_client<F, T>(&self, create: F) -> Arc<dyn node::Client>
     where
-        F: FnOnce(job::Solver) -> Arc<dyn node::Client>,
+        T: node::Client + 'static,
+        F: FnOnce(job::Solver) -> T,
     {
         let job_solver = job::Solver::new(
             self.frontend_info.clone(),
@@ -110,9 +111,11 @@ impl Core {
                 .expect("BUG: missing solution receiver"),
         );
 
-        let client = create(job_solver);
+        let client = Arc::new(create(job_solver));
         self.client_registry.register_client(client.clone()).await;
-        client
+
+        // convert it to dynamic object
+        client as Arc<dyn node::Client>
     }
 
     #[inline]
