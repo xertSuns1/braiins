@@ -30,6 +30,7 @@ use crate::hub;
 
 use std::fmt;
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::sync::Arc;
 
 use failure::ResultExt;
 
@@ -72,7 +73,7 @@ pub fn parse(url: String, user: String) -> error::Result<Descriptor> {
 }
 
 /// Run relevant client implementing a protocol set in `Descriptor`
-pub async fn run(core: &mut hub::Core, descriptor: Descriptor) {
+pub async fn run(core: Arc<hub::Core>, descriptor: Descriptor) {
     core.add_client(|job_solver| match descriptor.protocol {
         Protocol::StratumV2 => stratum_v2::run(job_solver, descriptor),
     })

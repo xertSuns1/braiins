@@ -38,8 +38,6 @@ use ii_async_compat::futures;
 
 use std::sync::Arc;
 
-use once_cell::sync::Lazy;
-
 /// Handle external events. Currently it is used only wor handling exhausted work from work engine.
 /// It usually signals some serious problem in backend.
 struct EventHandler;
@@ -52,10 +50,12 @@ impl work::ExhaustedHandler for EventHandler {
 
 pub struct Core {
     frontend_info: node::DynInfo,
-    engine_sender: Option<work::EngineSender>,
+    engine_sender: Mutex<Option<work::EngineSender>>,
     engine_receiver: work::EngineReceiver,
     solution_sender: mpsc::UnboundedSender<work::Solution>,
-    solution_receiver: Option<mpsc::UnboundedReceiver<work::Solution>>,
+    solution_receiver: Mutex<Option<mpsc::UnboundedReceiver<work::Solution>>>,
+    /// Registry of clients that are able to supply new jobs for mining
+    clients: Mutex<Vec<Arc<dyn node::Client>>>,
 }
 
 impl Core {
@@ -65,10 +65,11 @@ impl Core {
 
         Self {
             frontend_info,
-            engine_sender: Some(engine_sender),
+            engine_sender: Mutex::new(Some(engine_sender)),
             engine_receiver,
             solution_sender,
-            solution_receiver: Some(solution_receiver),
+            solution_receiver: Mutex::new(Some(solution_receiver)),
+            clients: Mutex::new(vec![]),
         }
     }
 
@@ -88,45 +89,45 @@ impl Core {
         backend.run(work_solver_builder, shutdown_sender);
     }
 
-    pub async fn add_client<F>(&mut self, create: F) -> Arc<dyn node::Client>
+    async fn register_client(&self, client: Arc<dyn node::Client>) {
+        let container = &mut *self.clients.lock().await;
+        assert!(
+            container
+                .iter()
+                .find(|old| Arc::ptr_eq(old, &client))
+                .is_none(),
+            "BUG: client already present in the registry"
+        );
+        container.push(client);
+    }
+
+    pub async fn add_client<F>(self: Arc<Self>, create: F) -> Arc<dyn node::Client>
     where
         F: FnOnce(job::Solver) -> Arc<dyn node::Client>,
     {
         let job_solver = job::Solver::new(
             self.frontend_info.clone(),
             self.engine_sender
+                .lock()
+                .await
                 .take()
                 .expect("BUG: missing engine sender"),
             self.solution_receiver
+                .lock()
+                .await
                 .take()
                 .expect("BUG: missing solution receiver"),
         );
 
         let client = create(job_solver);
-        add_client(client.clone()).await;
+        self.register_client(client.clone()).await;
         client
     }
-}
 
-async fn add_client(client: Arc<dyn node::Client>) {
-    let container = &mut *CLIENTS.lock().await;
-    assert!(
-        container
-            .iter()
-            .find(|old| Arc::ptr_eq(old, &client))
-            .is_none(),
-        "BUG: client already present in the registry"
-    );
-    container.push(client);
+    pub async fn get_clients(self: Arc<Self>) -> Vec<Arc<dyn node::Client>> {
+        self.clients.lock().await.iter().cloned().collect()
+    }
 }
-
-#[allow(dead_code)]
-pub(crate) async fn get_clients() -> Vec<Arc<dyn node::Client>> {
-    CLIENTS.lock().await.iter().cloned().collect()
-}
-
-/// Registry of clients that are able to supply new jobs for mining
-static CLIENTS: Lazy<Mutex<Vec<Arc<dyn node::Client>>>> = Lazy::new(|| Mutex::new(vec![]));
 
 #[cfg(test)]
 pub mod test {

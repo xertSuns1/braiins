@@ -34,6 +34,8 @@ use crate::BOSMINER;
 
 use ii_async_compat::tokio;
 
+use std::sync::Arc;
+
 use clap::{self, Arg};
 
 pub async fn main<T: hal::Backend>(mut backend: T) {
@@ -76,7 +78,7 @@ pub async fn main<T: hal::Backend>(mut backend: T) {
     backend.init(&args);
 
     // Initialize hub core which manages all resources
-    let mut core = hub::Core::new(BOSMINER.clone());
+    let core = Arc::new(hub::Core::new(BOSMINER.clone()));
 
     core.add_backend(backend).await;
 
@@ -87,7 +89,7 @@ pub async fn main<T: hal::Backend>(mut backend: T) {
     ));
 
     // start client based on user input
-    client::run(&mut core, client_descriptor).await;
+    client::run(core, client_descriptor).await;
 
     // the bosminer is controlled with API which also controls when the miner will end
     api::run().await;
