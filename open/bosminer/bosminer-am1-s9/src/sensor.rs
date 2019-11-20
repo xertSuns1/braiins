@@ -22,8 +22,22 @@
 
 //! This module contains interface for reading from sensor (`Sensor`) and what
 //! constitutes a sensor reading (`Temperature`, `Measurement`).
+//!
+//! HOW TO EXTEND THIS IN THE FUTURE
+//!
+//! * Struct `Temperature` is not very generic and varies from sensor to sensor, so move it into
+//!   sensor drivers. Struct `Measurement` is OK for now, it represents more or less the outcomes
+//!   of temperature readout.
+//!
+//! * Each miner has a topology of sensors. It also has to know how to interpret the readout of
+//!   each sensor (ie. make a `IntoS9Temperature` trait and then implement
+//!   `IntoS9Temperature<TMP451SensorReadout>` and the like).
+//!
+//! * Maybe provide a generic temperature readout structure that has just the `local` and `remote`
+//!   portions (and make a conversion function when needed).
 
-pub mod tmp451;
+mod tmp42x;
+mod tmp451;
 
 use crate::error;
 use crate::i2c;
@@ -48,6 +62,8 @@ pub trait Sensor: Sync + Send {
 pub enum Measurement {
     /// Sensor not present
     NotPresent,
+    /// Reading is invalid (due to under-power etc.)
+    InvalidReading,
     /// Sensor broke off
     OpenCircuit,
     /// Sensor is "shorted"
@@ -77,10 +93,9 @@ lazy_static! {
 
 /// Probe one I2C address for known sensor
 ///
-/// This is pretty much ad-hoc function that doesn't utilize the `inventory` of our I2C sensor
-/// drivers. The logic for detecting the type of I2C temp sensor is pretty much random (see for
-/// example `lm90` driver in Linux kernel), so just don't bother with a generic detection
-/// algorithm.
+/// The reason for not using unified API for driver probing is that the sensor detection logic
+/// is pretty much ad-hoc (see for example `lm90` driver in Linux kernel) and would require
+/// changes to the "probe API" with each new sensor.
 pub async fn probe_i2c_device(
     mut i2c_device: Box<dyn i2c::AsyncDevice>,
 ) -> error::Result<Option<Box<dyn Sensor>>> {
@@ -99,8 +114,12 @@ pub async fn probe_i2c_device(
         device_id
     );
 
+    // Decide which sensor to use
     let sensor = match manufacturer_id {
-        0x55 => Some(tmp451::TMP451::new(i2c_device)),
+        0x55 => match device_id {
+            0x21 | 0x22 | 0x23 => Some(tmp42x::TMP42x::new(i2c_device, device_id as usize - 0x20)),
+            _ => Some(tmp451::TMP451::new(i2c_device)),
+        },
         0x41 => Some(tmp451::ADT7461::new(i2c_device)),
         0x1a => Some(tmp451::NCT218::new(i2c_device)),
         _ => None,
@@ -109,7 +128,7 @@ pub async fn probe_i2c_device(
     Ok(sensor)
 }
 
-/// Probe for known sensors
+/// Probe for known addresses for supported sensors
 pub async fn probe_i2c_sensors<T: 'static + i2c::AsyncBus + Clone>(
     i2c_bus: T,
 ) -> error::Result<Option<Box<dyn Sensor>>> {
@@ -120,6 +139,7 @@ pub async fn probe_i2c_sensors<T: 'static + i2c::AsyncBus + Clone>(
 
         // Try to probe this device
         match probe_i2c_device(i2c_device).await? {
+            // OK, there's one
             sensor @ Some(_) => return Ok(sensor),
             _ => (),
         }
@@ -135,10 +155,13 @@ mod test {
     use i2c::test_utils;
     use ii_async_compat::tokio;
 
-    async fn test_probe_address(addr: u8, man_id: u8) -> bool {
+    async fn test_probe_address(addr: u8, man_id: u8, dev_id: u8) -> bool {
         let bus = test_utils::FakeI2cBus::new(
             i2c::Address::new(addr),
-            &[test_utils::InitReg(0xfe, man_id)],
+            &[
+                test_utils::InitReg(0xfe, man_id),
+                test_utils::InitReg(0xff, dev_id),
+            ],
             Some(0),
             Some(0xff),
         );
@@ -149,10 +172,11 @@ mod test {
 
     #[tokio::test]
     async fn inner_test_probe_i2c_sensors() {
-        assert_eq!(test_probe_address(0x98, 0x55).await, true);
-        assert_eq!(test_probe_address(0x9a, 0x41).await, true);
-        assert_eq!(test_probe_address(0x9c, 0x1a).await, true);
-        assert_eq!(test_probe_address(0x9c, 0x37).await, false);
-        assert_eq!(test_probe_address(0x84, 0x55).await, false);
+        assert_eq!(test_probe_address(0x98, 0x55, 0x13).await, true);
+        assert_eq!(test_probe_address(0x98, 0x55, 0x21).await, true);
+        assert_eq!(test_probe_address(0x9a, 0x41, 0x12).await, true);
+        assert_eq!(test_probe_address(0x9c, 0x1a, 0x37).await, true);
+        assert_eq!(test_probe_address(0x9c, 0x37, 0x21).await, false);
+        assert_eq!(test_probe_address(0x84, 0x55, 0x21).await, false);
     }
 }
