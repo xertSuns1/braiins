@@ -30,7 +30,9 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::{self, Duration};
 
-use super::error::{self, ErrorKind};
+use crate::halt;
+
+use crate::error::{self, ErrorKind};
 use failure::ResultExt;
 
 use embedded_hal::blocking::i2c::{Read, Write};
@@ -38,6 +40,9 @@ use linux_embedded_hal::I2cdev;
 
 use ii_async_compat::tokio;
 use tokio::timer::delay_for;
+
+/// Default initial voltage
+pub const OPEN_CORE_VOLTAGE: Voltage = Voltage::from_volts(9.4);
 
 /// Voltage controller requires periodic heart beat messages to be sent
 const VOLTAGE_CTRL_HEART_BEAT_PERIOD: Duration = Duration::from_millis(1000);
@@ -271,10 +276,12 @@ impl StopReceiver {
 /// sources).
 #[derive(Clone)]
 pub struct Control<T> {
-    // Backend that carries out the operation
+    /// Backend that carries out the operation
     backend: T,
     /// Identifies the hashboard
     hashboard_idx: usize,
+    /// Tracks current voltage
+    current_voltage: Option<Voltage>,
 }
 
 impl<T> Control<T>
@@ -342,9 +349,16 @@ where
     }
 
     pub async fn set_voltage(&mut self, voltage: Voltage) -> error::Result<()> {
-        info!("Setting voltage to {}", voltage.as_volts());
-        self.write(SET_VOLTAGE, &[voltage.as_pic_value()?])?;
-        delay_for(Self::BMMINER_DELAY).await;
+        if self.current_voltage != Some(voltage) {
+            info!(
+                "Setting voltage to {} (was: {:?})",
+                voltage.as_volts(),
+                self.current_voltage.map(|v| v.as_volts())
+            );
+            self.write(SET_VOLTAGE, &[voltage.as_pic_value()?])?;
+            delay_for(Self::BMMINER_DELAY).await;
+            self.current_voltage = Some(voltage);
+        }
         Ok(())
     }
 
@@ -371,7 +385,52 @@ where
         Self {
             backend,
             hashboard_idx,
+            current_voltage: None,
         }
+    }
+
+    /// Initialize voltage controller
+    /// TODO: decouple this code from `halt_receiver`
+    pub async fn init(&mut self, halt_receiver: halt::Receiver) -> error::Result<()> {
+        self.reset().await?;
+        info!("Voltage controller reset");
+        self.jump_from_loader_to_app().await?;
+        info!("Voltage controller application started");
+        let version = self.get_version()?;
+        info!("Voltage controller firmware version {:#04x}", version);
+        // TODO accept multiple
+        if version != EXPECTED_VOLTAGE_CTRL_VERSION {
+            Err(ErrorKind::UnexpectedVersion(
+                "voltage controller firmware".to_string(),
+                version.to_string(),
+                EXPECTED_VOLTAGE_CTRL_VERSION.to_string(),
+            ))?
+        }
+        self.set_voltage(OPEN_CORE_VOLTAGE).await?;
+        self.enable_voltage()?;
+
+        // Voltage controller successfully initialized at this point, we should start sending
+        // heart beats to it. Otherwise, it would shut down in about 10 seconds.
+        info!("Starting voltage controller heart beat task");
+        let stop_heart_beat = self.start_heart_beat_task();
+
+        // On `Halt` we have to stop the thread sending heart beat
+        let mut voltage_ctrl = self.clone();
+        halt_receiver
+            .register_client("voltage controller".into())
+            .await
+            .spawn_halt_handler(async move {
+                info!("Disabling voltage");
+                // Turn off voltage on chain
+                voltage_ctrl
+                    .disable_voltage()
+                    .expect("failed disabling voltage");
+                // Then stop and join the thread
+                // TODO: this may take up to 1 second, figure out a way to stop it immediately
+                stop_heart_beat.stop();
+            });
+
+        Ok(())
     }
 
     /// Helper method that sends heartbeat to the voltage controller at regular intervals

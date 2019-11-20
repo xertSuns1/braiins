@@ -150,7 +150,7 @@ async fn start_hchain(
         .init(
             halt_rx,
             &FrequencySettings::from_frequency(config::DEFAULT_PLL_FREQUENCY),
-            crate::OPEN_CORE_VOLTAGE,
+            crate::power::OPEN_CORE_VOLTAGE,
         )
         .await
         .expect("h_chain init failed");

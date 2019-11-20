@@ -98,9 +98,6 @@ const FPGA_IPCORE_F_CLK_SPEED_HZ: usize = 50_000_000;
 /// Divisor of the base clock. The resulting clock is connected to UART
 const FPGA_IPCORE_F_CLK_BASE_BAUD_DIV: usize = 16;
 
-/// Default initial voltage
-const OPEN_CORE_VOLTAGE: power::Voltage = power::Voltage::from_volts(9.4);
-
 /// Address of chip with connected temp sensor
 const TEMP_CHIP: ChipAddress = ChipAddress::One(61);
 
@@ -231,77 +228,6 @@ impl HashChainCounter {
     }
 }
 
-/// Stateful wrapper around voltage control
-struct PowerStation {
-    voltage_ctrl: power::Control<power::SharedBackend<power::I2cBackend>>,
-    current_voltage: Option<power::Voltage>,
-}
-
-impl PowerStation {
-    pub fn new(
-        voltage_ctrl_backend: power::SharedBackend<power::I2cBackend>,
-        hashboard_idx: usize,
-    ) -> Self {
-        Self {
-            voltage_ctrl: power::Control::new(voltage_ctrl_backend, hashboard_idx),
-            current_voltage: None,
-        }
-    }
-
-    /// Set voltage (and remember what was set)
-    pub async fn set_voltage(&mut self, voltage: power::Voltage) -> error::Result<()> {
-        // Check if we have to change the voltage
-        if self.current_voltage != Some(voltage) {
-            self.voltage_ctrl.set_voltage(voltage).await?;
-            self.current_voltage = Some(voltage);
-        }
-        Ok(())
-    }
-
-    /// Initialize voltage controller
-    pub async fn init(&mut self, halt_receiver: halt::Receiver) -> error::Result<()> {
-        self.voltage_ctrl.reset().await?;
-        info!("Voltage controller reset");
-        self.voltage_ctrl.jump_from_loader_to_app().await?;
-        info!("Voltage controller application started");
-        let version = self.voltage_ctrl.get_version()?;
-        info!("Voltage controller firmware version {:#04x}", version);
-        // TODO accept multiple
-        if version != power::EXPECTED_VOLTAGE_CTRL_VERSION {
-            Err(ErrorKind::UnexpectedVersion(
-                "voltage controller firmware".to_string(),
-                version.to_string(),
-                power::EXPECTED_VOLTAGE_CTRL_VERSION.to_string(),
-            ))?
-        }
-        self.set_voltage(OPEN_CORE_VOLTAGE).await?;
-        self.voltage_ctrl.enable_voltage()?;
-
-        // Voltage controller successfully initialized at this point, we should start sending
-        // heart beats to it. Otherwise, it would shut down in about 10 seconds.
-        info!("Starting voltage controller heart beat task");
-        let stop_heart_beat = self.voltage_ctrl.start_heart_beat_task();
-
-        // On `Halt` we have to stop the thread sending heart beat
-        let mut voltage_ctrl = self.voltage_ctrl.clone();
-        halt_receiver
-            .register_client("voltage controller".into())
-            .await
-            .spawn_halt_handler(async move {
-                info!("Disabling voltage");
-                // Turn off voltage on chain
-                voltage_ctrl
-                    .disable_voltage()
-                    .expect("failed disabling voltage");
-                // Then stop and join the thread
-                // TODO: this may take up to 1 second, figure out a way to stop it immediately
-                stop_heart_beat.stop();
-            });
-
-        Ok(())
-    }
-}
-
 pub struct HashChainPll {
     chip_freq: Vec<Option<usize>>,
     max_freq: Option<usize>,
@@ -323,7 +249,7 @@ pub struct HashChain {
     /// current PLL chip frequency
     pll: Mutex<HashChainPll>,
     /// Voltage controller on this hashboard
-    power_station: Mutex<PowerStation>,
+    voltage_ctrl: Mutex<power::Control<power::SharedBackend<power::I2cBackend>>>,
     /// Plug pin that indicates the hashboard is present
     #[allow(dead_code)]
     plug_pin: gpio::PinIn,
@@ -390,7 +316,7 @@ impl HashChain {
             chip_count: 0,
             midstate_count,
             asic_difficulty,
-            power_station: Mutex::new(PowerStation::new(voltage_ctrl_backend, hashboard_idx)),
+            voltage_ctrl: Mutex::new(power::Control::new(voltage_ctrl_backend, hashboard_idx)),
             plug_pin,
             rst_pin,
             hashboard_idx,
@@ -503,21 +429,13 @@ impl HashChain {
         info!("Initializing hash chain {}", self.hashboard_idx);
         self.ip_core_init().await?;
         info!("Hashboard IP core initialized");
-        self.power_station.lock().await.init(halt_receiver).await?;
+        self.voltage_ctrl.lock().await.init(halt_receiver).await?;
         info!("Resetting hash board");
         self.enter_reset()?;
         // disable voltage
-        self.power_station
-            .lock()
-            .await
-            .voltage_ctrl
-            .disable_voltage()?;
+        self.voltage_ctrl.lock().await.disable_voltage()?;
         delay_for(Duration::from_millis(INIT_DELAY_MS)).await;
-        self.power_station
-            .lock()
-            .await
-            .voltage_ctrl
-            .enable_voltage()?;
+        self.voltage_ctrl.lock().await.enable_voltage()?;
         delay_for(Duration::from_millis(2 * INIT_DELAY_MS)).await;
 
         // TODO consider including a delay
@@ -561,7 +479,7 @@ impl HashChain {
         }
 
         // lower voltage to working level
-        self.power_station
+        self.voltage_ctrl
             .lock()
             .await
             .set_voltage(initial_voltage)
@@ -1182,7 +1100,7 @@ impl HashChainManager {
             // We are running, change parameters on a live hashchain instance as well
             runtime
                 .hash_chain
-                .power_station
+                .voltage_ctrl
                 .lock()
                 .await
                 .set_voltage(self.params.voltage)
