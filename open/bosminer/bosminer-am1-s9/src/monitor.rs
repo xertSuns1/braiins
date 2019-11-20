@@ -83,12 +83,17 @@ impl ChainTemperature {
     /// TODO: Maybe figure out a strage for disabling remote sensors that are failing. Sometimes
     /// remote sensors fail while mining and instead of signalizing error they return non-sensical
     /// numbers.
+    /// TODO: Is returning "Unknown" when sensor fails OK?
     fn from_s9_sensor(temp: sensor::Temperature) -> Self {
         match temp.remote {
+            // remote is chip temperature
             Measurement::Ok(t) => Self::Ok(t),
             _ => {
-                // fake chip temperature from local temperature
-                Self::Ok(temp.local + 15.0)
+                // fake chip temperature from local (PCB) temperature
+                match temp.local {
+                    Measurement::Ok(t) => Self::Ok(t + 15.0),
+                    _ => Self::Unknown,
+                }
             }
         }
     }
@@ -576,7 +581,7 @@ mod test {
     #[test]
     fn test_monitor_s9_chip_temp() {
         let temp = sensor::Temperature {
-            local: 10.0,
+            local: sensor::Measurement::Ok(10.0),
             remote: sensor::Measurement::Ok(22.0),
         };
         match ChainTemperature::from_s9_sensor(temp) {
@@ -584,13 +589,21 @@ mod test {
             _ => panic!("missing temperature"),
         };
         let temp = sensor::Temperature {
-            local: 10.0,
+            local: sensor::Measurement::Ok(10.0),
             remote: sensor::Measurement::OpenCircuit,
         };
         match ChainTemperature::from_s9_sensor(temp) {
             ChainTemperature::Ok(t) => relative_eq!(t, 25.0),
             _ => panic!("missing temperature"),
         };
+        let temp = sensor::Temperature {
+            local: sensor::Measurement::InvalidReading,
+            remote: sensor::Measurement::OpenCircuit,
+        };
+        assert_eq!(
+            ChainTemperature::from_s9_sensor(temp),
+            ChainTemperature::Unknown
+        );
     }
 
     fn send(mut state: ChainState, when: Instant, message: Message) -> ChainState {
@@ -602,7 +615,7 @@ mod test {
     #[test]
     fn test_monitor_state_transition() {
         let temp = sensor::Temperature {
-            local: 10.0,
+            local: sensor::Measurement::Ok(10.0),
             remote: sensor::Measurement::Ok(22.0),
         };
         let now = Instant::now();
@@ -659,7 +672,7 @@ mod test {
     #[test]
     fn test_monitor_warm_up() {
         let temp = sensor::Temperature {
-            local: 10.0,
+            local: sensor::Measurement::Ok(10.0),
             remote: sensor::Measurement::Ok(22.0),
         };
         let now = Instant::now();
@@ -688,7 +701,7 @@ mod test {
     #[test]
     fn test_monitor_timeouts() {
         let temp = sensor::Temperature {
-            local: 10.0,
+            local: sensor::Measurement::Ok(10.0),
             remote: sensor::Measurement::Ok(22.0),
         };
         let now = Instant::now();

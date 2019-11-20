@@ -122,6 +122,9 @@ where
     ///   two are different
     /// * `val` - value to write to the register
     async fn write_readback(&mut self, reg: u8, reg_read_back: u8, val: u8) -> error::Result<()>;
+
+    /// Return I2C address of device
+    fn get_address(&self) -> Address;
 }
 
 /// We can make a `Device` by tying together some kind of bus (T) and I2C address
@@ -150,6 +153,10 @@ where
 
     async fn write(&mut self, reg: u8, val: u8) -> error::Result<()> {
         self.bus.write(self.address, reg, val).await
+    }
+
+    fn get_address(&self) -> Address {
+        self.address
     }
 
     /// TODO: Maybe, just maybe find a better place where to put this function.
