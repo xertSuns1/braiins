@@ -26,6 +26,9 @@ FROM debian:buster AS base-system
 #   build-essential - rust needs gcc linker
 #   pkg-config      - for rust packages linking C libraries
 #   libusb-1.0      - required by erupter
+#   python3-toml    - imported by our custom runner (for config file, which CI does not make use of)
+#   openssh-client  - custom runner uses it to run tests on device
+#   git             - buildtime dependency of git-version crate (to burn-in git hash into binary --version)
 
 RUN apt-get update && apt-get install -y \
         build-essential \
@@ -34,6 +37,7 @@ RUN apt-get update && apt-get install -y \
         python3-toml \
         curl \
         openssh-client \
+        git \
     && rm -rf /var/lib/apt/* /var/cache/apt/*
 
 FROM base-system AS rust-system
