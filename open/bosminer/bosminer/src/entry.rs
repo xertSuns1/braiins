@@ -31,6 +31,7 @@ use crate::hub;
 use crate::runtime_config;
 use crate::stats;
 
+use git_version::git_version;
 use serde::Deserialize;
 
 use ii_async_compat::tokio;
@@ -95,7 +96,10 @@ pub fn parse_config(config_path: &str) -> GenericConfig {
 pub async fn main<T: hal::Backend>() {
     let _log_guard = ii_logging::setup_for_app();
 
+    let version_string: String = format!("{}-{}", env!("CARGO_PKG_VERSION"), git_version!());
+
     let app = clap::App::new("bosminer")
+        .version(version_string.as_str())
         .arg(
             clap::Arg::with_name("config")
                 .long("config")
