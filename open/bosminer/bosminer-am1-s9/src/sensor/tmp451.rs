@@ -24,7 +24,7 @@
 
 use crate::error;
 use crate::i2c;
-use crate::sensor::{self, I2cSensorDriver, Measurement, Temperature};
+use crate::sensor::{self, Measurement, Temperature};
 
 use async_trait::async_trait;
 use std::boxed::Box;
@@ -70,7 +70,7 @@ async fn read_temperature(
         0
     };
 
-    let local = make_temp(local_temp, local_frac);
+    let local = Measurement::Ok(make_temp(local_temp, local_frac));
     let remote;
     if (status & STATUS_OPEN_CIRCUIT) != 0 {
         remote = Measurement::OpenCircuit;
@@ -90,7 +90,7 @@ async fn read_temperature_local(
     let local_temp = i2c_dev.read(REG_LOCAL_TEMP).await?;
 
     Ok(Temperature {
-        local: make_temp(local_temp, 0),
+        local: Measurement::Ok(make_temp(local_temp, 0)),
         remote: Measurement::NotPresent,
     })
 }
@@ -108,6 +108,12 @@ pub struct TMP451 {
     i2c_dev: Box<dyn i2c::AsyncDevice>,
 }
 
+impl TMP451 {
+    pub fn new(i2c_dev: Box<dyn i2c::AsyncDevice>) -> Box<dyn sensor::Sensor> {
+        Box::new(Self { i2c_dev }) as Box<dyn sensor::Sensor>
+    }
+}
+
 #[async_trait]
 impl sensor::Sensor for TMP451 {
     async fn init(&mut self) -> error::Result<()> {
@@ -119,21 +125,15 @@ impl sensor::Sensor for TMP451 {
     }
 }
 
-impl sensor::I2cSensor for TMP451 {
-    const MANUFACTURER_ID: u8 = 0x55;
-
-    fn new(i2c_dev: Box<dyn i2c::AsyncDevice>) -> Self {
-        Self { i2c_dev }
-    }
-}
-
-inventory::submit! {
-    I2cSensorDriver::new::<TMP451>()
-}
-
 /// ADT7461 driver (almost the same as TMP451)
 pub struct ADT7461 {
     i2c_dev: Box<dyn i2c::AsyncDevice>,
+}
+
+impl ADT7461 {
+    pub fn new(i2c_dev: Box<dyn i2c::AsyncDevice>) -> Box<dyn sensor::Sensor> {
+        Box::new(Self { i2c_dev }) as Box<dyn sensor::Sensor>
+    }
 }
 
 #[async_trait]
@@ -147,21 +147,15 @@ impl sensor::Sensor for ADT7461 {
     }
 }
 
-impl sensor::I2cSensor for ADT7461 {
-    const MANUFACTURER_ID: u8 = 0x41;
-
-    fn new(i2c_dev: Box<dyn i2c::AsyncDevice>) -> Self {
-        Self { i2c_dev }
-    }
-}
-
-inventory::submit! {
-    I2cSensorDriver::new::<ADT7461>()
-}
-
 /// NCT218 driver (only local temperature)
 pub struct NCT218 {
     i2c_dev: Box<dyn i2c::AsyncDevice>,
+}
+
+impl NCT218 {
+    pub fn new(i2c_dev: Box<dyn i2c::AsyncDevice>) -> Box<dyn sensor::Sensor> {
+        Box::new(Self { i2c_dev }) as Box<dyn sensor::Sensor>
+    }
 }
 
 #[async_trait]
@@ -175,18 +169,6 @@ impl sensor::Sensor for NCT218 {
     }
 }
 
-impl sensor::I2cSensor for NCT218 {
-    const MANUFACTURER_ID: u8 = 0x1a;
-
-    fn new(i2c_dev: Box<dyn i2c::AsyncDevice>) -> Self {
-        Self { i2c_dev }
-    }
-}
-
-inventory::submit! {
-    I2cSensorDriver::new::<NCT218>()
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -194,20 +176,18 @@ mod test {
     use ii_async_compat::tokio;
 
     /// Make sensor T with data being read/written from memory `data`
-    fn make_sensor<T: 'static + sensor::Sensor + sensor::I2cSensor>(
+    fn make_i2c_device(
         data: &[InitReg],
-    ) -> (Box<dyn sensor::Sensor>, Box<dyn i2c::AsyncDevice>) {
+    ) -> i2c::Device<i2c::SharedBus<i2c::test_utils::FakeI2cBus>> {
         let addr = i2c::Address::new(0x16);
         // poison all registers except those we define
         let bus = i2c::test_utils::FakeI2cBus::new(addr, data, None, None);
         let bus = i2c::SharedBus::new(bus);
-        let dev = i2c::Device::new(bus, addr);
-        let driver = T::new(Box::new(dev.clone()));
 
-        (Box::new(driver) as Box<dyn sensor::Sensor>, Box::new(dev))
+        i2c::Device::new(bus, addr)
     }
 
-    async fn check_config_ok(dev: &mut Box<dyn i2c::AsyncDevice>) {
+    async fn check_config_ok<T: i2c::AsyncDevice>(dev: &mut T) {
         assert_eq!(
             dev.read(REG_CONFIG_W).await.unwrap() & CONFIG_RANGE,
             CONFIG_RANGE
@@ -237,37 +217,40 @@ mod test {
         ];
 
         // Check "working conditions" on TMP451
-        let (mut sensor, mut dev) = make_sensor::<TMP451>(&ok_regs);
+        let mut dev = make_i2c_device(&ok_regs);
+        let mut sensor = TMP451::new(Box::new(dev.clone()));
         sensor.init().await.unwrap();
         check_config_ok(&mut dev).await;
         assert_eq!(
             sensor.read_temperature().await.unwrap(),
             Temperature {
-                local: 23.1875,
+                local: Measurement::Ok(23.1875),
                 remote: Measurement::Ok(41.25),
             }
         );
 
         // Check "working conditions" on ADT7461
-        let (mut sensor, mut dev) = make_sensor::<ADT7461>(&ok_regs);
+        let mut dev = make_i2c_device(&ok_regs);
+        let mut sensor = ADT7461::new(Box::new(dev.clone()));
         sensor.init().await.unwrap();
         check_config_ok(&mut dev).await;
         assert_eq!(
             sensor.read_temperature().await.unwrap(),
             Temperature {
-                local: 23.0,
+                local: Measurement::Ok(23.0),
                 remote: Measurement::Ok(41.0),
             }
         );
 
         // Check "working conditions" on NCT218
-        let (mut sensor, mut dev) = make_sensor::<NCT218>(&ok_regs);
+        let mut dev = make_i2c_device(&ok_regs);
+        let mut sensor = NCT218::new(Box::new(dev.clone()));
         sensor.init().await.unwrap();
         check_config_ok(&mut dev).await;
         assert_eq!(
             sensor.read_temperature().await.unwrap(),
             Temperature {
-                local: 23.0,
+                local: Measurement::Ok(23.0),
                 remote: Measurement::NotPresent,
             }
         );
@@ -296,25 +279,27 @@ mod test {
         ];
 
         // Test TMP451
-        let (mut sensor, mut dev) = make_sensor::<TMP451>(&ok_regs);
+        let mut dev = make_i2c_device(&ok_regs);
+        let mut sensor = TMP451::new(Box::new(dev.clone()));
         sensor.init().await.unwrap();
         check_config_ok(&mut dev).await;
         assert_eq!(
             sensor.read_temperature().await.unwrap(),
             Temperature {
-                local: 23.1875,
+                local: Measurement::Ok(23.1875),
                 remote: Measurement::OpenCircuit,
             }
         );
 
         // Test ADT7461
-        let (mut sensor, mut dev) = make_sensor::<ADT7461>(&ok_regs);
+        let mut dev = make_i2c_device(&ok_regs);
+        let mut sensor = ADT7461::new(Box::new(dev.clone()));
         sensor.init().await.unwrap();
         check_config_ok(&mut dev).await;
         assert_eq!(
             sensor.read_temperature().await.unwrap(),
             Temperature {
-                local: 23.0,
+                local: Measurement::Ok(23.0),
                 remote: Measurement::OpenCircuit,
             }
         );
@@ -342,25 +327,27 @@ mod test {
         ];
 
         // Test TMP451
-        let (mut sensor, mut dev) = make_sensor::<TMP451>(&ok_regs);
+        let mut dev = make_i2c_device(&ok_regs);
+        let mut sensor = TMP451::new(Box::new(dev.clone()));
         sensor.init().await.unwrap();
         check_config_ok(&mut dev).await;
         assert_eq!(
             sensor.read_temperature().await.unwrap(),
             Temperature {
-                local: 23.1875,
+                local: Measurement::Ok(23.1875),
                 remote: Measurement::ShortCircuit,
             }
         );
 
         // Test ADT7461
-        let (mut sensor, mut dev) = make_sensor::<ADT7461>(&ok_regs);
+        let mut dev = make_i2c_device(&ok_regs);
+        let mut sensor = ADT7461::new(Box::new(dev.clone()));
         sensor.init().await.unwrap();
         check_config_ok(&mut dev).await;
         assert_eq!(
             sensor.read_temperature().await.unwrap(),
             Temperature {
-                local: 23.0,
+                local: Measurement::Ok(23.0),
                 remote: Measurement::ShortCircuit,
             }
         );
