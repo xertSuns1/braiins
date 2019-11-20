@@ -559,7 +559,7 @@ impl Monitor {
 #[cfg(test)]
 mod test {
     use super::*;
-    use approx::relative_eq;
+    use approx::assert_relative_eq;
 
     macro_rules! assert_variant {
         ($value:expr, $pattern:pat) => {{
@@ -585,7 +585,7 @@ mod test {
             remote: sensor::Measurement::Ok(22.0),
         };
         match ChainTemperature::from_s9_sensor(temp) {
-            ChainTemperature::Ok(t) => relative_eq!(t, 22.0),
+            ChainTemperature::Ok(t) => assert_relative_eq!(t, 22.0),
             _ => panic!("missing temperature"),
         };
         let temp = sensor::Temperature {
@@ -593,7 +593,7 @@ mod test {
             remote: sensor::Measurement::OpenCircuit,
         };
         match ChainTemperature::from_s9_sensor(temp) {
-            ChainTemperature::Ok(t) => relative_eq!(t, 25.0),
+            ChainTemperature::Ok(t) => assert_relative_eq!(t, 25.0),
             _ => panic!("missing temperature"),
         };
         let temp = sensor::Temperature {
