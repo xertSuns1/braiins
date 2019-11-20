@@ -64,14 +64,14 @@ impl Controller for OffsetPIDController {
 #[cfg(test)]
 mod test {
     use super::*;
-    use approx::relative_eq;
+    use approx::assert_relative_eq;
 
     /// Verify that offset is added to the results of PID controller computation
     #[test]
     fn test_pid_offset() {
         let mut pid = OffsetPIDController::new(0.0, 0.0, 0.0, 50.0);
-        relative_eq!(pid.update(0.0, 1.0), 50.0);
+        assert_relative_eq!(pid.update(0.0, 1.0), 50.0);
         pid.set_limits(60.0, 60.0);
-        relative_eq!(pid.update(0.0, 1.0), 60.0);
+        assert_relative_eq!(pid.update(0.0, 1.0), 60.0);
     }
 }
