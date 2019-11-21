@@ -31,7 +31,6 @@ pub mod hub;
 pub mod job;
 pub mod node;
 pub mod runtime_config;
-pub mod shutdown;
 pub mod stats;
 pub mod work;
 
