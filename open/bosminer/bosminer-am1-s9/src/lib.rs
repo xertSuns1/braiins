@@ -20,6 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+mod async_i2c;
 mod bm1387;
 pub mod command;
 pub mod config;
