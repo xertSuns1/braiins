@@ -45,6 +45,8 @@ use std::iter;
 use std::sync::Arc;
 use std::time;
 
+pub type BackendBuilder = SolverBuilder<crate::Frontend>;
+
 pub enum LoopState<T> {
     /// Mining work is exhausted
     Exhausted,
@@ -235,16 +237,13 @@ impl Solution {
     }
 
     /// Return the whole unique path starting from job origin and ending in backend.
-    /// A specified `middleware_path` info can be inserted between these 2 paths. The middleware
-    /// info usually represents the miner software itself and is used for overall statistics.
-    pub fn path(&self, middleware_path: &node::Path) -> node::Path {
+    pub fn path(&self) -> node::Path {
         // Arc does not support dynamic casting to trait bounds so there must be used another Arc
         // indirection with implemented `node::Info` trait.
         // This blanket implementation can be found in the module `crate::node`:
         // impl<T: ?Sized + Info> Info for Arc<T> {}
         let job_origin: node::DynInfo = Arc::new(self.work.job.origin());
         iter::once(&job_origin)
-            .chain(middleware_path.iter())
             .chain(self.work.path.iter())
             .cloned()
             .collect()
@@ -273,12 +272,13 @@ pub trait Engine: Debug + Send + Sync {
 pub type DynEngine = Arc<dyn Engine>;
 
 /// Interface required by `EngineReceiver` used for notification of exhausted work
-pub trait ExhaustedHandler: Send + Sync + 'static {
+pub trait ExhaustedHandler: Debug + Send + Sync + 'static {
     /// Called when all work is exhausted in given work engine
     fn handle_exhausted(&self, _engine: DynEngine) {}
 }
 
 /// Helper structure for ignoring all events provided by work module
+#[derive(Debug)]
 pub struct IgnoreEvents;
 
 impl ExhaustedHandler for IgnoreEvents {}
@@ -318,7 +318,7 @@ impl EngineSender {
 }
 
 /// Manages incoming WorkEngines (see get_engine() for details)
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct EngineReceiver {
     /// Broadcast channel that is used to distribute current `WorkEngine`
     watch_receiver: watch::Receiver<DynEngine>,

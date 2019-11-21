@@ -27,20 +27,23 @@ use crate::node;
 use futures::channel::mpsc;
 use ii_async_compat::futures;
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time;
 
 type WorkSolverPath = Vec<Arc<dyn node::WorkSolver>>;
+
+enum NodeType<T> {
+    Base(T),
+    WorkHub(T),
+}
 
 /// Compound object that is supposed to be sent down to the mining backend for building hierarchy
 /// of work solvers and work hubs (special case of solver which only routes work to its child nodes
 /// and is useful for statistics aggregation and group control). Work solvers can be in turn split
 /// to `work::Generator` and `work::SolutionSender` that can solve any generated work and submit
 /// its solutions.
-pub struct SolverBuilder {
-    /// Flag indicating that this is work hub (special case of work solver)
-    hub: AtomicBool,
+pub struct SolverBuilder<T> {
+    node: NodeType<Arc<T>>,
     /// Unique path describing internal hierarchy of backend solvers
     path: WorkSolverPath,
     /// Shared engine receiver needed for creating `Generator`
@@ -51,70 +54,93 @@ pub struct SolverBuilder {
     hierarchy_builder: Arc<dyn backend::HierarchyBuilder>,
 }
 
-impl SolverBuilder {
-    pub fn split(self) -> (Generator, SolutionSender) {
-        assert_eq!(
-            self.hub.load(Ordering::Relaxed),
-            false,
-            "the work hub cannot be split"
-        );
-        (
-            Generator::new(self.engine_receiver, self.path),
-            self.solution_sender,
-        )
-    }
-
-    /// Construct new work solver from `engine_receiver` and associated channel `solution_queue_tx`
-    /// to submit mining results.
-    pub(crate) async fn create_root<T: node::WorkSolver + 'static>(
+impl<T> SolverBuilder<T>
+where
+    T: node::WorkSolver + 'static,
+{
+    pub fn new(
+        base_work_solver: Arc<T>,
         hierarchy_builder: Arc<dyn backend::HierarchyBuilder>,
-        node: Arc<T>,
         engine_receiver: EngineReceiver,
         solution_sender: mpsc::UnboundedSender<Solution>,
     ) -> Self {
-        hierarchy_builder.add_root(node.clone()).await;
-
         Self {
-            hub: AtomicBool::new(false),
-            path: vec![node],
+            node: NodeType::Base(base_work_solver),
+            path: vec![],
             engine_receiver,
             solution_sender: SolutionSender(solution_sender),
             hierarchy_builder,
         }
     }
 
-    /// Create another solver builder based on previous one (`node`).
-    /// It provides generic way how to describe hierarchy in various backends.
-    /// Each solver has unique path described by generic node info.
-    pub async fn branch<T: node::WorkSolver + 'static>(&self, node: Arc<T>) -> Self {
-        // mark work solver builder as work hub during branching of the first child
-        let first_child = !self.hub.compare_and_swap(false, true, Ordering::Relaxed);
-        self.hierarchy_builder
-            .branch(
-                first_child,
-                self.path
-                    .last()
-                    .expect("BUG: empty path in `work::SolverBuilder`")
-                    .clone(),
-                node.clone(),
-            )
+    #[inline]
+    pub fn into_node(self) -> Arc<T> {
+        match self.node {
+            NodeType::Base(_) => panic!("cannot convert base work solver to dynamic node"),
+            NodeType::WorkHub(node) => node,
+        }
+    }
+
+    pub fn get_path(&self) -> WorkSolverPath {
+        match &self.node {
+            NodeType::Base(base) => vec![base.clone()],
+            NodeType::WorkHub(work_hub) => {
+                let mut path = self.path.clone();
+                path.push(work_hub.clone());
+                path
+            }
+        }
+    }
+
+    async fn call_hierarchy_builder(&self, node: node::WorkSolverType<Arc<dyn node::WorkSolver>>) {
+        match &self.node {
+            NodeType::Base(_) => {
+                self.hierarchy_builder.add_root(node).await;
+            }
+            NodeType::WorkHub(work_hub) => {
+                self.hierarchy_builder.branch(work_hub.clone(), node);
+            }
+        };
+    }
+
+    pub async fn create_work_hub<F, U>(&self, create: F) -> SolverBuilder<U>
+    where
+        U: node::WorkSolver + 'static,
+        F: FnOnce() -> U,
+    {
+        let work_hub = Arc::new(create());
+        self.call_hierarchy_builder(node::WorkSolverType::WorkHub(work_hub.clone()))
             .await;
 
-        let mut path = self.path.clone();
-        path.push(node.clone());
-        Self {
-            hub: AtomicBool::new(false),
-            path,
+        SolverBuilder {
+            node: NodeType::WorkHub(work_hub),
+            path: self.get_path(),
             engine_receiver: self.engine_receiver.clone(),
             solution_sender: self.solution_sender.clone(),
             hierarchy_builder: self.hierarchy_builder.clone(),
         }
     }
+
+    pub async fn create_work_solver<F, U>(&self, create: F) -> Arc<U>
+    where
+        U: node::WorkSolver + 'static,
+        F: FnOnce(Generator, SolutionSender) -> U,
+    {
+        let path = self.get_path();
+        let work_generator = Generator::new(self.engine_receiver.clone(), path);
+        let solution_sender = self.solution_sender.clone();
+
+        let work_solver = Arc::new(create(work_generator, solution_sender));
+        self.call_hierarchy_builder(node::WorkSolverType::WorkSolver(work_solver.clone()))
+            .await;
+
+        work_solver
+    }
 }
 
 /// Generator is responsible for accepting a `WorkEngine` and draining as much
 /// `MiningWork` as possible from it.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Generator {
     /// Unique path describing internal hierarchy of backend solvers
     path: WorkSolverPath,
@@ -182,7 +208,7 @@ impl Generator {
 
 /// This struct is to be passed to the underlying mining backend. It allows submission of
 /// `work::Solution`
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SolutionSender(mpsc::UnboundedSender<Solution>);
 
 impl SolutionSender {

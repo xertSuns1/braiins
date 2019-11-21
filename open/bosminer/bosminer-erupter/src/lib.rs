@@ -27,12 +27,12 @@ pub mod icarus;
 
 use ii_logging::macros::*;
 
-use bosminer::clap;
 use bosminer::error::backend::ResultExt;
 use bosminer::hal;
 use bosminer::node;
 use bosminer::stats;
 use bosminer::work;
+use bosminer::{async_trait, clap};
 use bosminer_macros::WorkSolverNode;
 
 use error::ErrorKind;
@@ -41,32 +41,8 @@ use ii_async_compat::{tokio, tokio_executor};
 use tokio_executor::blocking;
 
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-
-fn main_task(work_solver_builder: work::SolverBuilder) -> bosminer::error::Result<()> {
-    info!("Block Erupter: finding device in USB...");
-    let usb_context =
-        libusb::Context::new().context(ErrorKind::Usb("cannot create USB context"))?;
-    let mut device = device::BlockErupter::find(&usb_context)
-        .ok_or_else(|| ErrorKind::Usb("cannot find Block Erupter device"))?;
-
-    info!("Block Erupter: initialization...");
-    device.init()?;
-    info!("Block Erupter: initialized and ready to solve the work!");
-
-    let (generator, solution_sender) = work_solver_builder.split();
-    let mut solver = device.into_solver(generator);
-
-    // iterate until there exists any work or the error occurs
-    for solution in &mut solver {
-        solution_sender.send(solution);
-    }
-
-    // check solver for errors
-    solver.get_stop_reason()?;
-    Ok(())
-}
 
 /// Represents raw solution from the Block Erupter
 #[derive(Debug)]
@@ -113,27 +89,54 @@ impl hal::BackendSolution for Solution {
 pub struct Backend {
     #[member_work_solver_stats]
     work_solver_stats: stats::BasicWorkSolver,
+    work_generator: Mutex<Option<work::Generator>>,
+    solution_sender: work::SolutionSender,
 }
 
 impl Backend {
-    pub fn new() -> Self {
+    pub fn new(work_generator: work::Generator, solution_sender: work::SolutionSender) -> Self {
         Self {
             work_solver_stats: Default::default(),
+            work_generator: Mutex::new(Some(work_generator)),
+            solution_sender,
         }
     }
-}
 
-impl hal::Backend for Backend {
-    const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;
-    const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
-    const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
+    fn run(&self) -> bosminer::error::Result<()> {
+        info!("Block Erupter: finding device in USB...");
+        let usb_context =
+            libusb::Context::new().context(ErrorKind::Usb("cannot create USB context"))?;
+        let mut device = device::BlockErupter::find(&usb_context)
+            .ok_or_else(|| ErrorKind::Usb("cannot find Block Erupter device"))?;
 
-    fn run(self: Arc<Self>, _args: &clap::ArgMatches, work_solver_builder: work::SolverBuilder) {
+        info!("Block Erupter: initialization...");
+        device.init()?;
+        info!("Block Erupter: initialized and ready to solve the work!");
+
+        let mut solver = device.into_solver(
+            self.work_generator
+                .lock()
+                .expect("cannot lock work generator")
+                .take()
+                .expect("missing work generator"),
+        );
+
+        // iterate until there exists any work or the error occurs
+        for solution in &mut solver {
+            self.solution_sender.send(solution);
+        }
+
+        // check solver for errors
+        solver.get_stop_reason()?;
+        Ok(())
+    }
+
+    fn enable(self: Arc<Self>) {
         // Spawn the future in a separate blocking pool (for blocking operations)
         // so that this doesn't block the regular threadpool.
         tokio::spawn(async move {
             blocking::run(move || {
-                if let Err(e) = main_task(work_solver_builder) {
+                if let Err(e) = self.run() {
                     error!("{}", e);
                 }
             })
@@ -145,5 +148,23 @@ impl hal::Backend for Backend {
 impl fmt::Display for Backend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Block Erupter")
+    }
+}
+
+#[async_trait]
+impl hal::Backend for Backend {
+    const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;
+    const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
+    const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
+
+    async fn register(_args: clap::ArgMatches<'_>, backend_builder: work::BackendBuilder) {
+        let work_solver = backend_builder
+            .create_work_solver(|work_generator, solution_sender| {
+                Self::new(work_generator, solution_sender)
+            })
+            .await;
+
+        // TODO: remove it after `node::WorkSolver` trait will be extended with `enable` method
+        work_solver.enable();
     }
 }

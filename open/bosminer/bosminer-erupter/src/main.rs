@@ -25,5 +25,5 @@ use ii_async_compat::tokio;
 #[tokio::main]
 async fn main() {
     ii_async_compat::setup_panic_handling();
-    bosminer::main(bosminer_erupter::Backend::new()).await;
+    bosminer::main::<bosminer_erupter::Backend>().await;
 }
