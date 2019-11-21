@@ -166,6 +166,15 @@ impl From<Context<String>> for Error {
     }
 }
 
+impl From<std::num::ParseIntError> for Error {
+    fn from(e: std::num::ParseIntError) -> Self {
+        let msg = e.to_string();
+        Self {
+            inner: e.context(ErrorKind::General(msg)),
+        }
+    }
+}
+
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
         let msg = e.to_string();
