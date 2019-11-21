@@ -45,7 +45,6 @@ use bosminer::clap;
 use bosminer::hal;
 use bosminer::node;
 use bosminer::runtime_config;
-use bosminer::shutdown;
 use bosminer::stats;
 use bosminer::work;
 use bosminer_macros::WorkSolverNode;
@@ -798,7 +797,6 @@ impl HashChain {
         self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         work_generator: work::Generator,
-        shutdown: shutdown::Sender,
         halt_receiver: halt::Receiver,
     ) {
         halt_receiver
@@ -807,7 +805,6 @@ impl HashChain {
             .spawn(async move {
                 let tx_fifo = self.take_work_tx_io().await;
                 Self::work_tx_task(work_registry, tx_fifo, work_generator).await;
-                shutdown.send("no more work from workhub");
             });
     }
 
@@ -857,7 +854,6 @@ impl HashChain {
         self: Arc<Self>,
         work_generator: work::Generator,
         work_solution: work::SolutionSender,
-        shutdown: shutdown::Sender,
         halt_receiver: halt::Receiver,
         counter: Arc<Mutex<HashChainCounter>>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
@@ -868,7 +864,6 @@ impl HashChain {
             self.clone(),
             work_registry.clone(),
             work_generator,
-            shutdown.clone(),
             halt_receiver.clone(),
         )
         .await;
@@ -967,7 +962,6 @@ pub struct HashChainManager {
     asic_difficulty: usize,
     work_generator: work::Generator,
     work_solution: work::SolutionSender,
-    shutdown: shutdown::Sender,
     /// dynamic runtime - `is_some` only when miner is running
     runtime: Option<HashChainRuntime>,
     /// channel to report to the monitor
@@ -1018,7 +1012,6 @@ impl HashChainManager {
             .start(
                 self.work_generator.clone(),
                 self.work_solution.clone(),
-                self.shutdown.clone(),
                 halt_receiver.clone(),
                 counter.clone(),
                 work_registry,
@@ -1099,7 +1092,6 @@ impl HashChainManager {
 async fn start_miner(
     enabled_chains: Vec<usize>,
     work_solver_builder: work::SolverBuilder,
-    shutdown: shutdown::Sender,
     midstate_count: usize,
     frequency: FrequencySettings,
     voltage: power::Voltage,
@@ -1146,7 +1138,6 @@ async fn start_miner(
             asic_difficulty: config::ASIC_DIFFICULTY,
             work_generator,
             work_solution,
-            shutdown: shutdown.clone(),
             runtime: None,
             params: HashChainParams {
                 frequency: frequency.clone(),
@@ -1295,19 +1286,13 @@ impl hal::Backend for Backend {
         )
     }
 
-    fn run(
-        self: Arc<Self>,
-        args: &clap::ArgMatches,
-        work_solver_builder: work::SolverBuilder,
-        shutdown: shutdown::Sender,
-    ) {
+    fn run(self: Arc<Self>, args: &clap::ArgMatches, work_solver_builder: work::SolverBuilder) {
         let mut configuration: Configuration = Default::default();
         configuration.parse(args);
 
         tokio::spawn(start_miner(
             vec![config::S9_HASHBOARD_INDEX],
             work_solver_builder,
-            shutdown,
             runtime_config::get_midstate_count(),
             FrequencySettings::from_frequency(configuration.pll_frequency),
             power::Voltage::from_volts(configuration.voltage),

@@ -21,7 +21,6 @@
 // contact us at opensource@braiins.com.
 
 use crate::node;
-use crate::shutdown;
 use crate::work;
 
 use std::fmt::Debug;
@@ -54,10 +53,5 @@ pub trait Backend: node::WorkSolver + Send + Sync + 'static {
         app
     }
 
-    fn run(
-        self: Arc<Self>,
-        _args: &clap::ArgMatches,
-        work_solver_builder: work::SolverBuilder,
-        shutdown: shutdown::Sender,
-    );
+    fn run(self: Arc<Self>, _args: &clap::ArgMatches, work_solver_builder: work::SolverBuilder);
 }

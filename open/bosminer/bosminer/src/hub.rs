@@ -30,7 +30,6 @@ use crate::client;
 use crate::hal;
 use crate::job;
 use crate::node;
-use crate::shutdown;
 use crate::work;
 
 use futures::channel::mpsc;
@@ -78,7 +77,6 @@ impl Core {
 
     pub async fn add_backend<T: hal::Backend>(&self, backend: T, args: clap::ArgMatches<'_>) {
         let backend = Arc::new(backend);
-        let (shutdown_sender, _shutdown_receiver) = shutdown::channel();
 
         let work_solver_builder = work::SolverBuilder::create_root(
             self.backend_registry.clone(),
@@ -89,7 +87,7 @@ impl Core {
         .await;
 
         // immediately start HW backend for selected target
-        backend.run(&args, work_solver_builder, shutdown_sender);
+        backend.run(&args, work_solver_builder);
     }
 
     pub async fn add_client<F, T>(&self, create: F) -> Arc<dyn node::Client>

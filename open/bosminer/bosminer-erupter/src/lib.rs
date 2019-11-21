@@ -31,7 +31,6 @@ use bosminer::clap;
 use bosminer::error::backend::ResultExt;
 use bosminer::hal;
 use bosminer::node;
-use bosminer::shutdown;
 use bosminer::stats;
 use bosminer::work;
 use bosminer_macros::WorkSolverNode;
@@ -45,10 +44,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-fn main_task(
-    work_solver_builder: work::SolverBuilder,
-    _shutdown: shutdown::Sender,
-) -> bosminer::error::Result<()> {
+fn main_task(work_solver_builder: work::SolverBuilder) -> bosminer::error::Result<()> {
     info!("Block Erupter: finding device in USB...");
     let usb_context =
         libusb::Context::new().context(ErrorKind::Usb("cannot create USB context"))?;
@@ -132,17 +128,12 @@ impl hal::Backend for Backend {
     const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
-    fn run(
-        self: Arc<Self>,
-        _args: &clap::ArgMatches,
-        work_solver_builder: work::SolverBuilder,
-        shutdown: shutdown::Sender,
-    ) {
+    fn run(self: Arc<Self>, _args: &clap::ArgMatches, work_solver_builder: work::SolverBuilder) {
         // Spawn the future in a separate blocking pool (for blocking operations)
         // so that this doesn't block the regular threadpool.
         tokio::spawn(async move {
             blocking::run(move || {
-                if let Err(e) = main_task(work_solver_builder, shutdown) {
+                if let Err(e) = main_task(work_solver_builder) {
                     error!("{}", e);
                 }
             })

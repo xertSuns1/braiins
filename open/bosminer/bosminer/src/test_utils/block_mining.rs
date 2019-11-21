@@ -33,7 +33,6 @@ use crate::backend;
 use crate::hal;
 use crate::job::Bitcoin;
 use crate::runtime_config;
-use crate::shutdown;
 use crate::test_utils;
 use crate::work;
 
@@ -309,8 +308,6 @@ async fn collect_solutions(
 pub async fn run<T: hal::Backend>(backend: T) {
     // create shared backend required by trait methods
     let backend = Arc::new(backend);
-    // create shutdown channel
-    let (shutdown_sender, shutdown_receiver) = shutdown::channel();
 
     // this is a small miner core: we generate work, collect solutions, and we pair them together
     // we expect all (generated) problems to be solved
@@ -326,7 +323,7 @@ pub async fn run<T: hal::Backend>(backend: T) {
     let registry = Arc::new(Mutex::new(Registry::new()));
 
     // start HW backend for selected target
-    backend.run(&Default::default(), work_solver, shutdown_sender);
+    backend.run(&Default::default(), work_solver);
 
     // start task to collect solutions and put them to registry
     tokio::spawn(collect_solutions(solution_queue_rx, registry.clone()));
@@ -370,9 +367,6 @@ pub async fn run<T: hal::Backend>(backend: T) {
     let registry = registry.lock().await;
     assert!(registry.check_everything_solved(true));
     // });
-
-    // the shutdown receiver has to survive up to this point to prevent shutdown sends by dying tasks to fail
-    drop(shutdown_receiver);
 }
 
 #[test]
