@@ -20,6 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+pub mod firmware;
+
 use ii_logging::macros::*;
 
 // TODO remove thread specific code
@@ -49,12 +51,9 @@ const PIC_COMMAND_2: u8 = 0xAA;
 
 // All commands provided by the PIC based voltage controller
 const SET_PIC_FLASH_POINTER: u8 = 0x01;
-#[allow(dead_code)]
 const SEND_DATA_TO_IIC: u8 = 0x02;
 const READ_DATA_FROM_IIC: u8 = 0x03;
-#[allow(dead_code)]
 const ERASE_IIC_FLASH: u8 = 0x04;
-#[allow(dead_code)]
 const WRITE_DATA_INTO_PIC: u8 = 0x05;
 const JUMP_FROM_LOADER_TO_APP: u8 = 0x06;
 const RESET_PIC: u8 = 0x07;
@@ -86,6 +85,9 @@ const RD_TEMP_OFFSET_VALUE: u8 = 0x23;
 
 /// The PIC firmware in the voltage controller is expected to provide/return this version
 pub const EXPECTED_VOLTAGE_CTRL_VERSION: u8 = 0x03;
+
+/// Path to voltage controller PIC program
+pub const PIC_PROGRAM_PATH: &'static str = "/etc/hash_s8_app.txt";
 
 /// Bundle voltage value with methods to convert it to/from various representations
 #[derive(Clone, Copy, PartialEq)]
@@ -230,6 +232,38 @@ impl HashboardBackend {
     }
 }
 
+/// Type to represent number of PIC flash words
+/// TODO: implement arithmetic on `PicWords`, `PicAddress`, add constructors, bounds, etc.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct PicWords(pub u16);
+
+impl PicWords {
+    pub fn to_bytes(&self) -> usize {
+        self.0 as usize * 2
+    }
+
+    pub fn from_bytes(num_bytes: usize) -> Self {
+        assert_eq!(num_bytes % 2, 0);
+        assert!(num_bytes / 2 <= std::u16::MAX as usize);
+        Self((num_bytes / 2) as u16)
+    }
+}
+
+/// PIC address (one word is 14 bits, which is represented here by u16)
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct PicAddress(pub u16);
+
+impl PicAddress {
+    pub fn distance_to(&self, end: PicAddress) -> PicWords {
+        assert!(self.0 <= end.0);
+        PicWords(end.0 - self.0 + 1)
+    }
+
+    pub fn offset(&self, distance: PicWords) -> PicAddress {
+        PicAddress(self.0 + distance.0)
+    }
+}
+
 /// Represents a voltage controller for a particular hashboard
 ///
 /// NOTE: Some I2C PIC commands require explicit wait time before issuing new
@@ -260,6 +294,12 @@ impl Control {
     /// I have no deeper insight on how was this constant determined.
     const BMMINER_DELAY: Duration = Duration::from_millis(100);
 
+    /// Flash sector size
+    pub const FLASH_SECTOR_WORDS: usize = 32;
+
+    /// Number of bytes in `SEND_DATA_TO_IIC` and `READ_DATA_FROM_IIC` command response/reply
+    pub const FLASH_XFER_BLOCK_SIZE_BYTES: usize = 16;
+
     async fn read(&self, command: u8, length: usize) -> error::Result<Vec<u8>> {
         self.backend.lock().await.read(command, length).await
     }
@@ -278,6 +318,25 @@ impl Control {
         Ok(())
     }
 
+    pub async fn send_data_to_iic(&self, data: &[u8]) -> error::Result<()> {
+        self.write(SEND_DATA_TO_IIC, data).await
+    }
+
+    /// Erase one flash sector (64 bytes)
+    pub async fn erase_flash_sector(&self) -> error::Result<()> {
+        self.write_delay(ERASE_IIC_FLASH, &[], Self::BMMINER_DELAY)
+            .await
+    }
+
+    pub async fn erase_flash(&self, num_words: PicWords) -> error::Result<()> {
+        let num_words = num_words.0 as usize;
+        assert_eq!(num_words % Self::FLASH_SECTOR_WORDS, 0);
+        for _ in 0..(num_words / Self::FLASH_SECTOR_WORDS) {
+            self.erase_flash_sector().await?;
+        }
+        Ok(())
+    }
+
     pub async fn reset(&self) -> error::Result<()> {
         self.write_delay(RESET_PIC, &[], Self::RESET_DELAY).await
     }
@@ -291,24 +350,33 @@ impl Control {
         Ok(self.read(GET_PIC_SOFTWARE_VERSION, 1).await?[0])
     }
 
-    pub async fn set_flash_pointer(&self, address: u16) -> error::Result<()> {
-        self.write(SET_PIC_FLASH_POINTER, &u16::to_be_bytes(address))
+    pub async fn write_data_to_flash(&self) -> error::Result<()> {
+        self.write_delay(WRITE_DATA_INTO_PIC, &[], Self::BMMINER_DELAY)
             .await
     }
 
-    pub async fn get_flash_pointer(&self) -> error::Result<u16> {
+    pub async fn set_flash_pointer(&self, address: PicAddress) -> error::Result<()> {
+        self.write(SET_PIC_FLASH_POINTER, &u16::to_be_bytes(address.0))
+            .await
+    }
+
+    pub async fn get_flash_pointer(&self) -> error::Result<PicAddress> {
         let address_bytes = self.read(GET_PIC_FLASH_POINTER, 2).await?;
-        Ok(u16::from_be_bytes(
+        Ok(PicAddress(u16::from_be_bytes(
             address_bytes
                 .as_slice()
                 .try_into()
                 .expect("incorrect slice length"),
-        ))
+        )))
     }
 
-    pub async fn read_data_from_iic(&self) -> error::Result<[u8; 16]> {
-        let data = self.read(READ_DATA_FROM_IIC, 16).await?;
-        let mut data_array = [0; 16];
+    pub async fn read_data_from_iic(
+        &self,
+    ) -> error::Result<[u8; Self::FLASH_XFER_BLOCK_SIZE_BYTES]> {
+        let data = self
+            .read(READ_DATA_FROM_IIC, Self::FLASH_XFER_BLOCK_SIZE_BYTES)
+            .await?;
+        let mut data_array = [0; Self::FLASH_XFER_BLOCK_SIZE_BYTES];
         data_array.copy_from_slice(&data);
         Ok(data_array)
     }
@@ -362,22 +430,35 @@ impl Control {
         }
     }
 
-    /// Initialize voltage controller
-    /// TODO: decouple this code from `halt_receiver`
-    pub async fn init(self: Arc<Self>, halt_receiver: halt::Receiver) -> error::Result<()> {
+    async fn reset_and_start_app(&self) -> error::Result<u8> {
         self.reset().await?;
         info!("Voltage controller reset");
         self.jump_from_loader_to_app().await?;
         info!("Voltage controller application started");
         let version = self.get_version().await?;
         info!("Voltage controller firmware version {:#04x}", version);
+        Ok(version)
+    }
+
+    /// Initialize voltage controller
+    /// TODO: decouple this code from `halt_receiver`
+    pub async fn init(self: Arc<Self>, halt_receiver: halt::Receiver) -> error::Result<()> {
+        let version = self.reset_and_start_app().await?;
         // TODO accept multiple
         if version != EXPECTED_VOLTAGE_CTRL_VERSION {
-            Err(ErrorKind::UnexpectedVersion(
-                "voltage controller firmware".to_string(),
-                version.to_string(),
-                EXPECTED_VOLTAGE_CTRL_VERSION.to_string(),
-            ))?
+            info!("Bad firmware version! Reloading firmware...");
+            let program = firmware::PicProgram::read(PIC_PROGRAM_PATH)?;
+            program.program_pic(&*self).await?;
+
+            let version = self.reset_and_start_app().await?;
+            if version != EXPECTED_VOLTAGE_CTRL_VERSION {
+                info!("Firmware reloading failed, still bad firmware version...");
+                Err(ErrorKind::UnexpectedVersion(
+                    "voltage controller firmware".to_string(),
+                    version.to_string(),
+                    EXPECTED_VOLTAGE_CTRL_VERSION.to_string(),
+                ))?
+            }
         }
         self.set_voltage(OPEN_CORE_VOLTAGE).await?;
         self.enable_voltage().await?;
@@ -427,6 +508,16 @@ impl Control {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn test_pic_address_words() {
+        let a = PicAddress(0x300);
+        let b = PicAddress(0xffff);
+        assert_eq!(a.offset(PicWords(0x500)), PicAddress(0x800));
+        assert_eq!(a.distance_to(b), PicWords(0xfd00));
+        assert_eq!(PicWords(0xf000).to_bytes(), 0x1e000);
+        assert_eq!(PicWords::from_bytes(0x1fffe), PicWords(0xffff));
+    }
 
     #[test]
     fn test_get_address() {
