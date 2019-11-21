@@ -62,6 +62,28 @@ pub trait ClientStats: Stats {
     fn client_stats(&self) -> &dyn stats::Client;
 }
 
+pub enum WorkSolverType<T: WorkSolver> {
+    WorkHub(T),
+    WorkSolver(T),
+}
+
+impl<T> WorkSolverType<T>
+where
+    T: WorkSolver,
+{
+    pub fn as_ref(&self) -> &T {
+        match self {
+            WorkSolverType::WorkHub(node) | WorkSolverType::WorkSolver(node) => node,
+        }
+    }
+
+    pub fn into_inner(self) -> T {
+        match self {
+            WorkSolverType::WorkHub(node) | WorkSolverType::WorkSolver(node) => node,
+        }
+    }
+}
+
 /// Common interface for nodes with ability to solve generated work and providing common interface
 /// for mining control
 pub trait WorkSolver: Info + WorkSolverStats {}
@@ -85,5 +107,13 @@ impl<T: ?Sized + Info> Info for Arc<T> {}
 impl<T: ?Sized + Stats> Stats for Arc<T> {
     fn mining_stats(&self) -> &dyn stats::Mining {
         self.as_ref().mining_stats()
+    }
+}
+
+impl<T: ?Sized + WorkSolver> WorkSolver for Arc<T> {}
+
+impl<T: ?Sized + WorkSolverStats> WorkSolverStats for Arc<T> {
+    fn work_solver_stats(&self) -> &dyn stats::WorkSolver {
+        self.as_ref().work_solver_stats()
     }
 }

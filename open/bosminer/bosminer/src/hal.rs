@@ -20,12 +20,12 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use crate::node;
 use crate::work;
 
 use std::fmt::Debug;
-use std::sync::Arc;
 use std::time::Duration;
+
+use async_trait::async_trait;
 
 /// Represents raw solution from the mining hardware
 pub trait BackendSolution: Debug + Send + Sync {
@@ -41,7 +41,8 @@ pub trait BackendSolution: Debug + Send + Sync {
 }
 
 /// Minimal interface for running compatible backend with bOSminer crate
-pub trait Backend: node::WorkSolver + Send + Sync + 'static {
+#[async_trait]
+pub trait Backend: Send + Sync + 'static {
     /// Number of midstates
     const DEFAULT_MIDSTATE_COUNT: usize;
     /// Default hashrate interval used for statistics
@@ -53,5 +54,5 @@ pub trait Backend: node::WorkSolver + Send + Sync + 'static {
         app
     }
 
-    fn run(self: Arc<Self>, _args: &clap::ArgMatches, work_solver_builder: work::SolverBuilder);
+    async fn register(args: clap::ArgMatches<'_>, backend_builder: work::BackendBuilder);
 }

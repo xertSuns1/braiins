@@ -41,6 +41,7 @@ pub mod test;
 
 use ii_logging::macros::*;
 
+use bosminer::async_trait;
 use bosminer::clap;
 use bosminer::hal;
 use bosminer::node;
@@ -853,7 +854,7 @@ impl HashChain {
     async fn start(
         self: Arc<Self>,
         work_generator: work::Generator,
-        work_solution: work::SolutionSender,
+        solution_sender: work::SolutionSender,
         halt_receiver: halt::Receiver,
         counter: Arc<Mutex<HashChainCounter>>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
@@ -870,7 +871,7 @@ impl HashChain {
         Self::spawn_rx_task(
             self.clone(),
             work_registry.clone(),
-            work_solution,
+            solution_sender,
             halt_receiver.clone(),
             counter,
         )
@@ -940,11 +941,25 @@ pub struct HashChainRuntime {
     counter: Arc<Mutex<HashChainCounter>>,
 }
 
-#[derive(Default, Debug, WorkSolverNode)]
+#[derive(WorkSolverNode)]
 struct HashChainNode {
     #[member_work_solver_stats]
     work_solver_stats: stats::BasicWorkSolver,
     hashboard_idx: usize,
+    work_generator: work::Generator,
+    solution_sender: work::SolutionSender,
+    gpio_mgr: gpio::ControlPinManager,
+    voltage_ctrl_backend: power::SharedBackend<power::I2cBackend>,
+    midstate_count: MidstateCount,
+    asic_difficulty: usize,
+    /// channel to report to the monitor
+    monitor_tx: mpsc::UnboundedSender<monitor::Message>,
+}
+
+impl fmt::Debug for HashChainNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Antminer S9 - Hashboard {}", self.hashboard_idx)
+    }
 }
 
 impl fmt::Display for HashChainNode {
@@ -955,18 +970,10 @@ impl fmt::Display for HashChainNode {
 
 /// Hashchain manager that can start and stop instances of hashchain
 pub struct HashChainManager {
-    gpio_mgr: gpio::ControlPinManager,
-    voltage_ctrl_backend: power::SharedBackend<power::I2cBackend>,
-    hashboard_idx: usize,
-    midstate_count: MidstateCount,
-    asic_difficulty: usize,
-    work_generator: work::Generator,
-    work_solution: work::SolutionSender,
     /// dynamic runtime - `is_some` only when miner is running
     runtime: Option<HashChainRuntime>,
-    /// channel to report to the monitor
-    monitor_tx: mpsc::UnboundedSender<monitor::Message>,
     pub params: HashChainParams,
+    node: Arc<HashChainNode>,
 }
 
 impl HashChainManager {
@@ -979,12 +986,12 @@ impl HashChainManager {
 
         // make us a hash chain
         let mut hash_chain = HashChain::new(
-            &self.gpio_mgr,
-            self.voltage_ctrl_backend.clone(),
-            self.hashboard_idx,
-            self.midstate_count,
-            self.asic_difficulty,
-            self.monitor_tx.clone(),
+            &self.node.gpio_mgr,
+            self.node.voltage_ctrl_backend.clone(),
+            self.node.hashboard_idx,
+            self.node.midstate_count,
+            self.node.asic_difficulty,
+            self.node.monitor_tx.clone(),
         )
         .expect("hashchain instantiation failed");
 
@@ -1010,8 +1017,8 @@ impl HashChainManager {
         hash_chain
             .clone()
             .start(
-                self.work_generator.clone(),
-                self.work_solution.clone(),
+                self.node.work_generator.clone(),
+                self.node.solution_sender.clone(),
                 halt_receiver.clone(),
                 counter.clone(),
                 work_registry,
@@ -1040,7 +1047,8 @@ impl HashChainManager {
         runtime.halt_sender.clone().send_halt().await;
 
         // tell monitor we are done
-        self.monitor_tx
+        self.node
+            .monitor_tx
             .unbounded_send(monitor::Message::Off)
             .expect("send failed");
 
@@ -1091,7 +1099,7 @@ impl HashChainManager {
 /// This will change once restarts are added
 async fn start_miner(
     enabled_chains: Vec<usize>,
-    work_solver_builder: work::SolverBuilder,
+    work_solver_builder: work::SolverBuilder<Backend>,
     midstate_count: usize,
     frequency: FrequencySettings,
     voltage: power::Voltage,
@@ -1110,45 +1118,50 @@ async fn start_miner(
     let monitor = monitor::Monitor::new(config, halt_sender.clone(), halt_receiver.clone()).await;
     let voltage_ctrl_backend = power::I2cBackend::new(0);
     let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
-    let mut hms = Vec::new();
+    let mut managers = Vec::new();
     info!(
         "Initializing miner, enabled_chains={:?}, midstate_count={}",
         enabled_chains, midstate_count,
     );
-    // build all hash chain managers
+    // build all hash chain managers and register ourselves with frontend
     for hashboard_idx in enabled_chains.iter() {
-        // build hashchain_node for statistics
-        let hashchain_node = Arc::new(HashChainNode {
-            hashboard_idx: *hashboard_idx,
-            ..Default::default()
-        });
-        let (work_generator, work_solution) = work_solver_builder
-            .branch(hashchain_node.clone())
-            .await
-            .split();
-        let hm = HashChainManager {
-            // TODO: create a new substructure of the miner that will hold all gpio and
-            // "physical-insertion" detection data. This structure will be persistent in
-            // between restarts and will enable early notification that there is no hashboard
-            // inserted (instead find out at mining-time).
-            gpio_mgr: gpio::ControlPinManager::new(),
-            voltage_ctrl_backend: voltage_ctrl_backend.clone(),
-            hashboard_idx: *hashboard_idx,
-            midstate_count: MidstateCount::new(midstate_count),
-            asic_difficulty: config::ASIC_DIFFICULTY,
-            work_generator,
-            work_solution,
+        // register monitor for this haschain
+        let monitor_tx =
+            monitor::Monitor::register_hashchain(monitor.clone(), *hashboard_idx).await;
+
+        // build hashchain_node for statistics and static parameters
+        let hash_chain_node = work_solver_builder
+            .create_work_solver(|work_generator, solution_sender| {
+                HashChainNode {
+                    // TODO: create a new substructure of the miner that will hold all gpio and
+                    // "physical-insertion" detection data. This structure will be persistent in
+                    // between restarts and will enable early notification that there is no hashboard
+                    // inserted (instead find out at mining-time).
+                    gpio_mgr: gpio::ControlPinManager::new(),
+                    voltage_ctrl_backend: voltage_ctrl_backend.clone(),
+                    hashboard_idx: *hashboard_idx,
+                    midstate_count: MidstateCount::new(midstate_count),
+                    asic_difficulty: config::ASIC_DIFFICULTY,
+                    work_solver_stats: Default::default(),
+                    solution_sender,
+                    work_generator,
+                    monitor_tx,
+                }
+            })
+            .await;
+
+        let hash_chain_manager = HashChainManager {
             runtime: None,
             params: HashChainParams {
                 frequency: frequency.clone(),
                 voltage,
             },
-            monitor_tx: monitor::Monitor::register_hashchain(monitor.clone(), *hashboard_idx).await,
+            node: hash_chain_node,
         };
-        hms.push(hm);
+        managers.push(hash_chain_manager);
     }
     // start everything
-    for (_id, hash_chain_manager) in hms.drain(..).enumerate() {
+    for (_id, hash_chain_manager) in managers.drain(..).enumerate() {
         let halt_receiver = halt_receiver.clone();
         tokio::spawn(async move {
             let hash_chain_manager = Arc::new(Mutex::new(hash_chain_manager));
@@ -1258,6 +1271,7 @@ impl Backend {
     }
 }
 
+#[async_trait]
 impl hal::Backend for Backend {
     const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;
     const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
@@ -1286,17 +1300,20 @@ impl hal::Backend for Backend {
         )
     }
 
-    fn run(self: Arc<Self>, args: &clap::ArgMatches, work_solver_builder: work::SolverBuilder) {
+    async fn register(args: clap::ArgMatches<'_>, backend_builder: work::BackendBuilder) {
         let mut configuration: Configuration = Default::default();
-        configuration.parse(args);
+        configuration.parse(&args);
 
-        tokio::spawn(start_miner(
+        let work_solver_builder = backend_builder.create_work_hub(|| Self::new()).await;
+
+        start_miner(
             vec![config::S9_HASHBOARD_INDEX],
             work_solver_builder,
             runtime_config::get_midstate_count(),
             FrequencySettings::from_frequency(configuration.pll_frequency),
             power::Voltage::from_volts(configuration.voltage),
-        ));
+        )
+        .await;
     }
 }
 

@@ -49,6 +49,7 @@ use ii_async_compat::futures;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+#[derive(Debug)]
 struct ExhaustedWorkHandler {
     reschedule_sender: mpsc::UnboundedSender<work::DynEngine>,
 }
@@ -259,11 +260,11 @@ impl Registry {
 /// - add channel to `engine_sender` that will notify us of engine being exhausted
 /// - make a channel to get solutions back
 /// - build a solver and connect everything to it
-async fn build_solvers() -> (
+fn build_solvers() -> (
     work::EngineSender,
     mpsc::UnboundedReceiver<work::Solution>,
     mpsc::UnboundedReceiver<work::DynEngine>,
-    work::SolverBuilder,
+    work::BackendBuilder,
 ) {
     let (reschedule_sender, reschedule_receiver) = mpsc::unbounded();
     let (engine_sender, engine_receiver) =
@@ -278,13 +279,12 @@ async fn build_solvers() -> (
         // then you will be able to receive it here)
         reschedule_receiver,
         // This is a solver that you hand off to backend
-        work::SolverBuilder::create_root(
+        work::SolverBuilder::new(
+            Arc::new(crate::Frontend::new()),
             Arc::new(backend::IgnoreHierarchy),
-            Arc::new(test_utils::TestWorkSolver::new()),
             engine_receiver,
             solution_queue_tx,
-        )
-        .await,
+        ),
     )
 }
 
@@ -305,10 +305,7 @@ async fn collect_solutions(
     }
 }
 
-pub async fn run<T: hal::Backend>(backend: T) {
-    // create shared backend required by trait methods
-    let backend = Arc::new(backend);
-
+pub async fn run<T: hal::Backend>() {
     // this is a small miner core: we generate work, collect solutions, and we pair them together
     // we expect all (generated) problems to be solved
     // ii_async_compat::run_main_exits(async move {
@@ -316,14 +313,14 @@ pub async fn run<T: hal::Backend>(backend: T) {
     let midstate_count = runtime_config::get_midstate_count();
 
     // Create solver and channels to send/receive work
-    let (mut engine_sender, solution_queue_rx, mut reschedule_receiver, work_solver) =
-        build_solvers().await;
+    let (mut engine_sender, solution_queue_rx, mut reschedule_receiver, work_solver_builder) =
+        build_solvers();
 
     // create problem registry
     let registry = Arc::new(Mutex::new(Registry::new()));
 
     // start HW backend for selected target
-    backend.run(&Default::default(), work_solver);
+    T::register(Default::default(), work_solver_builder).await;
 
     // start task to collect solutions and put them to registry
     tokio::spawn(collect_solutions(solution_queue_rx, registry.clone()));

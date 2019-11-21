@@ -40,6 +40,7 @@ use std::sync::Arc;
 
 /// Handle external events. Currently it is used only wor handling exhausted work from work engine.
 /// It usually signals some serious problem in backend.
+#[derive(Debug)]
 struct EventHandler;
 
 impl work::ExhaustedHandler for EventHandler {
@@ -49,7 +50,7 @@ impl work::ExhaustedHandler for EventHandler {
 }
 
 pub struct Core {
-    frontend_info: node::DynInfo,
+    pub frontend: Arc<crate::Frontend>,
     engine_sender: Mutex<Option<work::EngineSender>>,
     engine_receiver: work::EngineReceiver,
     solution_sender: mpsc::UnboundedSender<work::Solution>,
@@ -60,12 +61,12 @@ pub struct Core {
 }
 
 impl Core {
-    pub fn new(frontend_info: node::DynInfo) -> Self {
+    pub fn new() -> Self {
         let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
         let (solution_sender, solution_receiver) = mpsc::unbounded();
 
         Self {
-            frontend_info,
+            frontend: Arc::new(crate::Frontend::new()),
             engine_sender: Mutex::new(Some(engine_sender)),
             engine_receiver,
             solution_sender,
@@ -75,19 +76,16 @@ impl Core {
         }
     }
 
-    pub async fn add_backend<T: hal::Backend>(&self, backend: T, args: clap::ArgMatches<'_>) {
-        let backend = Arc::new(backend);
-
-        let work_solver_builder = work::SolverBuilder::create_root(
+    pub async fn add_backend<T: hal::Backend>(&self, args: clap::ArgMatches<'_>) {
+        let work_solver_builder = work::SolverBuilder::new(
+            self.frontend.clone(),
             self.backend_registry.clone(),
-            backend.clone(),
             self.engine_receiver.clone(),
             self.solution_sender.clone(),
-        )
-        .await;
+        );
 
-        // immediately start HW backend for selected target
-        backend.run(&args, work_solver_builder);
+        // registration of backend hierarchy is done dynamically
+        T::register(args, work_solver_builder).await;
     }
 
     pub async fn add_client<F, T>(&self, create: F) -> Arc<dyn node::Client>
@@ -96,7 +94,6 @@ impl Core {
         F: FnOnce(job::Solver) -> T,
     {
         let job_solver = job::Solver::new(
-            self.frontend_info.clone(),
             self.engine_sender
                 .lock()
                 .await
@@ -148,21 +145,18 @@ pub mod test {
     /// Create job solver for frontend (pool) and work solver builder for backend (as we expect a
     /// hierarchical structure in backends)
     /// `backend_work_solver` is the root of the work solver hierarchy
-    async fn build_solvers<T: node::WorkSolver + 'static>(
-        frontend_info: node::DynInfo,
-        backend_work_solver: Arc<T>,
-    ) -> (job::Solver, work::SolverBuilder) {
+    fn build_solvers() -> (job::Solver, work::BackendBuilder) {
         let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
         let (solution_sender, solution_receiver) = mpsc::unbounded();
+        let frontend = Arc::new(crate::Frontend::new());
         (
-            job::Solver::new(frontend_info, engine_sender, solution_receiver),
-            work::SolverBuilder::create_root(
+            job::Solver::new(engine_sender, solution_receiver),
+            work::BackendBuilder::new(
+                frontend,
                 Arc::new(backend::Registry::new()),
-                backend_work_solver,
                 engine_receiver,
                 solution_sender,
-            )
-            .await,
+            ),
         )
     }
 
@@ -171,14 +165,22 @@ pub mod test {
     /// in the test
     #[tokio::test]
     async fn test_solvers_connection() {
-        let (job_solver, work_solver) = build_solvers(
-            Arc::new(test_utils::TestNode::new()),
-            Arc::new(test_utils::TestWorkSolver::new()),
-        )
-        .await;
-
+        let (job_solver, work_solver_builder) = build_solvers();
         let (mut job_sender, mut solution_receiver) = job_solver.split();
-        let (mut work_generator, solution_sender) = work_solver.split();
+
+        let mut work_generator = None;
+        let mut solution_sender = None;
+
+        work_solver_builder
+            .create_work_solver(|local_work_generator, local_solution_sender| {
+                work_generator = Some(local_work_generator);
+                solution_sender = Some(local_solution_sender);
+                Arc::new(test_utils::TestWorkSolver::new())
+            })
+            .await;
+
+        let mut work_generator = work_generator.unwrap();
+        let solution_sender = solution_sender.unwrap();
 
         // default target is be set to difficulty 1 so all solution should pass
         for block in test_utils::TEST_BLOCKS.iter() {

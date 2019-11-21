@@ -92,13 +92,12 @@ pub struct Solver {
 
 impl Solver {
     pub fn new(
-        frontend_info: node::DynInfo,
         engine_sender: work::EngineSender,
         solution_receiver: mpsc::UnboundedReceiver<work::Solution>,
     ) -> Self {
         Self {
             job_sender: Sender::new(engine_sender),
-            solution_receiver: SolutionReceiver::new(frontend_info, solution_receiver),
+            solution_receiver: SolutionReceiver::new(solution_receiver),
         }
     }
 
@@ -152,19 +151,12 @@ impl Sender {
 /// Receives `work::Solution` via a channel and filters only solutions that meet the client/pool
 /// specified target
 pub struct SolutionReceiver {
-    frontend_path: node::SharedPath,
     solution_channel: mpsc::UnboundedReceiver<work::Solution>,
 }
 
 impl SolutionReceiver {
-    pub fn new(
-        frontend_info: node::DynInfo,
-        solution_channel: mpsc::UnboundedReceiver<work::Solution>,
-    ) -> Self {
-        Self {
-            frontend_path: node::SharedPath::new(vec![frontend_info]),
-            solution_channel,
-        }
+    pub fn new(solution_channel: mpsc::UnboundedReceiver<work::Solution>) -> Self {
+        Self { solution_channel }
     }
 
     fn trace_share(solution: &work::Solution, target: &ii_bitcoin::Target) {
@@ -183,7 +175,7 @@ impl SolutionReceiver {
 
     pub async fn receive(&mut self) -> Option<work::Solution> {
         while let Some(solution) = self.solution_channel.next().await {
-            let path = solution.path(&self.frontend_path);
+            let path = solution.path();
             let time = solution.timestamp();
             let hash = solution.hash();
             let job_target = solution.job_target();

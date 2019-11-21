@@ -24,6 +24,7 @@ use ii_logging::macros::*;
 
 use super::*;
 use crate::bm1387::MidstateCount;
+use crate::fan;
 use crate::halt;
 use crate::{FrequencySettings, HashChain, Solution};
 
@@ -134,6 +135,10 @@ async fn start_hchain(
     let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = power::I2cBackend::new(0);
     let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
+    let fan_control = fan::Control::new().expect("failed initializing fan controller");
+
+    // turn on fans to full (no temp control)
+    fan_control.set_speed(fan::Speed::FULL_SPEED);
 
     let mut hash_chain = crate::HashChain::new(
         &gpio_mgr,

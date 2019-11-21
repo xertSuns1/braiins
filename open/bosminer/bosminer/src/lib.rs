@@ -40,24 +40,23 @@ pub mod test_utils;
 pub use entry::main;
 // reexport clap which is needed in `hal::Backend::add_args`
 pub use clap;
+// reexport clap which is needed for implementation of `hal::Backend` trait
+pub use async_trait::async_trait;
 
-use bosminer_macros::MiningNode;
+use bosminer_macros::WorkSolverNode;
 
 use std::fmt;
-use std::sync::Arc;
 
-use once_cell::sync::Lazy;
-
-#[derive(Debug, MiningNode)]
+#[derive(Debug, WorkSolverNode)]
 pub struct Frontend {
-    #[member_mining_stats]
-    mining_stats: stats::BasicMining,
+    #[member_work_solver_stats]
+    work_solver_stats: stats::BasicWorkSolver,
 }
 
 impl Frontend {
     pub fn new() -> Self {
         Self {
-            mining_stats: Default::default(),
+            work_solver_stats: Default::default(),
         }
     }
 }
@@ -67,6 +66,3 @@ impl fmt::Display for Frontend {
         write!(f, "bOSminer")
     }
 }
-
-/// Shared (global) configuration structure
-pub static BOSMINER: Lazy<Arc<Frontend>> = Lazy::new(|| Arc::new(Frontend::new()));

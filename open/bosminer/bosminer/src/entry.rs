@@ -30,7 +30,6 @@ use crate::hal;
 use crate::hub;
 use crate::runtime_config;
 use crate::stats;
-use crate::BOSMINER;
 
 use ii_async_compat::tokio;
 
@@ -38,7 +37,15 @@ use std::sync::Arc;
 
 use clap::{self, Arg};
 
-pub async fn main<T: hal::Backend>(backend: T) {
+/// Registration is run in separate task to avoid blocking while the backend is being e.g. started
+async fn backend_registration_task<T: hal::Backend>(
+    core: Arc<hub::Core>,
+    args: clap::ArgMatches<'_>,
+) {
+    core.add_backend::<T>(args).await
+}
+
+pub async fn main<T: hal::Backend>() {
     let _log_guard = ii_logging::setup_for_app();
 
     let app = clap::App::new("bosminer")
@@ -75,13 +82,13 @@ pub async fn main<T: hal::Backend>(backend: T) {
     runtime_config::set_midstate_count(T::DEFAULT_MIDSTATE_COUNT);
 
     // Initialize hub core which manages all resources
-    let core = Arc::new(hub::Core::new(BOSMINER.clone()));
+    let core = Arc::new(hub::Core::new());
 
-    core.add_backend(backend, args).await;
+    tokio::spawn(backend_registration_task::<T>(core.clone(), args));
 
     // start statistics processing
     tokio::spawn(stats::mining_task(
-        BOSMINER.clone(),
+        core.frontend.clone(),
         T::DEFAULT_HASHRATE_INTERVAL,
     ));
 

@@ -22,7 +22,7 @@
 
 //! This module contains dynamically built backend hierarchy
 
-use crate::node;
+use crate::node::{self, WorkSolverType};
 
 use async_trait::async_trait;
 use futures::lock::Mutex;
@@ -32,33 +32,39 @@ use std::sync::Arc;
 
 #[async_trait]
 pub trait HierarchyBuilder: Send + Sync {
-    async fn add_root(&self, work_solver: Arc<dyn node::WorkSolver>);
+    async fn add_work_hub(&self, _work_hub: Arc<dyn node::WorkSolver>) {}
 
-    /// Creates new level of hierarchy. `work_hub` is the parent of the new node `work_solver`.
-    /// `first_child` indicates that `work_solver` is its first ancestor.
+    async fn add_work_solver(&self, _work_solver: Arc<dyn node::WorkSolver>) {}
+
+    async fn add_node(&self, node: WorkSolverType<Arc<dyn node::WorkSolver>>) {
+        match node {
+            WorkSolverType::WorkHub(work_hub) => {
+                self.add_work_hub(work_hub).await;
+            }
+            WorkSolverType::WorkSolver(work_solver) => {
+                self.add_work_solver(work_solver).await;
+            }
+        }
+    }
+
+    async fn add_root(&self, node: WorkSolverType<Arc<dyn node::WorkSolver>>) {
+        self.add_node(node);
+    }
+
     async fn branch(
         &self,
-        first_child: bool,
-        work_hub: Arc<dyn node::WorkSolver>,
-        work_solver: Arc<dyn node::WorkSolver>,
-    );
+        _parent_work_hub: Arc<dyn node::WorkSolver>,
+        node: WorkSolverType<Arc<dyn node::WorkSolver>>,
+    ) {
+        self.add_node(node);
+    }
 }
 
 /// This struct is intended mainly for tests to ignore backend hierarchy completely
 pub struct IgnoreHierarchy;
 
 #[async_trait]
-impl HierarchyBuilder for IgnoreHierarchy {
-    async fn add_root(&self, _work_solver: Arc<dyn node::WorkSolver>) {}
-
-    async fn branch(
-        &self,
-        _first_child: bool,
-        _work_hub: Arc<dyn node::WorkSolver>,
-        _work_solver: Arc<dyn node::WorkSolver>,
-    ) {
-    }
-}
+impl HierarchyBuilder for IgnoreHierarchy {}
 
 /// This structure contains list of backend nodes and is also the default hierarchy builder for the
 /// bOSminer. It collects all work solvers and work hubs (special case of solver which only routes
@@ -111,26 +117,6 @@ impl Registry {
         self.push_work_solver(&mut *self.work_solvers.lock().await, work_solver);
     }
 
-    async fn branch_work_solver(
-        &self,
-        work_hub: Arc<dyn node::WorkSolver>,
-        work_solver: Arc<dyn node::WorkSolver>,
-    ) {
-        let mut work_solvers = self.work_solvers.lock().await;
-
-        match work_solvers
-            .iter_mut()
-            .rev()
-            .find(|old_work_solver| Arc::ptr_eq(old_work_solver, &work_hub))
-        {
-            None => work_solvers.push(work_solver),
-            Some(old_work_solver) => {
-                *old_work_solver = work_solver;
-                self.register_work_hub(work_hub).await;
-            }
-        }
-    }
-
     #[inline]
     pub async fn get_root_hub(&self) -> Option<Arc<dyn node::WorkSolver>> {
         self.root_hub.lock().await.clone()
@@ -149,20 +135,18 @@ impl Registry {
 
 #[async_trait]
 impl HierarchyBuilder for Registry {
-    async fn add_root(&self, work_solver: Arc<dyn node::WorkSolver>) {
-        self.register_root_hub(work_solver).await;
+    async fn add_work_hub(&self, work_hub: Arc<dyn node::WorkSolver>) {
+        self.register_work_hub(work_hub).await;
     }
 
-    async fn branch(
-        &self,
-        first_child: bool,
-        work_hub: Arc<dyn node::WorkSolver>,
-        work_solver: Arc<dyn node::WorkSolver>,
-    ) {
-        if first_child {
-            self.branch_work_solver(work_hub, work_solver).await;
-        } else {
-            self.register_work_solver(work_solver).await;
-        }
+    async fn add_work_solver(&self, work_solver: Arc<dyn node::WorkSolver>) {
+        self.register_work_solver(work_solver).await;
+    }
+
+    async fn add_root(&self, node: WorkSolverType<Arc<dyn node::WorkSolver>>) {
+        // register node as a root hub
+        self.register_root_hub(node.as_ref().clone()).await;
+        // and add its actual type (work hub/solver)
+        self.add_node(node).await;
     }
 }
