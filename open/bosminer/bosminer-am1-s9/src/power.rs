@@ -24,20 +24,15 @@ use ii_logging::macros::*;
 
 // TODO remove thread specific code
 use std::convert::TryInto;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::thread::JoinHandle;
-use std::time::{self, Duration};
+use std::sync::Arc;
+use std::time::Duration;
 
+use crate::async_i2c::AsyncI2cDev;
+use crate::error::{self, ErrorKind};
 use crate::halt;
 
-use crate::error::{self, ErrorKind};
-use failure::ResultExt;
-
-use embedded_hal::blocking::i2c::{Read, Write};
-use linux_embedded_hal::I2cdev;
-
+use futures::lock::Mutex;
+use ii_async_compat::futures;
 use ii_async_compat::tokio;
 use tokio::timer::delay_for;
 
@@ -125,24 +120,11 @@ impl Voltage {
     }
 }
 
-/// Describes a voltage controller backend interface
-pub trait Backend
-where
-    Self: Send + Sync,
-{
-    /// Sends a Write transaction for a voltage controller on a particular hashboard
-    /// * `data` - payload of the command
-    fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()>;
-    /// Sends a Read transaction for a voltage controller on a particular hashboard
-    /// * `length` - size of the expected response in bytes
-    fn read(&mut self, hashboard_idx: usize, command: u8, length: u8) -> error::Result<Vec<u8>>;
-}
-
-/// Newtype that represents an I2C voltage controller communication backend
+/// Type that represents an I2C voltage controller communication backend
 /// S9 devices have a single I2C master that manages the voltage controllers on all hashboards.
-/// Therefore, this will be a single communication instance
+/// Therefore, this will be a single communication instance.
 pub struct I2cBackend {
-    inner: I2cdev,
+    inner: AsyncI2cDev,
 }
 
 impl I2cBackend {
@@ -155,108 +137,55 @@ impl I2cBackend {
     /// * `i2c_interface_num` - index of the I2C interface in Linux dev filesystem
     pub fn new(i2c_interface_num: usize) -> Self {
         Self {
-            inner: I2cdev::new(format!("/dev/i2c-{}", i2c_interface_num))
-                .expect("i2c instantiation failed"),
+            inner: AsyncI2cDev::open(format!("/dev/i2c-{}", i2c_interface_num))
+                .expect("I2C instantiation failed"),
         }
     }
-}
 
-impl Backend for I2cBackend {
-    fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()> {
+    pub async fn write(&self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()> {
         let command_bytes = [&[PIC_COMMAND_1, PIC_COMMAND_2, command], data].concat();
         self.inner
-            .write(Self::get_i2c_address(hashboard_idx), &command_bytes)
-            .with_context(|e| ErrorKind::I2c(e.to_string()))?;
-        Ok(())
+            .write(Self::get_i2c_address(hashboard_idx), command_bytes)
+            .await
     }
 
-    fn read(&mut self, hashboard_idx: usize, command: u8, length: u8) -> error::Result<Vec<u8>> {
-        self.write(hashboard_idx, command, &[])
-            .with_context(|e| ErrorKind::I2c(e.to_string()))?;
-        let mut result = vec![0; length as usize];
+    pub async fn read(
+        &self,
+        hashboard_idx: usize,
+        command: u8,
+        length: usize,
+    ) -> error::Result<Vec<u8>> {
+        self.write(hashboard_idx, command, &[]).await?;
         self.inner
-            .read(Self::get_i2c_address(hashboard_idx), &mut result)
-            .with_context(|e| ErrorKind::I2c(e.to_string()))?;
-        Ok(result)
+            .read(Self::get_i2c_address(hashboard_idx), length)
+            .await
     }
 }
 
-pub struct SharedBackend<T>(Arc<Mutex<T>>);
-
-impl<T> SharedBackend<T>
-where
-    T: Backend,
-{
-    pub fn new(backend: T) -> Self {
-        SharedBackend(Arc::new(Mutex::new(backend)))
-    }
+/// This is per-hashboard voltage controller backend (knows its hashboard_idx).
+/// All hashboards share one I2C master bus, so we use this structure to manage concurrent access
+/// to hashboard power controller (ie. if we want to delay operations on one voltage
+/// controller, we lock this structure instead of locking the whole I2C bus).
+struct HashboardBackend {
+    // I2cBackend is shared amongst all hashchains
+    backend: Arc<I2cBackend>,
+    hashboard_idx: usize,
 }
 
-impl<T> Backend for SharedBackend<T>
-where
-    T: Backend,
-{
-    fn write(&mut self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()> {
-        self.0
-            .lock()
-            .expect("locking failed")
-            .write(hashboard_idx, command, data)
-    }
-
-    fn read(&mut self, hashboard_idx: usize, command: u8, length: u8) -> error::Result<Vec<u8>> {
-        self.0
-            .lock()
-            .expect("locking failed")
-            .read(hashboard_idx, command, length)
-    }
-}
-
-impl<T> Clone for SharedBackend<T> {
-    fn clone(&self) -> Self {
-        SharedBackend(self.0.clone())
-    }
-}
-
-/// Utility structure to signal stop condition to a thread.
-/// Do join the thread when stop condition is signaled.
-/// TODO: figure out a better mechanism
-pub struct StopSender {
-    stop: Arc<AtomicBool>,
-    join: JoinHandle<()>,
-}
-
-impl StopSender {
-    // Signalize stop
-    pub fn stop(self) {
-        self.stop.store(true, Ordering::Relaxed);
-        self.join.join().expect("joining of thread failed");
-    }
-}
-
-/// Other half of StopSender
-#[derive(Clone)]
-pub struct StopReceiver {
-    stop: Arc<AtomicBool>,
-}
-
-impl StopReceiver {
-    fn new() -> Self {
+impl HashboardBackend {
+    fn new(backend: Arc<I2cBackend>, hashboard_idx: usize) -> Self {
         Self {
-            stop: Arc::new(AtomicBool::new(false)),
+            backend,
+            hashboard_idx,
         }
     }
 
-    // Check if stop has been asserted
-    fn should_stop(&self) -> bool {
-        self.stop.load(Ordering::Relaxed)
+    async fn write(&self, command: u8, data: &[u8]) -> error::Result<()> {
+        self.backend.write(self.hashboard_idx, command, data).await
     }
 
-    // Create StopSender out of StopReceiver (on the same condition)
-    fn into_sender(self, join: JoinHandle<()>) -> StopSender {
-        StopSender {
-            stop: self.stop.clone(),
-            join,
-        }
+    async fn read(&self, command: u8, length: usize) -> error::Result<Vec<u8>> {
+        self.backend.read(self.hashboard_idx, command, length).await
     }
 }
 
@@ -274,20 +203,15 @@ impl StopReceiver {
 /// but if you implement some new commands be sure to include timeout where
 /// necessary (`SET_HOST_MAC_ADDRESS` requires one etc., check bmminer
 /// sources).
-#[derive(Clone)]
-pub struct Control<T> {
+pub struct Control {
     /// Backend that carries out the operation
-    backend: T,
-    /// Identifies the hashboard
-    hashboard_idx: usize,
+    backend: Mutex<HashboardBackend>,
     /// Tracks current voltage
-    current_voltage: Option<Voltage>,
+    /// Locks: first take this, then `backend`
+    current_voltage: Mutex<Option<Voltage>>,
 }
 
-impl<T> Control<T>
-where
-    T: 'static + Backend + Send + Clone,
-{
+impl Control {
     /// How long does it take to reset the PIC controller.
     const RESET_DELAY: Duration = Duration::from_millis(500);
 
@@ -295,36 +219,44 @@ where
     /// I have no deeper insight on how was this constant determined.
     const BMMINER_DELAY: Duration = Duration::from_millis(100);
 
-    fn read(&mut self, command: u8, length: u8) -> error::Result<Vec<u8>> {
-        self.backend.read(self.hashboard_idx, command, length)
+    async fn read(&self, command: u8, length: usize) -> error::Result<Vec<u8>> {
+        self.backend.lock().await.read(command, length).await
     }
 
-    fn write(&mut self, command: u8, data: &[u8]) -> error::Result<()> {
-        self.backend.write(self.hashboard_idx, command, data)
+    async fn write(&self, command: u8, data: &[u8]) -> error::Result<()> {
+        self.backend.lock().await.write(command, data).await
     }
 
-    pub async fn reset(&mut self) -> error::Result<()> {
-        self.write(RESET_PIC, &[])?;
-        delay_for(Self::RESET_DELAY).await;
+    /// Do a write followed by a delay with locks held to let voltage controller finish
+    /// the operation.
+    async fn write_delay(&self, command: u8, data: &[u8], delay: Duration) -> error::Result<()> {
+        let backend = self.backend.lock().await;
+        backend.write(command, data).await?;
+        // wait for delay while holding lock
+        delay_for(delay).await;
         Ok(())
     }
 
-    pub async fn jump_from_loader_to_app(&mut self) -> error::Result<()> {
-        self.write(JUMP_FROM_LOADER_TO_APP, &[])?;
-        delay_for(Self::BMMINER_DELAY).await;
-        Ok(())
+    pub async fn reset(&self) -> error::Result<()> {
+        self.write_delay(RESET_PIC, &[], Self::RESET_DELAY).await
     }
 
-    pub fn get_version(&mut self) -> error::Result<u8> {
-        Ok(self.read(GET_PIC_SOFTWARE_VERSION, 1)?[0])
+    pub async fn jump_from_loader_to_app(&self) -> error::Result<()> {
+        self.write_delay(JUMP_FROM_LOADER_TO_APP, &[], Self::BMMINER_DELAY)
+            .await
     }
 
-    pub fn set_flash_pointer(&mut self, address: u16) -> error::Result<()> {
+    pub async fn get_version(&self) -> error::Result<u8> {
+        Ok(self.read(GET_PIC_SOFTWARE_VERSION, 1).await?[0])
+    }
+
+    pub async fn set_flash_pointer(&self, address: u16) -> error::Result<()> {
         self.write(SET_PIC_FLASH_POINTER, &u16::to_be_bytes(address))
+            .await
     }
 
-    pub fn get_flash_pointer(&mut self) -> error::Result<u16> {
-        let address_bytes = self.read(GET_PIC_FLASH_POINTER, 2)?;
+    pub async fn get_flash_pointer(&self) -> error::Result<u16> {
+        let address_bytes = self.read(GET_PIC_FLASH_POINTER, 2).await?;
         Ok(u16::from_be_bytes(
             address_bytes
                 .as_slice()
@@ -333,45 +265,46 @@ where
         ))
     }
 
-    pub fn read_data_from_iic(&mut self) -> error::Result<[u8; 16]> {
-        let data = self.read(READ_DATA_FROM_IIC, 16)?;
+    pub async fn read_data_from_iic(&self) -> error::Result<[u8; 16]> {
+        let data = self.read(READ_DATA_FROM_IIC, 16).await?;
         let mut data_array = [0; 16];
         data_array.copy_from_slice(&data);
         Ok(data_array)
     }
 
-    pub fn enable_voltage(&mut self) -> error::Result<()> {
-        self.write(ENABLE_VOLTAGE, &[true as u8])
+    pub async fn enable_voltage(&self) -> error::Result<()> {
+        self.write(ENABLE_VOLTAGE, &[true as u8]).await
     }
 
-    pub fn disable_voltage(&mut self) -> error::Result<()> {
-        self.write(ENABLE_VOLTAGE, &[false as u8])
+    pub async fn disable_voltage(&self) -> error::Result<()> {
+        self.write(ENABLE_VOLTAGE, &[false as u8]).await
     }
 
-    pub async fn set_voltage(&mut self, voltage: Voltage) -> error::Result<()> {
-        if self.current_voltage != Some(voltage) {
+    pub async fn set_voltage(&self, voltage: Voltage) -> error::Result<()> {
+        let mut current_voltage = self.current_voltage.lock().await;
+        if *current_voltage != Some(voltage) {
             info!(
                 "Setting voltage to {} (was: {:?})",
                 voltage.as_volts(),
-                self.current_voltage.map(|v| v.as_volts())
+                current_voltage.map(|v| v.as_volts())
             );
-            self.write(SET_VOLTAGE, &[voltage.as_pic_value()?])?;
-            delay_for(Self::BMMINER_DELAY).await;
-            self.current_voltage = Some(voltage);
+            self.write_delay(SET_VOLTAGE, &[voltage.as_pic_value()?], Self::BMMINER_DELAY)
+                .await?;
+            *current_voltage = Some(voltage);
         }
         Ok(())
     }
 
-    pub fn get_voltage(&mut self) -> error::Result<u8> {
-        Ok(self.read(GET_VOLTAGE, 1)?[0])
+    pub async fn get_voltage(&self) -> error::Result<u8> {
+        Ok(self.read(GET_VOLTAGE, 1).await?[0])
     }
 
-    pub fn send_heart_beat(&mut self) -> error::Result<()> {
-        self.write(SEND_HEART_BEAT, &[])
+    pub async fn send_heart_beat(&self) -> error::Result<()> {
+        self.write(SEND_HEART_BEAT, &[]).await
     }
 
-    pub fn get_temperature_offset(&mut self) -> error::Result<u64> {
-        let offset = self.read(RD_TEMP_OFFSET_VALUE, 8)?;
+    pub async fn get_temperature_offset(&self) -> error::Result<u64> {
+        let offset = self.read(RD_TEMP_OFFSET_VALUE, 8).await?;
         Ok(u64::from_be_bytes(
             offset
                 .as_slice()
@@ -381,22 +314,21 @@ where
     }
 
     /// Creates a new voltage controller
-    pub fn new(backend: T, hashboard_idx: usize) -> Self {
+    pub fn new(backend: Arc<I2cBackend>, hashboard_idx: usize) -> Self {
         Self {
-            backend,
-            hashboard_idx,
-            current_voltage: None,
+            backend: Mutex::new(HashboardBackend::new(backend, hashboard_idx)),
+            current_voltage: Mutex::new(None),
         }
     }
 
     /// Initialize voltage controller
     /// TODO: decouple this code from `halt_receiver`
-    pub async fn init(&mut self, halt_receiver: halt::Receiver) -> error::Result<()> {
+    pub async fn init(self: Arc<Self>, halt_receiver: halt::Receiver) -> error::Result<()> {
         self.reset().await?;
         info!("Voltage controller reset");
         self.jump_from_loader_to_app().await?;
         info!("Voltage controller application started");
-        let version = self.get_version()?;
+        let version = self.get_version().await?;
         info!("Voltage controller firmware version {:#04x}", version);
         // TODO accept multiple
         if version != EXPECTED_VOLTAGE_CTRL_VERSION {
@@ -407,28 +339,11 @@ where
             ))?
         }
         self.set_voltage(OPEN_CORE_VOLTAGE).await?;
-        self.enable_voltage()?;
+        self.enable_voltage().await?;
 
         // Voltage controller successfully initialized at this point, we should start sending
         // heart beats to it. Otherwise, it would shut down in about 10 seconds.
-        info!("Starting voltage controller heart beat task");
-        let stop_heart_beat = self.start_heart_beat_task();
-
-        // On `Halt` we have to stop the thread sending heart beat and disable voltage
-        let mut voltage_ctrl = self.clone();
-        halt_receiver
-            .register_client("voltage controller".into())
-            .await
-            .spawn_halt_handler(async move {
-                info!("Disabling voltage");
-                // Turn off voltage on chain
-                voltage_ctrl
-                    .disable_voltage()
-                    .expect("failed disabling voltage");
-                // Then stop and join the thread
-                // TODO: this may take up to 1 second, figure out a way to stop it immediately
-                stop_heart_beat.stop();
-            });
+        self.start_heart_beat_task(halt_receiver).await;
 
         Ok(())
     }
@@ -437,43 +352,34 @@ where
     ///
     /// The reason is to notify the voltage controller that we are alive so that it wouldn't
     /// cut-off power supply to the hashing chips on the board.
-    /// TODO threading should be only part of some test profile
-    pub fn start_heart_beat_task(&self) -> StopSender {
-        let hb_backend = self.backend.clone();
-        let idx = self.hashboard_idx;
-        let stop_receiver = StopReceiver::new();
-        let stop_receiver_thread = stop_receiver.clone();
-        let handle = thread::Builder::new()
-            .name(format!("board[{}]: Voltage Ctrl heart beat", self.hashboard_idx).into())
-            .spawn(move || {
-                let mut voltage_ctrl = Self::new(hb_backend, idx);
+    async fn start_heart_beat_task(self: Arc<Self>, halt_receiver: halt::Receiver) {
+        // Start heartbeat thread in termination context
+        let voltage_ctrl = self.clone();
+        halt_receiver
+            .register_client("power heartbeat".into())
+            .await
+            .spawn(async move {
                 loop {
-                    // check if we should stop
-                    if stop_receiver_thread.should_stop() {
-                        break;
-                    }
-
-                    let now = time::Instant::now();
                     voltage_ctrl
                         .send_heart_beat()
+                        .await
                         .expect("send_heart_beat failed");
-
-                    //trace!("Heartbeat for board {}", idx);
-                    // evaluate how much time it took to send the heart beat and sleep for the rest
-                    // of the heart beat period
-                    let elapsed = now.elapsed();
-                    // sleep only if we have not exceeded the heart beat period. This makes the
-                    // code more robust when running it in debugger to prevent underflow time
-                    // subtraction
-                    if elapsed < VOLTAGE_CTRL_HEART_BEAT_PERIOD {
-                        thread::sleep(VOLTAGE_CTRL_HEART_BEAT_PERIOD - elapsed);
-                    }
+                    delay_for(VOLTAGE_CTRL_HEART_BEAT_PERIOD).await;
                 }
-            })
-            .expect("thread spawning failed");
+            });
 
-        // create condition sender on the same variable as receiver
-        stop_receiver.into_sender(handle)
+        // Make a termination handler that disables voltage when stopped
+        let voltage_ctrl = self.clone();
+        halt_receiver
+            .register_client("power heartbeat termination".into())
+            .await
+            .spawn_halt_handler(async move {
+                info!("Disabling voltage");
+                voltage_ctrl
+                    .disable_voltage()
+                    .await
+                    .expect("failed disabling voltage");
+            });
     }
 }
 

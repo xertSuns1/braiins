@@ -133,8 +133,7 @@ async fn start_hchain(
     monitor_tx: mpsc::UnboundedSender<monitor::Message>,
 ) -> HashChain {
     let gpio_mgr = gpio::ControlPinManager::new();
-    let voltage_ctrl_backend = power::I2cBackend::new(0);
-    let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
+    let voltage_ctrl_backend = Arc::new(power::I2cBackend::new(0));
     let fan_control = fan::Control::new().expect("failed initializing fan controller");
 
     // turn on fans to full (no temp control)

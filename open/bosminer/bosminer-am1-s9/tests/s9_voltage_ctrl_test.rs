@@ -28,6 +28,8 @@ use bosminer_am1_s9::power;
 use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
 
+use std::sync::Arc;
+
 /// Helper function that tests voltage controller on a particular hashboard.
 ///
 /// The test simply verifies that the voltage controller responds with a valid version
@@ -43,14 +45,13 @@ async fn test_voltage_ctrl_on_1_hashboard(idx: usize, ctrl_pin_manager: &gpio::C
     reset.set_low().unwrap();
     reset.set_high().unwrap();
 
-    let backend = power::I2cBackend::new(0);
-    let backend = power::SharedBackend::new(backend);
-    let mut voltage_ctrl = power::Control::new(backend, idx);
+    let backend = Arc::new(power::I2cBackend::new(0));
+    let voltage_ctrl = power::Control::new(backend, idx);
 
     voltage_ctrl.reset().await.unwrap();
     voltage_ctrl.jump_from_loader_to_app().await.unwrap();
 
-    let version = voltage_ctrl.get_version().unwrap();
+    let version = voltage_ctrl.get_version().await.unwrap();
     let expected_version: u8 = 3;
     assert_eq!(
         version, expected_version,
