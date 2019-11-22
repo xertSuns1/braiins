@@ -109,7 +109,7 @@ impl NotifyReceiver {
                 Either::Right((halt_result, _)) => {
                     match halt_result {
                         // confirm we are done (there's no cleanup)
-                        Some(done) => done.confirm(),
+                        Some(done_sender) => done_sender.confirm(),
                         // halt sender was dropped
                         None => (),
                     }
