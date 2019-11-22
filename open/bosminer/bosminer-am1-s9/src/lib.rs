@@ -228,11 +228,6 @@ impl HashChainCounter {
     }
 }
 
-pub struct HashChainPll {
-    chip_freq: Vec<Option<usize>>,
-    max_freq: Option<usize>,
-}
-
 /// Hash Chain Controller provides abstraction of the FPGA interface for operating hashing boards.
 /// It is the user-space driver for the IP Core
 ///
@@ -246,8 +241,6 @@ pub struct HashChain {
     midstate_count: MidstateCount,
     /// ASIC difficulty
     asic_difficulty: usize,
-    /// current PLL chip frequency
-    pll: Mutex<HashChainPll>,
     /// Voltage controller on this hashboard
     voltage_ctrl: Mutex<power::Control<power::SharedBackend<power::I2cBackend>>>,
     /// Plug pin that indicates the hashboard is present
@@ -327,10 +320,6 @@ impl HashChain {
             work_tx_io: Mutex::new(Some(work_tx_io)),
             monitor_tx,
             disable_init_work: false,
-            pll: Mutex::new(HashChainPll {
-                chip_freq: [None; MAX_CHIPS_ON_CHAIN].to_vec(),
-                max_freq: None,
-            }),
         })
     }
 
@@ -363,18 +352,11 @@ impl HashChain {
 
     /// Set work time depending on current PLL frequency
     ///
-    /// This method sets work time so it's fast enough at least for `new_freq`.
-    /// It internally tracks what work_time is set and when it's too slow, it increases it.
+    /// This method sets work time so it's fast enough for `new_freq`
     async fn set_work_time(&self, new_freq: usize) {
-        let mut pll = self.pll.lock().await;
-        let current_max_freq = pll.max_freq.unwrap_or(0);
-
-        if new_freq > current_max_freq {
-            let new_work_time = self.calculate_work_time(new_freq);
-            info!("Using work time: {} for freq {}", new_work_time, new_freq);
-            self.common_io.set_ip_core_work_time(new_work_time);
-            pll.max_freq = Some(new_freq);
-        }
+        let new_work_time = self.calculate_work_time(new_freq);
+        info!("Using work time: {} for freq {}", new_work_time, new_freq);
+        self.common_io.set_ip_core_work_time(new_work_time);
     }
 
     /// Helper method that initializes the FPGA IP core
@@ -452,7 +434,7 @@ impl HashChain {
         self.command_context.set_chip_count(self.chip_count).await;
 
         // set PLL
-        self.set_pll_table(initial_frequency).await?;
+        self.set_pll(initial_frequency).await?;
 
         // configure the hashing chain to operate at desired baud rate. Note that gate block is
         // enabled to allow continuous start of chips in the chain
@@ -546,20 +528,9 @@ impl HashChain {
 
     /// Loads PLL register with a starting value
     ///
-    /// This function (and related `set_work_time`) isn't particularly nice, because it's
-    /// trying to maintain a runtime invariant of `work_time` which is related to frequency.
-    /// Maybe this code can go away if we decide not to change these things at runtime.
-    ///
-    /// Ideas: make a struct holding pll setting, implement rest atop of it.
-    async fn set_pll(&self, freq: usize, chip_id: usize) -> error::Result<()> {
+    /// WARNING: you have to take care of `set_work_time` yourself
+    async fn set_chip_pll(&self, chip_id: usize, freq: usize) -> error::Result<()> {
         assert!(chip_id < self.chip_count);
-
-        // check we are setting a different frequency
-        let mut pll = self.pll.lock().await;
-        if pll.chip_freq[chip_id] == Some(freq) {
-            // frequency is the same, do nothing
-            return Ok(());
-        }
 
         // convert frequency to PLL setting register
         let pll_reg = bm1387::PllReg::try_pll_from_freq(CHIP_OSC_CLK_HZ, freq)?;
@@ -570,29 +541,29 @@ impl HashChain {
             chip_id,
             pll_reg.calc(CHIP_OSC_CLK_HZ)
         );
+
         // NOTE: when PLL register is read back, it is or-ed with 0x8000_0000, not sure why
         self.command_context
             .write_register(ChipAddress::One(chip_id), &pll_reg)
             .await?;
 
-        // Remember the frequency we set
-        pll.chip_freq[chip_id] = Some(freq);
-        drop(pll);
-
-        // Update worktime if necessary
-        self.set_work_time(freq).await;
-
         Ok(())
     }
 
     /// Load PLL register of all chips
-    async fn set_pll_table(&self, frequency: &FrequencySettings) -> error::Result<()> {
+    ///
+    /// Takes care of adjusting `work_time`
+    pub async fn set_pll(&self, frequency: &FrequencySettings) -> error::Result<()> {
         // TODO: find a better way - how to communicate with frequency setter how many chips we have?
         assert!(frequency.chip.len() >= self.chip_count);
 
+        // Update chips one-by-one
         for i in 0..self.chip_count {
-            self.set_pll(frequency.chip[i], i).await?;
+            self.set_chip_pll(i, frequency.chip[i]).await?;
         }
+        // Update worktime
+        self.set_work_time(frequency.max()).await;
+
         Ok(())
     }
 
@@ -1105,10 +1076,7 @@ impl HashChainManager {
                 .await
                 .set_voltage(self.params.voltage)
                 .await?;
-            runtime
-                .hash_chain
-                .set_pll_table(&self.params.frequency)
-                .await?;
+            runtime.hash_chain.set_pll(&self.params.frequency).await?;
         }
 
         Ok(())
