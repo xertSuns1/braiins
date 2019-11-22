@@ -48,12 +48,12 @@ impl TempControl {
         return temp_control;
     }
 
-    // set fan limits when warming up
+    /// set fan limits when warming up
     pub fn set_warm_up_limits(&mut self) {
         self.pid.set_limits(60.0, 100.0);
     }
 
-    // set fan limits when in operation
+    /// set fan limits when in operation
     pub fn set_normal_limits(&mut self) {
         self.pid.set_limits(1.0, 100.0);
     }

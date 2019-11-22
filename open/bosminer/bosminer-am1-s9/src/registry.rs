@@ -32,7 +32,7 @@ pub struct WorkRegistryItem {
     /// Each slot in the vector is associated with particular solution index as reported by
     /// the chips.
     solutions: std::vec::Vec<Solution>,
-    /// Flag that work is "initial" and should be regarded seriously
+    /// Flag that work is only for initialization of the mining chips and any results coming from it should be ignored
     pub initial_work: bool,
 }
 

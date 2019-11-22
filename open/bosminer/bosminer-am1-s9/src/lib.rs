@@ -727,7 +727,7 @@ impl HashChain {
             let work = work_registry.find_work(work_id as usize);
             match work {
                 Some(work_item) => {
-                    // ignore initial work
+                    // ignore solutions coming from initial work
                     if work_item.initial_work {
                         continue;
                     }
@@ -772,6 +772,9 @@ impl HashChain {
         info!("Temperature monitor task started");
         // Wait some time before trying to initialize temperature controller
         // (Otherwise RX queue might be clogged with initial work and we will not get any replies)
+        //
+        // TODO: we should implement a more robust mechanism that controls access to the I2C bus of
+        // a hashing chip only if the hashchain allows it (hashchain is in operation etc.)
         delay_for(Duration::from_secs(5)).await;
         let i2c_bus = bm1387::i2c::Bus::new_and_init(command_context, TEMP_CHIP)
             .await
@@ -986,20 +989,17 @@ impl fmt::Display for HashChainNode {
 
 /// Hashchain manager that can start and stop instances of hashchain
 pub struct HashChainManager {
-    // init
     gpio_mgr: gpio::ControlPinManager,
     voltage_ctrl_backend: power::SharedBackend<power::I2cBackend>,
     hashboard_idx: usize,
     midstate_count: MidstateCount,
     asic_difficulty: usize,
-    // start (static)
     work_generator: work::Generator,
     work_solution: work::SolutionSender,
     shutdown: shutdown::Sender,
-    // dynamic runtime - `is_some` only when miner is running
+    /// dynamic runtime - `is_some` only when miner is running
     runtime: Option<HashChainRuntime>,
-    // configuration
-    // monitor channel
+    /// channel to report to the monitor
     monitor_tx: mpsc::UnboundedSender<monitor::Message>,
     pub params: HashChainParams,
 }
