@@ -92,7 +92,7 @@ pub struct Solver {
 
 impl Solver {
     pub fn new(
-        engine_sender: work::EngineSender,
+        engine_sender: Arc<work::EngineSender>,
         solution_receiver: mpsc::UnboundedReceiver<work::Solution>,
     ) -> Self {
         Self {
@@ -109,11 +109,11 @@ impl Solver {
 /// This is the entrypoint for new jobs and updates into processing.
 /// Typically the mining protocol handler will inject new jobs through it
 pub struct Sender {
-    engine_sender: work::EngineSender,
+    engine_sender: Arc<work::EngineSender>,
 }
 
 impl Sender {
-    pub fn new(engine_sender: work::EngineSender) -> Self {
+    pub fn new(engine_sender: Arc<work::EngineSender>) -> Self {
         Self { engine_sender }
     }
 

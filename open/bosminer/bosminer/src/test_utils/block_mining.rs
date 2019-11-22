@@ -314,7 +314,7 @@ pub async fn run<T: hal::Backend>() {
     let midstate_count = runtime_config::get_midstate_count();
 
     // Create solver and channels to send/receive work
-    let (mut engine_sender, solution_queue_rx, mut reschedule_receiver, work_solver_builder) =
+    let (engine_sender, solution_queue_rx, mut reschedule_receiver, work_solver_builder) =
         build_solvers();
 
     // create problem registry

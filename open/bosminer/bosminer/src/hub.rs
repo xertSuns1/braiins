@@ -111,44 +111,62 @@ impl Core {
         T: node::Client + 'static,
         F: FnOnce(job::Solver) -> T,
     {
-        let job_solver = job::Solver::new(
-            self.engine_sender
-                .lock()
-                .await
-                .take()
-                .expect("BUG: missing engine sender"),
-            self.solution_receiver
-                .lock()
-                .await
-                .take()
-                .expect("BUG: missing solution receiver"),
-        );
+        let engine_sender = self
+            .engine_sender
+            .lock()
+            .await
+            .take()
+            .unwrap_or_else(|| work::EngineSender::new(None));
+        let solution_receiver = self
+            .solution_receiver
+            .lock()
+            .await
+            .take()
+            .expect("BUG: missing solution receiver");
 
-        let client = Arc::new(create(job_solver));
-        self.client_registry.register_client(client.clone()).await;
+        let engine_sender = Arc::new(engine_sender);
+        let job_solver = job::Solver::new(engine_sender.clone(), solution_receiver);
 
-        // convert it to dynamic object
-        client as Arc<dyn node::Client>
+        let client_handle = client::Handle::new(create(job_solver), engine_sender);
+        let client = client_handle.node.clone();
+
+        self.client_registry.register_client(client_handle).await;
+        client
     }
 
     #[inline]
     pub async fn get_root_hub(&self) -> Option<Arc<dyn node::WorkSolver>> {
-        self.backend_registry.get_root_hub().await
+        self.backend_registry.lock_root_hub().await.clone()
     }
 
     #[inline]
     pub async fn get_work_hubs(&self) -> Vec<Arc<dyn node::WorkSolver>> {
-        self.backend_registry.get_work_hubs().await
+        self.backend_registry
+            .lock_work_hubs()
+            .await
+            .iter()
+            .cloned()
+            .collect()
     }
 
     #[inline]
     pub async fn get_work_solvers(&self) -> Vec<Arc<dyn node::WorkSolver>> {
-        self.backend_registry.get_work_solvers().await
+        self.backend_registry
+            .lock_work_solvers()
+            .await
+            .iter()
+            .cloned()
+            .collect()
     }
 
     #[inline]
     pub async fn get_clients(&self) -> Vec<Arc<dyn node::Client>> {
-        self.client_registry.get_clients().await
+        self.client_registry
+            .lock_clients()
+            .await
+            .iter()
+            .map(|handle| handle.node.clone())
+            .collect()
     }
 }
 
@@ -168,7 +186,7 @@ pub mod test {
         let (solution_sender, solution_receiver) = mpsc::unbounded();
         let frontend = Arc::new(crate::Frontend::new());
         (
-            job::Solver::new(engine_sender, solution_receiver),
+            job::Solver::new(Arc::new(engine_sender), solution_receiver),
             work::SolverBuilder::new(
                 frontend,
                 Arc::new(backend::Registry::new()),

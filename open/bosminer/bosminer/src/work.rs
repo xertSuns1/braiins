@@ -41,7 +41,8 @@ use once_cell::sync::OnceCell;
 
 use std::fmt::{self, Debug};
 use std::iter;
-use std::sync::Arc;
+use std::mem;
+use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 use std::time;
 
 pub enum LoopState<T> {
@@ -287,30 +288,76 @@ impl ExhaustedHandler for IgnoreEvents {}
 /// engines are "done".
 pub fn engine_channel(event_handler: impl ExhaustedHandler) -> (EngineSender, EngineReceiver) {
     let work_engine: DynEngine = Arc::new(engine::ExhaustedWork);
-    let (sender, receiver) = watch::channel(work_engine);
+    let (sender, receiver) = watch::channel(work_engine.clone());
     (
-        EngineSender::new(sender),
+        EngineSender::create(work_engine, sender),
         EngineReceiver::new(receiver, event_handler),
     )
+}
+
+struct EngineSenderInner {
+    current_engine: DynEngine,
+    sender: Option<watch::Sender<DynEngine>>,
+}
+
+impl EngineSenderInner {
+    fn re_broadcast(&mut self) {
+        if let Some(sender) = &self.sender {
+            sender
+                .broadcast(self.current_engine.clone())
+                .expect("cannot broadcast work engine");
+        }
+    }
+
+    fn broadcast(&mut self, engine: DynEngine) {
+        self.current_engine = engine;
+        self.re_broadcast();
+    }
 }
 
 /// Sender is responsible for broadcasting a new WorkEngine to all mining
 /// backends
 pub struct EngineSender {
-    inner: watch::Sender<DynEngine>,
+    inner: StdMutex<EngineSenderInner>,
 }
 
 impl EngineSender {
-    fn new(watch_sender: watch::Sender<DynEngine>) -> Self {
+    pub fn new<T: Into<Option<DynEngine>>>(engine: T) -> Self {
+        let engine = engine
+            .into()
+            .unwrap_or_else(|| Arc::new(engine::ExhaustedWork));
+        Self::create(engine, None)
+    }
+
+    fn create<T>(current_engine: DynEngine, sender: T) -> Self
+    where
+        T: Into<Option<watch::Sender<DynEngine>>>,
+    {
         Self {
-            inner: watch_sender,
+            inner: StdMutex::new(EngineSenderInner {
+                current_engine,
+                sender: sender.into(),
+            }),
         }
     }
 
-    pub fn broadcast(&mut self, engine: DynEngine) {
-        self.inner
-            .broadcast(engine)
-            .expect("cannot broadcast work engine")
+    fn lock_inner(&self) -> StdMutexGuard<EngineSenderInner> {
+        self.inner.lock().expect("cannot lock engine sender")
+    }
+
+    pub fn swap_sender(&self, other: &Self) {
+        let a = &mut *self.lock_inner();
+        let b = &mut *other.lock_inner();
+
+        mem::swap(&mut a.sender, &mut b.sender);
+
+        a.re_broadcast();
+        b.re_broadcast();
+    }
+
+    #[inline]
+    pub fn broadcast(&self, engine: DynEngine) {
+        self.lock_inner().broadcast(engine)
     }
 }
 
