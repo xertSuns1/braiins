@@ -26,7 +26,7 @@
 //!   * wait for "termination" in normal context, do cleanup, and notify the terminator that we
 //!     have completed termination
 //!
-//! Termination context means that task is run `select`-ed on termiation condition, and when
+//! Termination context means that task is run `select`-ed on termination condition, and when
 //! that condition is signaled, select returns and the task is dropped.
 
 use std::sync::Arc;
@@ -74,7 +74,7 @@ fn make_done_pair() -> (DoneSender, DoneReceiver) {
 }
 
 /// One (non-clonable) instance of receiver
-/// In case the sender ends, the `recv` part of channel receivers `None` as EOF
+/// In case the sender ends, the `recv` part of channel receives `None` as EOF
 pub struct NotifyReceiver {
     notify_rx: mpsc::UnboundedReceiver<DoneSender>,
 }
@@ -170,6 +170,7 @@ impl Receiver {
 /// One halt context capable of notifying all of registered `clients`
 pub struct Sender {
     clients: Mutex<Vec<NotifySender>>,
+    /// How long to wait for client to finish
     halt_timeout: Duration,
 }
 
@@ -190,7 +191,6 @@ impl Sender {
     }
 
     /// Issue halt
-    /// * `halt_timeout` - how long to wait for client to finish
     async fn send_halt_internal(self: Arc<Self>) -> error::Result<()> {
         let mut done_wait_list = Vec::new();
 

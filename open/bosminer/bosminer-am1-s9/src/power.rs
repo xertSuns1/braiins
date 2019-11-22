@@ -414,7 +414,7 @@ where
         info!("Starting voltage controller heart beat task");
         let stop_heart_beat = self.start_heart_beat_task();
 
-        // On `Halt` we have to stop the thread sending heart beat
+        // On `Halt` we have to stop the thread sending heart beat and disable voltage
         let mut voltage_ctrl = self.clone();
         halt_receiver
             .register_client("voltage controller".into())
