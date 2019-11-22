@@ -26,10 +26,13 @@
 //! There's also implementation (`InnerContext`) of that interface that can send and receive
 //! commands via `command_io` FPGA register (+ shared version).
 
+use ii_logging::macros::*;
+
 use async_trait::async_trait;
 
 use crate::bm1387::{self, ChipAddress};
 use crate::io;
+use std::time::Duration;
 
 use packed_struct::{PackedStruct, PackedStructSlice};
 
@@ -118,6 +121,12 @@ pub struct InnerContext {
 
 /// Interface to access chip registers via series of commands
 impl InnerContext {
+    /// Timeout for waiting for command
+    const COMMAND_READ_TIMEOUT: Duration = Duration::from_millis(100);
+
+    /// How long to wait for command RX queue flush
+    const COMMAND_FLUSH_TIMEOUT: Duration = Duration::from_micros(5);
+
     /// Read register(s)
     ///
     /// Throw an error if unexpected number of replies have been received.
@@ -135,11 +144,15 @@ impl InnerContext {
         // wait for all responses and collect them
         let mut responses = Vec::new();
         loop {
-            match self.command_io.recv_response().await? {
+            match self
+                .command_io
+                .recv_response(Self::COMMAND_READ_TIMEOUT)
+                .await?
+            {
                 Some(one_response) => {
                     let one_response = bm1387::CmdResponse::unpack_from_slice(&one_response)
                         .context(format!("response unpacking failed"))?;
-                    responses.push(T::from_reg(one_response.value));
+                    responses.push(one_response.value);
                     // exit early if we expect just one response
                     if chip_address != ChipAddress::All {
                         break;
@@ -155,6 +168,7 @@ impl InnerContext {
             if let Some(chip_count) = self.chip_count {
                 // for broadcast we expect chip_count responses
                 if chip_count != responses.len() {
+                    warn!("received responses: {:#x?}", responses);
                     Err(ErrorKind::Hashchip(format!(
                         "Number of responses {} of GetStatusCmd(reg={:x}) doesn't match chip count {}",
                         responses.len(),
@@ -172,7 +186,23 @@ impl InnerContext {
                 )))?;
             }
         }
-        Ok(responses)
+
+        // convert to registers
+        Ok(responses
+            .into_iter()
+            .map(|x| T::from_reg(x))
+            .collect::<Vec<T>>())
+    }
+
+    async fn flush_command_rx(&mut self) -> error::Result<()> {
+        while let Some(response) = self
+            .command_io
+            .recv_response(Self::COMMAND_FLUSH_TIMEOUT)
+            .await?
+        {
+            warn!("extra garbage command response: {:#x?}", response);
+        }
+        Ok(())
     }
 
     /// Write register(s)
@@ -186,6 +216,12 @@ impl InnerContext {
         self.command_io
             .send_command(cmd.pack().to_vec(), true)
             .await;
+        // This is workaround for chips sending garbage when they transmit nonce while someone
+        // changes their PLL: sometimes the garbage can have correct CRC and command bit set.
+        // Then we get unsolicited message in our command-rx queue and the next read register
+        // command will complain about too many replies.
+        // We flush the command queue here.
+        self.flush_command_rx().await?;
         Ok(())
     }
 
