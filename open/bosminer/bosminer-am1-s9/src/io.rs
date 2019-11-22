@@ -466,9 +466,6 @@ pub struct CommandRxTx {
 }
 
 impl CommandRxTx {
-    /// Timeout for waiting for command
-    const COMMAND_READ_TIMEOUT: Duration = Duration::from_millis(100);
-
     /// Serializes command into 32-bit words and submits it to the command TX FIFO
     ///
     /// * `wait` - when true, wait until all commands are sent
@@ -499,26 +496,18 @@ impl CommandRxTx {
     /// - A timeout when reading the first word is converted into an empty response.
     ///   The method propagates any error other than timeout
     /// - An error that occurs during reading the second word from the FIFO is propagated.
-    pub async fn recv_response(&mut self) -> error::Result<Option<Vec<u8>>> {
+    pub async fn recv_response(&mut self, timeout: Duration) -> error::Result<Option<Vec<u8>>> {
         // assembled response
         let mut cmd_resp = Vec::new();
 
         // fetch first word of command response from IP core's fifo
-        match self
-            .fifo
-            .read_with_timeout(Self::COMMAND_READ_TIMEOUT)
-            .await?
-        {
+        match self.fifo.read_with_timeout(timeout).await? {
             None => return Ok(None),
             Some(word1) => cmd_resp.extend_from_slice(&u32::to_le_bytes(word1)),
         }
 
         // fetch second word: getting timeout here is a hardware error
-        match self
-            .fifo
-            .read_with_timeout(Self::COMMAND_READ_TIMEOUT)
-            .await?
-        {
+        match self.fifo.read_with_timeout(timeout).await? {
             None => Err(ErrorKind::Fifo(
                 error::Fifo::TimedOut,
                 "cmd RX fifo framing error".to_string(),
