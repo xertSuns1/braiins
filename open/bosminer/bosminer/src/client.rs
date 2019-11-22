@@ -28,8 +28,9 @@ pub mod stratum_v2;
 use crate::error;
 use crate::hub;
 use crate::node;
+use crate::work;
 
-use futures::lock::Mutex;
+use futures::lock::{Mutex, MutexGuard};
 use ii_async_compat::futures;
 
 use std::fmt;
@@ -76,9 +77,33 @@ pub fn parse(url: String, user: String) -> error::Result<Descriptor> {
     })
 }
 
+pub struct Handle {
+    pub node: Arc<dyn node::Client>,
+    #[allow(dead_code)]
+    engine_sender: Arc<work::EngineSender>,
+}
+
+impl Handle {
+    pub fn new<T>(client: T, engine_sender: Arc<work::EngineSender>) -> Self
+    where
+        T: node::Client + 'static,
+    {
+        Self {
+            node: Arc::new(client),
+            engine_sender,
+        }
+    }
+}
+
+impl PartialEq for Handle {
+    fn eq(&self, other: &Handle) -> bool {
+        Arc::ptr_eq(&self.node, &other.node)
+    }
+}
+
 /// Keeps track of all active clients
 pub struct Registry {
-    list: Mutex<Vec<Arc<dyn node::Client>>>,
+    list: Mutex<Vec<Arc<Handle>>>,
 }
 
 impl Registry {
@@ -88,20 +113,20 @@ impl Registry {
         }
     }
 
-    pub async fn register_client(&self, client: Arc<dyn node::Client>) {
+    pub async fn register_client(&self, client: Handle) {
         let container = &mut *self.list.lock().await;
         assert!(
             container
                 .iter()
-                .find(|old| Arc::ptr_eq(old, &client))
+                .find(|old| old.as_ref() == &client)
                 .is_none(),
             "BUG: client already present in the registry"
         );
-        container.push(client);
+        container.push(Arc::new(client));
     }
 
-    pub async fn get_clients(&self) -> Vec<Arc<dyn node::Client>> {
-        self.list.lock().await.iter().cloned().collect()
+    pub async fn lock_clients<'a>(&'a self) -> MutexGuard<'a, Vec<Arc<Handle>>> {
+        self.list.lock().await
     }
 }
 

@@ -336,7 +336,7 @@ impl work::Engine for TestWorkEngine {
 
 pub fn create_test_work_receiver() -> work::EngineReceiver {
     let work_engine = Arc::new(TestWorkEngine::new());
-    let (mut sender, receiver) = work::engine_channel(work::IgnoreEvents);
+    let (sender, receiver) = work::engine_channel(work::IgnoreEvents);
     sender.broadcast(work_engine);
     receiver
 }

@@ -25,7 +25,7 @@
 use crate::node::{self, WorkSolverType};
 
 use async_trait::async_trait;
-use futures::lock::Mutex;
+use futures::lock::{Mutex, MutexGuard};
 use ii_async_compat::futures;
 
 use std::sync::Arc;
@@ -118,18 +118,18 @@ impl Registry {
     }
 
     #[inline]
-    pub async fn get_root_hub(&self) -> Option<Arc<dyn node::WorkSolver>> {
-        self.root_hub.lock().await.clone()
+    pub async fn lock_root_hub<'a>(&'a self) -> MutexGuard<'a, Option<Arc<dyn node::WorkSolver>>> {
+        self.root_hub.lock().await
     }
 
     #[inline]
-    pub async fn get_work_hubs(&self) -> Vec<Arc<dyn node::WorkSolver>> {
-        self.work_hubs.lock().await.iter().cloned().collect()
+    pub async fn lock_work_hubs<'a>(&'a self) -> MutexGuard<'a, Vec<Arc<dyn node::WorkSolver>>> {
+        self.work_hubs.lock().await
     }
 
     #[inline]
-    pub async fn get_work_solvers(&self) -> Vec<Arc<dyn node::WorkSolver>> {
-        self.work_solvers.lock().await.iter().cloned().collect()
+    pub async fn lock_work_solvers<'a>(&'a self) -> MutexGuard<'a, Vec<Arc<dyn node::WorkSolver>>> {
+        self.work_solvers.lock().await
     }
 }
 
