@@ -243,7 +243,7 @@ pub struct HashChain {
     /// ASIC difficulty
     asic_difficulty: usize,
     /// Voltage controller on this hashboard
-    voltage_ctrl: Mutex<power::Control<power::SharedBackend<power::I2cBackend>>>,
+    voltage_ctrl: Arc<power::Control>,
     /// Plug pin that indicates the hashboard is present
     #[allow(dead_code)]
     plug_pin: gpio::PinIn,
@@ -273,7 +273,7 @@ impl HashChain {
     /// * `asic_difficulty` - to what difficulty set the hardware target filter
     pub fn new(
         gpio_mgr: &gpio::ControlPinManager,
-        voltage_ctrl_backend: power::SharedBackend<power::I2cBackend>,
+        voltage_ctrl_backend: Arc<power::I2cBackend>,
         hashboard_idx: usize,
         midstate_count: MidstateCount,
         asic_difficulty: usize,
@@ -310,7 +310,7 @@ impl HashChain {
             chip_count: 0,
             midstate_count,
             asic_difficulty,
-            voltage_ctrl: Mutex::new(power::Control::new(voltage_ctrl_backend, hashboard_idx)),
+            voltage_ctrl: Arc::new(power::Control::new(voltage_ctrl_backend, hashboard_idx)),
             plug_pin,
             rst_pin,
             hashboard_idx,
@@ -412,13 +412,13 @@ impl HashChain {
         info!("Initializing hash chain {}", self.hashboard_idx);
         self.ip_core_init().await?;
         info!("Hashboard IP core initialized");
-        self.voltage_ctrl.lock().await.init(halt_receiver).await?;
+        self.voltage_ctrl.clone().init(halt_receiver).await?;
         info!("Resetting hash board");
         self.enter_reset()?;
         // disable voltage
-        self.voltage_ctrl.lock().await.disable_voltage()?;
+        self.voltage_ctrl.disable_voltage().await?;
         delay_for(Duration::from_millis(INIT_DELAY_MS)).await;
-        self.voltage_ctrl.lock().await.enable_voltage()?;
+        self.voltage_ctrl.enable_voltage().await?;
         delay_for(Duration::from_millis(2 * INIT_DELAY_MS)).await;
 
         // TODO consider including a delay
@@ -463,8 +463,6 @@ impl HashChain {
 
         // lower voltage to working level
         self.voltage_ctrl
-            .lock()
-            .await
             .set_voltage(initial_voltage)
             .await
             .expect("lowering voltage failed");
@@ -950,7 +948,7 @@ struct HashChainNode {
     work_generator: work::Generator,
     solution_sender: work::SolutionSender,
     gpio_mgr: gpio::ControlPinManager,
-    voltage_ctrl_backend: power::SharedBackend<power::I2cBackend>,
+    voltage_ctrl_backend: Arc<power::I2cBackend>,
     midstate_count: MidstateCount,
     asic_difficulty: usize,
     /// channel to report to the monitor
@@ -1074,8 +1072,6 @@ impl HashChainManager {
             runtime
                 .hash_chain
                 .voltage_ctrl
-                .lock()
-                .await
                 .set_voltage(self.params.voltage)
                 .await?;
             runtime.hash_chain.set_pll(&self.params.frequency).await?;
@@ -1117,8 +1113,7 @@ async fn start_miner(
         }),
     };
     let monitor = monitor::Monitor::new(config, halt_sender.clone(), halt_receiver.clone()).await;
-    let voltage_ctrl_backend = power::I2cBackend::new(0);
-    let voltage_ctrl_backend = power::SharedBackend::new(voltage_ctrl_backend);
+    let voltage_ctrl_backend = Arc::new(power::I2cBackend::new(0));
     let mut managers = Vec::new();
     info!(
         "Initializing miner, enabled_chains={:?}, midstate_count={}",
