@@ -76,6 +76,7 @@ pub fn parse(url: String, user: String) -> error::Result<Descriptor> {
     })
 }
 
+/// Keeps track of all active clients
 pub struct Registry {
     list: Mutex<Vec<Arc<dyn node::Client>>>,
 }
@@ -104,8 +105,9 @@ impl Registry {
     }
 }
 
-/// Register relevant client implementing based on a protocol set in `Descriptor`
+/// Register client that implements a protocol set in `descriptor`
 pub async fn register(core: &Arc<hub::Core>, descriptor: Descriptor) -> Arc<dyn node::Client> {
+    // NOTE: the match statement needs to be updated in case of multiple protocol support
     core.add_client(|job_solver| match descriptor.protocol {
         Protocol::StratumV2 => stratum_v2::StratumClient::new(descriptor, job_solver),
     })

@@ -38,9 +38,9 @@ pub mod test_utils;
 
 // reexport main function from `entry` module
 pub use entry::main;
-// reexport clap which is needed in `hal::Backend::add_args`
+// reexport needed in `hal::Backend::add_args`
 pub use clap;
-// reexport clap which is needed for implementation of `hal::Backend` trait
+// reexport needed for implementation of `hal::Backend` trait
 pub use async_trait::async_trait;
 
 use bosminer_macros::WorkSolverNode;

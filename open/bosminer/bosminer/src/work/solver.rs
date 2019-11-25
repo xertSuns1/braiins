@@ -121,6 +121,9 @@ where
         }
     }
 
+    /// Creates a new work solver using the passed `create` closure. The closure is used so that
+    /// the `SolverBuilder` is able to provide a new work generator at the spot. The created work
+    /// solver is attached to the hierarchy and classified as 'WorkSolver'.
     pub async fn create_work_solver<F, U>(&self, create: F) -> Arc<U>
     where
         U: node::WorkSolver + 'static,

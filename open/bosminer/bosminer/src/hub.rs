@@ -49,6 +49,7 @@ impl work::ExhaustedHandler for EventHandler {
     }
 }
 
+/// Concentrates handles to all nodes associated with mining (backends, clients, work solvers)
 pub struct Core {
     pub frontend: Arc<crate::Frontend>,
     engine_sender: Mutex<Option<work::EngineSender>>,
@@ -88,6 +89,9 @@ impl Core {
         T::register(args, work_solver_builder).await;
     }
 
+    /// Adds a client that is dynamically created using its `create` method. The reason for
+    /// late building of the client is that the closure requires a job solver that is dynamically
+    /// created
     pub async fn add_client<F, T>(&self, create: F) -> Arc<dyn node::Client>
     where
         T: node::Client + 'static,
