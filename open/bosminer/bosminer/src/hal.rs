@@ -50,9 +50,11 @@ pub trait Backend: Send + Sync + 'static {
     /// Maximum time it takes to compute one job under normal circumstances
     const JOB_TIMEOUT: Duration;
 
+    /// Backend registers additional command line arguments that are to be parsed
     fn add_args<'a, 'b>(app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
         app
     }
 
+    /// Backend registers with a specified builder
     async fn register(args: clap::ArgMatches<'_>, backend_builder: work::BackendBuilder);
 }
