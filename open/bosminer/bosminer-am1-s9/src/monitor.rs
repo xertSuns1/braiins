@@ -462,9 +462,6 @@ impl Monitor {
     /// Task performing temp control
     async fn tick_task(monitor: Arc<Mutex<Self>>) {
         loop {
-            // TODO: find some of kind "run every x secs" function
-            delay_for(TICK_LENGTH).await;
-
             // decide hashchain state and collect temperatures
             let mut monitor = monitor.lock().await;
             let mut cumulative_temperature = TemperatureAccumulator::new();
@@ -524,6 +521,10 @@ impl Monitor {
                 }
                 ControlDecision::Nothing => {}
             }
+            // unlock monitor
+            drop(monitor);
+            // TODO: find some of kind "run every x secs" function
+            delay_for(TICK_LENGTH).await;
         }
     }
 
