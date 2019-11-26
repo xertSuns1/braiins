@@ -396,22 +396,35 @@ impl Default for ChipRev {
 /// This register represents ASIC difficulty
 ///
 /// The chip will provide only solutions that are <= target based on this difficulty
+///
+/// TICKET_MASK is bitmask that is used to mask the bits of bytes 0..31 of the reversed SHA hash.
+/// Chip sends the nonce only if
+///   `revhash[0..3] == 0 && (revhash[4..7] & reverse_bytes(ticket_mask)) == 0`
+///
+/// The weird mask format came about probably because they did comparison on bit-reversed SHA
+/// hash, not just byte-reversed SHA hash.
 #[derive(PackedStruct, Debug, PartialEq)]
 #[packed_struct(size_bytes = "4", endian = "msb")]
 pub struct TicketMaskReg {
     /// stores difficulty - 1
-    diff: u32,
+    ticket_mask: u32,
 }
 
 impl TicketMaskReg {
     /// Builds ticket mask register instance and verifies the specified difficulty is correct
-    pub fn new(diff: u32) -> error::Result<Self> {
-        if diff == 0 {
+    pub fn new(difficulty: u32) -> error::Result<Self> {
+        if difficulty == 0 {
             Err(ErrorKind::General(format!(
-                "Asic difficulty must be at least 1!",
+                "ASIC difficulty must be at least 1!",
             )))?
         }
-        Ok(Self { diff: diff - 1 })
+        if !difficulty.is_power_of_two() {
+            Err(ErrorKind::General(format!(
+                "ASIC difficulty must be power of 2!",
+            )))?
+        }
+        let ticket_mask = (difficulty - 1).reverse_bits().swap_bytes();
+        Ok(Self { ticket_mask })
     }
 }
 
@@ -694,12 +707,12 @@ mod test {
         );
     }
 
-    /// Verify serialization of SetConfig(TICKET_MASK(0x3f)) command
+    /// Verify serialization of SetConfig(Difficulty=64) command
     #[test]
     fn build_set_config_ticket_mask() {
         let reg = TicketMaskReg::new(64).expect("Cannot build difficulty register");
         let cmd = SetConfigCmd::new(ChipAddress::All, TicketMaskReg::REG_NUM, reg.to_reg());
-        let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x18, 0x00, 0x00, 0x00, 0x3f];
+        let expected_cmd_with_padding = [0x58u8, 0x09, 0x00, 0x18, 0x00, 0x00, 0x00, 0xfc];
         let cmd_bytes = cmd.pack();
         assert_eq!(cmd_bytes, expected_cmd_with_padding);
     }
@@ -873,20 +886,25 @@ mod test {
 
     #[test]
     fn test_invalid_ticket_mask_reg() {
-        let res = TicketMaskReg::new(0);
-        assert_eq!(res.is_ok(), false, "Diff 0 should be reported as error!");
+        assert!(TicketMaskReg::new(0).is_err());
+        assert!(TicketMaskReg::new(1).is_ok());
+        assert!(TicketMaskReg::new(2047).is_err());
+        assert!(TicketMaskReg::new(2048).is_ok());
     }
 
     #[test]
     fn test_ticket_mask_reg_to_u32() {
-        let reg = TicketMaskReg::new(64).expect("Cannot build difficulty register");
-
-        let expected_reg_value = 0x3fu32;
-        let reg_value: u32 = reg.to_reg();
         assert_eq!(
-            reg_value, expected_reg_value,
-            "Ticket mask register 32-bit value  doesn't match: V:{:#010x} E:{:#010x}",
-            reg_value, expected_reg_value
+            TicketMaskReg::new(64)
+                .expect("Cannot build difficulty register")
+                .to_reg(),
+            0xfcu32
+        );
+        assert_eq!(
+            TicketMaskReg::new(2048)
+                .expect("Cannot build difficulty register")
+                .to_reg(),
+            0xe0ffu32
         );
     }
 
