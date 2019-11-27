@@ -128,6 +128,11 @@ pub struct I2cBackend {
 }
 
 impl I2cBackend {
+    /// Number of times to retries if I2C transaction fails
+    const I2C_NUM_RETRIES: usize = 15;
+    /// Duration between successive tries
+    const I2C_RETRY_DELAY: Duration = Duration::from_millis(100);
+
     /// Calculates I2C address of the controller based on hashboard index.
     fn get_i2c_address(hashboard_idx: usize) -> u8 {
         PIC_BASE_ADDRESS + hashboard_idx as u8 - 1
@@ -142,13 +147,40 @@ impl I2cBackend {
         }
     }
 
-    pub async fn write(&self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()> {
-        let command_bytes = [&[PIC_COMMAND_1, PIC_COMMAND_2, command], data].concat();
-        self.inner
-            .write(Self::get_i2c_address(hashboard_idx), command_bytes)
-            .await
+    /// Attempt to write a byte to power controller on I2C.
+    /// If write fails then retry (at most `I2C_NUM_RETRIES`).
+    async fn write_retry(&self, hashboard_idx: usize, data: u8) -> error::Result<()> {
+        let mut tries_left: usize = Self::I2C_NUM_RETRIES;
+        loop {
+            let ret = self
+                .inner
+                .write(Self::get_i2c_address(hashboard_idx), vec![data])
+                .await;
+            if ret.is_ok() {
+                return ret;
+            }
+            tries_left -= 1;
+            if tries_left == 0 {
+                return ret;
+            }
+            warn!(
+                "I2C transaction on hashboard {} failed, retrying...",
+                hashboard_idx
+            );
+            delay_for(Self::I2C_RETRY_DELAY).await;
+        }
     }
 
+    /// Perform a write command to power controller on I2C
+    pub async fn write(&self, hashboard_idx: usize, command: u8, data: &[u8]) -> error::Result<()> {
+        let command_bytes = [&[PIC_COMMAND_1, PIC_COMMAND_2, command], data].concat();
+        for byte in command_bytes.into_iter() {
+            self.write_retry(hashboard_idx, byte).await?;
+        }
+        Ok(())
+    }
+
+    /// Perform a read command from power controller on I2C
     pub async fn read(
         &self,
         hashboard_idx: usize,
@@ -156,9 +188,18 @@ impl I2cBackend {
         length: usize,
     ) -> error::Result<Vec<u8>> {
         self.write(hashboard_idx, command, &[]).await?;
-        self.inner
-            .read(Self::get_i2c_address(hashboard_idx), length)
-            .await
+        // Read has to be done via single-byte I2C transactions.
+        // If multiple bytes are read within single transaction, only first byte is valid. The
+        // rest is garbage.
+        let mut reply = Vec::with_capacity(length);
+        for _ in 0..length {
+            let byte = self
+                .inner
+                .read(Self::get_i2c_address(hashboard_idx), length)
+                .await?;
+            reply.push(byte[0]);
+        }
+        Ok(reply)
     }
 }
 
