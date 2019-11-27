@@ -94,7 +94,11 @@ def main():
     remote_argv = ['--test-threads', '1'] if re.match('.+-[0-9a-f]{16}$', test) else []
     remote_argv += extra_args
     remote_test = os.path.join(args.host_path, os.path.basename(args.test))
-    common_args = ('-o', 'StrictHostKeyChecking=no',)
+    common_args = ['-o', 'StrictHostKeyChecking=no']
+
+    if not args.verbose:
+        # suppress message 'Connection to XYZ closed.'
+        common_args.append('-q')
 
     # take a lock, in case multiple runners meet.
     # note this is openwrt specific, and unlike flock have to be explicitely unlocked
