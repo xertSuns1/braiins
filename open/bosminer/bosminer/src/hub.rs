@@ -30,11 +30,13 @@ use crate::client;
 use crate::hal;
 use crate::job;
 use crate::node;
+use crate::scheduler;
 use crate::work;
 
 use futures::channel::mpsc;
 use futures::lock::Mutex;
-use ii_async_compat::futures;
+use futures::stream::StreamExt;
+use ii_async_compat::{futures, tokio};
 
 use std::sync::Arc;
 
@@ -49,31 +51,93 @@ impl work::ExhaustedHandler for EventHandler {
     }
 }
 
-/// Concentrates handles to all nodes associated with mining (backends, clients, work solvers)
-pub struct Core {
-    pub frontend: Arc<crate::Frontend>,
-    engine_sender: Mutex<Option<work::EngineSender>>,
-    engine_receiver: work::EngineReceiver,
-    solution_sender: mpsc::UnboundedSender<work::Solution>,
-    solution_receiver: Mutex<Option<mpsc::UnboundedReceiver<work::Solution>>>,
-    backend_registry: Arc<backend::Registry>,
-    /// Registry of clients that are able to supply new jobs for mining
-    client_registry: client::Registry,
+struct SolutionRouter {
+    job_executor: Arc<scheduler::JobExecutor>,
+    solution_receiver: mpsc::UnboundedReceiver<work::Solution>,
 }
 
+impl SolutionRouter {
+    fn new(
+        job_executor: Arc<scheduler::JobExecutor>,
+        solution_receiver: mpsc::UnboundedReceiver<work::Solution>,
+    ) -> Self {
+        Self {
+            job_executor,
+            solution_receiver,
+        }
+    }
+
+    /// Find client which given solution is associated with
+    async fn find_client(&self, solution: &work::Solution) -> Option<Arc<client::Handle>> {
+        self.job_executor
+            .clients_registry()
+            .await
+            .lock_clients()
+            .await
+            .iter()
+            .find(|client| client.matching_solution(solution))
+            .cloned()
+    }
+
+    async fn get_solution_sender(
+        &self,
+        solution: &work::Solution,
+    ) -> Option<mpsc::UnboundedSender<work::Solution>> {
+        let active_client = self.job_executor.active_client().await;
+
+        // solution receiver is probably active client which is work generated from
+        let mut client = active_client.filter(|client| client.matching_solution(solution));
+        // search client registry when active client is not matching destination sender
+        if client.is_none() {
+            client = self.find_client(&solution).await
+        }
+        // return associated solution sender when matching client is found
+        client.map(|client| client.solution_sender.clone())
+    }
+
+    async fn run(mut self) {
+        while let Some(solution) = self.solution_receiver.next().await {
+            // NOTE: all solutions targeting to removed clients are discarded
+            if let Some(solution_sender) = self.get_solution_sender(&solution).await {
+                solution_sender
+                    .unbounded_send(solution)
+                    .expect("solution queue send failed");
+            }
+        }
+    }
+}
+
+pub struct Core {
+    pub frontend: Arc<crate::Frontend>,
+    job_executor: Arc<scheduler::JobExecutor>,
+    engine_receiver: work::EngineReceiver,
+    solution_sender: mpsc::UnboundedSender<work::Solution>,
+    solution_router: Mutex<Option<SolutionRouter>>,
+    backend_registry: Arc<backend::Registry>,
+    /// Registry of clients that are able to supply new jobs for mining
+    client_registry: Arc<client::Registry>,
+}
+
+/// Concentrates handles to all nodes associated with mining (backends, clients, work solvers)
 impl Core {
     pub fn new() -> Self {
         let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
         let (solution_sender, solution_receiver) = mpsc::unbounded();
 
+        let client_registry = Arc::new(client::Registry::new());
+        let job_executor = Arc::new(scheduler::JobExecutor::new(
+            engine_sender,
+            client_registry.clone(),
+        ));
+
         Self {
             frontend: Arc::new(crate::Frontend::new()),
-            engine_sender: Mutex::new(Some(engine_sender)),
+            job_executor: job_executor.clone(),
             engine_receiver,
             solution_sender,
-            solution_receiver: Mutex::new(Some(solution_receiver)),
+            solution_router: Mutex::new(Some(SolutionRouter::new(job_executor, solution_receiver))),
             backend_registry: Arc::new(backend::Registry::new()),
-            client_registry: client::Registry::new(),
+            client_registry,
         }
     }
 
@@ -111,27 +175,7 @@ impl Core {
         T: node::Client + 'static,
         F: FnOnce(job::Solver) -> T,
     {
-        let engine_sender = self
-            .engine_sender
-            .lock()
-            .await
-            .take()
-            .unwrap_or_else(|| work::EngineSender::new(None));
-        let solution_receiver = self
-            .solution_receiver
-            .lock()
-            .await
-            .take()
-            .expect("BUG: missing solution receiver");
-
-        let engine_sender = Arc::new(engine_sender);
-        let job_solver = job::Solver::new(engine_sender.clone(), solution_receiver);
-
-        let client_handle = client::Handle::new(create(job_solver), engine_sender);
-        let client = client_handle.node.clone();
-
-        self.client_registry.register_client(client_handle).await;
-        client
+        self.job_executor.add_client(create).await
     }
 
     #[inline]
@@ -168,6 +212,18 @@ impl Core {
             .map(|handle| handle.node.clone())
             .collect()
     }
+
+    pub async fn run(self: Arc<Self>) {
+        let solution_router = self
+            .solution_router
+            .lock()
+            .await
+            .take()
+            .expect("missing solution router");
+
+        tokio::spawn(solution_router.run());
+        self.job_executor.clone().run().await;
+    }
 }
 
 #[cfg(test)]
@@ -176,7 +232,6 @@ pub mod test {
     use crate::test_utils;
     use crate::Frontend;
 
-    use ii_async_compat::tokio;
     use std::sync::Arc;
 
     /// Create job solver for frontend (pool) and work solver builder for backend (as we expect a

@@ -160,6 +160,12 @@ impl Solution {
         }
     }
 
+    /// Return origin from which the work has been generated
+    #[inline]
+    pub fn origin(&self) -> Arc<dyn node::Client> {
+        self.work.job.origin()
+    }
+
     #[inline]
     pub fn timestamp(&self) -> time::Instant {
         self.timestamp
@@ -295,6 +301,7 @@ pub fn engine_channel(event_handler: impl ExhaustedHandler) -> (EngineSender, En
     )
 }
 
+#[derive(Debug)]
 struct EngineSenderInner {
     current_engine: DynEngine,
     sender: Option<watch::Sender<DynEngine>>,
@@ -317,6 +324,7 @@ impl EngineSenderInner {
 
 /// Sender is responsible for broadcasting a new WorkEngine to all mining
 /// backends
+#[derive(Debug)]
 pub struct EngineSender {
     inner: StdMutex<EngineSenderInner>,
 }

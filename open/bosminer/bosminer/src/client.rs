@@ -30,6 +30,7 @@ use crate::hub;
 use crate::node;
 use crate::work;
 
+use futures::channel::mpsc;
 use futures::lock::{Mutex, MutexGuard};
 use ii_async_compat::futures;
 
@@ -77,27 +78,47 @@ pub fn parse(url: String, user: String) -> error::Result<Descriptor> {
     })
 }
 
+#[derive(Debug)]
 pub struct Handle {
     pub node: Arc<dyn node::Client>,
-    #[allow(dead_code)]
-    engine_sender: Arc<work::EngineSender>,
+    pub engine_sender: Arc<work::EngineSender>,
+    pub solution_sender: mpsc::UnboundedSender<work::Solution>,
 }
 
 impl Handle {
-    pub fn new<T>(client: T, engine_sender: Arc<work::EngineSender>) -> Self
+    pub fn new<T>(
+        client: T,
+        engine_sender: Arc<work::EngineSender>,
+        solution_sender: mpsc::UnboundedSender<work::Solution>,
+    ) -> Self
     where
         T: node::Client + 'static,
     {
         Self {
             node: Arc::new(client),
             engine_sender,
+            solution_sender,
         }
+    }
+
+    /// Tests if solution should be delivered to this client
+    /// NOTE: This comparison uses trait method `node::Info::get_unique_ptr` to unify dynamic
+    /// objects to point to the same pointer otherwise direct comparison of self with other is never
+    /// satisfied even if the dynamic objects are same.
+    pub fn matching_solution(&self, solution: &work::Solution) -> bool {
+        Arc::ptr_eq(
+            &self.node.clone().get_unique_ptr(),
+            &solution.origin().get_unique_ptr(),
+        )
     }
 }
 
 impl PartialEq for Handle {
     fn eq(&self, other: &Handle) -> bool {
-        Arc::ptr_eq(&self.node, &other.node)
+        Arc::ptr_eq(
+            &self.node.clone().get_unique_ptr(),
+            &other.node.clone().get_unique_ptr(),
+        )
     }
 }
 
@@ -113,7 +134,7 @@ impl Registry {
         }
     }
 
-    pub async fn register_client(&self, client: Handle) {
+    pub async fn register_client(&self, client: Handle) -> Arc<Handle> {
         let container = &mut *self.list.lock().await;
         assert!(
             container
@@ -122,7 +143,9 @@ impl Registry {
                 .is_none(),
             "BUG: client already present in the registry"
         );
-        container.push(Arc::new(client));
+        let client = Arc::new(client);
+        container.push(client.clone());
+        client
     }
 
     pub async fn lock_clients<'a>(&'a self) -> MutexGuard<'a, Vec<Arc<Handle>>> {

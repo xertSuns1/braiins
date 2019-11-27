@@ -46,7 +46,11 @@ fn impl_derive_mining_node(
     let mining_stats = find_member(&fields, stats_name);
 
     quote! {
-        impl#generics node::Info for #name#generics {}
+        impl#generics node::Info for #name#generics {
+            fn get_unique_ptr(self: ::std::sync::Arc<Self>) -> ::std::sync::Arc<dyn ::std::any::Any> {
+                self as ::std::sync::Arc<dyn ::std::any::Any>
+            }
+        }
 
         impl#generics node::Stats for #name#generics {
             #[inline]

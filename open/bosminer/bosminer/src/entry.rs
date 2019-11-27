@@ -84,6 +84,7 @@ pub async fn main<T: hal::Backend>() {
     // Initialize hub core which manages all resources
     let core = Arc::new(hub::Core::new());
 
+    tokio::spawn(core.clone().run());
     tokio::spawn(backend_registration_task::<T>(core.clone(), args));
 
     // start statistics processing
