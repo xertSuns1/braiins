@@ -24,6 +24,7 @@ use crate::client;
 use crate::job;
 use crate::stats;
 
+use std::any::Any;
 use std::fmt::{Debug, Display};
 use std::sync::Arc;
 
@@ -35,7 +36,10 @@ use async_trait::async_trait;
 /// The `node::Info` also provides interface for accounting various statistics related to shares.
 /// All nodes implementing this trait and stored in `work::Solution` internal list will be
 /// automatically updated whenever the solution is received in `job::SolutionReceiver`
-pub trait Info: Debug + Display + Stats {}
+pub trait Info: Any + Debug + Display + Stats {
+    /// Support method for implementation of equality method
+    fn get_unique_ptr(self: Arc<Self>) -> Arc<dyn Any>;
+}
 
 pub trait Stats: Send + Sync {
     /// Return object with general mining statistics
@@ -102,7 +106,11 @@ pub type Path = Vec<DynInfo>;
 /// Shared unique path describing hierarchy of components
 pub type SharedPath = Arc<Path>;
 
-impl<T: ?Sized + Info> Info for Arc<T> {}
+impl<T: ?Sized + Info> Info for Arc<T> {
+    fn get_unique_ptr(self: Arc<Self>) -> Arc<dyn Any> {
+        self.as_ref().clone().get_unique_ptr()
+    }
+}
 
 impl<T: ?Sized + Stats> Stats for Arc<T> {
     fn mining_stats(&self) -> &dyn stats::Mining {
