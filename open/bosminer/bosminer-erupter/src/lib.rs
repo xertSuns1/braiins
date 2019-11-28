@@ -153,17 +153,19 @@ impl fmt::Display for Backend {
 
 #[async_trait]
 impl hal::Backend for Backend {
+    type Type = Self;
+
     const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;
     const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
-    async fn register(_args: clap::ArgMatches<'_>, backend_builder: work::BackendBuilder) {
-        let work_solver = backend_builder
-            .create_work_solver(|work_generator, solution_sender| {
-                Self::new(work_generator, solution_sender)
-            })
-            .await;
+    fn create(_args: clap::ArgMatches<'_>) -> hal::WorkNode<Self> {
+        node::WorkSolverType::WorkSolver(Box::new(|work_generator, solution_sender| {
+            Self::new(work_generator, solution_sender)
+        }))
+    }
 
+    async fn init_work_solver(work_solver: Arc<Self>) {
         // TODO: remove it after `node::WorkSolver` trait will be extended with `enable` method
         work_solver.enable();
     }

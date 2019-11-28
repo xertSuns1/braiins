@@ -85,8 +85,22 @@ impl Core {
             self.solution_sender.clone(),
         );
 
-        // registration of backend hierarchy is done dynamically
-        T::register(args, work_solver_builder).await;
+        // call backend create to determine the preferred hierarchy
+        match T::create(args) {
+            // the generic tree hierarchy where the backend consists of multiple devices
+            node::WorkSolverType::WorkHub(create) => {
+                let work_hub = work_solver_builder.create_work_hub(create).await;
+                // Initialization of backend hierarchy is done dynamically with provided work hub
+                // which can be used for registration of another work hubs or work solvers. The
+                // hierarchy has no limitation but is restricted only with tree structure.
+                T::init_work_hub(work_hub).await;
+            }
+            // the simplest hierarchy where the backend is single device
+            node::WorkSolverType::WorkSolver(create) => {
+                let work_solver = work_solver_builder.create_work_solver(create).await;
+                T::init_work_solver(work_solver).await;
+            }
+        }
     }
 
     /// Adds a client that is dynamically created using its `create` method. The reason for
@@ -142,6 +156,7 @@ impl Core {
 pub mod test {
     use super::*;
     use crate::test_utils;
+    use crate::Frontend;
 
     use ii_async_compat::tokio;
     use std::sync::Arc;
@@ -149,13 +164,13 @@ pub mod test {
     /// Create job solver for frontend (pool) and work solver builder for backend (as we expect a
     /// hierarchical structure in backends)
     /// `backend_work_solver` is the root of the work solver hierarchy
-    fn build_solvers() -> (job::Solver, work::BackendBuilder) {
+    fn build_solvers() -> (job::Solver, work::SolverBuilder<Frontend>) {
         let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
         let (solution_sender, solution_receiver) = mpsc::unbounded();
         let frontend = Arc::new(crate::Frontend::new());
         (
             job::Solver::new(engine_sender, solution_receiver),
-            work::BackendBuilder::new(
+            work::SolverBuilder::new(
                 frontend,
                 Arc::new(backend::Registry::new()),
                 engine_receiver,

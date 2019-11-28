@@ -1099,7 +1099,7 @@ impl HashChainManager {
 /// This will change once restarts are added
 async fn start_miner(
     enabled_chains: Vec<usize>,
-    work_solver_builder: work::SolverBuilder<Backend>,
+    work_hub: work::SolverBuilder<Backend>,
     midstate_count: usize,
     frequency: FrequencySettings,
     voltage: power::Voltage,
@@ -1130,7 +1130,7 @@ async fn start_miner(
             monitor::Monitor::register_hashchain(monitor.clone(), *hashboard_idx).await;
 
         // build hashchain_node for statistics and static parameters
-        let hash_chain_node = work_solver_builder
+        let hash_chain_node = work_hub
             .create_work_solver(|work_generator, solution_sender| {
                 HashChainNode {
                     // TODO: create a new substructure of the miner that will hold all gpio and
@@ -1220,7 +1220,8 @@ impl hal::BackendSolution for Solution {
     }
 }
 
-struct Configuration {
+#[derive(Copy, Clone, Debug)]
+pub struct Configuration {
     pll_frequency: usize,
     voltage: f32,
 }
@@ -1261,18 +1262,22 @@ impl Default for Configuration {
 pub struct Backend {
     #[member_work_solver_stats]
     work_solver_stats: stats::BasicWorkSolver,
+    configuration: Configuration,
 }
 
 impl Backend {
-    pub fn new() -> Self {
+    pub fn new(configuration: Configuration) -> Self {
         Self {
             work_solver_stats: Default::default(),
+            configuration,
         }
     }
 }
 
 #[async_trait]
 impl hal::Backend for Backend {
+    type Type = Self;
+
     const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;
     const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
@@ -1300,15 +1305,18 @@ impl hal::Backend for Backend {
         )
     }
 
-    async fn register(args: clap::ArgMatches<'_>, backend_builder: work::BackendBuilder) {
+    fn create(args: clap::ArgMatches<'_>) -> hal::WorkNode<Self> {
         let mut configuration: Configuration = Default::default();
         configuration.parse(&args);
 
-        let work_solver_builder = backend_builder.create_work_hub(|| Self::new()).await;
+        node::WorkSolverType::WorkHub(Box::new(move || Self::new(configuration)))
+    }
 
+    async fn init_work_hub(work_hub: work::SolverBuilder<Self>) {
+        let configuration = work_hub.to_node().configuration;
         start_miner(
             vec![config::S9_HASHBOARD_INDEX],
-            work_solver_builder,
+            work_hub,
             runtime_config::get_midstate_count(),
             FrequencySettings::from_frequency(configuration.pll_frequency),
             power::Voltage::from_volts(configuration.voltage),

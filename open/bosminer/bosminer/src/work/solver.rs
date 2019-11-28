@@ -74,10 +74,16 @@ where
     }
 
     #[inline]
+    pub fn to_node(&self) -> &Arc<T> {
+        match &self.node {
+            NodeType::Base(node) | NodeType::WorkHub(node) => node,
+        }
+    }
+
+    #[inline]
     pub fn into_node(self) -> Arc<T> {
         match self.node {
-            NodeType::Base(_) => panic!("cannot convert base work solver to dynamic node"),
-            NodeType::WorkHub(node) => node,
+            NodeType::Base(node) | NodeType::WorkHub(node) => node,
         }
     }
 

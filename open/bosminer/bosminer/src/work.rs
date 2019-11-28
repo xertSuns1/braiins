@@ -45,8 +45,6 @@ use std::iter;
 use std::sync::Arc;
 use std::time;
 
-pub type BackendBuilder = SolverBuilder<crate::Frontend>;
-
 pub enum LoopState<T> {
     /// Mining work is exhausted
     Exhausted,

@@ -32,6 +32,7 @@ use ii_bitcoin::HashTrait;
 use crate::backend;
 use crate::hal;
 use crate::job::Bitcoin;
+use crate::node;
 use crate::runtime_config;
 use crate::test_utils;
 use crate::work;
@@ -264,7 +265,7 @@ fn build_solvers() -> (
     work::EngineSender,
     mpsc::UnboundedReceiver<work::Solution>,
     mpsc::UnboundedReceiver<work::DynEngine>,
-    work::BackendBuilder,
+    work::SolverBuilder<crate::Frontend>,
 ) {
     let (reschedule_sender, reschedule_receiver) = mpsc::unbounded();
     let (engine_sender, engine_receiver) =
@@ -320,7 +321,16 @@ pub async fn run<T: hal::Backend>() {
     let registry = Arc::new(Mutex::new(Registry::new()));
 
     // start HW backend for selected target
-    T::register(Default::default(), work_solver_builder).await;
+    match T::create(Default::default()) {
+        node::WorkSolverType::WorkHub(create) => {
+            let work_hub = work_solver_builder.create_work_hub(create).await;
+            T::init_work_hub(work_hub).await;
+        }
+        node::WorkSolverType::WorkSolver(create) => {
+            let work_solver = work_solver_builder.create_work_solver(create).await;
+            T::init_work_solver(work_solver).await;
+        }
+    }
 
     // start task to collect solutions and put them to registry
     tokio::spawn(collect_solutions(solution_queue_rx, registry.clone()));
