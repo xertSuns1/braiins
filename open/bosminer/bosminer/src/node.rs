@@ -62,9 +62,9 @@ pub trait ClientStats: Stats {
     fn client_stats(&self) -> &dyn stats::Client;
 }
 
-pub enum WorkSolverType<T: WorkSolver> {
-    WorkHub(T),
-    WorkSolver(T),
+pub enum WorkSolverType<H, S = H> {
+    WorkHub(H),
+    WorkSolver(S),
 }
 
 impl<T> WorkSolverType<T>
