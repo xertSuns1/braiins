@@ -163,7 +163,6 @@ pub mod test {
 
     /// Create job solver for frontend (pool) and work solver builder for backend (as we expect a
     /// hierarchical structure in backends)
-    /// `backend_work_solver` is the root of the work solver hierarchy
     fn build_solvers() -> (job::Solver, work::SolverBuilder<Frontend>) {
         let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
         let (solution_sender, solution_receiver) = mpsc::unbounded();
