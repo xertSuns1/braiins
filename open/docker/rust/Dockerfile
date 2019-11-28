@@ -65,6 +65,7 @@ RUN bash -c "curl --proto '=https' --tlsv1.2 -sSf 'https://sh.rustup.rs' | sh /d
 
 RUN rustup toolchain install beta-2019-11-06 && \
     rustup component add rustfmt && \
+    rustup component add clippy --toolchain beta-2019-11-06-x86_64-unknown-linux-gnu && \
     rustup target add arm-unknown-linux-musleabi --toolchain beta-2019-11-06-x86_64-unknown-linux-gnu
 
 # --- prefetching cargo packages --- --- ---

@@ -36,6 +36,13 @@ def main():
     )
 
     parser.add_argument(
+        '-d',
+        '--directory',
+        metavar='PATH',
+        default='.',
+        help='Change working directory before proceeding',
+    )
+    parser.add_argument(
         '-i',
         '--ignore-fail',
         action='store_true',
@@ -62,7 +69,7 @@ def main():
     )
     args = parser.parse_args()
 
-    cwd = Path('.')
+    cwd = Path(args.directory)
     subprojects = [i.parent for i in cwd.rglob('Cargo.toml')]
     # TODO: figure out proper dependency
     subprojects.reverse()

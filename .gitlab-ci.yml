@@ -28,7 +28,7 @@
 
 # templates
 .base-rust: &base-rust
-    image: $CI_REGISTRY_IMAGE/rust:11
+    image: $CI_REGISTRY_IMAGE/rust:16
 
 stages:
     - format
@@ -39,7 +39,7 @@ format:
     <<: *base-rust
     stage: format
     script:
-        - ./open/scripts/projecter cargo fmt -- --check
+        - open/scripts/projecter cargo fmt -- --check
 
 check:
     <<: *base-rust
@@ -47,6 +47,13 @@ check:
     variables:
         RUSTFLAGS: "-D warnings"
     script:
-        - ./open/scripts/projecter cargo check
-        - (cd open/bosminer/bosminer-am1-s9 && cargo test -- --host=${TEST_DEVICE_S9} --path=/tmp/ci )
-        - ./open/scripts/projecter cargo test
+        - open/scripts/projecter -d open/ cargo build
+        - open/scripts/projecter -d open/ cargo test
+        - (cd open/bosminer/bosminer-am1-s9 && cargo test --verbose -- --host=${TEST_DEVICE_S9} --path=/tmp/ci )
+
+clippy:
+    <<: *base-rust
+    stage: check
+    allow_failure: true
+    script:
+        - open/scripts/projecter -d open/ --ignore --report cargo clippy

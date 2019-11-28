@@ -27,7 +27,7 @@ DOCKER_SSH_AUTH_SOCK=/ssh_auth.sock
 
 NAME=rust
 # increment tag here and in ci config to enforce gitlab runners to fetch new images
-TAG=11
+TAG=16
 # place for clean git checkout
 # note that this prevents seeing/using (yet) uncomitted changes in image
 # we use stable path to be able to clean up properly in case of failed build
@@ -42,7 +42,7 @@ build:
 	git worktree prune
 	git worktree add $(TMPTREE) origin/bos-devel
 	# production image
-	docker build --no-cache -f Dockerfile -t $(CI_REGISTRY_IMAGE)/$(NAME):$(TAG) $(TMPTREE)
+	docker build $(DOCKER_EXTRA_FLAGS) -f Dockerfile -t $(CI_REGISTRY_IMAGE)/$(NAME):$(TAG) $(TMPTREE)
 	# dev image with sources layer
 	docker build -f Dockerfile --target=rust-with-sources -t $(CI_REGISTRY_IMAGE)/$(NAME)-src:$(TAG) $(TMPTREE)
 	rm -fr $(TMPTREE)
