@@ -229,6 +229,58 @@ impl HashChainCounter {
     }
 }
 
+/// Type representing plug pin
+#[derive(Clone)]
+pub struct PlugPin {
+    pin: gpio::PinIn,
+}
+
+impl PlugPin {
+    pub fn open(gpio_mgr: &gpio::ControlPinManager, hashboard_idx: usize) -> error::Result<Self> {
+        Ok(Self {
+            pin: gpio_mgr
+                .get_pin_in(gpio::PinInName::Plug(hashboard_idx))
+                .context(ErrorKind::Hashboard(
+                    hashboard_idx,
+                    "failed to initialize plug pin".to_string(),
+                ))?,
+        })
+    }
+
+    pub fn hashboard_present(&self) -> error::Result<bool> {
+        Ok(self.pin.is_high()?)
+    }
+}
+
+/// Type representing reset pin
+#[derive(Clone)]
+pub struct ResetPin {
+    pin: gpio::PinOut,
+}
+
+impl ResetPin {
+    pub fn open(gpio_mgr: &gpio::ControlPinManager, hashboard_idx: usize) -> error::Result<Self> {
+        Ok(Self {
+            pin: gpio_mgr
+                .get_pin_out(gpio::PinOutName::Rst(hashboard_idx))
+                .context(ErrorKind::Hashboard(
+                    hashboard_idx,
+                    "failed to initialize reset pin".to_string(),
+                ))?,
+        })
+    }
+
+    pub fn enter_reset(&mut self) -> error::Result<()> {
+        self.pin.set_low()?;
+        Ok(())
+    }
+
+    pub fn exit_reset(&mut self) -> error::Result<()> {
+        self.pin.set_high()?;
+        Ok(())
+    }
+}
+
 /// Hash Chain Controller provides abstraction of the FPGA interface for operating hashing boards.
 /// It is the user-space driver for the IP Core
 ///
@@ -244,11 +296,8 @@ pub struct HashChain {
     asic_difficulty: usize,
     /// Voltage controller on this hashboard
     voltage_ctrl: Arc<power::Control>,
-    /// Plug pin that indicates the hashboard is present
-    #[allow(dead_code)]
-    plug_pin: gpio::PinIn,
     /// Pin for resetting the hashboard
-    rst_pin: gpio::PinOut,
+    reset_pin: ResetPin,
     /// When the heartbeat was last sent
     #[allow(dead_code)]
     last_heartbeat_sent: Option<time::Instant>,
@@ -272,47 +321,32 @@ impl HashChain {
     /// * `midstate_count` - see Self
     /// * `asic_difficulty` - to what difficulty set the hardware target filter
     pub fn new(
-        gpio_mgr: &gpio::ControlPinManager,
+        reset_pin: ResetPin,
+        plug_pin: PlugPin,
         voltage_ctrl_backend: Arc<power::I2cBackend>,
         hashboard_idx: usize,
         midstate_count: MidstateCount,
         asic_difficulty: usize,
         monitor_tx: mpsc::UnboundedSender<monitor::Message>,
     ) -> error::Result<Self> {
-        // Hashboard creation is aborted if the pin is not present
-        let plug_pin = gpio_mgr
-            .get_pin_in(gpio::PinInName::Plug(hashboard_idx))
-            .context(ErrorKind::Hashboard(
-                hashboard_idx,
-                "failed to initialize plug pin".to_string(),
-            ))?;
-        // also detect that the board is present
-        if plug_pin.is_low()? {
+        let core = io::Core::new(hashboard_idx, midstate_count)?;
+        // Unfortunately, we have to do IP core re-init here (but it should be OK, it's synchronous)
+        let (common_io, command_io, work_rx_io, work_tx_io) = core.init_and_split()?;
+
+        // check that the board is present
+        if !plug_pin.hashboard_present()? {
             Err(ErrorKind::Hashboard(
                 hashboard_idx,
                 "not present".to_string(),
             ))?
         }
 
-        // Instantiate the reset pin
-        let rst_pin = gpio_mgr
-            .get_pin_out(gpio::PinOutName::Rst(hashboard_idx))
-            .context(ErrorKind::Hashboard(
-                hashboard_idx,
-                "failed to initialize reset pin".to_string(),
-            ))?;
-
-        let core = io::Core::new(hashboard_idx, midstate_count)?;
-        // Unfortunately, we have to do IP core re-init here (but it should be OK, it's synchronous)
-        let (common_io, command_io, work_rx_io, work_tx_io) = core.init_and_split()?;
-
         Ok(Self {
             chip_count: 0,
             midstate_count,
             asic_difficulty,
             voltage_ctrl: Arc::new(power::Control::new(voltage_ctrl_backend, hashboard_idx)),
-            plug_pin,
-            rst_pin,
+            reset_pin,
             hashboard_idx,
             last_heartbeat_sent: None,
             common_io,
@@ -373,13 +407,13 @@ impl HashChain {
     fn enter_reset(&mut self) -> error::Result<()> {
         self.common_io.disable_ip_core();
         // perform reset of the hashboard
-        self.rst_pin.set_low()?;
+        self.reset_pin.enter_reset()?;
         Ok(())
     }
 
     /// Leaves reset mode
     fn exit_reset(&mut self) -> error::Result<()> {
-        self.rst_pin.set_high()?;
+        self.reset_pin.exit_reset()?;
         self.common_io.enable_ip_core();
         Ok(())
     }
@@ -947,7 +981,8 @@ struct HashChainNode {
     hashboard_idx: usize,
     work_generator: work::Generator,
     solution_sender: work::SolutionSender,
-    gpio_mgr: gpio::ControlPinManager,
+    plug_pin: PlugPin,
+    reset_pin: ResetPin,
     voltage_ctrl_backend: Arc<power::I2cBackend>,
     midstate_count: MidstateCount,
     asic_difficulty: usize,
@@ -985,7 +1020,8 @@ impl HashChainManager {
 
         // make us a hash chain
         let mut hash_chain = HashChain::new(
-            &self.node.gpio_mgr,
+            self.node.reset_pin.clone(),
+            self.node.plug_pin.clone(),
             self.node.voltage_ctrl_backend.clone(),
             self.node.hashboard_idx,
             self.node.midstate_count,
@@ -1179,8 +1215,23 @@ impl Backend {
         }
     }
 
+    /// Enumerate present hashboards by querying the plug pin
+    pub fn detect_hashboards(gpio_mgr: &gpio::ControlPinManager) -> error::Result<Vec<usize>> {
+        let mut detected = vec![];
+        // TODO: configure this range somewhere
+        for hashboard_idx in 1..=8 {
+            let plug_pin = PlugPin::open(gpio_mgr, hashboard_idx)?;
+            if plug_pin.hashboard_present()? {
+                detected.push(hashboard_idx);
+            }
+        }
+        Ok(detected)
+    }
+
     /// Start miner
+    /// TODO: maybe think about having a `Result` error value here?
     async fn start_miner(
+        gpio_mgr: &gpio::ControlPinManager,
         enabled_chains: Vec<usize>,
         work_hub: work::SolverBuilder<Backend>,
         midstate_count: usize,
@@ -1211,6 +1262,7 @@ impl Backend {
             // register monitor for this haschain
             let monitor_tx =
                 monitor::Monitor::register_hashchain(monitor.clone(), *hashboard_idx).await;
+            // make pins
 
             // build hashchain_node for statistics and static parameters
             let hash_chain_node = work_hub
@@ -1220,7 +1272,10 @@ impl Backend {
                         // "physical-insertion" detection data. This structure will be persistent in
                         // between restarts and will enable early notification that there is no hashboard
                         // inserted (instead find out at mining-time).
-                        gpio_mgr: gpio::ControlPinManager::new(),
+                        reset_pin: ResetPin::open(&gpio_mgr, *hashboard_idx)
+                            .expect("failed to make pin"),
+                        plug_pin: PlugPin::open(&gpio_mgr, *hashboard_idx)
+                            .expect("failed to make pin"),
                         voltage_ctrl_backend: voltage_ctrl_backend.clone(),
                         hashboard_idx: *hashboard_idx,
                         midstate_count: MidstateCount::new(midstate_count),
@@ -1263,7 +1318,7 @@ impl Backend {
                     .await
                     .start()
                     .await
-                    .expect("failed to start hashchain");
+                    .expect("failed to start hashchain manager");
             });
         }
     }
@@ -1309,8 +1364,10 @@ impl hal::Backend for Backend {
 
     async fn init_work_hub(work_hub: work::SolverBuilder<Self>) {
         let configuration = work_hub.to_node().configuration.clone();
+        let gpio_mgr = gpio::ControlPinManager::new();
         Self::start_miner(
-            vec![config::S9_HASHBOARD_INDEX],
+            &gpio_mgr,
+            Self::detect_hashboards(&gpio_mgr).expect("failed detecting hashboards"),
             work_hub,
             runtime_config::get_midstate_count(),
             FrequencySettings::from_frequency(configuration.pll_frequency),

@@ -132,17 +132,21 @@ async fn start_hchain(
     halt_rx: halt::Receiver,
     monitor_tx: mpsc::UnboundedSender<monitor::Message>,
 ) -> HashChain {
+    let hashboard_idx = config::S9_HASHBOARD_INDEX;
     let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = Arc::new(power::I2cBackend::new(0));
     let fan_control = fan::Control::new().expect("failed initializing fan controller");
+    let reset_pin = ResetPin::open(&gpio_mgr, hashboard_idx).expect("failed to make pin");
+    let plug_pin = PlugPin::open(&gpio_mgr, hashboard_idx).expect("failed to make pin");
 
     // turn on fans to full (no temp control)
     fan_control.set_speed(fan::Speed::FULL_SPEED);
 
     let mut hash_chain = crate::HashChain::new(
-        &gpio_mgr,
+        reset_pin,
+        plug_pin,
         voltage_ctrl_backend.clone(),
-        config::S9_HASHBOARD_INDEX,
+        hashboard_idx,
         MidstateCount::new(1),
         1,
         monitor_tx,

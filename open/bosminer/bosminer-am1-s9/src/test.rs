@@ -26,13 +26,18 @@ use super::*;
 
 #[tokio::test]
 async fn test_hchain_ctl_instance() {
+    let hashboard_idx = config::S9_HASHBOARD_INDEX;
     let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = Arc::new(power::I2cBackend::new(0));
     let (monitor_sender, _monitor_receiver) = mpsc::unbounded();
+    let reset_pin = ResetPin::open(&gpio_mgr, hashboard_idx).expect("failed to make pin");
+    let plug_pin = PlugPin::open(&gpio_mgr, hashboard_idx).expect("failed to make pin");
+
     let hash_chain = HashChain::new(
-        &gpio_mgr,
+        reset_pin,
+        plug_pin,
         voltage_ctrl_backend,
-        config::S9_HASHBOARD_INDEX,
+        hashboard_idx,
         MidstateCount::new(1),
         config::ASIC_DIFFICULTY,
         monitor_sender,
