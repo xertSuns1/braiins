@@ -21,32 +21,35 @@
 // contact us at opensource@braiins.com.
 
 use ii_async_compat::tokio;
+use tokio::timer::delay_for;
 
 use bosminer_am1_s9::gpio;
 use bosminer_am1_s9::power;
-
-use embedded_hal::digital::v2::InputPin;
-use embedded_hal::digital::v2::OutputPin;
+use bosminer_am1_s9::{Backend, ResetPin};
 
 use std::sync::Arc;
+
+use std::time::Duration;
 
 /// Helper function that tests voltage controller on a particular hashboard.
 ///
 /// The test simply verifies that the voltage controller responds with a valid version
 ///
-/// * `ctrl_pin_manager` - provides accesss to  GPIO control pins connected to the hashboard
-/// * `idx` - index of the hashboard
-async fn test_voltage_ctrl_on_1_hashboard(idx: usize, ctrl_pin_manager: &gpio::ControlPinManager) {
-    let mut reset = ctrl_pin_manager
-        .get_pin_out(gpio::PinOutName::Rst(idx))
-        .unwrap();
+/// * `hashboard_idx` - index of the hashboard
+/// * `gpio_mgr` - provides accesss to  GPIO control pins connected to the hashboard
+async fn test_voltage_ctrl_on_1_hashboard(
+    gpio_mgr: &gpio::ControlPinManager,
+    hashboard_idx: usize,
+) {
+    let mut reset_pin = ResetPin::open(gpio_mgr, hashboard_idx).expect("failed to make reset pin");
 
     // perform reset of the hashboard
-    reset.set_low().unwrap();
-    reset.set_high().unwrap();
+    reset_pin.enter_reset().unwrap();
+    delay_for(Duration::from_secs(1)).await;
+    reset_pin.exit_reset().unwrap();
 
     let backend = Arc::new(power::I2cBackend::new(0));
-    let voltage_ctrl = power::Control::new(backend, idx);
+    let voltage_ctrl = power::Control::new(backend, hashboard_idx);
 
     voltage_ctrl.reset().await.unwrap();
     voltage_ctrl.jump_from_loader_to_app().await.unwrap();
@@ -64,19 +67,14 @@ async fn test_voltage_ctrl_on_1_hashboard(idx: usize, ctrl_pin_manager: &gpio::C
 /// required to be present in the miner
 #[tokio::test]
 async fn test_voltage_ctrl_all_hashboards() {
-    let ctrl_pin_manager = gpio::ControlPinManager::new();
     let mut tested_hashboards: usize = 0;
     let expected_tested_hashboards: usize = 1;
 
-    for hashboard_idx in 1..9 {
-        let plug = ctrl_pin_manager
-            .get_pin_in(gpio::PinInName::Plug(hashboard_idx))
-            .unwrap();
-
-        if plug.is_high().unwrap() {
-            test_voltage_ctrl_on_1_hashboard(hashboard_idx, &ctrl_pin_manager).await;
-            tested_hashboards += 1;
-        }
+    let gpio_mgr = gpio::ControlPinManager::new();
+    for hashboard_idx in Backend::detect_hashboards(&gpio_mgr).expect("failed to detect hashboards")
+    {
+        test_voltage_ctrl_on_1_hashboard(&gpio_mgr, hashboard_idx).await;
+        tested_hashboards += 1;
     }
     assert!(
         tested_hashboards >= expected_tested_hashboards,

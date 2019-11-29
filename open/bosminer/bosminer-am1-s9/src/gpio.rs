@@ -24,6 +24,7 @@ use embedded_hal;
 use sysfs_gpio;
 
 /// Helper struct for altering output pins which implements OutputPin trait
+#[derive(Clone)]
 pub struct PinOut(sysfs_gpio::Pin);
 
 impl embedded_hal::digital::v2::OutputPin for PinOut {
@@ -39,6 +40,7 @@ impl embedded_hal::digital::v2::OutputPin for PinOut {
 }
 
 /// Helper struct for reading input pins which implements InputPin trait
+#[derive(Clone)]
 pub struct PinIn(sysfs_gpio::Pin);
 
 impl embedded_hal::digital::v2::InputPin for PinIn {
