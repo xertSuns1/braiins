@@ -51,12 +51,14 @@ def main():
 
     parser.add_argument('test',
                         help='path to executable with the test')
-    parser.add_argument('--user',
-                        help='name of pool worker')
     arg_hostname = parser.add_argument('--hostname',
                         help='ip address or hostname of remote bOS device with ssh server')
+    parser.add_argument('--keep', action="store_true",
+                        help='keep remote file')
     parser.add_argument('--path', dest='host_path', default='/tmp', metavar='PATH',
                         help='remote path')
+    parser.add_argument('--user',
+                        help='remote login user')
     parser.add_argument('--verbose', action="store_true",
                         help='log commands')
 
@@ -142,7 +144,7 @@ def main():
             *common_args,
             '-l', user,
             hostname,
-            'rm -f ' + remote_test + ' ; lock -u /tmp/testrunner',
+            ('rm -f ' + remote_test + ' ; ' if not args.keep else '') + 'lock -u /tmp/testrunner',
             verbose=args.verbose,
             check=True,
         )
