@@ -264,6 +264,11 @@ impl PicAddress {
     }
 }
 
+/// Utility function to calculate number of whole blocks and remainder
+fn blocks(size: usize, block_size: usize) -> (usize, usize) {
+    (size / block_size, size % block_size)
+}
+
 /// Represents a voltage controller for a particular hashboard
 ///
 /// NOTE: Some I2C PIC commands require explicit wait time before issuing new
@@ -328,11 +333,49 @@ impl Control {
             .await
     }
 
-    pub async fn erase_flash(&self, num_words: PicWords) -> error::Result<()> {
-        let num_words = num_words.0 as usize;
-        assert_eq!(num_words % Self::FLASH_SECTOR_WORDS, 0);
-        for _ in 0..(num_words / Self::FLASH_SECTOR_WORDS) {
+    /// Erase `num_words` (must be divisible by `FLASH_SECTOR_WORDS`) starting from address
+    /// `start` (this must be also divisible by `FLASH_SECTOR_WORDS`, because the erase is
+    /// "page erase")
+    pub async fn erase_flash(&self, start: PicAddress, num_words: PicWords) -> error::Result<()> {
+        assert_eq!(start.0 as usize % Self::FLASH_SECTOR_WORDS, 0);
+        let (num_blocks, odd_words) = blocks(num_words.0 as usize, Self::FLASH_SECTOR_WORDS);
+        assert_eq!(odd_words, 0);
+        self.set_flash_pointer_check(start).await?;
+        for _ in 0..num_blocks {
             self.erase_flash_sector().await?;
+        }
+        Ok(())
+    }
+
+    /// Read `num_words` of PIC words from address `start`. The number of bytes transfered must
+    /// be divisible `FLASH_XFER_BLOCK_SIZE_BYTES`.
+    /// Beware that you are specifying the size in `PicWords`, and you get twice as many bytes
+    /// as a result.
+    pub async fn read_flash(
+        &self,
+        start: PicAddress,
+        num_words: PicWords,
+    ) -> error::Result<Vec<u8>> {
+        let (num_blocks, odd_bytes) =
+            blocks(num_words.to_bytes(), Self::FLASH_XFER_BLOCK_SIZE_BYTES);
+        assert_eq!(odd_bytes, 0);
+        self.set_flash_pointer_check(start).await?;
+        let mut data = Vec::new();
+        for _ in 0..num_blocks {
+            data.push(self.read_data_from_iic().await?);
+        }
+        Ok(data.concat())
+    }
+
+    /// Write `data` to flash starting at address `start`. The numver of bytes written must be divisible
+    /// by `Self::FLASH_XFER_BLOCK_SIZE_BYTES`.
+    pub async fn write_flash(&self, start: PicAddress, data: &[u8]) -> error::Result<()> {
+        let (_, odd_bytes) = blocks(data.len(), Self::FLASH_XFER_BLOCK_SIZE_BYTES);
+        assert_eq!(odd_bytes, 0);
+        self.set_flash_pointer_check(start).await?;
+        for chunk in data.chunks(Self::FLASH_XFER_BLOCK_SIZE_BYTES) {
+            self.send_data_to_iic(chunk).await?;
+            self.write_data_to_flash().await?;
         }
         Ok(())
     }
@@ -368,6 +411,20 @@ impl Control {
                 .try_into()
                 .expect("incorrect slice length"),
         )))
+    }
+
+    /// "Safe" variant of `set_flash_pointer` that checks that the pointer has really been set
+    /// at the right place
+    pub async fn set_flash_pointer_check(&self, want_address: PicAddress) -> error::Result<()> {
+        self.set_flash_pointer(want_address).await?;
+        let current_address = self.get_flash_pointer().await?;
+        if current_address != want_address {
+            Err(ErrorKind::Power(format!(
+                "PIC should be at address {:#x?} but it's at address {:#x?}",
+                want_address, current_address
+            )))?
+        }
+        Ok(())
     }
 
     pub async fn read_data_from_iic(
