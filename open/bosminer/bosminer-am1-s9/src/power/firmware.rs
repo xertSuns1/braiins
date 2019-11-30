@@ -99,47 +99,20 @@ impl PicProgram {
         Self::from_bytes(bytes)
     }
 
-    /// Check PIC loader is positioned at given flash addr
-    pub async fn expect_addr(
-        voltage_ctrl: &power::Control,
-        want_addr: PicAddress,
-    ) -> error::Result<()> {
-        let flash_addr = voltage_ctrl.get_flash_pointer().await?;
-        if flash_addr != want_addr {
-            Err(ErrorKind::Power(format!(
-                "PIC should be at address {:#x?} but it's at address {:#x?}",
-                want_addr, flash_addr
-            )))?
-        }
-        Ok(())
-    }
-
-    /// Set flash pointer and read-back flash address
-    pub async fn set_flash_pointer(
-        voltage_ctrl: &power::Control,
-        addr: PicAddress,
-    ) -> error::Result<()> {
-        voltage_ctrl.set_flash_pointer(addr).await?;
-        Self::expect_addr(voltage_ctrl, addr).await?;
-        Ok(())
-    }
-
     /// Load PIC program to voltage controller
     pub async fn program_pic(&self, voltage_ctrl: &power::Control) -> error::Result<()> {
         voltage_ctrl.reset().await?;
-        // erase portion of the flash
-        Self::set_flash_pointer(voltage_ctrl, self.load_addr).await?;
-        voltage_ctrl.erase_flash(self.prog_size).await?;
-        // TODO: wait with retry here? it was in bmminer but I suspect it was a hack because they
-        // didn't explicitly reset the PIC beforehand
-        Self::set_flash_pointer(voltage_ctrl, self.load_addr).await?;
-
-        // load program chunk by chunk
-        for chunk in self.bytes[..].chunks(power::Control::FLASH_XFER_BLOCK_SIZE_BYTES) {
-            voltage_ctrl.send_data_to_iic(chunk).await?;
-            voltage_ctrl.write_data_to_flash().await?;
+        voltage_ctrl
+            .erase_flash(self.load_addr, self.prog_size)
+            .await?;
+        voltage_ctrl
+            .write_flash(self.load_addr, &self.bytes[..])
+            .await?;
+        if voltage_ctrl.get_flash_pointer().await? != self.load_addr.offset(self.prog_size) {
+            Err(ErrorKind::Power(
+                "flash pointer ended at invalid address".into(),
+            ))?
         }
-        Self::expect_addr(voltage_ctrl, self.load_addr.offset(self.prog_size)).await?;
         Ok(())
     }
 }
@@ -151,32 +124,14 @@ mod test {
     use ii_logging::macros::*;
     use std::sync::Arc;
 
-    /// Read program from PIC
-    async fn read_program(
-        voltage_ctrl: &power::Control,
-        load_addr: PicAddress,
-        prog_size: PicWords,
-    ) -> error::Result<Vec<u8>> {
-        assert_eq!(
-            prog_size.to_bytes() % power::Control::FLASH_XFER_BLOCK_SIZE_BYTES,
-            0
-        );
-        voltage_ctrl.reset().await?;
-        voltage_ctrl.set_flash_pointer(load_addr).await?;
-        let mut v = Vec::new();
-        for _ in 0..(prog_size.to_bytes() / power::Control::FLASH_XFER_BLOCK_SIZE_BYTES) {
-            v.push(voltage_ctrl.read_data_from_iic().await?);
-        }
-        Ok(v.concat())
-    }
-
     /// Read program from PIC and verify it's the same as `pic_program`
     async fn verify_program(
         voltage_ctrl: &power::Control,
         pic_program: &PicProgram,
     ) -> error::Result<()> {
-        let in_pic =
-            read_program(voltage_ctrl, pic_program.load_addr, pic_program.prog_size).await?;
+        let in_pic = voltage_ctrl
+            .read_flash(pic_program.load_addr, pic_program.prog_size)
+            .await?;
         assert_eq!(
             in_pic, pic_program.bytes,
             "expected_in_flash={:#x?}, is_in_flash={:#x?}",
