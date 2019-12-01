@@ -825,63 +825,6 @@ impl HashChain {
         }
     }
 
-    async fn spawn_tx_task(
-        self: Arc<Self>,
-        work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        work_generator: work::Generator,
-        halt_receiver: halt::Receiver,
-    ) {
-        halt_receiver
-            .register_client("work tx".into())
-            .await
-            .spawn(async move {
-                let tx_fifo = self.take_work_tx_io().await;
-                Self::work_tx_task(work_registry, tx_fifo, work_generator).await;
-            });
-    }
-
-    async fn spawn_rx_task(
-        self: Arc<Self>,
-        work_registry: Arc<Mutex<registry::WorkRegistry>>,
-        solution_sender: work::SolutionSender,
-        halt_receiver: halt::Receiver,
-        counter: Arc<Mutex<HashChainCounter>>,
-    ) {
-        halt_receiver
-            .register_client("work rx".into())
-            .await
-            .spawn(async move {
-                let rx_fifo = self.take_work_rx_io().await;
-
-                Self::solution_rx_task(work_registry, rx_fifo, solution_sender, counter).await;
-            });
-    }
-
-    async fn spawn_hashrate_monitor_task(
-        command_context: command::Context,
-        halt_receiver: halt::Receiver,
-    ) {
-        halt_receiver
-            .register_client("hashrate monitor".into())
-            .await
-            .spawn(async move {
-                Self::hashrate_monitor_task(command_context).await;
-            });
-    }
-
-    async fn spawn_temperature_monitor_task(
-        command_context: command::Context,
-        halt_receiver: halt::Receiver,
-        monitor_tx: mpsc::UnboundedSender<monitor::Message>,
-    ) {
-        halt_receiver
-            .register_client("temperature monitor".into())
-            .await
-            .spawn(async move {
-                Self::temperature_monitor_task(command_context, monitor_tx).await;
-            });
-    }
-
     async fn start(
         self: Arc<Self>,
         work_generator: work::Generator,
@@ -892,28 +835,43 @@ impl HashChain {
     ) {
         let command_context = self.command_context.clone();
 
-        Self::spawn_tx_task(
-            self.clone(),
-            work_registry.clone(),
-            work_generator,
-            halt_receiver.clone(),
-        )
-        .await;
-        Self::spawn_rx_task(
-            self.clone(),
-            work_registry.clone(),
-            solution_sender,
-            halt_receiver.clone(),
-            counter,
-        )
-        .await;
-        Self::spawn_hashrate_monitor_task(command_context.clone(), halt_receiver.clone()).await;
-        Self::spawn_temperature_monitor_task(
-            command_context.clone(),
-            halt_receiver.clone(),
-            self.monitor_tx.clone(),
-        )
-        .await;
+        // spawn tx task
+        let tx_fifo = self.take_work_tx_io().await;
+        halt_receiver
+            .register_client("work-tx".into())
+            .await
+            .spawn(Self::work_tx_task(
+                work_registry.clone(),
+                tx_fifo,
+                work_generator,
+            ));
+
+        // spawn rx task
+        let rx_fifo = self.take_work_rx_io().await;
+        halt_receiver
+            .register_client("work-rx".into())
+            .await
+            .spawn(Self::solution_rx_task(
+                work_registry.clone(),
+                rx_fifo,
+                solution_sender,
+                counter,
+            ));
+
+        // spawn hashrate monitor
+        halt_receiver
+            .register_client("hashrate monitor".into())
+            .await
+            .spawn(Self::hashrate_monitor_task(command_context.clone()));
+
+        // spawn temperature monitor
+        halt_receiver
+            .register_client("temperature monitor".into())
+            .await
+            .spawn(Self::temperature_monitor_task(
+                command_context.clone(),
+                self.monitor_tx.clone(),
+            ));
     }
 }
 
