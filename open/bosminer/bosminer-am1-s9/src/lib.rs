@@ -78,9 +78,9 @@ use ii_async_compat::tokio;
 use tokio::timer::delay_for;
 
 /// Timing constants
-const INACTIVATE_FROM_CHAIN_DELAY_MS: u64 = 100;
+const INACTIVATE_FROM_CHAIN_DELAY: Duration = Duration::from_millis(100);
 /// Base delay quantum during hashboard initialization
-const INIT_DELAY_MS: u64 = 1000;
+const INIT_DELAY: Duration = Duration::from_millis(1000);
 
 /// Maximum number of chips is limitted by the fact that there is only 8-bit address field and
 /// addresses to the chips need to be assigned with step of 4 (e.g. 0, 4, 8, etc.)
@@ -451,13 +451,11 @@ impl HashChain {
         self.enter_reset()?;
         // disable voltage
         self.voltage_ctrl.disable_voltage().await?;
-        delay_for(Duration::from_millis(INIT_DELAY_MS)).await;
+        delay_for(INIT_DELAY).await;
         self.voltage_ctrl.enable_voltage().await?;
-        delay_for(Duration::from_millis(2 * INIT_DELAY_MS)).await;
-
-        // TODO consider including a delay
+        delay_for(INIT_DELAY * 2).await;
         self.exit_reset()?;
-        delay_for(Duration::from_millis(INIT_DELAY_MS)).await;
+        delay_for(INIT_DELAY).await;
         //        let voltage = self.voltage_ctrl.get_voltage()?;
         //        if voltage != 0 {
         //            return Err(io::Error::new(
@@ -545,7 +543,7 @@ impl HashChain {
             self.command_context
                 .send_raw_command(inactivate_from_chain_cmd.to_vec(), false)
                 .await;
-            delay_for(Duration::from_millis(INACTIVATE_FROM_CHAIN_DELAY_MS)).await;
+            delay_for(INACTIVATE_FROM_CHAIN_DELAY).await;
         }
 
         // Assign address to each chip
