@@ -1256,10 +1256,10 @@ impl Backend {
             enabled_chains, midstate_count,
         );
         // build all hash chain managers and register ourselves with frontend
-        for hashboard_idx in enabled_chains.iter() {
+        for hashboard_idx in enabled_chains {
             // register monitor for this haschain
             let monitor_tx =
-                monitor::Monitor::register_hashchain(monitor.clone(), *hashboard_idx).await;
+                monitor::Monitor::register_hashchain(monitor.clone(), hashboard_idx).await;
             // make pins
 
             // build hashchain_node for statistics and static parameters
@@ -1270,12 +1270,12 @@ impl Backend {
                         // "physical-insertion" detection data. This structure will be persistent in
                         // between restarts and will enable early notification that there is no hashboard
                         // inserted (instead find out at mining-time).
-                        reset_pin: ResetPin::open(&gpio_mgr, *hashboard_idx)
+                        reset_pin: ResetPin::open(&gpio_mgr, hashboard_idx)
                             .expect("failed to make pin"),
-                        plug_pin: PlugPin::open(&gpio_mgr, *hashboard_idx)
+                        plug_pin: PlugPin::open(&gpio_mgr, hashboard_idx)
                             .expect("failed to make pin"),
                         voltage_ctrl_backend: voltage_ctrl_backend.clone(),
-                        hashboard_idx: *hashboard_idx,
+                        hashboard_idx,
                         midstate_count: MidstateCount::new(midstate_count),
                         asic_difficulty: config::ASIC_DIFFICULTY,
                         work_solver_stats: Default::default(),
