@@ -20,41 +20,9 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use std::sync::Arc;
-
 mod cgminer;
 
-struct CGMinerAPI;
-
-#[async_trait::async_trait]
-impl cgminer::Handler for CGMinerAPI {
-    async fn handle_version(&self) -> Option<cgminer::Response> {
-        let version = cgminer::Version {
-            cgminer: "bOSminer_am1-s9-20190605-0_0de55997".into(),
-            api: "3.7".into(),
-        };
-
-        Some(version.into())
-    }
-
-    async fn handle_config(&self) -> Option<cgminer::Response> {
-        let config = cgminer::Config {
-            asc_count: 0,
-            pga_count: 0,
-            pool_count: 0,
-            strategy: "Failover".to_string(),
-            log_interval: 0,
-            device_code: String::new(),
-            os: "Braiins OS".to_string(),
-            hotplug: "None".to_string(),
-        };
-
-        Some(config.into())
-    }
-}
-
 pub async fn run() {
-    let handler = Arc::new(CGMinerAPI);
     let addr = "0.0.0.0:4028".parse().unwrap();
-    cgminer::run(handler, addr).await.unwrap();
+    cgminer::run(addr).await;
 }
