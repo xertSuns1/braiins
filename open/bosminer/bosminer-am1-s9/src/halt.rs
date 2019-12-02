@@ -29,6 +29,7 @@
 //! Termination context means that task is run `select`-ed on termination condition, and when
 //! that condition is signaled, select returns and the task is dropped.
 
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -170,6 +171,7 @@ impl Receiver {
 /// One halt context capable of notifying all of registered `clients`
 pub struct Sender {
     clients: Mutex<Vec<NotifySender>>,
+    exit_hooks: Mutex<Vec<Pin<Box<dyn Future<Output = ()> + 'static + Send>>>>,
     /// How long to wait for client to finish
     halt_timeout: Duration,
 }
@@ -180,6 +182,7 @@ impl Sender {
         Arc::new(Self {
             clients: Mutex::new(Vec::new()),
             halt_timeout,
+            exit_hooks: Mutex::new(Vec::new()),
         })
     }
 
@@ -188,6 +191,14 @@ impl Sender {
         let (notify_sender, notify_receiver) = make_notify_pair(name);
         self.clients.lock().await.push(notify_sender);
         notify_receiver
+    }
+
+    /// Register hook that is to be executed after all futures terminated
+    pub async fn add_exit_hook<F>(&self, f: F)
+    where
+        F: Future<Output = ()> + 'static + Send,
+    {
+        self.exit_hooks.lock().await.push(Box::pin(f));
     }
 
     /// Issue halt
@@ -218,7 +229,28 @@ impl Sender {
                 )))?,
             }
         }
+
+        // run exit hooks (in order they came in)
+        for hook in self.exit_hooks.lock().await.drain(..) {
+            hook.await;
+        }
         Ok(())
+    }
+
+    /// This is a hack around `halt_sender` having to be run from tokio context, because it spawns
+    /// additional threads.
+    pub fn hook_ctrlc(self: Arc<Self>) {
+        let (ctrlc_tx, mut ctrlc_rx) = mpsc::unbounded();
+        ctrlc::set_handler(move || {
+            println!("Received Ctrl-C, sending halt...");
+            ctrlc_tx.unbounded_send(()).expect("failed sending Ctrl-C");
+        })
+        .expect("Setting Ctrl-C handler failed");
+        tokio::spawn(async move {
+            if let Some(_) = ctrlc_rx.next().await {
+                self.send_halt().await;
+            }
+        });
     }
 
     pub async fn send_halt(self: Arc<Self>) {

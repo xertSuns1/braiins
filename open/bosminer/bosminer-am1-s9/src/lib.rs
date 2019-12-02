@@ -1193,7 +1193,7 @@ impl Backend {
         midstate_count: usize,
         frequency: FrequencySettings,
         voltage: power::Voltage,
-    ) {
+    ) -> Arc<halt::Sender> {
         let (halt_sender, halt_receiver) = halt::make_pair(HALT_TIMEOUT);
         let config = monitor::Config {
             temp_config: Some(monitor::TempControlConfig {
@@ -1205,8 +1205,7 @@ impl Backend {
                 min_fans: 2,
             }),
         };
-        let monitor =
-            monitor::Monitor::new(config, halt_sender.clone(), halt_receiver.clone()).await;
+        let monitor = monitor::Monitor::new(config, halt_sender.clone()).await;
         let voltage_ctrl_backend = Arc::new(power::I2cBackend::new(0));
         let mut managers = Vec::new();
         info!(
@@ -1277,6 +1276,8 @@ impl Backend {
                     .expect("failed to start hashchain manager");
             });
         }
+
+        halt_sender
     }
 }
 
@@ -1321,7 +1322,7 @@ impl hal::Backend for Backend {
     async fn init_work_hub(work_hub: work::SolverBuilder<Self>) {
         let configuration = work_hub.to_node().configuration.clone();
         let gpio_mgr = gpio::ControlPinManager::new();
-        Self::start_miner(
+        let halt_sender = Self::start_miner(
             &gpio_mgr,
             Self::detect_hashboards(&gpio_mgr).expect("failed detecting hashboards"),
             work_hub,
@@ -1330,6 +1331,16 @@ impl hal::Backend for Backend {
             power::Voltage::from_volts(configuration.voltage),
         )
         .await;
+
+        // On miner exit, halt the whole program
+        halt_sender
+            .add_exit_hook(async {
+                println!("Exiting.");
+                std::process::exit(0);
+            })
+            .await;
+        // Hook Ctrl-C
+        halt_sender.hook_ctrlc();
     }
 }
 
