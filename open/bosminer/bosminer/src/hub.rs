@@ -53,30 +53,21 @@ impl work::ExhaustedHandler for EventHandler {
 
 struct SolutionRouter {
     job_executor: Arc<scheduler::JobExecutor>,
+    client_registry: Arc<Mutex<client::Registry>>,
     solution_receiver: mpsc::UnboundedReceiver<work::Solution>,
 }
 
 impl SolutionRouter {
     fn new(
         job_executor: Arc<scheduler::JobExecutor>,
+        client_registry: Arc<Mutex<client::Registry>>,
         solution_receiver: mpsc::UnboundedReceiver<work::Solution>,
     ) -> Self {
         Self {
             job_executor,
+            client_registry,
             solution_receiver,
         }
-    }
-
-    /// Find client which given solution is associated with
-    async fn find_client(&self, solution: &work::Solution) -> Option<Arc<client::Handle>> {
-        self.job_executor
-            .clients_registry()
-            .await
-            .lock_clients()
-            .await
-            .iter()
-            .find(|client| client.matching_solution(solution))
-            .cloned()
     }
 
     async fn get_solution_sender(
@@ -89,7 +80,7 @@ impl SolutionRouter {
         let mut client = active_client.filter(|client| client.matching_solution(solution));
         // search client registry when active client is not matching destination sender
         if client.is_none() {
-            client = self.find_client(&solution).await
+            client = self.client_registry.lock().await.find_client(&solution)
         }
         // return associated solution sender when matching client is found
         client.map(|client| client.solution_sender.clone())
@@ -115,27 +106,34 @@ pub struct Core {
     solution_router: Mutex<Option<SolutionRouter>>,
     backend_registry: Arc<backend::Registry>,
     /// Registry of clients that are able to supply new jobs for mining
-    client_registry: Arc<client::Registry>,
+    client_registry: Arc<Mutex<client::Registry>>,
 }
 
 /// Concentrates handles to all nodes associated with mining (backends, clients, work solvers)
 impl Core {
     pub fn new() -> Self {
+        let frontend = Arc::new(crate::Frontend::new());
+
         let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
         let (solution_sender, solution_receiver) = mpsc::unbounded();
 
-        let client_registry = Arc::new(client::Registry::new());
+        let client_registry = Arc::new(Mutex::new(client::Registry::new()));
         let job_executor = Arc::new(scheduler::JobExecutor::new(
+            frontend.clone(),
             engine_sender,
             client_registry.clone(),
         ));
 
         Self {
-            frontend: Arc::new(crate::Frontend::new()),
+            frontend,
             job_executor: job_executor.clone(),
             engine_receiver,
             solution_sender,
-            solution_router: Mutex::new(Some(SolutionRouter::new(job_executor, solution_receiver))),
+            solution_router: Mutex::new(Some(SolutionRouter::new(
+                job_executor,
+                client_registry.clone(),
+                solution_receiver,
+            ))),
             backend_registry: Arc::new(backend::Registry::new()),
             client_registry,
         }
@@ -206,10 +204,10 @@ impl Core {
     #[inline]
     pub async fn get_clients(&self) -> Vec<Arc<dyn node::Client>> {
         self.client_registry
-            .lock_clients()
+            .lock()
             .await
             .iter()
-            .map(|handle| handle.node.clone())
+            .map(|client| client.handle.node.clone())
             .collect()
     }
 
