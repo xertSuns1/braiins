@@ -408,29 +408,19 @@ pub struct Monitor {
     pid: fan::pid::TempControl,
     /// Way to shutdown the miner
     miner_shutdown: Arc<halt::Sender>,
-    /// All monitor sub-tasks are started in this context
-    halt_receiver: halt::Receiver,
 }
 
 impl Monitor {
-    pub async fn new(
-        config: Config,
-        miner_shutdown: Arc<halt::Sender>,
-        halt_receiver: halt::Receiver,
-    ) -> Arc<Mutex<Self>> {
+    pub async fn new(config: Config, miner_shutdown: Arc<halt::Sender>) -> Arc<Mutex<Self>> {
         let monitor = Arc::new(Mutex::new(Self {
             chains: Vec::new(),
             config,
             fan_control: fan::Control::new().expect("failed initializing fan controller"),
             pid: fan::pid::TempControl::new(),
             miner_shutdown,
-            halt_receiver: halt_receiver.clone(),
         }));
 
-        halt_receiver
-            .register_client("monitor tick task".into())
-            .await
-            .spawn(Self::tick_task(monitor.clone()));
+        tokio::spawn(Self::tick_task(monitor.clone()));
 
         // return self
         monitor
@@ -547,11 +537,7 @@ impl Monitor {
         {
             let mut monitor = monitor.lock().await;
             monitor.chains.push(chain.clone());
-            monitor
-                .halt_receiver
-                .register_client("monitor event recv task".into())
-                .await
-                .spawn(Self::recv_task(chain, rx));
+            tokio::spawn(Self::recv_task(chain, rx));
         }
         tx
     }
