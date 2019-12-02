@@ -44,6 +44,8 @@ pub use clap;
 // reexport needed for implementation of `hal::Backend` trait
 pub use async_trait::async_trait;
 
+use crate::node::WorkSolverStats as _;
+
 use bosminer_macros::WorkSolverNode;
 
 use std::fmt;
@@ -59,6 +61,10 @@ impl Frontend {
         Self {
             work_solver_stats: Default::default(),
         }
+    }
+
+    pub fn get_generated_work(&self) -> u64 {
+        *self.work_solver_stats().generated_work().take_snapshot()
     }
 }
 

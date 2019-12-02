@@ -28,14 +28,15 @@ pub mod stratum_v2;
 use crate::error;
 use crate::hub;
 use crate::node;
+use crate::scheduler;
 use crate::work;
 
 use futures::channel::mpsc;
-use futures::lock::{Mutex, MutexGuard};
 use ii_async_compat::futures;
 
 use std::fmt;
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::slice;
 use std::sync::Arc;
 
 use failure::ResultExt;
@@ -124,32 +125,41 @@ impl PartialEq for Handle {
 
 /// Keeps track of all active clients
 pub struct Registry {
-    list: Mutex<Vec<Arc<Handle>>>,
+    list: Vec<scheduler::ClientHandle>,
 }
 
 impl Registry {
     pub fn new() -> Self {
-        Self {
-            list: Mutex::new(vec![]),
-        }
+        Self { list: vec![] }
     }
 
-    pub async fn register_client(&self, client: Handle) -> Arc<Handle> {
-        let container = &mut *self.list.lock().await;
+    pub fn count(&self) -> usize {
+        self.list.len()
+    }
+
+    pub fn iter(&self) -> slice::Iter<scheduler::ClientHandle> {
+        self.list.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> slice::IterMut<scheduler::ClientHandle> {
+        self.list.iter_mut()
+    }
+
+    /// Find client which given solution is associated with
+    pub fn find_client(&self, solution: &work::Solution) -> Option<Arc<Handle>> {
+        self.list
+            .iter()
+            .find(|client| client.handle.matching_solution(solution))
+            .map(|client| client.handle.clone())
+    }
+
+    pub fn register_client(&mut self, client: scheduler::ClientHandle) -> &scheduler::ClientHandle {
         assert!(
-            container
-                .iter()
-                .find(|old| old.as_ref() == &client)
-                .is_none(),
+            self.list.iter().find(|old| *old == &client).is_none(),
             "BUG: client already present in the registry"
         );
-        let client = Arc::new(client);
-        container.push(client.clone());
-        client
-    }
-
-    pub async fn lock_clients<'a>(&'a self) -> MutexGuard<'a, Vec<Arc<Handle>>> {
-        self.list.lock().await
+        self.list.push(client);
+        self.list.last().expect("BUG: client list is empty")
     }
 }
 
