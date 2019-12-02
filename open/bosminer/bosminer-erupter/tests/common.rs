@@ -24,7 +24,7 @@ use ii_async_compat::tokio;
 
 #[test]
 fn block_mining() {
-    #[tokio::main(threadpool)]
+    #[tokio::main(threaded_scheduler)]
     async fn inner() {
         bosminer::test_utils::block_mining::run::<bosminer_erupter::Backend>().await;
     }

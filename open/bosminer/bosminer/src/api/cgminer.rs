@@ -24,7 +24,7 @@
 //! statistics from it.
 
 use ii_async_compat::tokio;
-use tokio::timer::delay_for;
+use tokio::time::delay_for;
 
 use std::time;
 

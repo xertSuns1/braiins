@@ -5,22 +5,10 @@ authors = ["Braiins <braiins@braiins.com>"]
 license = "GPL-3.0-or-later"
 edition = "2018"
 
+# This is a central place to specify core async dependencies
+
 [dependencies]
-# This is the central place to specify Tokio 0.2 dependency in its current alpha state
-# The import is non-standard (ie. git repo) and changes quite often,
-# which is why this crate exists so that the other crates don't need to change that often.
-
-# Once Tokio 0.2 is out and these problems are resolved, this crate
-# is to be deleted and other crates should declare tokio dependency in a standard way.
-
-# Currently we're using specific git version because of [PR #1602](https://github.com/tokio-rs/tokio/pull/1602)
-# TODO: Once a version containing that PR is released, it can be used here.
-# Additionally, Rust toolchain version used in dependant crates should agree
-# with the one used by Tokio.
-
-tokio = { git = "https://github.com/tokio-rs/tokio.git", rev = "cfc15617a5247ea780c32c85b7134b88b6de5845" }
-tokio-io = { git = "https://github.com/tokio-rs/tokio.git", rev = "cfc15617a5247ea780c32c85b7134b88b6de5845" }
-tokio-executor = { git = "https://github.com/tokio-rs/tokio.git", rev = "cfc15617a5247ea780c32c85b7134b88b6de5845" }
-tokio-util = { git = "https://github.com/tokio-rs/tokio.git", rev = "cfc15617a5247ea780c32c85b7134b88b6de5845" }
-tokio-net = { git = "https://github.com/tokio-rs/tokio.git", rev = "cfc15617a5247ea780c32c85b7134b88b6de5845" }
-futures-preview = { version = "=0.3.0-alpha.19" }
+futures = "0.3.1"
+bytes = "0.5"
+tokio = { version = "0.2.2", features = ["full"] }
+tokio-util = { version = "0.2.0", features = ["codec"] }

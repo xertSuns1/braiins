@@ -37,9 +37,8 @@ use std::sync::Arc;
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
 
-use ii_async_compat::tokio;
-use tokio::future::FutureExt;
-use tokio::timer::delay_for;
+use ii_async_compat::{tokio, FutureExt};
+use tokio::time::delay_for;
 
 /// Prepares sample work with empty midstates
 /// NOTE: this work has 2 valid nonces:

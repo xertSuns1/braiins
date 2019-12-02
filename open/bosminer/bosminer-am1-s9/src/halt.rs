@@ -36,15 +36,10 @@ use std::time::Duration;
 use crate::error;
 use error::ErrorKind;
 
-use core::future::Future;
 use futures::channel::mpsc;
-use futures::future::FutureExt;
 use futures::future::{select, Either};
 use futures::lock::Mutex;
-use futures::stream::StreamExt;
-use ii_async_compat::futures;
-use ii_async_compat::tokio;
-use tokio::future::FutureExt as TokioFutureExt;
+use ii_async_compat::prelude::*;
 
 /// Token sent by halted task to confirm that halting is done
 struct Done;
@@ -277,7 +272,7 @@ pub fn make_pair(halt_timeout: Duration) -> (Arc<Sender>, Receiver) {
 mod test {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use tokio::timer::delay_for;
+    use tokio::time::delay_for;
 
     // Test that if cleanup after halt takes too long, halter will panic
     #[tokio::test]

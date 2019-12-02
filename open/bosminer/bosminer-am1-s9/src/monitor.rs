@@ -37,7 +37,7 @@ use futures::lock::Mutex;
 use futures::stream::StreamExt;
 use ii_async_compat::futures;
 use ii_async_compat::tokio;
-use tokio::timer::delay_for;
+use tokio::time::delay_for;
 
 /// If miner start takes longer than this, mark it as `Broken`
 const START_TIMEOUT: Duration = Duration::from_secs(120);

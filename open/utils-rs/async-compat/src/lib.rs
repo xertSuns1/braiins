@@ -21,16 +21,28 @@
 // contact us at opensource@braiins.com.
 
 // Re-export futures and tokio
+pub use bytes;
 pub use futures;
 pub use tokio;
-pub use tokio_executor;
-pub use tokio_io;
-pub use tokio_net;
 pub use tokio_util;
+
+/// A general async prelude.
+///
+/// Re-exports `futures::prelude::*`, along with `tokio`, `tokio_util`
+/// and `FutureExt` (custom extensions).
+pub mod prelude {
+    pub use super::{bytes, futures, tokio, tokio_util, FutureExt};
+
+    pub use futures::prelude::*;
+}
 
 use std::panic::{self, PanicInfo};
 use std::process;
 use std::sync::Once;
+use std::time::Duration;
+
+use futures::prelude::*;
+use tokio::time;
 
 /// This registers a customized panic hook with the stdlib.
 /// The customized panic hook does the same thing as the default
@@ -58,3 +70,19 @@ pub fn setup_panic_handling() {
         panic::set_hook(Box::new(our_hook));
     });
 }
+
+/// An extension trait for `Future` goodies,
+/// currently this only entails the `timeout()` function.
+pub trait FutureExt: Future {
+    /// Require a `Future` to complete before the specified duration has elapsed.
+    ///
+    /// This is a chainable alias for `tokio::time::timeout()`.
+    fn timeout(self, timeout: Duration) -> time::Timeout<Self>
+    where
+        Self: Sized,
+    {
+        time::timeout(timeout, self)
+    }
+}
+
+impl<F: Future> FutureExt for F {}
