@@ -381,16 +381,21 @@ impl Control {
     }
 
     pub async fn reset(&self) -> error::Result<()> {
+        info!("Voltage controller reset");
         self.write_delay(RESET_PIC, &[], Self::RESET_DELAY).await
     }
 
     pub async fn jump_from_loader_to_app(&self) -> error::Result<()> {
         self.write_delay(JUMP_FROM_LOADER_TO_APP, &[], Self::BMMINER_DELAY)
-            .await
+            .await?;
+        info!("Voltage controller application started");
+        Ok(())
     }
 
     pub async fn get_version(&self) -> error::Result<u8> {
-        Ok(self.read(GET_PIC_SOFTWARE_VERSION, 1).await?[0])
+        let version = self.read(GET_PIC_SOFTWARE_VERSION, 1).await?[0];
+        info!("Voltage controller firmware version {:#04x}", version);
+        Ok(version)
     }
 
     pub async fn write_data_to_flash(&self) -> error::Result<()> {
@@ -479,6 +484,29 @@ impl Control {
         ))
     }
 
+    /// Load PIC program onto the voltage controller
+    pub async fn program_pic(&self, program: &firmware::PicProgram) -> error::Result<()> {
+        if program.bytes.len() % Self::FLASH_XFER_BLOCK_SIZE_BYTES != 0 {
+            // This is irrelevant now (we check size), but otherwise it's required because
+            // the self-programmer can only load whole blocks
+            Err(ErrorKind::Power(format!(
+                "PIC program size not divisible by {}",
+                Self::FLASH_XFER_BLOCK_SIZE_BYTES
+            )))?
+        }
+        self.reset().await?;
+        self.erase_flash(program.load_addr, program.prog_size)
+            .await?;
+        self.write_flash(program.load_addr, &program.bytes[..])
+            .await?;
+        if self.get_flash_pointer().await? != program.load_addr.offset(program.prog_size) {
+            Err(ErrorKind::Power(
+                "flash pointer ended at invalid address".into(),
+            ))?
+        }
+        Ok(())
+    }
+
     /// Creates a new voltage controller
     pub fn new(backend: Arc<I2cBackend>, hashboard_idx: usize) -> Self {
         Self {
@@ -489,12 +517,8 @@ impl Control {
 
     async fn reset_and_start_app(&self) -> error::Result<u8> {
         self.reset().await?;
-        info!("Voltage controller reset");
         self.jump_from_loader_to_app().await?;
-        info!("Voltage controller application started");
-        let version = self.get_version().await?;
-        info!("Voltage controller firmware version {:#04x}", version);
-        Ok(version)
+        Ok(self.get_version().await?)
     }
 
     /// Initialize voltage controller
@@ -505,7 +529,7 @@ impl Control {
         if version != EXPECTED_VOLTAGE_CTRL_VERSION {
             info!("Bad firmware version! Reloading firmware...");
             let program = firmware::PicProgram::read(PIC_PROGRAM_PATH)?;
-            program.program_pic(&*self).await?;
+            self.program_pic(&program).await?;
 
             let version = self.reset_and_start_app().await?;
             if version != EXPECTED_VOLTAGE_CTRL_VERSION {
