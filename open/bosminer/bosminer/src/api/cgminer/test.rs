@@ -77,71 +77,134 @@ async fn codec_roundtrip(command: &str) -> Value {
     json::to_value(&resp).unwrap()
 }
 
+type JsonMap = json::Map<String, Value>;
+
+fn json_map_diff(a: &JsonMap, b: &JsonMap) -> JsonMap {
+    let mut res = json::Map::new();
+
+    // Check `a` keys
+    for (ak, av) in a.iter() {
+        if let Some(bv) = b.get(ak) {
+            let diff = json_diff(av, bv);
+            if !diff.is_null() {
+                res.insert(ak.clone(), diff);
+            }
+        } else {
+            res.insert(ak.clone(), Value::Bool(true));
+        }
+    }
+
+    // Check `b` keys not present in `a`
+    for bk in b.keys() {
+        if let None = a.get(bk) {
+            res.insert(bk.clone(), Value::Bool(true));
+        }
+    }
+
+    res
+}
+
+/// Computes a difference of two json `Value`s.
+/// Returns `Value::Null` if the two are equal,
+/// otherwise return `true` or an object in which each non-equal subvalue
+/// is marked `true`.
+fn json_diff(a: &Value, b: &Value) -> Value {
+    match a {
+        Value::Object(a) => match b {
+            Value::Object(b) => {
+                let map_diff = json_map_diff(a, b);
+
+                if map_diff.is_empty() {
+                    Value::Null
+                } else {
+                    Value::Object(map_diff)
+                }
+            }
+            _ => Value::Bool(true),
+        },
+        _ => {
+            if a == b {
+                Value::Null
+            } else {
+                Value::Bool(true)
+            }
+        }
+    }
+}
+
+fn assert_json_eq(a: &Value, b: &Value) {
+    let diff = json_diff(a, b);
+    if !diff.is_null() {
+        panic!(
+            "Assertion failed: JSON valued not equal:\na: {}\nb: {}\ndifference: {}",
+            a, b, diff
+        );
+    }
+}
+
 #[tokio::test]
 async fn test_api_basic() {
     let resp = codec_roundtrip("{\"command\":\"version\"}\n").await;
 
-    assert_eq!(
-        resp,
-        json::json!({
-            "STATUS": [{
-                "STATUS": "S",
-                "When": 0,
-                "Code": 0,
-                "Msg": "CGMiner versions",
-                "Description": ""
-            }],
-            "VERSION": [{
-                "API": "3.7",
-                "CGMiner": "bOSminer_am1-s9-20190605-0_0de55997"
-            }],
-            "id": 1
-        })
-    );
+    let expected = json::json!({
+        "STATUS": [{
+            "STATUS": "S",
+            "When": 0,
+            "Code": 22,
+            "Msg": "CGMiner versions",
+            "Description": ""
+        }],
+        "VERSION": [{
+            "API": "3.7",
+            "CGMiner": "bOSminer_am1-s9-20190605-0_0de55997"
+        }],
+        "id": 1
+    });
+
+    assert_json_eq(&resp, &expected);
 }
 
 #[tokio::test]
 async fn test_api_multiple() {
     let resp = codec_roundtrip("{\"command\":\"version+config\"}\n").await;
 
-    assert_eq!(
-        resp,
-        json::json!({
-            "config": {
-                "STATUS": [{
-                    "Code": 0,
-                    "Description": "",
-                    "Msg": "CGMiner config",
-                    "STATUS": "S",
-                    "When": 0
-                }],
-                "VERSION": [{
-                    "ASC Count": 0,
-                    "Device Code:": "",
-                    "Hotplug": "None",
-                    "Log Interval": 0,
-                    "OS": "Braiins OS",
-                    "PGA Count": 0,
-                    "Pool Count": 0,
-                    "Strategy": "Failover"
-                }],
-                "id": 1
-            },
-            "id": 0,
-            "version": {
-                "STATUS": [{
-                    "Code": 0,
-                    "Description": "",
-                    "Msg": "CGMiner versions",
-                    "STATUS": "S",
-                    "When": 0
-                }],
-                "VERSION": [{
-                    "API": "3.7",
-                    "CGMiner": "bOSminer_am1-s9-20190605-0_0de55997"
-                }],
-                "id": 1
-            }
-        })
-    );
+    let expected = json::json!({
+        "config": {
+            "STATUS": [{
+                "Code": 33,
+                "Description": "",
+                "Msg": "CGMiner config",
+                "STATUS": "S",
+                "When": 0
+            }],
+            "CONFIG": [{
+                "ASC Count": 0,
+                "Device Code:": "",
+                "Hotplug": "None",
+                "Log Interval": 0,
+                "OS": "Braiins OS",
+                "PGA Count": 0,
+                "Pool Count": 0,
+                "Strategy": "Failover"
+            }],
+            "id": 1
+        },
+        "id": 0,
+        "version": {
+            "STATUS": [{
+                "Code": 22,
+                "Description": "",
+                "Msg": "CGMiner versions",
+                "STATUS": "S",
+                "When": 0
+            }],
+            "VERSION": [{
+                "API": "3.7",
+                "CGMiner": "bOSminer_am1-s9-20190605-0_0de55997"
+            }],
+            "id": 1
+        }
+    });
+
+    assert_json_eq(&resp, &expected);
 }
