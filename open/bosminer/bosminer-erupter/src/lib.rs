@@ -37,8 +37,8 @@ use bosminer_macros::WorkSolverNode;
 
 use error::ErrorKind;
 
-use ii_async_compat::{tokio, tokio_executor};
-use tokio_executor::blocking;
+use ii_async_compat::tokio;
+use tokio::task;
 
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -134,13 +134,10 @@ impl Backend {
     fn enable(self: Arc<Self>) {
         // Spawn the future in a separate blocking pool (for blocking operations)
         // so that this doesn't block the regular threadpool.
-        tokio::spawn(async move {
-            blocking::run(move || {
-                if let Err(e) = self.run() {
-                    error!("{}", e);
-                }
-            })
-            .await;
+        task::spawn_blocking(move || {
+            if let Err(e) = self.run() {
+                error!("{}", e);
+            }
         });
     }
 }

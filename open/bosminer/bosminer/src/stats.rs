@@ -32,7 +32,7 @@ use ii_stats::WindowedTimeMean;
 
 use futures::lock::Mutex;
 use ii_async_compat::{futures, tokio};
-use tokio::timer::delay_for;
+use tokio::time::delay_for;
 
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};

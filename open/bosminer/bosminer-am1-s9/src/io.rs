@@ -44,9 +44,8 @@ use chrono::prelude::DateTime;
 use chrono::Utc;
 use std::time::{Duration, UNIX_EPOCH};
 
-use ii_async_compat::tokio;
-use tokio::future::FutureExt;
-use tokio::timer::delay_for;
+use ii_async_compat::prelude::*;
+use tokio::time::delay_for;
 
 use ii_fpga_io_am1_s9::{self, common::version::MINER_TYPE_A, generic::Variant};
 

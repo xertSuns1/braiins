@@ -29,8 +29,8 @@ use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::executor::block_on;
 use futures::stream::StreamExt;
-use ii_async_compat::{futures, tokio, tokio_executor};
-use tokio_executor::blocking;
+use ii_async_compat::{futures, tokio};
+use tokio::task;
 
 use embedded_hal::blocking::i2c::{Read, Write};
 use linux_embedded_hal::I2cdev;
@@ -117,13 +117,10 @@ impl AsyncI2cDev {
 
         // Spawn the future in a separate blocking pool (for blocking operations)
         // so that this doesn't block the regular threadpool.
-        tokio::spawn(async move {
-            blocking::run(move || {
-                if let Err(e) = serve_requests(i2c_device, request_rx) {
-                    error!("{}", e);
-                }
-            })
-            .await;
+        task::spawn_blocking(move || {
+            if let Err(e) = serve_requests(i2c_device, request_rx) {
+                error!("{}", e);
+            }
         });
 
         Ok(Self { request_tx })

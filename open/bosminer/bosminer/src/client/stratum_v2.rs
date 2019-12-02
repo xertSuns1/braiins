@@ -34,8 +34,7 @@ use bosminer_macros::ClientNode;
 
 use async_trait::async_trait;
 use futures::lock::Mutex;
-use ii_async_compat::{futures, tokio};
-use tokio::prelude::*;
+use ii_async_compat::prelude::*;
 
 use std::collections::VecDeque;
 use std::fmt;

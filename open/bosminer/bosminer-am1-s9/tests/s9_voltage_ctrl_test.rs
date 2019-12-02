@@ -21,7 +21,7 @@
 // contact us at opensource@braiins.com.
 
 use ii_async_compat::tokio;
-use tokio::timer::delay_for;
+use tokio::time::delay_for;
 
 use bosminer_am1_s9::gpio;
 use bosminer_am1_s9::power;

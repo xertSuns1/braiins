@@ -32,7 +32,7 @@ use ii_logging::macros::*;
 use std::time::Duration;
 
 use ii_async_compat::tokio;
-use tokio::timer::delay_for;
+use tokio::time::delay_for;
 
 /// Represents I2C bus that is implemented by sending chip commands
 /// to a particular chip on hashchain.

@@ -14,6 +14,5 @@ edition = "2018"
 
 [dependencies]
 ii-async-compat = { path = "../../utils-rs/async-compat" }
-bytes = "0.4.2"
 libc = "0.2.21"
-mio = "0.6.6"
+mio = "0.6"

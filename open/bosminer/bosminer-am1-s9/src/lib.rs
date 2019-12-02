@@ -75,7 +75,7 @@ use embedded_hal::digital::v2::OutputPin;
 use ii_bitcoin::MeetsTarget;
 
 use ii_async_compat::tokio;
-use tokio::timer::delay_for;
+use tokio::time::delay_for;
 
 /// Timing constants
 const INACTIVATE_FROM_CHAIN_DELAY: Duration = Duration::from_millis(100);

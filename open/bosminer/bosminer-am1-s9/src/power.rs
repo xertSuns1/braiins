@@ -36,7 +36,7 @@ use crate::halt;
 use futures::lock::Mutex;
 use ii_async_compat::futures;
 use ii_async_compat::tokio;
-use tokio::timer::delay_for;
+use tokio::time::delay_for;
 
 /// Default initial voltage
 pub const OPEN_CORE_VOLTAGE: Voltage = Voltage::from_volts(9.4);

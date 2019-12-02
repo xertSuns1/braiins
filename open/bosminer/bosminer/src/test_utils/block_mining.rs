@@ -40,7 +40,7 @@ use crate::work;
 use std::time::{Duration, Instant};
 
 use ii_async_compat::tokio;
-use tokio::timer::delay_for;
+use tokio::time::delay_for;
 
 use futures::channel::mpsc;
 use futures::lock::Mutex;

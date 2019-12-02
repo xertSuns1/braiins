@@ -34,8 +34,7 @@ use ii_bitcoin::HashTrait as _;
 
 pub use solver::{Generator, SolutionSender, SolverBuilder};
 
-use ii_async_compat::tokio;
-use tokio::prelude::*;
+use ii_async_compat::prelude::*;
 use tokio::sync::watch;
 
 use once_cell::sync::OnceCell;
@@ -340,7 +339,7 @@ impl EngineReceiver {
     /// Provides the most recent WorkEngine as long as the engine is able to provide any work.
     /// Otherwise, it sleeps and waits for a new
     pub async fn get_engine(&mut self) -> Option<DynEngine> {
-        let mut engine = self.watch_receiver.get_ref().clone();
+        let mut engine = self.watch_receiver.borrow().clone();
         loop {
             if !engine.is_exhausted() {
                 // return only work engine which can generate some work
