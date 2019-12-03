@@ -141,7 +141,11 @@ impl Core {
         }
     }
 
-    pub async fn add_backend<T: hal::Backend>(&self, args: clap::ArgMatches<'_>) {
+    pub async fn add_backend<T: hal::Backend>(
+        &self,
+        args: clap::ArgMatches<'_>,
+        backend_config: ::config::Value,
+    ) {
         let work_solver_builder = work::SolverBuilder::new(
             self.frontend.clone(),
             self.backend_registry.clone(),
@@ -150,7 +154,7 @@ impl Core {
         );
 
         // call backend create to determine the preferred hierarchy
-        match T::create(args) {
+        match T::create(args, backend_config) {
             // the generic tree hierarchy where the backend consists of multiple devices
             node::WorkSolverType::WorkHub(create) => {
                 let work_hub = work_solver_builder.create_work_hub(create).await;

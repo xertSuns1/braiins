@@ -72,7 +72,7 @@ pub trait Backend: Send + Sync + 'static {
     /// bOSminer frontend and passed to appropriate backend method for future initialization
     /// (`init_work_hub` or `init_work_solver`). The create method should be non-blocking and all
     /// blocking operation should be moved to init method which is asynchronous.
-    fn create(args: clap::ArgMatches<'_>) -> WorkNode<Self::Type>;
+    fn create(args: clap::ArgMatches<'_>, backend_config: ::config::Value) -> WorkNode<Self::Type>;
 
     /// Function is called when `create` function returns `node::WorkSolverType::WorkHub`
     /// Passed work hub should be used for creating backend hierarchy consisting of work hubs and
