@@ -178,5 +178,5 @@ pub async fn main<T: hal::Backend>() {
     client::register(&core, client_descriptor).await.enable();
 
     // the bosminer is controlled with API which also controls when the miner will end
-    api::run().await;
+    api::run(core).await;
 }
