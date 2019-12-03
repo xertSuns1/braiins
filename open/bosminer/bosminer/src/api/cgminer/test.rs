@@ -189,7 +189,6 @@ async fn test_api_multiple() {
             }],
             "id": 1
         },
-        "id": 0,
         "version": {
             "STATUS": [{
                 "Code": 22,
@@ -203,7 +202,8 @@ async fn test_api_multiple() {
                 "CGMiner": "bOSminer_am1-s9-20190605-0_0de55997"
             }],
             "id": 1
-        }
+        },
+        "id": 1,
     });
 
     assert_json_eq(&resp, &expected);

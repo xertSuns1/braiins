@@ -139,17 +139,16 @@ impl Serialize for Response {
 /// Container for a multi-reponse
 #[derive(Serialize, Debug)]
 pub struct MultiResponse {
-    id: usize,
-
     #[serde(flatten)]
     responses: HashMap<String, Value>,
+    id: usize,
 }
 
 impl MultiResponse {
     pub fn new() -> Self {
         Self {
-            id: 0,
             responses: HashMap::new(),
+            id: 1,
         }
     }
 
