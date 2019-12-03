@@ -52,7 +52,7 @@ pub struct Config {
     pub strategy: String,
     #[serde(rename = "Log Interval")]
     pub log_interval: u32,
-    #[serde(rename = "Device Code:")]
+    #[serde(rename = "Device Code")]
     pub device_code: String,
     #[serde(rename = "OS")]
     pub os: String,
