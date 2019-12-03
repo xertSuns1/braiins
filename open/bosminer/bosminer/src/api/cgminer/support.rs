@@ -130,8 +130,8 @@ impl Serialize for Response {
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(Some(3))?;
         map.serialize_entry("STATUS", &[&self.status])?;
-        map.serialize_entry("id", &self.id)?;
         map.serialize_entry(&self.name, &[&self.response])?;
+        map.serialize_entry("id", &self.id)?;
         map.end()
     }
 }
@@ -153,7 +153,8 @@ impl MultiResponse {
     }
 
     pub fn add_response(&mut self, name: &str, resp: Value) {
-        self.responses.insert(name.to_string(), resp);
+        self.responses
+            .insert(name.to_string(), Value::Array(vec![resp]));
     }
 }
 

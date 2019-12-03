@@ -169,7 +169,7 @@ async fn test_api_multiple() {
     let resp = codec_roundtrip("{\"command\":\"version+config\"}\n").await;
 
     let expected = json::json!({
-        "config": {
+        "config": [{
             "STATUS": [{
                 "Code": 33,
                 "Description": "",
@@ -188,8 +188,8 @@ async fn test_api_multiple() {
                 "Strategy": "Failover"
             }],
             "id": 1
-        },
-        "version": {
+        }],
+        "version": [{
             "STATUS": [{
                 "Code": 22,
                 "Description": "",
@@ -202,7 +202,7 @@ async fn test_api_multiple() {
                 "CGMiner": "bOSminer_am1-s9-20190605-0_0de55997"
             }],
             "id": 1
-        },
+        }],
         "id": 1,
     });
 
