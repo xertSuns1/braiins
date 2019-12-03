@@ -97,25 +97,25 @@ impl StatusInfo {
 #[derive(Debug)]
 pub struct Response {
     status: StatusInfo,
-    response: Value,
+    responses: Value,
     name: &'static str,
     id: usize,
 }
 
 impl Response {
     pub fn new<S: Serialize>(
-        response: S,
+        responses: Vec<S>,
         name: &'static str,
         success: bool,
         code: u32,
         msg: String,
     ) -> Self {
         let status = StatusInfo::new(success, code, msg);
-        let response = json::to_value(response).expect("Response serialization failed");
+        let responses = json::to_value(responses).expect("Response serialization failed");
 
         Self {
             status,
-            response,
+            responses,
             name,
             id: 1,
         }
@@ -130,7 +130,7 @@ impl Serialize for Response {
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(Some(3))?;
         map.serialize_entry("STATUS", &[&self.status])?;
-        map.serialize_entry(&self.name, &[&self.response])?;
+        map.serialize_entry(&self.name, &self.responses)?;
         map.serialize_entry("id", &self.id)?;
         map.end()
     }

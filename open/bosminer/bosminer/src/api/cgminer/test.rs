@@ -37,6 +37,42 @@ struct TestHandler;
 
 #[async_trait::async_trait]
 impl Handler for TestHandler {
+    async fn handle_devs(&self) -> Option<Response> {
+        Some(
+            response::Devs {
+                list: vec![response::Asc {
+                    asc: 0,
+                    name: "BC5".to_string(),
+                    id: 0,
+                    enabled: response::Bool::Y,
+                    status: response::AscStatus::Alive,
+                    temperature: 0.0,
+                    mhs_av: 0.0,
+                    mhs_5s: 0.0,
+                    mhs_1m: 0.0,
+                    mhs_5m: 0.0,
+                    mhs_15m: 0.0,
+                    accepted: 0,
+                    rejected: 0,
+                    hardware_errors: 0,
+                    utility: 0.0,
+                    last_share_pool: 0,
+                    last_share_time: 0,
+                    total_mh: 0.0,
+                    diff1_work: 0,
+                    difficulty_accepted: 0.0,
+                    difficulty_rejected: 0.0,
+                    last_share_difficulty: 0.0,
+                    last_valid_work: 0,
+                    device_hardware_percent: 0.0,
+                    device_rejected_percent: 0.0,
+                    device_elapsed: 0,
+                }],
+            }
+            .into(),
+        )
+    }
+
     async fn handle_version(&self) -> Option<Response> {
         Some(
             response::Version {
