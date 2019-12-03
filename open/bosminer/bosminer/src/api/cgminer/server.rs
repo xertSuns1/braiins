@@ -94,12 +94,9 @@ type Server = ii_wire::Server<Framing>;
 type Connection = ii_wire::Connection<Framing>;
 
 async fn handle_connection(mut conn: Connection, handler: Arc<dyn Handler>) {
-    while let Some(Ok(command)) = conn.next().await {
+    if let Some(Ok(command)) = conn.next().await {
         if let Some(resp) = command.handle(&*handler).await {
-            match conn.tx.send(resp).await {
-                Ok(_) => {}
-                Err(_) => break,
-            }
+            let _ = conn.tx.send(resp).await;
         }
     }
 }
