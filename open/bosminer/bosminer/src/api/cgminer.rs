@@ -40,6 +40,7 @@ mod server;
 mod test;
 
 use crate::hub;
+use crate::node;
 
 /// Version of CGMiner compatible API
 const API_VERSION: &str = "3.7";
@@ -59,10 +60,57 @@ impl CGMinerAPI {
     pub fn new(core: Arc<hub::Core>) -> Self {
         Self { core }
     }
+
+    async fn get_asc_status(idx: usize, _work_solver: &Arc<dyn node::WorkSolver>) -> response::Asc {
+        response::Asc {
+            asc: idx as u32,
+            // TODO: get actual ASIC name from work solver
+            name: "BC5".to_string(),
+            // TODO: get idx from work solver (it can represent real index of hash chain)
+            id: idx as u32,
+            // TODO: get actual state from work solver
+            enabled: response::Bool::Y,
+            // TODO: get actual status from work solver
+            status: response::AscStatus::Alive,
+            // TODO: get actual temperature from work solver?
+            temperature: 0.0,
+            mhs_av: 0.0,
+            mhs_5s: 0.0,
+            mhs_1m: 0.0,
+            mhs_5m: 0.0,
+            mhs_15m: 0.0,
+            accepted: 0,
+            rejected: 0,
+            hardware_errors: 0,
+            utility: 0.0,
+            last_share_pool: 0,
+            last_share_time: 0,
+            total_mh: 0.0,
+            diff1_work: 0,
+            difficulty_accepted: 0.0,
+            difficulty_rejected: 0.0,
+            last_share_difficulty: 0.0,
+            last_valid_work: 0,
+            device_hardware_percent: 0.0,
+            device_rejected_percent: 0.0,
+            device_elapsed: 0,
+        }
+    }
 }
 
 #[async_trait::async_trait]
 impl Handler for CGMinerAPI {
+    async fn handle_devs(&self) -> Option<Response> {
+        let mut list = vec![];
+        for (idx, work_solver) in self.core.get_work_solvers().await.iter().enumerate() {
+            list.push(Self::get_asc_status(idx, work_solver).await);
+        }
+
+        let devs = response::Devs { list };
+
+        Some(devs.into())
+    }
+
     async fn handle_version(&self) -> Option<Response> {
         let version = response::Version {
             // TODO: get actual bosminer version

@@ -28,6 +28,25 @@ use super::Response;
 
 #[allow(dead_code)]
 #[derive(Serialize, Eq, PartialEq, Clone, Debug)]
+pub enum Bool {
+    N,
+    Y,
+}
+
+#[allow(dead_code)]
+#[derive(Serialize, Eq, PartialEq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub enum AscStatus {
+    Alive,
+    Sick,
+    Dead,
+    NoStart,
+    Initialising,
+    Unknown,
+}
+
+#[allow(dead_code)]
+#[derive(Serialize, Eq, PartialEq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub enum MultipoolStrategy {
     Failover,
@@ -40,6 +59,74 @@ pub enum MultipoolStrategy {
 }
 
 #[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct Asc {
+    #[serde(rename = "ASC")]
+    pub asc: u32,
+    #[serde(rename = "Name")]
+    pub name: String,
+    #[serde(rename = "ID")]
+    pub id: u32,
+    #[serde(rename = "Enabled")]
+    pub enabled: Bool,
+    #[serde(rename = "Status")]
+    pub status: AscStatus,
+    #[serde(rename = "Temperature")]
+    pub temperature: f64,
+    #[serde(rename = "MHS av")]
+    pub mhs_av: f64,
+    #[serde(rename = "MHS 5s")]
+    pub mhs_5s: f64,
+    #[serde(rename = "MHS 1m")]
+    pub mhs_1m: f64,
+    #[serde(rename = "MHS 5m")]
+    pub mhs_5m: f64,
+    #[serde(rename = "MHS 15m")]
+    pub mhs_15m: f64,
+    #[serde(rename = "Accepted")]
+    pub accepted: u32,
+    #[serde(rename = "Rejected")]
+    pub rejected: u32,
+    #[serde(rename = "Hardware Errors")]
+    pub hardware_errors: u32,
+    #[serde(rename = "Utility")]
+    pub utility: f64,
+    #[serde(rename = "Last Share Pool")]
+    pub last_share_pool: u32,
+    #[serde(rename = "Last Share Time")]
+    pub last_share_time: u32,
+    #[serde(rename = "Total MH")]
+    pub total_mh: f64,
+    #[serde(rename = "Diff1 Work")]
+    pub diff1_work: u64,
+    #[serde(rename = "Difficulty Accepted")]
+    pub difficulty_accepted: f64,
+    #[serde(rename = "Difficulty Rejected")]
+    pub difficulty_rejected: f64,
+    #[serde(rename = "Last Share Difficulty")]
+    pub last_share_difficulty: f64,
+    #[serde(rename = "Last Valid Work")]
+    pub last_valid_work: u32,
+    #[serde(rename = "Device Hardware%")]
+    pub device_hardware_percent: f64,
+    #[serde(rename = "Device Rejected%")]
+    pub device_rejected_percent: f64,
+    #[serde(rename = "Device Elapsed")]
+    pub device_elapsed: u32,
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct Devs {
+    pub list: Vec<Asc>,
+}
+
+impl From<Devs> for Response {
+    fn from(devs: Devs) -> Response {
+        let asc_count = devs.list.len();
+        Response::new(devs.list, "DEVS", true, 9, format!("{} ASC(s)", asc_count))
+    }
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct Version {
     #[serde(rename = "CGMiner")]
     pub cgminer: String,
@@ -48,8 +135,14 @@ pub struct Version {
 }
 
 impl From<Version> for Response {
-    fn from(ver: Version) -> Response {
-        Response::new(ver, "VERSION", true, 22, "CGMiner versions".to_string())
+    fn from(version: Version) -> Response {
+        Response::new(
+            vec![version],
+            "VERSION",
+            true,
+            22,
+            "CGMiner versions".to_string(),
+        )
     }
 }
 
@@ -74,7 +167,13 @@ pub struct Config {
 }
 
 impl From<Config> for Response {
-    fn from(ver: Config) -> Response {
-        Response::new(ver, "CONFIG", true, 33, "CGMiner config".to_string())
+    fn from(config: Config) -> Response {
+        Response::new(
+            vec![config],
+            "CONFIG",
+            true,
+            33,
+            "CGMiner config".to_string(),
+        )
     }
 }
