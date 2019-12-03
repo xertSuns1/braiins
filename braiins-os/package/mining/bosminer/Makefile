@@ -74,7 +74,9 @@ endef
 define Package/bosminer/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(CARGO_OUTPUT_DIR)/$(BOSMINER_NAME) $(1)/usr/bin/$(PKG_NAME)
-	$(INSTALL_BIN) ./files/set_fan.sh $(1)/usr/bin/set_fan
+	$(INSTALL_DIR) $(1)/etc/bosminer
+	$(INSTALL_BIN) ./files/bosminer.toml $(1)/etc/bosminer/bosminer.toml
+	$(INSTALL_BIN) ./files/hash_s8_app.txt $(1)/etc/bosminer/hash_s8_app.txt
 endef
 
 $(eval $(call BuildPackage,bosminer))

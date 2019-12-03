@@ -156,7 +156,10 @@ impl hal::Backend for Backend {
     const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
-    fn create(_args: clap::ArgMatches<'_>) -> hal::WorkNode<Self> {
+    fn create(
+        _args: clap::ArgMatches<'_>,
+        _backend_config: ::config::Value,
+    ) -> hal::WorkNode<Self> {
         node::WorkSolverType::WorkSolver(Box::new(|work_generator, solution_sender| {
             Self::new(work_generator, solution_sender)
         }))

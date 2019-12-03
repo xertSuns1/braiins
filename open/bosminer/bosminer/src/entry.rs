@@ -31,18 +31,65 @@ use crate::hub;
 use crate::runtime_config;
 use crate::stats;
 
+use serde::Deserialize;
+
 use ii_async_compat::tokio;
 
 use std::sync::Arc;
 
 use clap::{self, Arg};
 
+/// Location of default config
+/// TODO: Maybe don't add `.toml` prefix so we could use even JSON
+pub const DEFAULT_CONFIG_PATH: &'static str = "/etc/bosminer/bosminer.toml";
+
+/// Expected configuration version
+const CONFIG_VERSION: &'static str = "alpha";
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+struct PoolConfig {
+    url: String,
+    user: String,
+    password: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct GenericConfig {
+    config_version: String,
+    #[serde(rename = "pool")]
+    pools: Option<Vec<PoolConfig>>,
+    #[serde(flatten)]
+    pub backend_config: ::config::Value,
+}
+
 /// Registration is run in separate task to avoid blocking while the backend is being e.g. started
 async fn backend_registration_task<T: hal::Backend>(
     core: Arc<hub::Core>,
     args: clap::ArgMatches<'_>,
+    backend_config: ::config::Value,
 ) {
-    core.add_backend::<T>(args).await
+    core.add_backend::<T>(args, backend_config).await
+}
+
+/// Parse config (either specified or the default one)
+pub fn parse_config(config_path: &str) -> GenericConfig {
+    let mut settings = config::Config::default();
+    settings
+        .merge(config::File::with_name(config_path))
+        .expect("failed to parse config file");
+
+    // Parse it into structure
+    let generic_config = settings
+        .try_into::<GenericConfig>()
+        .expect("failed to interpret config");
+
+    // Check config is of the correct version
+    if generic_config.config_version != CONFIG_VERSION {
+        panic!("config_version should be {}", CONFIG_VERSION);
+    }
+
+    generic_config
 }
 
 pub async fn main<T: hal::Backend>() {
@@ -50,12 +97,19 @@ pub async fn main<T: hal::Backend>() {
 
     let app = clap::App::new("bosminer")
         .arg(
+            clap::Arg::with_name("config")
+                .long("config")
+                .help("Set config file path")
+                .required(false)
+                .takes_value(true),
+        )
+        .arg(
             Arg::with_name("pool")
                 .short("p")
                 .long("pool")
                 .value_name("HOSTNAME:PORT")
                 .help("Address the stratum V2 server")
-                .required(true)
+                .required(false)
                 .takes_value(true),
         )
         .arg(
@@ -64,19 +118,42 @@ pub async fn main<T: hal::Backend>() {
                 .long("user")
                 .value_name("USERNAME.WORKERNAME")
                 .help("Specify user and worker name")
-                .required(true)
+                .required(false)
                 .takes_value(true),
         );
 
     // Pass pre-build arguments to backend for further modification
-    let args = T::add_args(app).get_matches();
+    let matches = T::add_args(app).get_matches();
 
-    // Unwraps should be ok as long as the flags are required
-    let url = args.value_of("pool").unwrap().to_string();
-    let user = args.value_of("user").unwrap().to_string();
+    // Parse config file - either user specified or the default one
+    let mut generic_config =
+        parse_config(matches.value_of("config").unwrap_or(DEFAULT_CONFIG_PATH));
+
+    // Parse pools
+    // Don't worry if is this section missing, maybe there are some pools on command line
+    let mut pools = generic_config.pools.take().unwrap_or_else(|| Vec::new());
+
+    // Add pools from command line
+    if let Some(url) = matches.value_of("pool") {
+        if let Some(user) = matches.value_of("user") {
+            pools.push(PoolConfig {
+                url: url.to_string(),
+                user: user.to_string(),
+                password: None,
+            });
+        }
+    }
+
+    // Check if there's enough pools
+    if pools.len() == 0 {
+        panic!("No pools specified.");
+    }
 
     // parse user input to fail fast when it is incorrect
-    let client_descriptor = client::parse(url, user).expect("Server parameters");
+    // TODO: insert here pool insertion && processing
+    let pool = &pools[0]; // Whoa!
+    let client_descriptor =
+        client::parse(pool.url.clone(), pool.user.clone()).expect("Server parameters");
 
     // Set default backend midstate count
     runtime_config::set_midstate_count(T::DEFAULT_MIDSTATE_COUNT);
@@ -85,7 +162,11 @@ pub async fn main<T: hal::Backend>() {
     let core = Arc::new(hub::Core::new());
 
     tokio::spawn(core.clone().run());
-    tokio::spawn(backend_registration_task::<T>(core.clone(), args));
+    tokio::spawn(backend_registration_task::<T>(
+        core.clone(),
+        matches,
+        generic_config.backend_config,
+    ));
 
     // start statistics processing
     tokio::spawn(stats::mining_task(

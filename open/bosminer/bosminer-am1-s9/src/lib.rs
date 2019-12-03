@@ -1118,53 +1118,15 @@ impl hal::BackendSolution for Solution {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct Configuration {
-    pll_frequency: usize,
-    voltage: f32,
-}
-
-impl Configuration {
-    fn parse(&mut self, args: &clap::ArgMatches) {
-        // Set just 1 midstate if user requested disabling asicboost
-        if args.is_present("disable-asic-boost") {
-            runtime_config::set_midstate_count(1);
-        }
-        if args.is_present("pll-frequency") {
-            self.pll_frequency = args
-                .value_of("pll-frequency")
-                .expect("argument missing")
-                .parse::<usize>()
-                .expect("parser failed");
-        }
-        if args.is_present("voltage") {
-            self.voltage = args
-                .value_of("voltage")
-                .expect("argument missing")
-                .parse::<f32>()
-                .expect("parser failed");
-        }
-    }
-}
-
-impl Default for Configuration {
-    fn default() -> Self {
-        Self {
-            pll_frequency: config::DEFAULT_PLL_FREQUENCY,
-            voltage: config::DEFAULT_VOLTAGE,
-        }
-    }
-}
-
 #[derive(Debug, WorkSolverNode)]
 pub struct Backend {
     #[member_work_solver_stats]
     work_solver_stats: stats::BasicWorkSolver,
-    configuration: Configuration,
+    configuration: config::Configuration,
 }
 
 impl Backend {
-    pub fn new(configuration: Configuration) -> Self {
+    pub fn new(configuration: config::Configuration) -> Self {
         Self {
             work_solver_stats: Default::default(),
             configuration,
@@ -1190,27 +1152,18 @@ impl Backend {
         gpio_mgr: &gpio::ControlPinManager,
         enabled_chains: Vec<usize>,
         work_hub: work::SolverBuilder<Backend>,
-        midstate_count: usize,
-        frequency: FrequencySettings,
-        voltage: power::Voltage,
+        configuration: &config::Configuration,
     ) -> Arc<halt::Sender> {
         let (halt_sender, halt_receiver) = halt::make_pair(HALT_TIMEOUT);
-        let config = monitor::Config {
-            temp_config: Some(monitor::TempControlConfig {
-                dangerous_temp: 110.0,
-                hot_temp: 95.0,
-            }),
-            fan_config: Some(monitor::FanControlConfig {
-                mode: monitor::FanControlMode::TargetTemperature(75.0),
-                min_fans: 2,
-            }),
-        };
-        let monitor = monitor::Monitor::new(config, halt_sender.clone()).await;
+        let monitor_config = configuration.resolve_monitor_config();
+        info!("Resolved monitor configuration: {:?}", monitor_config);
+        let monitor = monitor::Monitor::new(monitor_config, halt_sender.clone()).await;
         let voltage_ctrl_backend = Arc::new(power::I2cBackend::new(0));
         let mut managers = Vec::new();
         info!(
             "Initializing miner, enabled_chains={:?}, midstate_count={}",
-            enabled_chains, midstate_count,
+            enabled_chains,
+            configuration.midstate_count(),
         );
         // build all hash chain managers and register ourselves with frontend
         for hashboard_idx in enabled_chains {
@@ -1218,6 +1171,7 @@ impl Backend {
             let monitor_tx =
                 monitor::Monitor::register_hashchain(monitor.clone(), hashboard_idx).await;
             // make pins
+            let chain_config = configuration.resolve_chain_config(hashboard_idx);
 
             // build hashchain_node for statistics and static parameters
             let hash_chain_node = work_hub
@@ -1233,7 +1187,7 @@ impl Backend {
                             .expect("failed to make pin"),
                         voltage_ctrl_backend: voltage_ctrl_backend.clone(),
                         hashboard_idx,
-                        midstate_count: MidstateCount::new(midstate_count),
+                        midstate_count: chain_config.midstate_count,
                         asic_difficulty: config::ASIC_DIFFICULTY,
                         work_solver_stats: Default::default(),
                         solution_sender,
@@ -1246,8 +1200,8 @@ impl Backend {
             let hash_chain_manager = HashChainManager {
                 runtime: None,
                 params: HashChainParams {
-                    frequency: frequency.clone(),
-                    voltage,
+                    frequency: chain_config.frequency.clone(),
+                    voltage: chain_config.voltage,
                 },
                 node: hash_chain_node,
             };
@@ -1290,45 +1244,27 @@ impl hal::Backend for Backend {
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
     fn add_args<'a, 'b>(app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
-        app.arg(
-            clap::Arg::with_name("disable-asic-boost")
-                .long("disable-asic-boost")
-                .help("Disable ASIC boost (use just one midstate)")
-                .required(false),
-        )
-        .arg(
-            clap::Arg::with_name("pll-frequency")
-                .long("pll-frequency")
-                .help("Set chip frequency")
-                .required(false)
-                .takes_value(true),
-        )
-        .arg(
-            clap::Arg::with_name("voltage")
-                .long("voltage")
-                .help("Set chip voltage")
-                .required(false)
-                .takes_value(true),
-        )
+        config::Configuration::add_args(app)
     }
 
-    fn create(args: clap::ArgMatches<'_>) -> hal::WorkNode<Self> {
-        let mut configuration: Configuration = Default::default();
-        configuration.parse(&args);
+    fn create(
+        matches: clap::ArgMatches<'_>,
+        backend_config: ::config::Value,
+    ) -> hal::WorkNode<Self> {
+        let configuration = config::Configuration::parse(&matches, backend_config);
 
         node::WorkSolverType::WorkHub(Box::new(move || Self::new(configuration)))
     }
 
     async fn init_work_hub(work_hub: work::SolverBuilder<Self>) {
         let configuration = work_hub.to_node().configuration.clone();
+        runtime_config::set_midstate_count(configuration.midstate_count());
         let gpio_mgr = gpio::ControlPinManager::new();
         let halt_sender = Self::start_miner(
             &gpio_mgr,
             Self::detect_hashboards(&gpio_mgr).expect("failed detecting hashboards"),
             work_hub,
-            runtime_config::get_midstate_count(),
-            FrequencySettings::from_frequency(configuration.pll_frequency),
-            power::Voltage::from_volts(configuration.voltage),
+            &configuration,
         )
         .await;
 
