@@ -46,7 +46,7 @@ impl Command {
     pub async fn handle_single(
         &self,
         cmd: &str,
-        param: Option<&Value>,
+        _param: Option<&Value>,
         handler: &dyn Handler,
     ) -> Option<Response> {
         match cmd {
