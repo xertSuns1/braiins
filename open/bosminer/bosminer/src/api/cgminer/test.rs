@@ -179,7 +179,7 @@ async fn test_api_multiple() {
             }],
             "CONFIG": [{
                 "ASC Count": 0,
-                "Device Code:": "",
+                "Device Code": "",
                 "Hotplug": "None",
                 "Log Interval": 0,
                 "OS": "Braiins OS",
