@@ -26,6 +26,19 @@ use serde::Serialize;
 
 use super::Response;
 
+#[allow(dead_code)]
+#[derive(Serialize, Eq, PartialEq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub enum MultipoolStrategy {
+    Failover,
+    #[serde(rename = "Round Robin")]
+    RoundRobin,
+    Rotate,
+    #[serde(rename = "Load Balance")]
+    LoadBalance,
+    Balance,
+}
+
 #[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct Version {
     #[serde(rename = "CGMiner")]
@@ -49,7 +62,7 @@ pub struct Config {
     #[serde(rename = "Pool Count")]
     pub pool_count: u32,
     #[serde(rename = "Strategy")]
-    pub strategy: String,
+    pub strategy: MultipoolStrategy,
     #[serde(rename = "Log Interval")]
     pub log_interval: u32,
     #[serde(rename = "Device Code")]

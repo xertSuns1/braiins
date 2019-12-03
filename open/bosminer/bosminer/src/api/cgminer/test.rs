@@ -52,7 +52,7 @@ impl Handler for TestHandler {
             asc_count: 0,
             pga_count: 0,
             pool_count: 0,
-            strategy: "Failover".to_string(),
+            strategy: responses::MultipoolStrategy::Failover,
             log_interval: 0,
             device_code: String::new(),
             os: "Braiins OS".to_string(),
