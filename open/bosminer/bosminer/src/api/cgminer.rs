@@ -39,18 +39,35 @@ mod server;
 #[cfg(test)]
 mod test;
 
+use crate::hub;
+
+/// Version of CGMiner compatible API
+const API_VERSION: &str = "3.7";
+
+/// Default interval used for computation of default rolling average.
+const DEFAULT_LOG_INTERVAL: u32 = 5;
+
 /// Global `Timestamp` flag, controls whether responses contain real timestamps.
 /// See also the `Timestamp` type.
 static TIMESTAMP: Timestamp = Timestamp::new();
 
-struct CGMinerAPI;
+struct CGMinerAPI {
+    core: Arc<hub::Core>,
+}
+
+impl CGMinerAPI {
+    pub fn new(core: Arc<hub::Core>) -> Self {
+        Self { core }
+    }
+}
 
 #[async_trait::async_trait]
 impl Handler for CGMinerAPI {
     async fn handle_version(&self) -> Option<Response> {
         let version = response::Version {
+            // TODO: get actual bosminer version
             cgminer: "bOSminer_am1-s9-20190605-0_0de55997".into(),
-            api: "3.7".into(),
+            api: API_VERSION.into(),
         };
 
         Some(version.into())
@@ -58,12 +75,14 @@ impl Handler for CGMinerAPI {
 
     async fn handle_config(&self) -> Option<Response> {
         let config = response::Config {
-            asc_count: 0,
+            asc_count: self.core.get_work_solvers().await.len() as u32,
             pga_count: 0,
-            pool_count: 0,
-            strategy: responses::MultipoolStrategy::Failover,
-            log_interval: 0,
+            pool_count: self.core.get_clients().await.len() as u32,
+            // TODO: get actual multi-pool strategy
+            strategy: response::MultipoolStrategy::Failover,
+            log_interval: DEFAULT_LOG_INTERVAL,
             device_code: String::new(),
+            // TODO: detect underlying operation system
             os: "Braiins OS".to_string(),
             hotplug: "None".to_string(),
         };
@@ -72,7 +91,7 @@ impl Handler for CGMinerAPI {
     }
 }
 
-pub async fn run(listen_addr: SocketAddr) {
-    let handler = Arc::new(CGMinerAPI);
+pub async fn run(core: Arc<hub::Core>, listen_addr: SocketAddr) {
+    let handler = Arc::new(CGMinerAPI::new(core));
     server::run(handler, listen_addr).await.unwrap();
 }
