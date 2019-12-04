@@ -23,6 +23,7 @@
 //! Defines all the CGMiner API responses
 
 use serde::Serialize;
+use serde_repr::Serialize_repr;
 
 use super::Response;
 
@@ -89,6 +90,15 @@ pub enum MultipoolStrategy {
     Balance,
 }
 
+#[derive(Serialize_repr, Eq, PartialEq, Clone, Debug)]
+#[repr(u32)]
+pub enum StatusCode {
+    Pool = 7,
+    Devs = 9,
+    Version = 22,
+    MineConfig = 33,
+}
+
 /// STATUS structure present in all replies
 #[derive(Serialize, PartialEq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
@@ -96,7 +106,7 @@ pub struct StatusInfo {
     #[serde(rename = "STATUS")]
     pub status: Status,
     pub when: Time,
-    pub code: u32,
+    pub code: StatusCode,
     pub msg: String,
     pub description: String,
 }
@@ -189,7 +199,7 @@ impl From<Pools> for Response {
             pools.list,
             "POOLS",
             true,
-            7,
+            StatusCode::Pool,
             format!("{} Pool(s)", pool_count),
         )
     }
@@ -259,7 +269,13 @@ pub struct Devs {
 impl From<Devs> for Response {
     fn from(devs: Devs) -> Response {
         let asc_count = devs.list.len();
-        Response::new(devs.list, "DEVS", true, 9, format!("{} ASC(s)", asc_count))
+        Response::new(
+            devs.list,
+            "DEVS",
+            true,
+            StatusCode::Devs,
+            format!("{} ASC(s)", asc_count),
+        )
     }
 }
 
@@ -277,7 +293,7 @@ impl From<Version> for Response {
             vec![version],
             "VERSION",
             true,
-            22,
+            StatusCode::Version,
             "CGMiner versions".to_string(),
         )
     }
@@ -309,7 +325,7 @@ impl From<Config> for Response {
             vec![config],
             "CONFIG",
             true,
-            33,
+            StatusCode::MineConfig,
             "CGMiner config".to_string(),
         )
     }
