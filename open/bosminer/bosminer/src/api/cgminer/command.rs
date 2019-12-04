@@ -34,6 +34,7 @@ pub type Result<T> = std::result::Result<T, ()>;
 /// takes care of producing a response for each command.
 #[async_trait::async_trait]
 pub trait Handler: Sync + Send {
+    async fn handle_pools(&self) -> Result<response::Pools>;
     async fn handle_devs(&self) -> Result<response::Devs>;
     async fn handle_edevs(&self) -> Result<response::Devs>;
     async fn handle_version(&self) -> Result<response::Version>;
@@ -55,6 +56,7 @@ impl Command {
         handler: &dyn Handler,
     ) -> Result<Response> {
         match cmd {
+            "pools" => handler.handle_pools().await.map(|response| response.into()),
             "devs" => handler.handle_devs().await.map(|response| response.into()),
             "edevs" => handler.handle_edevs().await.map(|response| response.into()),
             "version" => handler

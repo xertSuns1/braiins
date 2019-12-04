@@ -61,9 +61,58 @@ impl CGMinerAPI {
         Self { core }
     }
 
+    async fn get_pool_status(idx: usize, _client: &Arc<dyn node::Client>) -> response::Pool {
+        response::Pool {
+            idx: idx as u32,
+            url: "".to_string(),
+            status: response::PoolStatus::Alive,
+            priority: 0,
+            quota: 0,
+            long_poll: response::Bool::N,
+            getworks: 0,
+            accepted: 0,
+            rejected: 0,
+            works: 0,
+            discarded: 0,
+            stale: 0,
+            get_failures: 0,
+            remote_failures: 0,
+            user: "".to_string(),
+            last_share_time: 0,
+            diff1_shares: 0,
+            proxy_type: "".to_string(),
+            proxy: "".to_string(),
+            difficulty_accepted: 0.0,
+            difficulty_rejected: 0.0,
+            difficulty_stale: 0.0,
+            last_share_difficulty: 0.0,
+            work_difficulty: 0.0,
+            has_stratum: false,
+            stratum_active: false,
+            stratum_url: "".to_string(),
+            stratum_difficulty: 0.0,
+            has_vmask: false,
+            has_gbt: false,
+            best_share: 0,
+            pool_rejected_percent: 0.0,
+            pool_stale_percent: 0.0,
+            bad_work: 0,
+            current_block_height: 0,
+            current_block_version: 0,
+        }
+    }
+
+    async fn get_pool_statuses(&self) -> Vec<response::Pool> {
+        let mut list = vec![];
+        for (idx, client) in self.core.get_clients().await.iter().enumerate() {
+            list.push(Self::get_pool_status(idx, client).await);
+        }
+        list
+    }
+
     async fn get_asc_status(idx: usize, _work_solver: &Arc<dyn node::WorkSolver>) -> response::Asc {
         response::Asc {
-            asc: idx as u32,
+            idx: idx as u32,
             // TODO: get actual ASIC name from work solver
             name: "BC5".to_string(),
             // TODO: get idx from work solver (it can represent real index of hash chain)
@@ -108,6 +157,12 @@ impl CGMinerAPI {
 
 #[async_trait::async_trait]
 impl Handler for CGMinerAPI {
+    async fn handle_pools(&self) -> command::Result<response::Pools> {
+        Ok(response::Pools {
+            list: self.get_pool_statuses().await,
+        })
+    }
+
     async fn handle_devs(&self) -> command::Result<response::Devs> {
         Ok(response::Devs {
             list: self.get_asc_statuses().await,

@@ -26,6 +26,15 @@ use serde::Serialize;
 
 use super::Response;
 
+pub type Time = u32;
+pub type Elapsed = u32;
+pub type Percent = f64;
+pub type Difficulty = f64;
+pub type MegaHashes = f64;
+pub type TotalMegaHashes = f64;
+pub type Utility = f64;
+pub type Temperature = f64;
+
 #[allow(dead_code)]
 /// CGMiner API Status indicator.
 /// (warning and info levels not currently used.)
@@ -42,6 +51,17 @@ pub enum Status {
 pub enum Bool {
     N,
     Y,
+}
+
+#[allow(dead_code)]
+#[derive(Serialize, Eq, PartialEq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub enum PoolStatus {
+    Disabled,
+    Rejecting,
+    Dead,
+    Alive,
+    Unknown,
 }
 
 #[allow(dead_code)]
@@ -75,16 +95,110 @@ pub enum MultipoolStrategy {
 pub struct StatusInfo {
     #[serde(rename = "STATUS")]
     pub status: Status,
-    pub when: u32,
+    pub when: Time,
     pub code: u32,
     pub msg: String,
     pub description: String,
 }
 
 #[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct Pool {
+    #[serde(rename = "POOL")]
+    pub idx: u32,
+    #[serde(rename = "URL")]
+    pub url: String,
+    #[serde(rename = "Status")]
+    pub status: PoolStatus,
+    #[serde(rename = "Priority")]
+    pub priority: u32,
+    #[serde(rename = "Quota")]
+    pub quota: u32,
+    #[serde(rename = "Long Poll")]
+    pub long_poll: Bool,
+    #[serde(rename = "Getworks")]
+    pub getworks: u32,
+    #[serde(rename = "Accepted")]
+    pub accepted: u64,
+    #[serde(rename = "Rejected")]
+    pub rejected: u64,
+    #[serde(rename = "Works")]
+    pub works: u32,
+    #[serde(rename = "Discarded")]
+    pub discarded: u32,
+    #[serde(rename = "Stale")]
+    pub stale: u32,
+    #[serde(rename = "Get Failures")]
+    pub get_failures: u32,
+    #[serde(rename = "Remote Failures")]
+    pub remote_failures: u32,
+    #[serde(rename = "User")]
+    pub user: String,
+    #[serde(rename = "Last Share Time")]
+    pub last_share_time: Time,
+    #[serde(rename = "Diff1 Shares")]
+    pub diff1_shares: u64,
+    #[serde(rename = "Proxy Type")]
+    pub proxy_type: String,
+    #[serde(rename = "Proxy")]
+    pub proxy: String,
+    #[serde(rename = "Difficulty Accepted")]
+    pub difficulty_accepted: Difficulty,
+    #[serde(rename = "Difficulty Rejected")]
+    pub difficulty_rejected: Difficulty,
+    #[serde(rename = "Difficulty Stale")]
+    pub difficulty_stale: Difficulty,
+    #[serde(rename = "Last Share Difficulty")]
+    pub last_share_difficulty: Difficulty,
+    #[serde(rename = "Work Difficulty")]
+    pub work_difficulty: Difficulty,
+    #[serde(rename = "Has Stratum")]
+    pub has_stratum: bool,
+    #[serde(rename = "Stratum Active")]
+    pub stratum_active: bool,
+    #[serde(rename = "Stratum URL")]
+    pub stratum_url: String,
+    #[serde(rename = "Stratum Difficulty")]
+    pub stratum_difficulty: Difficulty,
+    #[serde(rename = "Has Vmask")]
+    pub has_vmask: bool,
+    #[serde(rename = "Has GBT")]
+    pub has_gbt: bool,
+    #[serde(rename = "Best Share")]
+    pub best_share: u64,
+    #[serde(rename = "Pool Rejected%")]
+    pub pool_rejected_percent: Percent,
+    #[serde(rename = "Pool Stale%")]
+    pub pool_stale_percent: Percent,
+    #[serde(rename = "Bad Work")]
+    pub bad_work: u64,
+    #[serde(rename = "Current Block Height")]
+    pub current_block_height: u32,
+    #[serde(rename = "Current Block Version")]
+    pub current_block_version: u32,
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct Pools {
+    pub list: Vec<Pool>,
+}
+
+impl From<Pools> for Response {
+    fn from(pools: Pools) -> Response {
+        let pool_count = pools.list.len();
+        Response::new(
+            pools.list,
+            "POOLS",
+            true,
+            7,
+            format!("{} Pool(s)", pool_count),
+        )
+    }
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct Asc {
     #[serde(rename = "ASC")]
-    pub asc: u32,
+    pub idx: u32,
     #[serde(rename = "Name")]
     pub name: String,
     #[serde(rename = "ID")]
@@ -94,17 +208,17 @@ pub struct Asc {
     #[serde(rename = "Status")]
     pub status: AscStatus,
     #[serde(rename = "Temperature")]
-    pub temperature: f64,
+    pub temperature: Temperature,
     #[serde(rename = "MHS av")]
-    pub mhs_av: f64,
+    pub mhs_av: MegaHashes,
     #[serde(rename = "MHS 5s")]
-    pub mhs_5s: f64,
+    pub mhs_5s: MegaHashes,
     #[serde(rename = "MHS 1m")]
-    pub mhs_1m: f64,
+    pub mhs_1m: MegaHashes,
     #[serde(rename = "MHS 5m")]
-    pub mhs_5m: f64,
+    pub mhs_5m: MegaHashes,
     #[serde(rename = "MHS 15m")]
-    pub mhs_15m: f64,
+    pub mhs_15m: MegaHashes,
     #[serde(rename = "Accepted")]
     pub accepted: u32,
     #[serde(rename = "Rejected")]
@@ -112,29 +226,29 @@ pub struct Asc {
     #[serde(rename = "Hardware Errors")]
     pub hardware_errors: u32,
     #[serde(rename = "Utility")]
-    pub utility: f64,
+    pub utility: Utility,
     #[serde(rename = "Last Share Pool")]
     pub last_share_pool: u32,
     #[serde(rename = "Last Share Time")]
-    pub last_share_time: u32,
+    pub last_share_time: Time,
     #[serde(rename = "Total MH")]
-    pub total_mh: f64,
+    pub total_mh: TotalMegaHashes,
     #[serde(rename = "Diff1 Work")]
     pub diff1_work: u64,
     #[serde(rename = "Difficulty Accepted")]
-    pub difficulty_accepted: f64,
+    pub difficulty_accepted: Difficulty,
     #[serde(rename = "Difficulty Rejected")]
-    pub difficulty_rejected: f64,
+    pub difficulty_rejected: Difficulty,
     #[serde(rename = "Last Share Difficulty")]
-    pub last_share_difficulty: f64,
+    pub last_share_difficulty: Difficulty,
     #[serde(rename = "Last Valid Work")]
-    pub last_valid_work: u32,
+    pub last_valid_work: Time,
     #[serde(rename = "Device Hardware%")]
-    pub device_hardware_percent: f64,
+    pub device_hardware_percent: Percent,
     #[serde(rename = "Device Rejected%")]
-    pub device_rejected_percent: f64,
+    pub device_rejected_percent: Percent,
     #[serde(rename = "Device Elapsed")]
-    pub device_elapsed: u32,
+    pub device_elapsed: Elapsed,
 }
 
 #[derive(Serialize, PartialEq, Clone, Debug)]
