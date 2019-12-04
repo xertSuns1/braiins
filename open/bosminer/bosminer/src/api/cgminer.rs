@@ -229,6 +229,18 @@ impl Handler for CGMinerAPI {
             hotplug: "None".to_string(),
         })
     }
+
+    async fn handle_dev_details(&self) -> command::Result<response::DevDetails> {
+        Ok(response::DevDetails {
+            idx: 0,
+            name: "".to_string(),
+            id: 0,
+            driver: "".to_string(),
+            kernel: "".to_string(),
+            model: "".to_string(),
+            device_path: "".to_string(),
+        })
+    }
 }
 
 pub async fn run(core: Arc<hub::Core>, listen_addr: SocketAddr) {
