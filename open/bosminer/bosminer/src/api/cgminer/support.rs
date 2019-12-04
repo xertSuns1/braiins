@@ -74,7 +74,7 @@ impl Response {
         responses: Vec<S>,
         name: &'static str,
         success: bool,
-        code: u32,
+        code: response::StatusCode,
         msg: String,
     ) -> Self {
         let status = response::StatusInfo {
