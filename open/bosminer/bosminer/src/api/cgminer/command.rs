@@ -32,6 +32,7 @@ use super::{MultiResponse, Response, ResponseSet};
 #[async_trait::async_trait]
 pub trait Handler: Sync + Send {
     async fn handle_devs(&self) -> Option<Response>;
+    async fn handle_edevs(&self) -> Option<Response>;
     async fn handle_version(&self) -> Option<Response>;
     async fn handle_config(&self) -> Option<Response>;
 }
@@ -52,6 +53,7 @@ impl Command {
     ) -> Option<Response> {
         match cmd {
             "devs" => handler.handle_devs().await,
+            "edevs" => handler.handle_edevs().await,
             "version" => handler.handle_version().await,
             "config" => handler.handle_config().await,
             _ => None,
