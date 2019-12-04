@@ -139,7 +139,7 @@ impl MultiResponse {
 /// of multiple responses, ensuring conforming serialization
 #[derive(Serialize, Debug)]
 #[serde(untagged)]
-pub enum ResponseSet {
+pub enum ResponseType {
     Single(Response),
     Multi(MultiResponse),
 }

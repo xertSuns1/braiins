@@ -34,7 +34,7 @@ use tokio_util::codec::{Decoder, Encoder, LinesCodec, LinesCodecError};
 
 use serde_json as json;
 
-use super::{Command, Handler, ResponseSet};
+use super::{Command, Handler, ResponseType};
 
 /// Codec for the CGMiner API.
 /// The `Codec` decodes `Command`s and encodes `ResponseSet`s.
@@ -67,7 +67,7 @@ impl Decoder for Codec {
 }
 
 impl Encoder for Codec {
-    type Item = ResponseSet;
+    type Item = ResponseType;
     type Error = io::Error;
 
     fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
@@ -81,7 +81,7 @@ impl Encoder for Codec {
 struct Framing;
 
 impl ii_wire::Framing for Framing {
-    type Tx = ResponseSet;
+    type Tx = ResponseType;
     type Rx = Command;
     type Error = io::Error;
     type Codec = Codec;

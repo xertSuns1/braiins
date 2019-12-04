@@ -37,58 +37,52 @@ struct TestHandler;
 
 #[async_trait::async_trait]
 impl Handler for TestHandler {
-    async fn handle_devs(&self) -> Option<Response> {
-        Some(
-            response::Devs {
-                list: vec![response::Asc {
-                    asc: 0,
-                    name: "BC5".to_string(),
-                    id: 0,
-                    enabled: response::Bool::Y,
-                    status: response::AscStatus::Alive,
-                    temperature: 0.0,
-                    mhs_av: 0.0,
-                    mhs_5s: 0.0,
-                    mhs_1m: 0.0,
-                    mhs_5m: 0.0,
-                    mhs_15m: 0.0,
-                    accepted: 0,
-                    rejected: 0,
-                    hardware_errors: 0,
-                    utility: 0.0,
-                    last_share_pool: 0,
-                    last_share_time: 0,
-                    total_mh: 0.0,
-                    diff1_work: 0,
-                    difficulty_accepted: 0.0,
-                    difficulty_rejected: 0.0,
-                    last_share_difficulty: 0.0,
-                    last_valid_work: 0,
-                    device_hardware_percent: 0.0,
-                    device_rejected_percent: 0.0,
-                    device_elapsed: 0,
-                }],
-            }
-            .into(),
-        )
+    async fn handle_devs(&self) -> command::Result<response::Devs> {
+        Ok(response::Devs {
+            list: vec![response::Asc {
+                asc: 0,
+                name: "BC5".to_string(),
+                id: 0,
+                enabled: response::Bool::Y,
+                status: response::AscStatus::Alive,
+                temperature: 0.0,
+                mhs_av: 0.0,
+                mhs_5s: 0.0,
+                mhs_1m: 0.0,
+                mhs_5m: 0.0,
+                mhs_15m: 0.0,
+                accepted: 0,
+                rejected: 0,
+                hardware_errors: 0,
+                utility: 0.0,
+                last_share_pool: 0,
+                last_share_time: 0,
+                total_mh: 0.0,
+                diff1_work: 0,
+                difficulty_accepted: 0.0,
+                difficulty_rejected: 0.0,
+                last_share_difficulty: 0.0,
+                last_valid_work: 0,
+                device_hardware_percent: 0.0,
+                device_rejected_percent: 0.0,
+                device_elapsed: 0,
+            }],
+        })
     }
 
-    async fn handle_edevs(&self) -> Option<Response> {
+    async fn handle_edevs(&self) -> command::Result<response::Devs> {
         self.handle_devs().await
     }
 
-    async fn handle_version(&self) -> Option<Response> {
-        Some(
-            response::Version {
-                cgminer: "bOSminer_am1-s9-20190605-0_0de55997".to_string(),
-                api: "3.7".to_string(),
-            }
-            .into(),
-        )
+    async fn handle_version(&self) -> command::Result<response::Version> {
+        Ok(response::Version {
+            cgminer: "bOSminer_am1-s9-20190605-0_0de55997".to_string(),
+            api: "3.7".to_string(),
+        })
     }
 
-    async fn handle_config(&self) -> Option<Response> {
-        let config = response::Config {
+    async fn handle_config(&self) -> command::Result<response::Config> {
+        Ok(response::Config {
             asc_count: 0,
             pga_count: 0,
             pool_count: 0,
@@ -97,9 +91,7 @@ impl Handler for TestHandler {
             device_code: String::new(),
             os: "Braiins OS".to_string(),
             hotplug: "None".to_string(),
-        };
-
-        Some(config.into())
+        })
     }
 }
 
