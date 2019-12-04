@@ -73,6 +73,10 @@ impl Handler for TestHandler {
         )
     }
 
+    async fn handle_edevs(&self) -> Option<Response> {
+        self.handle_devs().await
+    }
+
     async fn handle_version(&self) -> Option<Response> {
         Some(
             response::Version {

@@ -96,19 +96,28 @@ impl CGMinerAPI {
             device_elapsed: 0,
         }
     }
+
+    async fn get_asc_statuses(&self) -> Vec<response::Asc> {
+        let mut list = vec![];
+        for (idx, work_solver) in self.core.get_work_solvers().await.iter().enumerate() {
+            list.push(Self::get_asc_status(idx, work_solver).await);
+        }
+        list
+    }
 }
 
 #[async_trait::async_trait]
 impl Handler for CGMinerAPI {
     async fn handle_devs(&self) -> Option<Response> {
-        let mut list = vec![];
-        for (idx, work_solver) in self.core.get_work_solvers().await.iter().enumerate() {
-            list.push(Self::get_asc_status(idx, work_solver).await);
-        }
-
-        let devs = response::Devs { list };
+        let devs = response::Devs {
+            list: self.get_asc_statuses().await,
+        };
 
         Some(devs.into())
+    }
+
+    async fn handle_edevs(&self) -> Option<Response> {
+        self.handle_devs().await
     }
 
     async fn handle_version(&self) -> Option<Response> {
