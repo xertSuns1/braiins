@@ -37,10 +37,53 @@ struct TestHandler;
 
 #[async_trait::async_trait]
 impl Handler for TestHandler {
+    async fn handle_pools(&self) -> command::Result<response::Pools> {
+        Ok(response::Pools {
+            list: vec![response::Pool {
+                idx: 0,
+                url: "".to_string(),
+                status: response::PoolStatus::Alive,
+                priority: 0,
+                quota: 0,
+                long_poll: response::Bool::N,
+                getworks: 0,
+                accepted: 0,
+                rejected: 0,
+                works: 0,
+                discarded: 0,
+                stale: 0,
+                get_failures: 0,
+                remote_failures: 0,
+                user: "".to_string(),
+                last_share_time: 0,
+                diff1_shares: 0,
+                proxy_type: "".to_string(),
+                proxy: "".to_string(),
+                difficulty_accepted: 0.0,
+                difficulty_rejected: 0.0,
+                difficulty_stale: 0.0,
+                last_share_difficulty: 0.0,
+                work_difficulty: 0.0,
+                has_stratum: false,
+                stratum_active: false,
+                stratum_url: "".to_string(),
+                stratum_difficulty: 0.0,
+                has_vmask: false,
+                has_gbt: false,
+                best_share: 0,
+                pool_rejected_percent: 0.0,
+                pool_stale_percent: 0.0,
+                bad_work: 0,
+                current_block_height: 0,
+                current_block_version: 0,
+            }],
+        })
+    }
+
     async fn handle_devs(&self) -> command::Result<response::Devs> {
         Ok(response::Devs {
             list: vec![response::Asc {
-                asc: 0,
+                idx: 0,
                 name: "BC5".to_string(),
                 id: 0,
                 enabled: response::Bool::Y,
