@@ -22,6 +22,9 @@
 
 //! Defines support structures for API responses serialization
 
+use super::response;
+use super::TIMESTAMP;
+
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -30,8 +33,6 @@ use std::time::SystemTime;
 use serde::{Serialize, Serializer};
 use serde_json as json;
 use serde_json::Value;
-
-use super::TIMESTAMP;
 
 /// Flag whether a real timestamp should be used when serializing.
 /// When turned off, a timestamp of 0 is used instad, this is useful for tests.
@@ -59,44 +60,10 @@ impl Timestamp {
     }
 }
 
-/// CGMiner API Status indicator.
-/// (warning and info levels not currently used.)
-#[derive(Serialize, Eq, PartialEq, Clone, Debug)]
-pub enum Status {
-    _W,
-    _I,
-    S,
-    E,
-}
-
-/// STATUS structure present in all replies
-#[derive(Serialize, PartialEq, Clone, Debug)]
-#[serde(rename_all = "PascalCase")]
-struct StatusInfo {
-    #[serde(rename = "STATUS")]
-    pub status: Status,
-    pub when: u32,
-    pub code: u32,
-    pub msg: String,
-    pub description: String,
-}
-
-impl StatusInfo {
-    fn new(succes: bool, code: u32, msg: String) -> Self {
-        Self {
-            status: if succes { Status::S } else { Status::E },
-            when: TIMESTAMP.get(),
-            code,
-            msg,
-            description: String::new(), // FIXME: Miner ID (?)
-        }
-    }
-}
-
 /// Generic container for any response, ensures conforming serialization
 #[derive(Debug)]
 pub struct Response {
-    status: StatusInfo,
+    status: response::StatusInfo,
     responses: Value,
     name: &'static str,
     id: usize,
@@ -110,7 +77,17 @@ impl Response {
         code: u32,
         msg: String,
     ) -> Self {
-        let status = StatusInfo::new(success, code, msg);
+        let status = response::StatusInfo {
+            status: if success {
+                response::Status::S
+            } else {
+                response::Status::E
+            },
+            when: TIMESTAMP.get(),
+            code,
+            msg,
+            description: String::new(), // FIXME: Miner ID (?)
+        };
         let responses = json::to_value(responses).expect("Response serialization failed");
 
         Self {

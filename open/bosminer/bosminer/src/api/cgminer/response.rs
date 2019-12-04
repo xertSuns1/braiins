@@ -27,6 +27,17 @@ use serde::Serialize;
 use super::Response;
 
 #[allow(dead_code)]
+/// CGMiner API Status indicator.
+/// (warning and info levels not currently used.)
+#[derive(Serialize, Eq, PartialEq, Clone, Debug)]
+pub enum Status {
+    W,
+    I,
+    S,
+    E,
+}
+
+#[allow(dead_code)]
 #[derive(Serialize, Eq, PartialEq, Clone, Debug)]
 pub enum Bool {
     N,
@@ -56,6 +67,18 @@ pub enum MultipoolStrategy {
     #[serde(rename = "Load Balance")]
     LoadBalance,
     Balance,
+}
+
+/// STATUS structure present in all replies
+#[derive(Serialize, PartialEq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct StatusInfo {
+    #[serde(rename = "STATUS")]
+    pub status: Status,
+    pub when: u32,
+    pub code: u32,
+    pub msg: String,
+    pub description: String,
 }
 
 #[derive(Serialize, PartialEq, Clone, Debug)]
