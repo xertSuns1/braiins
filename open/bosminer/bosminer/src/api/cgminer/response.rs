@@ -95,6 +95,7 @@ pub enum MultipoolStrategy {
 pub enum StatusCode {
     Pool = 7,
     Devs = 9,
+    Summary = 11,
     Version = 22,
     MineConfig = 33,
 }
@@ -275,6 +276,80 @@ impl From<Devs> for Response {
             true,
             StatusCode::Devs,
             format!("{} ASC(s)", asc_count),
+        )
+    }
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct Summary {
+    #[serde(rename = "Elapsed")]
+    pub elapsed: Elapsed,
+    #[serde(rename = "MHS av")]
+    pub mhs_av: MegaHashes,
+    #[serde(rename = "MHS 5s")]
+    pub mhs_5s: MegaHashes,
+    #[serde(rename = "MHS 1m")]
+    pub mhs_1m: MegaHashes,
+    #[serde(rename = "MHS 5m")]
+    pub mhs_5m: MegaHashes,
+    #[serde(rename = "MHS 15m")]
+    pub mhs_15m: MegaHashes,
+    #[serde(rename = "Found Blocks")]
+    pub found_blocks: u32,
+    #[serde(rename = "Getworks")]
+    pub getworks: u64,
+    #[serde(rename = "Accepted")]
+    pub accepted: u64,
+    #[serde(rename = "Rejected")]
+    pub rejected: u64,
+    #[serde(rename = "Hardware Errors")]
+    pub hardware_errors: u32,
+    #[serde(rename = "Utility")]
+    pub utility: Utility,
+    #[serde(rename = "Discarded")]
+    pub discarded: u64,
+    #[serde(rename = "Stale")]
+    pub stale: u64,
+    #[serde(rename = "Get Failures")]
+    pub get_failures: u32,
+    #[serde(rename = "Local Work")]
+    pub local_work: u32,
+    #[serde(rename = "Remote Failures")]
+    pub remote_failures: u32,
+    #[serde(rename = "Network Blocks")]
+    pub network_blocks: u32,
+    #[serde(rename = "Total MH")]
+    pub total_mh: TotalMegaHashes,
+    #[serde(rename = "Work Utility")]
+    pub work_utility: Utility,
+    #[serde(rename = "Difficulty Accepted")]
+    pub difficulty_accepted: Difficulty,
+    #[serde(rename = "Difficulty Rejected")]
+    pub difficulty_rejected: Difficulty,
+    #[serde(rename = "Difficulty Stale")]
+    pub difficulty_stale: Difficulty,
+    #[serde(rename = "Best Share")]
+    pub best_share: u64,
+    #[serde(rename = "Device Hardware%")]
+    pub device_hardware_percent: Percent,
+    #[serde(rename = "Device Rejected%")]
+    pub device_rejected_percent: Percent,
+    #[serde(rename = "Pool Rejected%")]
+    pub pool_rejected_percent: Percent,
+    #[serde(rename = "Pool Stale%")]
+    pub pool_stale_percent: Percent,
+    #[serde(rename = "Last getwork")]
+    pub last_getwork: Time,
+}
+
+impl From<Summary> for Response {
+    fn from(summary: Summary) -> Response {
+        Response::new(
+            vec![summary],
+            "SUMMARY",
+            true,
+            StatusCode::Summary,
+            "Summary".to_string(),
         )
     }
 }

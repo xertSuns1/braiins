@@ -37,6 +37,7 @@ pub trait Handler: Sync + Send {
     async fn handle_pools(&self) -> Result<response::Pools>;
     async fn handle_devs(&self) -> Result<response::Devs>;
     async fn handle_edevs(&self) -> Result<response::Devs>;
+    async fn handle_summary(&self) -> Result<response::Summary>;
     async fn handle_version(&self) -> Result<response::Version>;
     async fn handle_config(&self) -> Result<response::Config>;
 }
@@ -59,6 +60,10 @@ impl Command {
             "pools" => handler.handle_pools().await.map(|response| response.into()),
             "devs" => handler.handle_devs().await.map(|response| response.into()),
             "edevs" => handler.handle_edevs().await.map(|response| response.into()),
+            "summary" => handler
+                .handle_summary()
+                .await
+                .map(|response| response.into()),
             "version" => handler
                 .handle_version()
                 .await

@@ -173,6 +173,40 @@ impl Handler for CGMinerAPI {
         self.handle_devs().await
     }
 
+    async fn handle_summary(&self) -> command::Result<response::Summary> {
+        Ok(response::Summary {
+            elapsed: 0,
+            mhs_av: 0.0,
+            mhs_5s: 0.0,
+            mhs_1m: 0.0,
+            mhs_5m: 0.0,
+            mhs_15m: 0.0,
+            found_blocks: 0,
+            getworks: 0,
+            accepted: 0,
+            rejected: 0,
+            hardware_errors: 0,
+            utility: 0.0,
+            discarded: 0,
+            stale: 0,
+            get_failures: 0,
+            local_work: 0,
+            remote_failures: 0,
+            network_blocks: 0,
+            total_mh: 0.0,
+            work_utility: 0.0,
+            difficulty_accepted: 0.0,
+            difficulty_rejected: 0.0,
+            difficulty_stale: 0.0,
+            best_share: 0,
+            device_hardware_percent: 0.0,
+            device_rejected_percent: 0.0,
+            pool_rejected_percent: 0.0,
+            pool_stale_percent: 0.0,
+            last_getwork: 0,
+        })
+    }
+
     async fn handle_version(&self) -> command::Result<response::Version> {
         Ok(response::Version {
             // TODO: get actual bosminer version
