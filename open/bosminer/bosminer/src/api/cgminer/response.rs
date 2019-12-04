@@ -98,6 +98,7 @@ pub enum StatusCode {
     Summary = 11,
     Version = 22,
     MineConfig = 33,
+    DevDetails = 69,
 }
 
 /// STATUS structure present in all replies
@@ -402,6 +403,36 @@ impl From<Config> for Response {
             true,
             StatusCode::MineConfig,
             "CGMiner config".to_string(),
+        )
+    }
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct DevDetails {
+    #[serde(rename = "DEVDETAILS")]
+    pub idx: u32,
+    #[serde(rename = "Name")]
+    pub name: String,
+    #[serde(rename = "ID")]
+    pub id: u32,
+    #[serde(rename = "Driver")]
+    pub driver: String,
+    #[serde(rename = "Kernel")]
+    pub kernel: String,
+    #[serde(rename = "Model")]
+    pub model: String,
+    #[serde(rename = "Device Path")]
+    pub device_path: String,
+}
+
+impl From<DevDetails> for Response {
+    fn from(dev_details: DevDetails) -> Response {
+        Response::new(
+            vec![dev_details],
+            "DEVDETAILS",
+            true,
+            StatusCode::DevDetails,
+            "Device Details".to_string(),
         )
     }
 }
