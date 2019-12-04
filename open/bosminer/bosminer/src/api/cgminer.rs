@@ -27,7 +27,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 mod support;
-use support::{MultiResponse, Response, ResponseSet, Timestamp};
+use support::{MultiResponse, Response, ResponseType, Timestamp};
 
 mod response;
 
@@ -108,30 +108,26 @@ impl CGMinerAPI {
 
 #[async_trait::async_trait]
 impl Handler for CGMinerAPI {
-    async fn handle_devs(&self) -> Option<Response> {
-        let devs = response::Devs {
+    async fn handle_devs(&self) -> command::Result<response::Devs> {
+        Ok(response::Devs {
             list: self.get_asc_statuses().await,
-        };
-
-        Some(devs.into())
+        })
     }
 
-    async fn handle_edevs(&self) -> Option<Response> {
+    async fn handle_edevs(&self) -> command::Result<response::Devs> {
         self.handle_devs().await
     }
 
-    async fn handle_version(&self) -> Option<Response> {
-        let version = response::Version {
+    async fn handle_version(&self) -> command::Result<response::Version> {
+        Ok(response::Version {
             // TODO: get actual bosminer version
             cgminer: "bOSminer_am1-s9-20190605-0_0de55997".into(),
             api: API_VERSION.into(),
-        };
-
-        Some(version.into())
+        })
     }
 
-    async fn handle_config(&self) -> Option<Response> {
-        let config = response::Config {
+    async fn handle_config(&self) -> command::Result<response::Config> {
+        Ok(response::Config {
             asc_count: self.core.get_work_solvers().await.len() as u32,
             pga_count: 0,
             pool_count: self.core.get_clients().await.len() as u32,
@@ -142,9 +138,7 @@ impl Handler for CGMinerAPI {
             // TODO: detect underlying operation system
             os: "Braiins OS".to_string(),
             hotplug: "None".to_string(),
-        };
-
-        Some(config.into())
+        })
     }
 }
 
