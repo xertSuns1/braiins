@@ -153,7 +153,7 @@ impl Handler for TestHandler {
 
     async fn handle_version(&self) -> command::Result<response::Version> {
         Ok(response::Version {
-            cgminer: "bOSminer_am1-s9-20190605-0_0de55997".to_string(),
+            miner: "bOSminer_am1-s9-20190605-0_0de55997".to_string(),
             api: "3.7".to_string(),
         })
     }
@@ -272,12 +272,12 @@ async fn test_api_basic() {
             "STATUS": "S",
             "When": 0,
             "Code": 22,
-            "Msg": "CGMiner versions",
+            "Msg": "bOSminer versions",
             "Description": ""
         }],
         "VERSION": [{
             "API": "3.7",
-            "CGMiner": "bOSminer_am1-s9-20190605-0_0de55997"
+            "bOSminer": "bOSminer_am1-s9-20190605-0_0de55997"
         }],
         "id": 1
     });
@@ -294,7 +294,7 @@ async fn test_api_multiple() {
             "STATUS": [{
                 "Code": 33,
                 "Description": "",
-                "Msg": "CGMiner config",
+                "Msg": "bOSminer config",
                 "STATUS": "S",
                 "When": 0
             }],
@@ -314,13 +314,13 @@ async fn test_api_multiple() {
             "STATUS": [{
                 "Code": 22,
                 "Description": "",
-                "Msg": "CGMiner versions",
+                "Msg": "bOSminer versions",
                 "STATUS": "S",
                 "When": 0
             }],
             "VERSION": [{
                 "API": "3.7",
-                "CGMiner": "bOSminer_am1-s9-20190605-0_0de55997"
+                "bOSminer": "bOSminer_am1-s9-20190605-0_0de55997"
             }],
             "id": 1
         }],

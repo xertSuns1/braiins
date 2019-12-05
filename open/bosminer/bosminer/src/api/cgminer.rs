@@ -44,6 +44,8 @@ use crate::node;
 
 /// Version of CGMiner compatible API
 const API_VERSION: &str = "3.7";
+/// Miner signature where `CGMiner` text is used to be
+const SIGNATURE: &str = "bOSminer";
 
 /// Default interval used for computation of default rolling average.
 const DEFAULT_LOG_INTERVAL: u32 = 5;
@@ -210,7 +212,7 @@ impl Handler for CGMinerAPI {
     async fn handle_version(&self) -> command::Result<response::Version> {
         Ok(response::Version {
             // TODO: get actual bosminer version
-            cgminer: "bOSminer_am1-s9-20190605-0_0de55997".into(),
+            miner: "bOSminer_am1-s9-20190605-0_0de55997".into(),
             api: API_VERSION.into(),
         })
     }
