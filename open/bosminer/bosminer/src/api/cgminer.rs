@@ -331,6 +331,13 @@ impl Handler for CGMinerAPI {
             pool_stats,
         })
     }
+
+    async fn handle_estats(&self) -> command::Result<response::Stats> {
+        Ok(response::Stats {
+            asc_stats: self.collect_asc_stats(0).await,
+            pool_stats: vec![],
+        })
+    }
 }
 
 pub async fn run(core: Arc<hub::Core>, listen_addr: SocketAddr) {

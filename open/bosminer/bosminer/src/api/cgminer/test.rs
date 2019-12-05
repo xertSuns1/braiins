@@ -230,6 +230,23 @@ impl Handler for TestHandler {
             }],
         })
     }
+
+    async fn handle_estats(&self) -> command::Result<response::Stats> {
+        Ok(response::Stats {
+            asc_stats: vec![response::AscStats {
+                header: response::StatsHeader {
+                    idx: 0,
+                    id: "".to_string(),
+                    elapsed: 0,
+                    calls: 0,
+                    wait: 0.0,
+                    max: 0.0,
+                    min: 0.0,
+                },
+            }],
+            pool_stats: vec![],
+        })
+    }
 }
 
 async fn codec_roundtrip(command: &str) -> Value {
