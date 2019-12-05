@@ -22,7 +22,7 @@
 
 //! Defines all the CGMiner API responses
 
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use serde_repr::Serialize_repr;
 
 use super::Response;
@@ -355,12 +355,23 @@ impl From<Summary> for Response {
     }
 }
 
-#[derive(Serialize, PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct Version {
-    #[serde(rename = "CGMiner")]
-    pub cgminer: String,
-    #[serde(rename = "API")]
+    pub miner: String,
     pub api: String,
+}
+
+impl Serialize for Version {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry(super::SIGNATURE, &self.miner)?;
+        map.serialize_entry("API", &self.api)?;
+        map.end()
+    }
 }
 
 impl From<Version> for Response {
@@ -370,7 +381,7 @@ impl From<Version> for Response {
             "VERSION",
             true,
             StatusCode::Version,
-            "CGMiner versions".to_string(),
+            format!("{} versions", super::SIGNATURE),
         )
     }
 }
@@ -402,7 +413,7 @@ impl From<Config> for Response {
             "CONFIG",
             true,
             StatusCode::MineConfig,
-            "CGMiner config".to_string(),
+            format!("{} config", super::SIGNATURE),
         )
     }
 }
