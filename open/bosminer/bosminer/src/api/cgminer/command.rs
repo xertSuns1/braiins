@@ -41,6 +41,7 @@ pub trait Handler: Sync + Send {
     async fn handle_version(&self) -> Result<response::Version>;
     async fn handle_config(&self) -> Result<response::Config>;
     async fn handle_dev_details(&self) -> Result<response::DevDetails>;
+    async fn handle_stats(&self) -> Result<response::Stats>;
 }
 
 /// Holds an incomming API command
@@ -77,6 +78,7 @@ impl Command {
                 .handle_dev_details()
                 .await
                 .map(|response| response.into()),
+            "stats" => handler.handle_stats().await.map(|response| response.into()),
             _ => Err(()),
         }
     }
