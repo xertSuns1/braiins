@@ -182,6 +182,54 @@ impl Handler for TestHandler {
             device_path: "".to_string(),
         })
     }
+
+    async fn handle_stats(&self) -> command::Result<response::Stats> {
+        Ok(response::Stats {
+            asc_stats: vec![response::AscStats {
+                header: response::StatsHeader {
+                    idx: 0,
+                    id: "".to_string(),
+                    elapsed: 0,
+                    calls: 0,
+                    wait: 0.0,
+                    max: 0.0,
+                    min: 0.0,
+                },
+            }],
+            pool_stats: vec![response::PoolStats {
+                header: response::StatsHeader {
+                    idx: 0,
+                    id: "".to_string(),
+                    elapsed: 0,
+                    calls: 0,
+                    wait: 0.0,
+                    max: 0.0,
+                    min: 0.0,
+                },
+                pool_calls: 0,
+                pool_attempts: 0,
+                pool_wait: 0.0,
+                pool_max: 0.0,
+                pool_min: 0.0,
+                pool_av: 0.0,
+                work_had_roll_time: false,
+                work_can_roll: false,
+                work_had_expire: false,
+                work_roll_time: 0,
+                work_diff: 0.0,
+                min_diff: 0.0,
+                max_diff: 0.0,
+                min_diff_count: 0,
+                max_diff_count: 0,
+                times_sent: 0,
+                bytes_sent: 0,
+                times_recv: 0,
+                bytes_recv: 0,
+                net_bytes_sent: 0,
+                net_bytes_recv: 0,
+            }],
+        })
+    }
 }
 
 async fn codec_roundtrip(command: &str) -> Value {

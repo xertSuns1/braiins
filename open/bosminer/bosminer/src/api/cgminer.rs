@@ -23,24 +23,23 @@
 //! This module implements CGMiner compatible API server to control bOSminer and to extract
 //! statistics from it.
 
-use std::net::SocketAddr;
-use std::sync::Arc;
-
-mod support;
-use support::{MultiResponse, Response, ResponseType, Timestamp};
-
-mod response;
-
 mod command;
-use command::{Command, Handler};
-
+mod response;
 mod server;
+mod support;
 
 #[cfg(test)]
 mod test;
 
 use crate::hub;
 use crate::node;
+
+use command::{Command, Handler};
+use support::{MultiResponse, Response, ResponseType, Timestamp};
+
+use std::future::Future;
+use std::net::SocketAddr;
+use std::sync::Arc;
 
 /// Version of CGMiner compatible API
 const API_VERSION: &str = "3.7";
@@ -61,6 +60,20 @@ struct CGMinerAPI {
 impl CGMinerAPI {
     pub fn new(core: Arc<hub::Core>) -> Self {
         Self { core }
+    }
+
+    async fn collect_data<C, F, T, U, V>(&self, container: C, base_idx: usize, f: F) -> Vec<T>
+    where
+        C: Future<Output = Vec<Arc<U>>>,
+        F: Fn(usize, Arc<U>) -> V,
+        U: ?Sized,
+        V: Future<Output = T>,
+    {
+        let mut list = vec![];
+        for (idx, item) in container.await.iter().enumerate() {
+            list.push(f(base_idx + idx, item.clone()).await);
+        }
+        list
     }
 
     async fn get_pool_status(idx: usize, _client: &Arc<dyn node::Client>) -> response::Pool {
@@ -104,12 +117,11 @@ impl CGMinerAPI {
         }
     }
 
-    async fn get_pool_statuses(&self) -> Vec<response::Pool> {
-        let mut list = vec![];
-        for (idx, client) in self.core.get_clients().await.iter().enumerate() {
-            list.push(Self::get_pool_status(idx, client).await);
-        }
-        list
+    async fn collect_pool_statuses(&self) -> Vec<response::Pool> {
+        self.collect_data(self.core.get_clients(), 0, |idx, client| {
+            async move { Self::get_pool_status(idx, &client).await }
+        })
+        .await
     }
 
     async fn get_asc_status(idx: usize, _work_solver: &Arc<dyn node::WorkSolver>) -> response::Asc {
@@ -148,12 +160,79 @@ impl CGMinerAPI {
         }
     }
 
-    async fn get_asc_statuses(&self) -> Vec<response::Asc> {
-        let mut list = vec![];
-        for (idx, work_solver) in self.core.get_work_solvers().await.iter().enumerate() {
-            list.push(Self::get_asc_status(idx, work_solver).await);
+    async fn collect_asc_statuses(&self) -> Vec<response::Asc> {
+        self.collect_data(self.core.get_work_solvers(), 0, |idx, work_solver| {
+            async move { Self::get_asc_status(idx, &work_solver).await }
+        })
+        .await
+    }
+
+    async fn get_pool_stats(idx: usize, _client: &Arc<dyn node::Client>) -> response::PoolStats {
+        response::PoolStats {
+            header: response::StatsHeader {
+                idx: idx as u32,
+                id: "".to_string(),
+                elapsed: 0,
+                calls: 0,
+                wait: 0.0,
+                max: 0.0,
+                min: 0.0,
+            },
+            pool_calls: 0,
+            pool_attempts: 0,
+            pool_wait: 0.0,
+            pool_max: 0.0,
+            pool_min: 0.0,
+            pool_av: 0.0,
+            work_had_roll_time: false,
+            work_can_roll: false,
+            work_had_expire: false,
+            work_roll_time: 0,
+            work_diff: 0.0,
+            min_diff: 0.0,
+            max_diff: 0.0,
+            min_diff_count: 0,
+            max_diff_count: 0,
+            times_sent: 0,
+            bytes_sent: 0,
+            times_recv: 0,
+            bytes_recv: 0,
+            net_bytes_sent: 0,
+            net_bytes_recv: 0,
         }
-        list
+    }
+
+    async fn collect_pool_stats(&self, base_idx: usize) -> Vec<response::PoolStats> {
+        self.collect_data(self.core.get_clients(), base_idx, |idx, client| {
+            async move { Self::get_pool_stats(idx, &client).await }
+        })
+        .await
+    }
+
+    async fn get_asc_stats(
+        idx: usize,
+        _work_solver: &Arc<dyn node::WorkSolver>,
+    ) -> response::AscStats {
+        response::AscStats {
+            header: response::StatsHeader {
+                idx: idx as u32,
+                id: "".to_string(),
+                elapsed: 0,
+                calls: 0,
+                wait: 0.0,
+                max: 0.0,
+                min: 0.0,
+            },
+        }
+    }
+
+    async fn collect_asc_stats(&self, base_idx: usize) -> Vec<response::AscStats> {
+        self.collect_data(
+            self.core.get_work_solvers(),
+            base_idx,
+            |idx, work_solver| async move { Self::get_asc_stats(idx, &work_solver).await },
+        )
+        .await
     }
 }
 
@@ -161,13 +240,13 @@ impl CGMinerAPI {
 impl Handler for CGMinerAPI {
     async fn handle_pools(&self) -> command::Result<response::Pools> {
         Ok(response::Pools {
-            list: self.get_pool_statuses().await,
+            list: self.collect_pool_statuses().await,
         })
     }
 
     async fn handle_devs(&self) -> command::Result<response::Devs> {
         Ok(response::Devs {
-            list: self.get_asc_statuses().await,
+            list: self.collect_asc_statuses().await,
         })
     }
 
@@ -241,6 +320,15 @@ impl Handler for CGMinerAPI {
             kernel: "".to_string(),
             model: "".to_string(),
             device_path: "".to_string(),
+        })
+    }
+
+    async fn handle_stats(&self) -> command::Result<response::Stats> {
+        let asc_stats = self.collect_asc_stats(0).await;
+        let pool_stats = self.collect_pool_stats(asc_stats.len()).await;
+        Ok(response::Stats {
+            asc_stats,
+            pool_stats,
         })
     }
 }

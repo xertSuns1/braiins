@@ -29,6 +29,7 @@ use super::Response;
 
 pub type Time = u32;
 pub type Elapsed = u32;
+pub type Interval = f64;
 pub type Percent = f64;
 pub type Difficulty = f64;
 pub type MegaHashes = f64;
@@ -99,6 +100,7 @@ pub enum StatusCode {
     Version = 22,
     MineConfig = 33,
     DevDetails = 69,
+    Stats = 70,
 }
 
 /// STATUS structure present in all replies
@@ -444,6 +446,117 @@ impl From<DevDetails> for Response {
             true,
             StatusCode::DevDetails,
             "Device Details".to_string(),
+        )
+    }
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct PoolStats {
+    #[serde(flatten)]
+    pub header: StatsHeader,
+    #[serde(rename = "Pool Calls")]
+    pub pool_calls: u32,
+    #[serde(rename = "Pool Attempts")]
+    pub pool_attempts: u32,
+    #[serde(rename = "Pool Wait")]
+    pub pool_wait: Interval,
+    #[serde(rename = "Pool Max")]
+    pub pool_max: Interval,
+    #[serde(rename = "Pool Min")]
+    pub pool_min: Interval,
+    #[serde(rename = "Pool Av")]
+    pub pool_av: f64,
+    #[serde(rename = "Work Had Roll Time")]
+    pub work_had_roll_time: bool,
+    #[serde(rename = "Work Can Roll")]
+    pub work_can_roll: bool,
+    #[serde(rename = "Work Had Expire")]
+    pub work_had_expire: bool,
+    #[serde(rename = "Work Roll Time")]
+    pub work_roll_time: u32,
+    #[serde(rename = "Work Diff")]
+    pub work_diff: Difficulty,
+    #[serde(rename = "Min Diff")]
+    pub min_diff: Difficulty,
+    #[serde(rename = "Max Diff")]
+    pub max_diff: Difficulty,
+    #[serde(rename = "Min Diff Count")]
+    pub min_diff_count: u32,
+    #[serde(rename = "Max Diff Count")]
+    pub max_diff_count: u32,
+    #[serde(rename = "Times Sent")]
+    pub times_sent: u64,
+    #[serde(rename = "Bytes Sent")]
+    pub bytes_sent: u64,
+    #[serde(rename = "Times Recv")]
+    pub times_recv: u64,
+    #[serde(rename = "Bytes Recv")]
+    pub bytes_recv: u64,
+    #[serde(rename = "Net Bytes Sent")]
+    pub net_bytes_sent: u64,
+    #[serde(rename = "Net Bytes Recv")]
+    pub net_bytes_recv: u64,
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct AscStats {
+    #[serde(flatten)]
+    pub header: StatsHeader,
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+#[serde(untagged)]
+enum StatsType {
+    Pool(PoolStats),
+    Asc(AscStats),
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct StatsHeader {
+    #[serde(rename = "STATS")]
+    pub idx: u32,
+    #[serde(rename = "ID")]
+    pub id: String,
+    #[serde(rename = "Elapsed")]
+    pub elapsed: Elapsed,
+    #[serde(rename = "Calls")]
+    pub calls: u32,
+    #[serde(rename = "Wait")]
+    pub wait: Interval,
+    #[serde(rename = "Max")]
+    pub max: Interval,
+    #[serde(rename = "Min")]
+    pub min: Interval,
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct Stats {
+    pub asc_stats: Vec<AscStats>,
+    pub pool_stats: Vec<PoolStats>,
+}
+
+impl Stats {
+    fn into_list(self) -> Vec<StatsType> {
+        self.asc_stats
+            .into_iter()
+            .map(|stats| StatsType::Asc(stats))
+            .chain(
+                self.pool_stats
+                    .into_iter()
+                    .map(|stats| StatsType::Pool(stats)),
+            )
+            .collect()
+    }
+}
+
+impl From<Stats> for Response {
+    fn from(stats: Stats) -> Response {
+        Response::new(
+            stats.into_list(),
+            "STATS",
+            true,
+            StatusCode::Stats,
+            format!("{} stats", super::SIGNATURE),
         )
     }
 }
