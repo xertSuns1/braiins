@@ -40,6 +40,7 @@ use futures::channel::mpsc;
 use futures::future::{select, Either};
 use futures::lock::Mutex;
 use ii_async_compat::prelude::*;
+use tokio::task;
 
 /// Token sent by halted task to confirm that halting is done
 struct Done;
@@ -250,11 +251,16 @@ impl Sender {
 
     pub async fn send_halt(self: Arc<Self>) {
         let (finish_tx, mut finish_rx) = mpsc::unbounded();
-        tokio::spawn(async move {
-            self.send_halt_internal().await.expect("halt failed");
+        let handle: task::JoinHandle<error::Result<()>> = tokio::spawn(async move {
+            self.send_halt_internal().await?;
             let _result = finish_tx.unbounded_send(());
+            Ok(())
         });
         finish_rx.next().await;
+        handle
+            .await
+            .expect("halt task has panicked")
+            .expect("halt failed");
     }
 }
 
