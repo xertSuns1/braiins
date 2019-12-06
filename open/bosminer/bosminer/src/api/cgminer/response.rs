@@ -91,9 +91,10 @@ pub enum MultipoolStrategy {
     Balance,
 }
 
-#[derive(Serialize_repr, Eq, PartialEq, Clone, Debug)]
+#[derive(Serialize_repr, Eq, PartialEq, Copy, Clone, Debug)]
 #[repr(u32)]
 pub enum StatusCode {
+    // command status codes
     Pool = 7,
     Devs = 9,
     Summary = 11,
@@ -101,6 +102,34 @@ pub enum StatusCode {
     MineConfig = 33,
     DevDetails = 69,
     Stats = 70,
+    Check = 72,
+
+    // error status codes
+    InvalidCommand = 14,
+    MissingCommand = 24,
+    MissingCheckCmd = 71,
+}
+
+pub struct Error {
+    pub code: StatusCode,
+    msg: &'static str,
+}
+
+impl Error {
+    pub fn new(code: StatusCode) -> Self {
+        let msg = match code {
+            StatusCode::InvalidCommand => "Invalid command",
+            StatusCode::MissingCommand => "Missing JSON 'command'",
+            StatusCode::MissingCheckCmd => "Missing check cmd",
+            _ => panic!("status code is not error"),
+        };
+
+        Self { code, msg }
+    }
+
+    pub fn msg(&self) -> String {
+        self.msg.to_string()
+    }
 }
 
 /// STATUS structure present in all replies
@@ -199,10 +228,9 @@ pub struct Pools {
 impl From<Pools> for Response {
     fn from(pools: Pools) -> Response {
         let pool_count = pools.list.len();
-        Response::new(
+        Response::from_success(
             pools.list,
             "POOLS",
-            true,
             StatusCode::Pool,
             format!("{} Pool(s)", pool_count),
         )
@@ -273,10 +301,9 @@ pub struct Devs {
 impl From<Devs> for Response {
     fn from(devs: Devs) -> Response {
         let asc_count = devs.list.len();
-        Response::new(
+        Response::from_success(
             devs.list,
             "DEVS",
-            true,
             StatusCode::Devs,
             format!("{} ASC(s)", asc_count),
         )
@@ -347,10 +374,9 @@ pub struct Summary {
 
 impl From<Summary> for Response {
     fn from(summary: Summary) -> Response {
-        Response::new(
+        Response::from_success(
             vec![summary],
             "SUMMARY",
-            true,
             StatusCode::Summary,
             "Summary".to_string(),
         )
@@ -378,10 +404,9 @@ impl Serialize for Version {
 
 impl From<Version> for Response {
     fn from(version: Version) -> Response {
-        Response::new(
+        Response::from_success(
             vec![version],
             "VERSION",
-            true,
             StatusCode::Version,
             format!("{} versions", super::SIGNATURE),
         )
@@ -410,10 +435,9 @@ pub struct Config {
 
 impl From<Config> for Response {
     fn from(config: Config) -> Response {
-        Response::new(
+        Response::from_success(
             vec![config],
             "CONFIG",
-            true,
             StatusCode::MineConfig,
             format!("{} config", super::SIGNATURE),
         )
@@ -440,10 +464,9 @@ pub struct DevDetails {
 
 impl From<DevDetails> for Response {
     fn from(dev_details: DevDetails) -> Response {
-        Response::new(
+        Response::from_success(
             vec![dev_details],
             "DEVDETAILS",
-            true,
             StatusCode::DevDetails,
             "Device Details".to_string(),
         )
@@ -551,12 +574,30 @@ impl Stats {
 
 impl From<Stats> for Response {
     fn from(stats: Stats) -> Response {
-        Response::new(
+        Response::from_success(
             stats.into_list(),
             "STATS",
-            true,
             StatusCode::Stats,
             format!("{} stats", super::SIGNATURE),
+        )
+    }
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct Check {
+    #[serde(rename = "Exists")]
+    pub exists: Bool,
+    #[serde(rename = "Access")]
+    pub access: Bool,
+}
+
+impl From<Check> for Response {
+    fn from(check: Check) -> Response {
+        Response::from_success(
+            vec![check],
+            "CHECK",
+            StatusCode::Check,
+            "Check command".to_string(),
         )
     }
 }

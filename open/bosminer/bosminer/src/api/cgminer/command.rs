@@ -28,7 +28,7 @@ use serde_json as json;
 use super::response;
 use super::{MultiResponse, Response, ResponseType};
 
-pub type Result<T> = std::result::Result<T, ()>;
+pub type Result<T> = std::result::Result<T, response::Error>;
 
 /// A handler to be implemented by the API implementation,
 /// takes care of producing a response for each command.
@@ -53,13 +53,17 @@ impl Command {
         Self(json)
     }
 
+    fn handle_check(&self, _parameter: Option<&Value>) -> Result<response::Check> {
+        Err(response::Error::new(response::StatusCode::MissingCheckCmd))
+    }
+
     pub async fn handle_single(
         &self,
-        cmd: &str,
-        _param: Option<&Value>,
+        command: &str,
+        parameter: Option<&Value>,
         handler: &dyn Handler,
-    ) -> Result<Response> {
-        match cmd {
+    ) -> Response {
+        let response = match command {
             "pools" => handler.handle_pools().await.map(|response| response.into()),
             "devs" => handler.handle_devs().await.map(|response| response.into()),
             "edevs" => handler.handle_edevs().await.map(|response| response.into()),
@@ -84,29 +88,35 @@ impl Command {
                 .handle_estats()
                 .await
                 .map(|response| response.into()),
-            _ => Err(()),
-        }
+            "check" => self.handle_check(parameter).map(|response| response.into()),
+            _ => Err(response::Error::new(response::StatusCode::InvalidCommand)),
+        };
+        response.unwrap_or_else(|error| error.into())
     }
 
-    pub async fn handle(&self, handler: &dyn Handler) -> Option<ResponseType> {
-        let cmd = self.0.get("command").and_then(Value::as_str)?;
-        let param = self.0.get("parameter");
+    pub async fn handle(&self, handler: &dyn Handler) -> ResponseType {
+        let command = match self.0.get("command").and_then(Value::as_str) {
+            None => {
+                return ResponseType::Single(
+                    response::Error::new(response::StatusCode::MissingCommand).into(),
+                )
+            }
+            Some(value) => value,
+        };
+        let parameter = self.0.get("parameter");
 
-        if !cmd.contains('+') {
-            self.handle_single(cmd, param, handler)
-                .await
-                .ok()
-                .map(ResponseType::Single)
+        if !command.contains('+') {
+            ResponseType::Single(self.handle_single(command, parameter, handler).await)
         } else {
             let mut responses = MultiResponse::new();
-
-            for cmd in cmd.split('+') {
-                let resp = self.handle_single(cmd, param, handler).await.ok()?;
-                let resp = json::to_value(&resp).ok()?;
-                responses.add_response(cmd, resp);
+            for cmd in command.split('+') {
+                // TODO: check for param which prohibited when multi-response is used
+                let response = self.handle_single(cmd, parameter, handler).await;
+                let response =
+                    json::to_value(&response).expect("BUG: cannot serialize response to JSON");
+                responses.add_response(cmd, response);
             }
-
-            Some(ResponseType::Multi(responses))
+            ResponseType::Multi(responses)
         }
     }
 }
