@@ -338,6 +338,6 @@ impl command::Handler for Handler {
 }
 
 pub async fn run(core: Arc<hub::Core>, listen_addr: SocketAddr) {
-    let handler = Arc::new(Handler::new(core));
+    let handler = Handler::new(core);
     server::run(handler, listen_addr).await.unwrap();
 }

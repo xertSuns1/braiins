@@ -252,14 +252,14 @@ impl command::Handler for TestHandler {
 async fn codec_roundtrip(command: &str) -> Value {
     TIMESTAMP.enable(false);
 
-    let handler = TestHandler;
+    let command_receiver = command::Receiver::new(TestHandler);
     let mut codec = Codec::default();
 
     let mut command_buf = BytesMut::with_capacity(256);
     command_buf.extend_from_slice(command.as_bytes());
 
     let command = codec.decode(&mut command_buf).unwrap().unwrap();
-    let response = command.handle(&handler).await;
+    let response = command_receiver.handle(command).await;
     json::to_value(&response).unwrap()
 }
 

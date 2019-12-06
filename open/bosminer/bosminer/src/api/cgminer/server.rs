@@ -52,7 +52,7 @@ fn no_max_line_length(err: LinesCodecError) -> io::Error {
 }
 
 impl Decoder for Codec {
-    type Item = command::Receiver;
+    type Item = command::Request;
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -60,7 +60,7 @@ impl Decoder for Codec {
 
         if let Some(line) = line {
             json::from_str(line.as_str())
-                .map(command::Receiver::new)
+                .map(command::Request::new)
                 .map(Option::Some)
                 .map_err(Into::into)
         } else {
@@ -85,7 +85,7 @@ struct Framing;
 
 impl ii_wire::Framing for Framing {
     type Tx = support::ResponseType;
-    type Rx = command::Receiver;
+    type Rx = command::Request;
     type Error = io::Error;
     type Codec = Codec;
 }
@@ -96,9 +96,9 @@ type Server = ii_wire::Server<Framing>;
 /// wire-based connection type
 type Connection = ii_wire::Connection<Framing>;
 
-async fn handle_connection(mut conn: Connection, handler: Arc<dyn command::Handler>) {
+async fn handle_connection_task(mut conn: Connection, command_receiver: Arc<command::Receiver>) {
     if let Some(Ok(command)) = conn.next().await {
-        let response = command.handle(&*handler).await;
+        let response = command_receiver.handle(command).await;
         conn.tx
             .send(response)
             .await
@@ -107,12 +107,16 @@ async fn handle_connection(mut conn: Connection, handler: Arc<dyn command::Handl
 }
 
 /// Start up an API server with a `handler` object, listening on `listen_addr`
-pub async fn run(handler: Arc<dyn command::Handler>, listen_addr: SocketAddr) -> io::Result<()> {
+pub async fn run<T>(handler: T, listen_addr: SocketAddr) -> io::Result<()>
+where
+    T: command::Handler + 'static,
+{
     let mut server = Server::bind(&listen_addr)?;
+    let command_receiver = Arc::new(command::Receiver::new(handler));
 
     while let Some(conn) = server.next().await {
         if let Ok(conn) = conn {
-            tokio::spawn(handle_connection(conn, handler.clone()));
+            tokio::spawn(handle_connection_task(conn, command_receiver.clone()));
         }
     }
 

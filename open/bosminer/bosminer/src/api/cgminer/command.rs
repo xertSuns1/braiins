@@ -28,12 +28,30 @@ use super::support::{MultiResponse, Response, ResponseType};
 pub use json::Value;
 use serde_json as json;
 
+use ii_async_compat::futures::Future;
+
+use std::collections::HashMap;
+use std::pin::Pin;
+use std::sync::Arc;
+
+/// List of all supported commands.
+const POOLS: &str = "pools";
+const DEVS: &str = "devs";
+const EDEVS: &str = "edevs";
+const SUMMARY: &str = "summary";
+const VERSION: &str = "version";
+const CONFIG: &str = "config";
+const DEVDETAILS: &str = "devdetails";
+const STATS: &str = "stats";
+const ESTATS: &str = "estats";
+const CHECK: &str = "check";
+
 pub type Result<T> = std::result::Result<T, response::Error>;
 
 /// A handler to be implemented by the API implementation,
 /// takes care of producing a response for each command.
 #[async_trait::async_trait]
-pub trait Handler: Sync + Send {
+pub trait Handler: Send + Sync {
     async fn handle_pools(&self) -> Result<response::Pools>;
     async fn handle_devs(&self) -> Result<response::Devs>;
     async fn handle_edevs(&self) -> Result<response::Devs>;
@@ -45,59 +63,121 @@ pub trait Handler: Sync + Send {
     async fn handle_estats(&self) -> Result<response::Stats>;
 }
 
-/// Holds an incomming API command
+/// Holds an incoming API command
+pub struct Request {
+    value: Value,
+}
+
+impl Request {
+    pub fn new(value: Value) -> Self {
+        Self { value }
+    }
+}
+
+pub type AsyncHandler = Pin<Box<dyn Future<Output = Result<Response>> + Send + 'static>>;
+pub type ParameterLessHandler = Box<dyn Fn() -> AsyncHandler + Send + Sync>;
+
+pub enum HandlerType {
+    ParameterLess(ParameterLessHandler),
+    // TODO: OneParameter(),
+    Check,
+}
+
+pub struct Descriptor {
+    handler: HandlerType,
+}
+
+impl Descriptor {
+    pub fn new(_name: &'static str, handler: HandlerType) -> Self {
+        Self { handler }
+    }
+}
+
+macro_rules! command {
+    ($name:ident, $handler:expr, $method:ident, ParameterLess) => {{
+        let handler = $handler.clone();
+        let f: ParameterLessHandler = Box::new(move || {
+            let handler = handler.clone();
+            Box::pin(async move { handler.$method().await.map(|response| response.into()) })
+        });
+        HandlerType::ParameterLess(f)
+    }};
+}
+
+macro_rules! commands {
+    () => (
+        HashMap::new()
+    );
+    ($(($name:ident, $handler:expr, $method:ident, $type:ident)),+) => {
+        {
+            let mut map = HashMap::new();
+            $(
+                let command = command!($name, $handler, $method, $type);
+                map.insert($name, Descriptor::new($name, command));
+            )*
+            map
+        }
+    }
+}
+
 pub struct Receiver {
-    request: Value,
+    commands: HashMap<&'static str, Descriptor>,
 }
 
 impl Receiver {
-    pub fn new(request: Value) -> Self {
-        Self { request }
+    pub fn new<T>(handler: T) -> Self
+    where
+        T: Handler + 'static,
+    {
+        let handler = Arc::new(handler);
+
+        // add generic commands
+        let mut commands = commands![
+            (POOLS, handler, handle_pools, ParameterLess),
+            (DEVS, handler, handle_devs, ParameterLess),
+            (EDEVS, handler, handle_edevs, ParameterLess),
+            (SUMMARY, handler, handle_summary, ParameterLess),
+            (VERSION, handler, handle_version, ParameterLess),
+            (CONFIG, handler, handle_config, ParameterLess),
+            (DEVDETAILS, handler, handle_dev_details, ParameterLess),
+            (STATS, handler, handle_stats, ParameterLess),
+            (ESTATS, handler, handle_estats, ParameterLess)
+        ];
+
+        // add special built-in commands
+        commands.insert(CHECK, Descriptor::new(CHECK, HandlerType::Check));
+
+        Self { commands }
     }
 
-    fn handle_check(&self, _parameter: Option<&Value>) -> Result<response::Check> {
-        Err(response::Error::new(response::StatusCode::MissingCheckCmd))
-    }
-
-    pub async fn handle_single(
-        &self,
-        command: &str,
-        parameter: Option<&Value>,
-        handler: &dyn Handler,
-    ) -> Response {
-        let response = match command {
-            "pools" => handler.handle_pools().await.map(|response| response.into()),
-            "devs" => handler.handle_devs().await.map(|response| response.into()),
-            "edevs" => handler.handle_edevs().await.map(|response| response.into()),
-            "summary" => handler
-                .handle_summary()
-                .await
-                .map(|response| response.into()),
-            "version" => handler
-                .handle_version()
-                .await
-                .map(|response| response.into()),
-            "config" => handler
-                .handle_config()
-                .await
-                .map(|response| response.into()),
-            "devdetails" => handler
-                .handle_dev_details()
-                .await
-                .map(|response| response.into()),
-            "stats" => handler.handle_stats().await.map(|response| response.into()),
-            "estats" => handler
-                .handle_estats()
-                .await
-                .map(|response| response.into()),
-            "check" => self.handle_check(parameter).map(|response| response.into()),
-            _ => Err(response::Error::new(response::StatusCode::InvalidCommand)),
+    fn handle_check(&self, parameter: Option<&Value>) -> Result<response::Check> {
+        let command =
+            parameter.ok_or_else(|| response::Error::new(response::StatusCode::MissingCheckCmd))?;
+        let result = match command {
+            Value::String(command) => self.commands.get(command.as_str()).into(),
+            _ => response::Bool::N,
         };
+
+        Ok(response::Check {
+            exists: result,
+            access: result,
+        })
+    }
+
+    pub async fn handle_single(&self, command: &str, parameter: Option<&Value>) -> Response {
+        let response = match self.commands.get(command) {
+            Some(descriptor) => match &descriptor.handler {
+                HandlerType::ParameterLess(handle) => handle().await,
+                HandlerType::Check => self.handle_check(parameter).map(|response| response.into()),
+            },
+            None => Err(response::Error::new(response::StatusCode::InvalidCommand)),
+        };
+
         response.unwrap_or_else(|error| error.into())
     }
 
-    pub async fn handle(&self, handler: &dyn Handler) -> ResponseType {
-        let command = match self.request.get("command").and_then(Value::as_str) {
+    pub async fn handle(&self, command_request: Request) -> ResponseType {
+        let command = match command_request.value.get("command").and_then(Value::as_str) {
             None => {
                 return ResponseType::Single(
                     response::Error::new(response::StatusCode::MissingCommand).into(),
@@ -105,15 +185,15 @@ impl Receiver {
             }
             Some(value) => value,
         };
-        let parameter = self.request.get("parameter");
+        let parameter = command_request.value.get("parameter");
 
         if !command.contains('+') {
-            ResponseType::Single(self.handle_single(command, parameter, handler).await)
+            ResponseType::Single(self.handle_single(command, parameter).await)
         } else {
             let mut responses = MultiResponse::new();
             for cmd in command.split('+') {
                 // TODO: check for param which prohibited when multi-response is used
-                let response = self.handle_single(cmd, parameter, handler).await;
+                let response = self.handle_single(cmd, parameter).await;
                 let response =
                     json::to_value(&response).expect("BUG: cannot serialize response to JSON");
                 responses.add_response(cmd, response);

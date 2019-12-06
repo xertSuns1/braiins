@@ -49,10 +49,19 @@ pub enum Status {
 }
 
 #[allow(dead_code)]
-#[derive(Serialize, Eq, PartialEq, Clone, Debug)]
+#[derive(Serialize, Eq, PartialEq, Copy, Clone, Debug)]
 pub enum Bool {
     N,
     Y,
+}
+
+impl<T> From<Option<T>> for Bool {
+    fn from(value: Option<T>) -> Self {
+        match value {
+            None => Bool::N,
+            Some(_) => Bool::Y,
+        }
+    }
 }
 
 #[allow(dead_code)]
