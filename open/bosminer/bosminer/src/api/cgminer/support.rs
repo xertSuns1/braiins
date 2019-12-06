@@ -64,36 +64,46 @@ impl Timestamp {
 #[derive(Debug)]
 pub struct Response {
     status: response::StatusInfo,
-    responses: Value,
-    name: &'static str,
+    responses: Option<(&'static str, Value)>,
     id: usize,
 }
 
 impl Response {
-    pub fn new<S: Serialize>(
+    pub fn from_success<S: Serialize>(
         responses: Vec<S>,
         name: &'static str,
-        success: bool,
         code: response::StatusCode,
         msg: String,
     ) -> Self {
-        let status = response::StatusInfo {
-            status: if success {
-                response::Status::S
-            } else {
-                response::Status::E
-            },
+        let responses = json::to_value(responses).expect("Response serialization failed");
+
+        Self {
+            status: Self::create_status_info(response::Status::S, code, msg),
+            responses: Some((name, responses)),
+            id: 1,
+        }
+    }
+
+    fn create_status_info(
+        status: response::Status,
+        code: response::StatusCode,
+        msg: String,
+    ) -> response::StatusInfo {
+        response::StatusInfo {
+            status,
             when: TIMESTAMP.get(),
             code,
             msg,
             description: String::new(), // FIXME: Miner ID (?)
-        };
-        let responses = json::to_value(responses).expect("Response serialization failed");
+        }
+    }
+}
 
+impl From<response::Error> for Response {
+    fn from(error: response::Error) -> Response {
         Self {
-            status,
-            responses,
-            name,
+            status: Self::create_status_info(response::Status::E, error.code, error.msg()),
+            responses: None,
             id: 1,
         }
     }
@@ -107,7 +117,9 @@ impl Serialize for Response {
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(Some(3))?;
         map.serialize_entry("STATUS", &[&self.status])?;
-        map.serialize_entry(&self.name, &self.responses)?;
+        if let Some((name, responses)) = &self.responses {
+            map.serialize_entry(name, responses)?;
+        }
         map.serialize_entry("id", &self.id)?;
         map.end()
     }
@@ -129,9 +141,9 @@ impl MultiResponse {
         }
     }
 
-    pub fn add_response(&mut self, name: &str, resp: Value) {
+    pub fn add_response(&mut self, name: &str, response: Value) {
         self.responses
-            .insert(name.to_string(), Value::Array(vec![resp]));
+            .insert(name.to_string(), Value::Array(vec![response]));
     }
 }
 

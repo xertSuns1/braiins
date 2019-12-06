@@ -259,8 +259,8 @@ async fn codec_roundtrip(command: &str) -> Value {
     command_buf.extend_from_slice(command.as_bytes());
 
     let command = codec.decode(&mut command_buf).unwrap().unwrap();
-    let resp = command.handle(&handler).await.expect("Handler failed");
-    json::to_value(&resp).unwrap()
+    let response = command.handle(&handler).await;
+    json::to_value(&response).unwrap()
 }
 
 type JsonMap = json::Map<String, Value>;

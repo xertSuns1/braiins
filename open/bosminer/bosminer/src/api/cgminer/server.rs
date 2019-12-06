@@ -22,6 +22,8 @@
 
 //! Contains all server-related (networking) code
 
+use ii_logging::macros::*;
+
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -95,9 +97,11 @@ type Connection = ii_wire::Connection<Framing>;
 
 async fn handle_connection(mut conn: Connection, handler: Arc<dyn Handler>) {
     if let Some(Ok(command)) = conn.next().await {
-        if let Some(resp) = command.handle(&*handler).await {
-            let _ = conn.tx.send(resp).await;
-        }
+        let response = command.handle(&*handler).await;
+        conn.tx
+            .send(response)
+            .await
+            .unwrap_or_else(|e| warn!("CGMiner API: cannot send response ({})", e));
     }
 }
 
