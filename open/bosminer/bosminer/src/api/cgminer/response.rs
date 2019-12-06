@@ -22,10 +22,10 @@
 
 //! Defines all the CGMiner API responses
 
+use super::support::Response;
+
 use serde::{Serialize, Serializer};
 use serde_repr::Serialize_repr;
-
-use super::Response;
 
 pub type Time = u32;
 pub type Elapsed = u32;

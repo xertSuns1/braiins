@@ -22,6 +22,9 @@
 
 //! Tests for the CGMiner API module
 
+use super::server::Codec;
+use super::*;
+
 use ii_async_compat::{bytes, tokio, tokio_util};
 use tokio_util::codec::Decoder;
 
@@ -30,13 +33,10 @@ use bytes::BytesMut;
 use json::Value;
 use serde_json as json;
 
-use super::server::Codec;
-use super::*;
-
 struct TestHandler;
 
 #[async_trait::async_trait]
-impl Handler for TestHandler {
+impl command::Handler for TestHandler {
     async fn handle_pools(&self) -> command::Result<response::Pools> {
         Ok(response::Pools {
             list: vec![response::Pool {

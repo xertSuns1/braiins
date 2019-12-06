@@ -25,14 +25,14 @@
 use super::response;
 use super::TIMESTAMP;
 
+use serde::{Serialize, Serializer};
+use serde_json as json;
+use serde_json::Value;
+
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::SystemTime;
-
-use serde::{Serialize, Serializer};
-use serde_json as json;
-use serde_json::Value;
 
 /// Flag whether a real timestamp should be used when serializing.
 /// When turned off, a timestamp of 0 is used instad, this is useful for tests.
