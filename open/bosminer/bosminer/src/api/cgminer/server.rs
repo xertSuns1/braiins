@@ -24,9 +24,8 @@
 
 use ii_logging::macros::*;
 
-use std::io;
-use std::net::SocketAddr;
-use std::sync::Arc;
+use super::command;
+use super::support;
 
 use ii_async_compat::{bytes, futures, tokio, tokio_util};
 
@@ -36,7 +35,9 @@ use tokio_util::codec::{Decoder, Encoder, LinesCodec, LinesCodecError};
 
 use serde_json as json;
 
-use super::{Command, Handler, ResponseType};
+use std::io;
+use std::net::SocketAddr;
+use std::sync::Arc;
 
 /// Codec for the CGMiner API.
 /// The `Codec` decodes `Command`s and encodes `ResponseSet`s.
@@ -51,7 +52,7 @@ fn no_max_line_length(err: LinesCodecError) -> io::Error {
 }
 
 impl Decoder for Codec {
-    type Item = Command;
+    type Item = command::Receiver;
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -59,7 +60,7 @@ impl Decoder for Codec {
 
         if let Some(line) = line {
             json::from_str(line.as_str())
-                .map(Command::new)
+                .map(command::Receiver::new)
                 .map(Option::Some)
                 .map_err(Into::into)
         } else {
@@ -69,7 +70,7 @@ impl Decoder for Codec {
 }
 
 impl Encoder for Codec {
-    type Item = ResponseType;
+    type Item = support::ResponseType;
     type Error = io::Error;
 
     fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
@@ -83,8 +84,8 @@ impl Encoder for Codec {
 struct Framing;
 
 impl ii_wire::Framing for Framing {
-    type Tx = ResponseType;
-    type Rx = Command;
+    type Tx = support::ResponseType;
+    type Rx = command::Receiver;
     type Error = io::Error;
     type Codec = Codec;
 }
@@ -95,7 +96,7 @@ type Server = ii_wire::Server<Framing>;
 /// wire-based connection type
 type Connection = ii_wire::Connection<Framing>;
 
-async fn handle_connection(mut conn: Connection, handler: Arc<dyn Handler>) {
+async fn handle_connection(mut conn: Connection, handler: Arc<dyn command::Handler>) {
     if let Some(Ok(command)) = conn.next().await {
         let response = command.handle(&*handler).await;
         conn.tx
@@ -106,7 +107,7 @@ async fn handle_connection(mut conn: Connection, handler: Arc<dyn Handler>) {
 }
 
 /// Start up an API server with a `handler` object, listening on `listen_addr`
-pub async fn run(handler: Arc<dyn Handler>, listen_addr: SocketAddr) -> io::Result<()> {
+pub async fn run(handler: Arc<dyn command::Handler>, listen_addr: SocketAddr) -> io::Result<()> {
     let mut server = Server::bind(&listen_addr)?;
 
     while let Some(conn) = server.next().await {

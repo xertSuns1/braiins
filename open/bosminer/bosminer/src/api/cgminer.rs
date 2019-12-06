@@ -34,9 +34,6 @@ mod test;
 use crate::hub;
 use crate::node;
 
-use command::{Command, Handler};
-use support::{MultiResponse, Response, ResponseType, Timestamp};
-
 use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -51,13 +48,13 @@ const DEFAULT_LOG_INTERVAL: u32 = 5;
 
 /// Global `Timestamp` flag, controls whether responses contain real timestamps.
 /// See also the `Timestamp` type.
-static TIMESTAMP: Timestamp = Timestamp::new();
+static TIMESTAMP: support::Timestamp = support::Timestamp::new();
 
-struct CGMinerAPI {
+struct Handler {
     core: Arc<hub::Core>,
 }
 
-impl CGMinerAPI {
+impl Handler {
     pub fn new(core: Arc<hub::Core>) -> Self {
         Self { core }
     }
@@ -237,7 +234,7 @@ impl CGMinerAPI {
 }
 
 #[async_trait::async_trait]
-impl Handler for CGMinerAPI {
+impl command::Handler for Handler {
     async fn handle_pools(&self) -> command::Result<response::Pools> {
         Ok(response::Pools {
             list: self.collect_pool_statuses().await,
@@ -341,6 +338,6 @@ impl Handler for CGMinerAPI {
 }
 
 pub async fn run(core: Arc<hub::Core>, listen_addr: SocketAddr) {
-    let handler = Arc::new(CGMinerAPI::new(core));
+    let handler = Arc::new(Handler::new(core));
     server::run(handler, listen_addr).await.unwrap();
 }

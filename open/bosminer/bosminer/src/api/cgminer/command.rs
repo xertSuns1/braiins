@@ -22,11 +22,11 @@
 
 //! Defines the API command handler (`Handler`)
 
+use super::response;
+use super::support::{MultiResponse, Response, ResponseType};
+
 pub use json::Value;
 use serde_json as json;
-
-use super::response;
-use super::{MultiResponse, Response, ResponseType};
 
 pub type Result<T> = std::result::Result<T, response::Error>;
 
@@ -46,11 +46,13 @@ pub trait Handler: Sync + Send {
 }
 
 /// Holds an incomming API command
-pub struct Command(Value);
+pub struct Receiver {
+    request: Value,
+}
 
-impl Command {
-    pub fn new(json: Value) -> Self {
-        Self(json)
+impl Receiver {
+    pub fn new(request: Value) -> Self {
+        Self { request }
     }
 
     fn handle_check(&self, _parameter: Option<&Value>) -> Result<response::Check> {
@@ -95,7 +97,7 @@ impl Command {
     }
 
     pub async fn handle(&self, handler: &dyn Handler) -> ResponseType {
-        let command = match self.0.get("command").and_then(Value::as_str) {
+        let command = match self.request.get("command").and_then(Value::as_str) {
             None => {
                 return ResponseType::Single(
                     response::Error::new(response::StatusCode::MissingCommand).into(),
@@ -103,7 +105,7 @@ impl Command {
             }
             Some(value) => value,
         };
-        let parameter = self.0.get("parameter");
+        let parameter = self.request.get("parameter");
 
         if !command.contains('+') {
             ResponseType::Single(self.handle_single(command, parameter, handler).await)
