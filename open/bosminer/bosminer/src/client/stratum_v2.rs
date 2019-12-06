@@ -118,10 +118,6 @@ impl job::Bitcoin for StratumJob {
         self.time
     }
 
-    fn max_time(&self) -> u32 {
-        self.time // TODO: max_time field was removed from SetNewPrevHash message
-    }
-
     fn bits(&self) -> u32 {
         self.bits
     }
