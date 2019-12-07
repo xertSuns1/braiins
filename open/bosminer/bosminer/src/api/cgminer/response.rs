@@ -112,32 +112,62 @@ pub enum StatusCode {
     DevDetails = 69,
     Stats = 70,
     Check = 72,
+    Asc = 106,
 
     // error status codes
     InvalidCommand = 14,
+    MissingAscParameter = 15,
     MissingCommand = 24,
     MissingCheckCmd = 71,
+    InvalidAscId = 107,
+}
+
+pub enum ErrorCode {
+    InvalidCommand,
+    MissingAscParameter,
+    MissingCommand,
+    MissingCheckCmd,
+    InvalidAscId(i32, i32),
 }
 
 pub struct Error {
     pub code: StatusCode,
-    msg: &'static str,
+    msg: String,
 }
 
 impl Error {
-    pub fn new(code: StatusCode) -> Self {
-        let msg = match code {
-            StatusCode::InvalidCommand => "Invalid command",
-            StatusCode::MissingCommand => "Missing JSON 'command'",
-            StatusCode::MissingCheckCmd => "Missing check cmd",
-            _ => panic!("status code is not error"),
+    pub fn msg(&self) -> &String {
+        &self.msg
+    }
+}
+
+impl From<ErrorCode> for Error {
+    fn from(code: ErrorCode) -> Self {
+        let (code, msg) = match code {
+            ErrorCode::InvalidCommand => {
+                (StatusCode::InvalidCommand, "Invalid command".to_string())
+            }
+            ErrorCode::MissingAscParameter => (
+                StatusCode::MissingAscParameter,
+                "Missing device id parameter".to_string(),
+            ),
+            ErrorCode::MissingCommand => (
+                StatusCode::MissingCommand,
+                "Missing JSON 'command'".to_string(),
+            ),
+            ErrorCode::MissingCheckCmd => {
+                (StatusCode::MissingCheckCmd, "Missing check cmd".to_string())
+            }
+            ErrorCode::InvalidAscId(idx_requested, idx_last) => (
+                StatusCode::InvalidAscId,
+                format!(
+                    "Invalid ASC id {} - range is 0 - {}",
+                    idx_requested, idx_last
+                ),
+            ),
         };
 
         Self { code, msg }
-    }
-
-    pub fn msg(&self) -> String {
-        self.msg.to_string()
     }
 }
 
@@ -300,6 +330,13 @@ pub struct Asc {
     pub device_rejected_percent: Percent,
     #[serde(rename = "Device Elapsed")]
     pub device_elapsed: Elapsed,
+}
+
+impl From<Asc> for Response {
+    fn from(asc: Asc) -> Response {
+        let idx = asc.idx;
+        Response::from_success(vec![asc], "ASC", StatusCode::Asc, format!("ASC{}", idx))
+    }
 }
 
 #[derive(Serialize, PartialEq, Clone, Debug)]

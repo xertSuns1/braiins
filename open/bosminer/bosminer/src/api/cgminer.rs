@@ -34,6 +34,9 @@ mod test;
 use crate::hub;
 use crate::node;
 
+use serde_json as json;
+
+use crate::api::cgminer::support::ValueExt;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -334,6 +337,23 @@ impl command::Handler for Handler {
             asc_stats: self.collect_asc_stats(0).await,
             pool_stats: vec![],
         })
+    }
+
+    async fn handle_asc(&self, parameter: Option<&json::Value>) -> command::Result<response::Asc> {
+        let idx = parameter
+            .expect("BUG: missing ASC parameter")
+            .to_i32()
+            .expect("BUG: invalid ASC parameter type");
+
+        let work_solvers = self.core.get_work_solvers().await;
+        let work_solver = work_solvers.get(idx as usize).cloned();
+
+        match work_solver {
+            Some(work_solver) => Ok(Self::get_asc_status(idx as usize, &work_solver).await),
+            None => {
+                Err(response::ErrorCode::InvalidAscId(idx, work_solvers.len() as i32 - 1).into())
+            }
+        }
     }
 }
 
