@@ -25,11 +25,11 @@
 use super::response;
 use super::support::{MultiResponse, Response, ResponseType};
 
-pub use json::Value;
 use serde_json as json;
 
 use ii_async_compat::futures::Future;
 
+use crate::api::cgminer::support::ValueExt;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -45,6 +45,7 @@ const DEVDETAILS: &str = "devdetails";
 const STATS: &str = "stats";
 const ESTATS: &str = "estats";
 const CHECK: &str = "check";
+const ASC: &str = "asc";
 
 pub type Result<T> = std::result::Result<T, response::Error>;
 
@@ -61,35 +62,48 @@ pub trait Handler: Send + Sync {
     async fn handle_dev_details(&self) -> Result<response::DevDetails>;
     async fn handle_stats(&self) -> Result<response::Stats>;
     async fn handle_estats(&self) -> Result<response::Stats>;
+    async fn handle_asc(&self, parameter: Option<&json::Value>) -> Result<response::Asc>;
 }
 
 /// Holds an incoming API command
 pub struct Request {
-    value: Value,
+    value: json::Value,
 }
 
 impl Request {
-    pub fn new(value: Value) -> Self {
+    pub fn new(value: json::Value) -> Self {
         Self { value }
     }
 }
 
 pub type AsyncHandler = Pin<Box<dyn Future<Output = Result<Response>> + Send + 'static>>;
+
 pub type ParameterLessHandler = Box<dyn Fn() -> AsyncHandler + Send + Sync>;
+pub type ParameterHandler = Box<dyn Fn(Option<&json::Value>) -> AsyncHandler + Send + Sync>;
+
+pub type ParameterCheckHandler =
+    Box<dyn Fn(&str, &Option<&json::Value>) -> Result<()> + Send + Sync>;
 
 pub enum HandlerType {
     ParameterLess(ParameterLessHandler),
-    // TODO: OneParameter(),
+    Parameter(ParameterHandler),
     Check,
 }
 
 pub struct Descriptor {
     handler: HandlerType,
+    parameter_check: Option<ParameterCheckHandler>,
 }
 
 impl Descriptor {
-    pub fn new(_name: &'static str, handler: HandlerType) -> Self {
-        Self { handler }
+    pub fn new<T>(_name: &'static str, handler: HandlerType, parameter_check: T) -> Self
+    where
+        T: Into<Option<ParameterCheckHandler>>,
+    {
+        Self {
+            handler,
+            parameter_check: parameter_check.into(),
+        }
     }
 }
 
@@ -100,7 +114,23 @@ macro_rules! command {
             let handler = handler.clone();
             Box::pin(async move { handler.$method().await.map(|response| response.into()) })
         });
-        HandlerType::ParameterLess(f)
+        let handler = HandlerType::ParameterLess(f);
+        Descriptor::new($name, handler, None)
+    }};
+    ($name:ident, $handler:expr, $method:ident, Parameter($check:expr)) => {{
+        let handler = $handler.clone();
+        let f: ParameterHandler = Box::new(move |parameter| {
+            let handler = handler.clone();
+            let parameter = parameter.cloned();
+            Box::pin(async move {
+                handler
+                    .$method(parameter.as_ref())
+                    .await
+                    .map(|response| response.into())
+            })
+        });
+        let handler = HandlerType::Parameter(f);
+        Descriptor::new($name, handler, $check)
     }};
 }
 
@@ -108,12 +138,12 @@ macro_rules! commands {
     () => (
         HashMap::new()
     );
-    ($(($name:ident, $handler:expr, $method:ident, $type:ident)),+) => {
+    ($(($name:ident, $handler:expr, $method:ident, $type:ident$(($parameter:expr))?)),+) => {
         {
             let mut map = HashMap::new();
             $(
-                let command = command!($name, $handler, $method, $type);
-                map.insert($name, Descriptor::new($name, command));
+                let descriptor = command!($name, $handler, $method, $type $(($parameter))?);
+                map.insert($name, descriptor);
             )*
             map
         }
@@ -131,6 +161,9 @@ impl Receiver {
     {
         let handler = Arc::new(handler);
 
+        let check_asc: ParameterCheckHandler =
+            Box::new(|command, parameter| Self::check_asc(command, parameter));
+
         // add generic commands
         let mut commands = commands![
             (POOLS, handler, handle_pools, ParameterLess),
@@ -141,20 +174,28 @@ impl Receiver {
             (CONFIG, handler, handle_config, ParameterLess),
             (DEVDETAILS, handler, handle_dev_details, ParameterLess),
             (STATS, handler, handle_stats, ParameterLess),
-            (ESTATS, handler, handle_estats, ParameterLess)
+            (ESTATS, handler, handle_estats, ParameterLess),
+            (ASC, handler, handle_asc, Parameter(check_asc))
         ];
 
         // add special built-in commands
-        commands.insert(CHECK, Descriptor::new(CHECK, HandlerType::Check));
+        commands.insert(CHECK, Descriptor::new(CHECK, HandlerType::Check, None));
 
         Self { commands }
     }
 
-    fn handle_check(&self, parameter: Option<&Value>) -> Result<response::Check> {
+    fn check_asc(_command: &str, parameter: &Option<&json::Value>) -> Result<()> {
+        match parameter {
+            Some(value) if value.is_i32() => Ok(()),
+            _ => Err(response::ErrorCode::MissingAscParameter.into()),
+        }
+    }
+
+    fn handle_check(&self, parameter: Option<&json::Value>) -> Result<response::Check> {
         let command =
-            parameter.ok_or_else(|| response::Error::new(response::StatusCode::MissingCheckCmd))?;
+            parameter.ok_or_else(|| response::Error::from(response::ErrorCode::MissingCheckCmd))?;
         let result = match command {
-            Value::String(command) => self.commands.get(command.as_str()).into(),
+            json::Value::String(command) => self.commands.get(command.as_str()).into(),
             _ => response::Bool::N,
         };
 
@@ -164,25 +205,37 @@ impl Receiver {
         })
     }
 
-    pub async fn handle_single(&self, command: &str, parameter: Option<&Value>) -> Response {
+    pub async fn handle_single(&self, command: &str, parameter: Option<&json::Value>) -> Response {
         let response = match self.commands.get(command) {
-            Some(descriptor) => match &descriptor.handler {
-                HandlerType::ParameterLess(handle) => handle().await,
-                HandlerType::Check => self.handle_check(parameter).map(|response| response.into()),
-            },
-            None => Err(response::Error::new(response::StatusCode::InvalidCommand)),
+            Some(descriptor) => {
+                let check_result = descriptor
+                    .parameter_check
+                    .as_ref()
+                    .map_or(Ok(()), |check| check(command, &parameter));
+                match check_result {
+                    Ok(_) => match &descriptor.handler {
+                        HandlerType::ParameterLess(handle) => handle().await,
+                        HandlerType::Parameter(handle) => handle(parameter).await,
+                        HandlerType::Check => {
+                            self.handle_check(parameter).map(|response| response.into())
+                        }
+                    },
+                    Err(response) => Err(response),
+                }
+            }
+            None => Err(response::ErrorCode::InvalidCommand.into()),
         };
 
         response.unwrap_or_else(|error| error.into())
     }
 
     pub async fn handle(&self, command_request: Request) -> ResponseType {
-        let command = match command_request.value.get("command").and_then(Value::as_str) {
-            None => {
-                return ResponseType::Single(
-                    response::Error::new(response::StatusCode::MissingCommand).into(),
-                )
-            }
+        let command = match command_request
+            .value
+            .get("command")
+            .and_then(json::Value::as_str)
+        {
+            None => return ResponseType::Single(response::ErrorCode::MissingCommand.into()),
             Some(value) => value,
         };
         let parameter = command_request.value.get("parameter");

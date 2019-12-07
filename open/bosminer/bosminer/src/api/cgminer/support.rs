@@ -27,7 +27,6 @@ use super::TIMESTAMP;
 
 use serde::{Serialize, Serializer};
 use serde_json as json;
-use serde_json::Value;
 
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
@@ -60,11 +59,40 @@ impl Timestamp {
     }
 }
 
+pub trait ValueExt {
+    fn to_i32(&self) -> Option<i32>;
+
+    fn is_i32(&self) -> bool {
+        self.to_i32().is_some()
+    }
+}
+
+impl ValueExt for json::Value {
+    fn to_i32(&self) -> Option<i32> {
+        match self {
+            json::Value::Number(value) if value.is_u64() => {
+                let number = value.as_u64().expect("BUG: cannot convert json number");
+                Some(number as i32)
+            }
+            json::Value::Number(value) if value.is_i64() => {
+                let number = value.as_i64().expect("BUG: cannot convert json number");
+                Some(number as i32)
+            }
+            json::Value::Number(value) if value.is_f64() => {
+                let number = value.as_f64().expect("BUG: cannot convert json number");
+                Some(number as i32)
+            }
+            // TODO: cgminer tries to parse all possible types if they contains some number
+            _ => None,
+        }
+    }
+}
+
 /// Generic container for any response, ensures conforming serialization
 #[derive(Debug)]
 pub struct Response {
     status: response::StatusInfo,
-    responses: Option<(&'static str, Value)>,
+    responses: Option<(&'static str, json::Value)>,
     id: usize,
 }
 
@@ -102,10 +130,16 @@ impl Response {
 impl From<response::Error> for Response {
     fn from(error: response::Error) -> Response {
         Self {
-            status: Self::create_status_info(response::Status::E, error.code, error.msg()),
+            status: Self::create_status_info(response::Status::E, error.code, error.msg().clone()),
             responses: None,
             id: 1,
         }
+    }
+}
+
+impl From<response::ErrorCode> for Response {
+    fn from(code: response::ErrorCode) -> Response {
+        response::Error::from(code).into()
     }
 }
 
@@ -129,7 +163,7 @@ impl Serialize for Response {
 #[derive(Serialize, Debug)]
 pub struct MultiResponse {
     #[serde(flatten)]
-    responses: HashMap<String, Value>,
+    responses: HashMap<String, json::Value>,
     id: usize,
 }
 
@@ -141,9 +175,9 @@ impl MultiResponse {
         }
     }
 
-    pub fn add_response(&mut self, name: &str, response: Value) {
+    pub fn add_response(&mut self, name: &str, response: json::Value) {
         self.responses
-            .insert(name.to_string(), Value::Array(vec![response]));
+            .insert(name.to_string(), json::Value::Array(vec![response]));
     }
 }
 
