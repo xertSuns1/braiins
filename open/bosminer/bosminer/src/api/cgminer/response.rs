@@ -28,7 +28,7 @@ use serde::{Serialize, Serializer};
 use serde_repr::Serialize_repr;
 
 pub type Time = u32;
-pub type Elapsed = u32;
+pub type Elapsed = u64;
 pub type Interval = f64;
 pub type Percent = f64;
 pub type Difficulty = f64;
@@ -196,15 +196,15 @@ pub struct StatusInfo {
 #[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct Pool {
     #[serde(rename = "POOL")]
-    pub idx: u32,
+    pub idx: i32,
     #[serde(rename = "URL")]
     pub url: String,
     #[serde(rename = "Status")]
     pub status: PoolStatus,
     #[serde(rename = "Priority")]
-    pub priority: u32,
+    pub priority: i32,
     #[serde(rename = "Quota")]
-    pub quota: u32,
+    pub quota: i32,
     #[serde(rename = "Long Poll")]
     pub long_poll: Bool,
     #[serde(rename = "Getworks")]
@@ -214,7 +214,7 @@ pub struct Pool {
     #[serde(rename = "Rejected")]
     pub rejected: u64,
     #[serde(rename = "Works")]
-    pub works: u32,
+    pub works: i32,
     #[serde(rename = "Discarded")]
     pub discarded: u32,
     #[serde(rename = "Stale")]
@@ -289,11 +289,11 @@ impl From<Pools> for Response {
 #[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct Asc {
     #[serde(rename = "ASC")]
-    pub idx: u32,
+    pub idx: i32,
     #[serde(rename = "Name")]
     pub name: String,
     #[serde(rename = "ID")]
-    pub id: u32,
+    pub id: i32,
     #[serde(rename = "Enabled")]
     pub enabled: Bool,
     #[serde(rename = "Status")]
@@ -311,11 +311,11 @@ pub struct Asc {
     #[serde(rename = "MHS 15m")]
     pub mhs_15m: MegaHashes,
     #[serde(rename = "Accepted")]
-    pub accepted: u32,
+    pub accepted: i32,
     #[serde(rename = "Rejected")]
-    pub rejected: u32,
+    pub rejected: i32,
     #[serde(rename = "Hardware Errors")]
-    pub hardware_errors: u32,
+    pub hardware_errors: i32,
     #[serde(rename = "Utility")]
     pub utility: Utility,
     #[serde(rename = "Last Share Pool")]
@@ -389,13 +389,13 @@ pub struct Summary {
     #[serde(rename = "Rejected")]
     pub rejected: u64,
     #[serde(rename = "Hardware Errors")]
-    pub hardware_errors: u32,
+    pub hardware_errors: i32,
     #[serde(rename = "Utility")]
     pub utility: Utility,
     #[serde(rename = "Discarded")]
-    pub discarded: u64,
+    pub discarded: i64,
     #[serde(rename = "Stale")]
-    pub stale: u64,
+    pub stale: i64,
     #[serde(rename = "Get Failures")]
     pub get_failures: u32,
     #[serde(rename = "Local Work")]
@@ -472,15 +472,15 @@ impl From<Version> for Response {
 #[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct Config {
     #[serde(rename = "ASC Count")]
-    pub asc_count: u32,
+    pub asc_count: i32,
     #[serde(rename = "PGA Count")]
-    pub pga_count: u32,
+    pub pga_count: i32,
     #[serde(rename = "Pool Count")]
-    pub pool_count: u32,
+    pub pool_count: i32,
     #[serde(rename = "Strategy")]
     pub strategy: MultipoolStrategy,
     #[serde(rename = "Log Interval")]
-    pub log_interval: u32,
+    pub log_interval: i32,
     #[serde(rename = "Device Code")]
     pub device_code: String,
     #[serde(rename = "OS")]
@@ -503,11 +503,11 @@ impl From<Config> for Response {
 #[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct DevDetails {
     #[serde(rename = "DEVDETAILS")]
-    pub idx: u32,
+    pub idx: i32,
     #[serde(rename = "Name")]
     pub name: String,
     #[serde(rename = "ID")]
-    pub id: u32,
+    pub id: i32,
     #[serde(rename = "Driver")]
     pub driver: String,
     #[serde(rename = "Kernel")]
@@ -593,7 +593,7 @@ enum StatsType {
 #[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct StatsHeader {
     #[serde(rename = "STATS")]
-    pub idx: u32,
+    pub idx: i32,
     #[serde(rename = "ID")]
     pub id: String,
     #[serde(rename = "Elapsed")]
@@ -686,7 +686,7 @@ impl From<Coin> for Response {
 #[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct AscCount {
     #[serde(rename = "Count")]
-    pub count: u32,
+    pub count: i32,
 }
 
 impl From<AscCount> for Response {
