@@ -258,6 +258,10 @@ impl command::Handler for TestHandler {
         })
     }
 
+    async fn handle_asc_count(&self) -> command::Result<response::AscCount> {
+        Ok(response::AscCount { count: 0 })
+    }
+
     async fn handle_asc(&self, _parameter: Option<&json::Value>) -> command::Result<response::Asc> {
         Ok(response::Asc {
             idx: 0,
