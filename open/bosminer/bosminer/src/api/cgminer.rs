@@ -371,6 +371,23 @@ impl command::Handler for Handler {
             }
         }
     }
+
+    async fn handle_lcd(&self) -> command::Result<response::Lcd> {
+        Ok(response::Lcd {
+            elapsed: 0,
+            ghs_av: 0.0,
+            ghs_5m: 0.0,
+            ghs_5s: 0.0,
+            temperature: 0.0,
+            last_share_difficulty: 0.0,
+            last_share_time: 0,
+            best_share: 0,
+            last_valid_work: 0,
+            found_blocks: 0,
+            current_pool: "".to_string(),
+            user: "".to_string(),
+        })
+    }
 }
 
 pub async fn run(core: Arc<hub::Core>, listen_addr: SocketAddr) {
