@@ -319,11 +319,11 @@ pub struct Asc {
     #[serde(rename = "Utility")]
     pub utility: Utility,
     #[serde(rename = "Last Share Pool")]
-    pub last_share_pool: u32,
+    pub last_share_pool: i32,
     #[serde(rename = "Last Share Time")]
     pub last_share_time: Time,
     #[serde(rename = "Total MH")]
-    pub total_mh: TotalMegaHashes,
+    pub total_mega_hashes: TotalMegaHashes,
     #[serde(rename = "Diff1 Work")]
     pub diff1_work: u64,
     #[serde(rename = "Difficulty Accepted")]
