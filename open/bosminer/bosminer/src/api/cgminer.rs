@@ -32,7 +32,7 @@ mod support;
 mod test;
 
 use crate::hub;
-use crate::node;
+use crate::node::{self, Stats as _, WorkSolverStats as _};
 use crate::stats::{self, UnixTime as _};
 
 use support::ValueExt as _;
@@ -349,36 +349,81 @@ impl command::Handler for Handler {
     }
 
     async fn handle_summary(&self) -> command::Result<response::Summary> {
+        let frontend = self.core.frontend.clone();
+
+        let mining_stats = frontend.mining_stats();
+        let work_solver_stats = frontend.work_solver_stats();
+        let last_work_time = work_solver_stats.last_work_time().take_snapshot().await;
+        let generated_work = work_solver_stats.generated_work().take_snapshot();
+        let valid_network_diff = mining_stats.valid_network_diff().take_snapshot().await;
+        let valid_job_diff = mining_stats.valid_job_diff().take_snapshot().await;
+        let valid_backend_diff = mining_stats.valid_backend_diff().take_snapshot().await;
+        let error_backend_diff = mining_stats.error_backend_diff().take_snapshot().await;
+        let best_share = mining_stats.best_share().take_snapshot();
+
+        let now = time::Instant::now();
+        let elapsed = now.duration_since(*mining_stats.start_time());
+
+        let last_work_time =
+            last_work_time.map_or(0, |time| time.get_unix_time().unwrap_or_default());
+
+        let total_mega_hashes = valid_job_diff.shares.into_mega_hashes().into_f64();
+        let network_valid_solutions = valid_network_diff.solutions;
+        let backend_valid_solutions = valid_backend_diff.solutions;
+        let backend_error_solutions = error_backend_diff.solutions;
+        let backend_all_solutions = backend_error_solutions + backend_valid_solutions;
+        let backend_error_ratio = if backend_all_solutions != 0 {
+            backend_error_solutions as f64 / backend_all_solutions as f64
+        } else {
+            0.0
+        } * 100.0;
+        let work_utility = valid_backend_diff.shares.to_sharerate(elapsed) * 60.0;
+
         Ok(response::Summary {
-            elapsed: 0,
-            mhs_av: 0.0,
-            mhs_5s: 0.0,
-            mhs_1m: 0.0,
-            mhs_5m: 0.0,
-            mhs_15m: 0.0,
-            found_blocks: 0,
+            elapsed: elapsed.as_secs(),
+            mhs_av: total_mega_hashes / elapsed.as_secs_f64(),
+            mhs_5s: valid_job_diff.to_mega_hashes(*INTERVAL_5S, now).into_f64(),
+            mhs_1m: valid_job_diff.to_mega_hashes(*INTERVAL_1M, now).into_f64(),
+            mhs_5m: valid_job_diff.to_mega_hashes(*INTERVAL_5M, now).into_f64(),
+            mhs_15m: valid_job_diff.to_mega_hashes(*INTERVAL_15M, now).into_f64(),
+            found_blocks: network_valid_solutions as u32,
+            // TODO: bOSminer does not account this information
             getworks: 0,
+            // TODO: bOSminer does not account this information
             accepted: 0,
+            // TODO: bOSminer does not account this information
             rejected: 0,
-            hardware_errors: 0,
+            hardware_errors: backend_error_solutions as i32,
+            // TODO: bOSminer does not account accepted
             utility: 0.0,
+            // TODO: bOSminer does not account accepted
             discarded: 0,
+            // TODO: bOSminer does not account this information
             stale: 0,
+            // TODO: bOSminer does not account this information
             get_failures: 0,
-            local_work: 0,
+            local_work: *generated_work as u32,
+            // TODO: bOSminer does not account this information
             remote_failures: 0,
+            // TODO: bOSminer does not account this information
             network_blocks: 0,
-            total_mh: 0.0,
-            work_utility: 0.0,
+            total_mega_hashes,
+            work_utility,
+            // TODO: bOSminer does not account this information
             difficulty_accepted: 0.0,
+            // TODO: bOSminer does not account this information
             difficulty_rejected: 0.0,
+            // TODO: bOSminer does not account this information
             difficulty_stale: 0.0,
-            best_share: 0,
-            device_hardware_ratio: 0.0,
+            best_share: best_share.map(|inner| *inner).unwrap_or_default() as u64,
+            device_hardware_ratio: backend_error_ratio,
+            // TODO: bosminer does not account rejected
             device_rejected_ratio: 0.0,
+            // TODO: bosminer does not account rejected
             pool_rejected_ratio: 0.0,
+            // TODO: bosminer does not account stale
             pool_stale_ratio: 0.0,
-            last_getwork: 0,
+            last_getwork: last_work_time,
         })
     }
 

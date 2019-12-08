@@ -405,7 +405,7 @@ pub struct Summary {
     #[serde(rename = "Network Blocks")]
     pub network_blocks: u32,
     #[serde(rename = "Total MH")]
-    pub total_mh: TotalMegaHashes,
+    pub total_mega_hashes: TotalMegaHashes,
     #[serde(rename = "Work Utility")]
     pub work_utility: Utility,
     #[serde(rename = "Difficulty Accepted")]
