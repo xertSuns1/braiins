@@ -96,6 +96,16 @@ pub enum HandlerType {
     Check,
 }
 
+impl HandlerType {
+    pub fn has_parameters(&self) -> bool {
+        match self {
+            HandlerType::ParameterLess(_) => false,
+            HandlerType::Parameter(_) => true,
+            HandlerType::Check => true,
+        }
+    }
+}
+
 pub struct Descriptor {
     handler: HandlerType,
     parameter_check: Option<ParameterCheckHandler>,
@@ -110,6 +120,11 @@ impl Descriptor {
             handler,
             parameter_check: parameter_check.into(),
         }
+    }
+
+    #[inline]
+    pub fn has_parameters(&self) -> bool {
+        self.handler.has_parameters()
     }
 }
 
@@ -214,22 +229,31 @@ impl Receiver {
         })
     }
 
-    pub async fn handle_single(&self, command: &str, parameter: Option<&json::Value>) -> Response {
+    pub async fn handle_single(
+        &self,
+        command: &str,
+        parameter: Option<&json::Value>,
+        multi_command: bool,
+    ) -> Response {
         let response = match self.commands.get(command) {
             Some(descriptor) => {
-                let check_result = descriptor
-                    .parameter_check
-                    .as_ref()
-                    .map_or(Ok(()), |check| check(command, &parameter));
-                match check_result {
-                    Ok(_) => match &descriptor.handler {
-                        HandlerType::ParameterLess(handle) => handle().await,
-                        HandlerType::Parameter(handle) => handle(parameter).await,
-                        HandlerType::Check => {
-                            self.handle_check(parameter).map(|response| response.into())
-                        }
-                    },
-                    Err(response) => Err(response),
+                if multi_command && descriptor.has_parameters() {
+                    Err(response::ErrorCode::AccessDeniedCmd(command.to_string()).into())
+                } else {
+                    let check_result = descriptor
+                        .parameter_check
+                        .as_ref()
+                        .map_or(Ok(()), |check| check(command, &parameter));
+                    match check_result {
+                        Ok(_) => match &descriptor.handler {
+                            HandlerType::ParameterLess(handle) => handle().await,
+                            HandlerType::Parameter(handle) => handle(parameter).await,
+                            HandlerType::Check => {
+                                self.handle_check(parameter).map(|response| response.into())
+                            }
+                        },
+                        Err(response) => Err(response),
+                    }
                 }
             }
             None => Err(response::ErrorCode::InvalidCommand.into()),
@@ -247,18 +271,23 @@ impl Receiver {
             None => return ResponseType::Single(response::ErrorCode::MissingCommand.into()),
             Some(value) => value,
         };
+        let commands: Vec<_> = command
+            .split('+')
+            .filter(|command| command.len() > 0)
+            .collect();
         let parameter = command_request.value.get("parameter");
 
-        if !command.contains('+') {
-            ResponseType::Single(self.handle_single(command, parameter).await)
+        if commands.len() == 0 {
+            ResponseType::Single(response::ErrorCode::InvalidCommand.into())
+        } else if commands.len() == 1 {
+            ResponseType::Single(self.handle_single(command, parameter, false).await)
         } else {
             let mut responses = MultiResponse::new();
-            for cmd in command.split('+') {
-                // TODO: check for param which prohibited when multi-response is used
-                let response = self.handle_single(cmd, parameter).await;
+            for command in commands {
+                let response = self.handle_single(command, parameter, true).await;
                 let response =
                     json::to_value(&response).expect("BUG: cannot serialize response to JSON");
-                responses.add_response(cmd, response);
+                responses.add_response(command, response);
             }
             ResponseType::Multi(responses)
         }
