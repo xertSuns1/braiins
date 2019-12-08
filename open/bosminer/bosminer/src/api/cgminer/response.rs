@@ -122,6 +122,7 @@ pub enum StatusCode {
     InvalidCommand = 14,
     MissingAscParameter = 15,
     MissingCommand = 24,
+    AccessDeniedCmd = 45,
     MissingCheckCmd = 71,
     InvalidAscId = 107,
 }
@@ -130,6 +131,7 @@ pub enum ErrorCode {
     InvalidCommand,
     MissingAscParameter,
     MissingCommand,
+    AccessDeniedCmd(String),
     MissingCheckCmd,
     InvalidAscId(i32, i32),
 }
@@ -158,6 +160,10 @@ impl From<ErrorCode> for Error {
             ErrorCode::MissingCommand => (
                 StatusCode::MissingCommand,
                 "Missing JSON 'command'".to_string(),
+            ),
+            ErrorCode::AccessDeniedCmd(name) => (
+                StatusCode::AccessDeniedCmd,
+                format!("Access denied to '{}' command", name),
             ),
             ErrorCode::MissingCheckCmd => {
                 (StatusCode::MissingCheckCmd, "Missing check cmd".to_string())
