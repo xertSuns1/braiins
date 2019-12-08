@@ -86,7 +86,7 @@ impl Handler {
 
     async fn get_pool_status(idx: usize, _client: &Arc<dyn node::Client>) -> response::Pool {
         response::Pool {
-            idx: idx as u32,
+            idx: idx as i32,
             url: "".to_string(),
             status: response::PoolStatus::Alive,
             priority: 0,
@@ -162,11 +162,11 @@ impl Handler {
         };
 
         response::Asc {
-            idx: idx as u32,
+            idx: idx as i32,
             // TODO: get actual ASIC name from work solver
             name: "BC5".to_string(),
             // TODO: get idx from work solver (it can represent real index of hash chain)
-            id: idx as u32,
+            id: idx as i32,
             // TODO: get actual state from work solver
             enabled: response::Bool::Y,
             // TODO: get actual status from work solver
@@ -182,7 +182,7 @@ impl Handler {
             accepted: 0,
             // TODO: bOSminer does not account this information
             rejected: 0,
-            hardware_errors: backend_error_solutions as u32,
+            hardware_errors: backend_error_solutions as i32,
             // TODO: bOSminer does not account accepted
             utility: 0.0,
             // TODO: bOSminer does not account accepted
@@ -199,7 +199,7 @@ impl Handler {
             device_hardware_percent: backend_error_rate,
             // TODO: bOSminer does not account rejected
             device_rejected_percent: 0.0,
-            device_elapsed: elapsed.as_secs() as u32,
+            device_elapsed: elapsed.as_secs(),
         }
     }
 
@@ -213,7 +213,7 @@ impl Handler {
     async fn get_pool_stats(idx: usize, _client: &Arc<dyn node::Client>) -> response::PoolStats {
         response::PoolStats {
             header: response::StatsHeader {
-                idx: idx as u32,
+                idx: idx as i32,
                 id: "".to_string(),
                 elapsed: 0,
                 calls: 0,
@@ -258,7 +258,7 @@ impl Handler {
     ) -> response::AscStats {
         response::AscStats {
             header: response::StatsHeader {
-                idx: idx as u32,
+                idx: idx as i32,
                 id: "".to_string(),
                 elapsed: 0,
                 calls: 0,
@@ -341,12 +341,12 @@ impl command::Handler for Handler {
 
     async fn handle_config(&self) -> command::Result<response::Config> {
         Ok(response::Config {
-            asc_count: self.core.get_work_solvers().await.len() as u32,
+            asc_count: self.core.get_work_solvers().await.len() as i32,
             pga_count: 0,
-            pool_count: self.core.get_clients().await.len() as u32,
+            pool_count: self.core.get_clients().await.len() as i32,
             // TODO: get actual multi-pool strategy
             strategy: response::MultipoolStrategy::Failover,
-            log_interval: DEFAULT_LOG_INTERVAL,
+            log_interval: DEFAULT_LOG_INTERVAL as i32,
             device_code: String::new(),
             // TODO: detect underlying operation system
             os: "Braiins OS".to_string(),
@@ -394,7 +394,7 @@ impl command::Handler for Handler {
 
     async fn handle_asc_count(&self) -> command::Result<response::AscCount> {
         Ok(response::AscCount {
-            count: self.core.get_work_solvers().await.len() as u32,
+            count: self.core.get_work_solvers().await.len() as i32,
         })
     }
 
