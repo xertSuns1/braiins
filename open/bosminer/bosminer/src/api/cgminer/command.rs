@@ -45,6 +45,7 @@ const DEVDETAILS: &str = "devdetails";
 const STATS: &str = "stats";
 const ESTATS: &str = "estats";
 const CHECK: &str = "check";
+const COIN: &str = "coin";
 const ASC: &str = "asc";
 
 pub type Result<T> = std::result::Result<T, response::Error>;
@@ -62,6 +63,7 @@ pub trait Handler: Send + Sync {
     async fn handle_dev_details(&self) -> Result<response::DevDetails>;
     async fn handle_stats(&self) -> Result<response::Stats>;
     async fn handle_estats(&self) -> Result<response::Stats>;
+    async fn handle_coin(&self) -> Result<response::Coin>;
     async fn handle_asc(&self, parameter: Option<&json::Value>) -> Result<response::Asc>;
 }
 
@@ -175,6 +177,7 @@ impl Receiver {
             (DEVDETAILS, handler, handle_dev_details, ParameterLess),
             (STATS, handler, handle_stats, ParameterLess),
             (ESTATS, handler, handle_estats, ParameterLess),
+            (COIN, handler, handle_coin, ParameterLess),
             (ASC, handler, handle_asc, Parameter(check_asc))
         ];
 

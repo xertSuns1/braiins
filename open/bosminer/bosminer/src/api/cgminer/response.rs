@@ -112,6 +112,7 @@ pub enum StatusCode {
     DevDetails = 69,
     Stats = 70,
     Check = 72,
+    Coin = 78,
     Asc = 106,
 
     // error status codes
@@ -644,6 +645,31 @@ impl From<Check> for Response {
             "CHECK",
             StatusCode::Check,
             "Check command".to_string(),
+        )
+    }
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct Coin {
+    #[serde(rename = "Hash Method")]
+    pub hash_method: String,
+    #[serde(rename = "Current Block Time")]
+    pub current_block_time: Interval,
+    #[serde(rename = "Current Block Hash")]
+    pub current_block_hash: String,
+    #[serde(rename = "LP")]
+    pub lp: bool,
+    #[serde(rename = "Network Difficulty")]
+    pub network_difficulty: Difficulty,
+}
+
+impl From<Coin> for Response {
+    fn from(coin: Coin) -> Response {
+        Response::from_success(
+            vec![coin],
+            "COIN",
+            StatusCode::Coin,
+            format!("{} coin", super::SIGNATURE),
         )
     }
 }

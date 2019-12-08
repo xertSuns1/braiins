@@ -339,6 +339,16 @@ impl command::Handler for Handler {
         })
     }
 
+    async fn handle_coin(&self) -> command::Result<response::Coin> {
+        Ok(response::Coin {
+            hash_method: "".to_string(),
+            current_block_time: 0.0,
+            current_block_hash: "".to_string(),
+            lp: false,
+            network_difficulty: 0.0,
+        })
+    }
+
     async fn handle_asc(&self, parameter: Option<&json::Value>) -> command::Result<response::Asc> {
         let idx = parameter
             .expect("BUG: missing ASC parameter")
