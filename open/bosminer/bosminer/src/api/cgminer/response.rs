@@ -501,7 +501,7 @@ impl From<Config> for Response {
 }
 
 #[derive(Serialize, PartialEq, Clone, Debug)]
-pub struct DevDetails {
+pub struct DevDetail {
     #[serde(rename = "DEVDETAILS")]
     pub idx: i32,
     #[serde(rename = "Name")]
@@ -518,10 +518,15 @@ pub struct DevDetails {
     pub device_path: String,
 }
 
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct DevDetails {
+    pub list: Vec<DevDetail>,
+}
+
 impl From<DevDetails> for Response {
     fn from(dev_details: DevDetails) -> Response {
         Response::from_success(
-            vec![dev_details],
+            dev_details.list,
             "DEVDETAILS",
             StatusCode::DevDetails,
             "Device Details".to_string(),
