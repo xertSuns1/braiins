@@ -113,6 +113,7 @@ pub enum StatusCode {
     Stats = 70,
     Check = 72,
     Coin = 78,
+    AscCount = 104,
     Asc = 106,
 
     // error status codes
@@ -670,6 +671,23 @@ impl From<Coin> for Response {
             "COIN",
             StatusCode::Coin,
             format!("{} coin", super::SIGNATURE),
+        )
+    }
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct AscCount {
+    #[serde(rename = "Count")]
+    pub count: u32,
+}
+
+impl From<AscCount> for Response {
+    fn from(asc_count: AscCount) -> Response {
+        Response::from_success(
+            vec![asc_count],
+            "ASCS",
+            StatusCode::AscCount,
+            "ASC count".to_string(),
         )
     }
 }

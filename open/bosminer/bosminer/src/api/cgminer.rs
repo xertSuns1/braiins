@@ -349,6 +349,12 @@ impl command::Handler for Handler {
         })
     }
 
+    async fn handle_asc_count(&self) -> command::Result<response::AscCount> {
+        Ok(response::AscCount {
+            count: self.core.get_work_solvers().await.len() as u32,
+        })
+    }
+
     async fn handle_asc(&self, parameter: Option<&json::Value>) -> command::Result<response::Asc> {
         let idx = parameter
             .expect("BUG: missing ASC parameter")
