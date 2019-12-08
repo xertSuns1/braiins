@@ -84,44 +84,95 @@ impl Handler {
         list
     }
 
-    async fn get_pool_status(idx: usize, _client: &Arc<dyn node::Client>) -> response::Pool {
+    async fn get_pool_status(idx: usize, client: &Arc<dyn node::Client>) -> response::Pool {
+        let descriptor = client.descriptor().expect("BUG: missing client descriptor");
+        let last_job = client.get_last_job().await;
+
+        let client_stats = client.client_stats();
+        let valid_jobs = client_stats.valid_jobs().take_snapshot();
+        let invalid_jobs = client_stats.invalid_jobs().take_snapshot();
+        let generated_work = client_stats.generated_work().take_snapshot();
+        let accepted = client_stats.accepted().take_snapshot().await;
+        let rejected = client_stats.rejected().take_snapshot().await;
+        let stale = client_stats.stale().take_snapshot().await;
+        let last_share = client_stats.last_share().take_snapshot().await;
+        let valid_backend_diff = client_stats.valid_backend_diff().take_snapshot().await;
+        let best_share = client_stats.best_share().take_snapshot();
+
+        let last_share_time = last_share
+            .as_ref()
+            .map_or(0, |share| share.time.get_unix_time().unwrap_or_default());
+        let last_share_difficulty = last_share.map_or(0.0, |share| share.difficulty as f64);
+
+        let pool_accepted_shares = accepted.shares.as_f64();
+        let pool_rejected_shares = rejected.shares.as_f64();
+        let pool_stale_shares = stale.shares.as_f64();
+        let pool_total_shares = pool_accepted_shares + pool_rejected_shares + pool_stale_shares;
+        let pool_rejected_ratio = if pool_total_shares != 0.0 {
+            pool_rejected_shares / pool_total_shares * 100.0
+        } else {
+            0.0
+        };
+        let pool_stale_ratio = if pool_total_shares != 0.0 {
+            pool_stale_shares / pool_total_shares * 100.0
+        } else {
+            0.0
+        };
+
+        let last_diff = last_job
+            .as_ref()
+            .map(|job| job.target().get_difficulty() as f64)
+            .unwrap_or(0.0);
+        let current_block_version = last_job.map(|job| job.version()).unwrap_or_default();
+
         response::Pool {
             idx: idx as i32,
-            url: "".to_string(),
+            url: descriptor.url.clone(),
+            // TODO: get actual status from client
             status: response::PoolStatus::Alive,
+            // TODO: get actual value from client
             priority: 0,
-            quota: 0,
+            // TODO: get actual value from client
+            quota: 1,
+            // TODO: get actual value from client?
             long_poll: response::Bool::N,
-            getworks: 0,
-            accepted: 0,
-            rejected: 0,
-            works: 0,
+            getworks: *valid_jobs as u32,
+            accepted: accepted.solutions,
+            rejected: rejected.solutions,
+            works: *generated_work as i32,
+            // TODO: bOSminer does not account this information
             discarded: 0,
-            stale: 0,
+            stale: stale.solutions as u32,
+            // TODO: account failures
             get_failures: 0,
+            // TODO: account remote failures
             remote_failures: 0,
-            user: "".to_string(),
-            last_share_time: 0,
-            diff1_shares: 0,
+            user: descriptor.user.clone(),
+            last_share_time,
+            diff1_shares: valid_backend_diff.solutions,
             proxy_type: "".to_string(),
             proxy: "".to_string(),
-            difficulty_accepted: 0.0,
-            difficulty_rejected: 0.0,
-            difficulty_stale: 0.0,
-            last_share_difficulty: 0.0,
-            work_difficulty: 0.0,
-            has_stratum: false,
-            stratum_active: false,
-            stratum_url: "".to_string(),
-            stratum_difficulty: 0.0,
-            has_vmask: false,
+            difficulty_accepted: pool_accepted_shares,
+            difficulty_rejected: pool_rejected_shares,
+            difficulty_stale: pool_stale_shares,
+            last_share_difficulty,
+            work_difficulty: last_diff,
+            has_stratum: true,
+            // TODO: get actual value from client
+            stratum_active: true,
+            // TODO: stratum_url shows url without stratum prefix
+            stratum_url: descriptor.url.clone(),
+            stratum_difficulty: last_diff,
+            // TODO: get actual value from client (Asic Boost)
+            has_vmask: true,
             has_gbt: false,
-            best_share: 0,
-            pool_rejected_percent: 0.0,
-            pool_stale_percent: 0.0,
-            bad_work: 0,
+            best_share: best_share.map(|inner| *inner).unwrap_or_default() as u64,
+            pool_rejected_ratio,
+            pool_stale_ratio,
+            bad_work: *invalid_jobs as u64,
+            // TODO: bOSminer does not have coinbase for Stratum V2
             current_block_height: 0,
-            current_block_version: 0,
+            current_block_version,
         }
     }
 
@@ -155,7 +206,7 @@ impl Handler {
         let backend_valid_solutions = valid_backend_diff.solutions;
         let backend_error_solutions = error_backend_diff.solutions;
         let backend_all_solutions = backend_error_solutions + backend_valid_solutions;
-        let backend_error_rate = if backend_all_solutions != 0 {
+        let backend_error_ratio = if backend_all_solutions != 0 {
             backend_error_solutions as f64 / backend_all_solutions as f64 * 100.0
         } else {
             0.0
@@ -196,9 +247,9 @@ impl Handler {
             difficulty_rejected: 0.0,
             last_share_difficulty,
             last_valid_work: last_work_time,
-            device_hardware_percent: backend_error_rate,
+            device_hardware_ratio: backend_error_ratio,
             // TODO: bOSminer does not account rejected
-            device_rejected_percent: 0.0,
+            device_rejected_ratio: 0.0,
             device_elapsed: elapsed.as_secs(),
         }
     }
@@ -323,10 +374,10 @@ impl command::Handler for Handler {
             difficulty_rejected: 0.0,
             difficulty_stale: 0.0,
             best_share: 0,
-            device_hardware_percent: 0.0,
-            device_rejected_percent: 0.0,
-            pool_rejected_percent: 0.0,
-            pool_stale_percent: 0.0,
+            device_hardware_ratio: 0.0,
+            device_rejected_ratio: 0.0,
+            pool_rejected_ratio: 0.0,
+            pool_stale_ratio: 0.0,
             last_getwork: 0,
         })
     }

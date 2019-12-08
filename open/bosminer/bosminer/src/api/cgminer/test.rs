@@ -71,8 +71,8 @@ impl command::Handler for TestHandler {
                 has_vmask: false,
                 has_gbt: false,
                 best_share: 0,
-                pool_rejected_percent: 0.0,
-                pool_stale_percent: 0.0,
+                pool_rejected_ratio: 0.0,
+                pool_stale_ratio: 0.0,
                 bad_work: 0,
                 current_block_height: 0,
                 current_block_version: 0,
@@ -106,8 +106,8 @@ impl command::Handler for TestHandler {
                 difficulty_rejected: 0.0,
                 last_share_difficulty: 0.0,
                 last_valid_work: 0,
-                device_hardware_percent: 0.0,
-                device_rejected_percent: 0.0,
+                device_hardware_ratio: 0.0,
+                device_rejected_ratio: 0.0,
                 device_elapsed: 0,
             }],
         })
@@ -143,10 +143,10 @@ impl command::Handler for TestHandler {
             difficulty_rejected: 0.0,
             difficulty_stale: 0.0,
             best_share: 0,
-            device_hardware_percent: 0.0,
-            device_rejected_percent: 0.0,
-            pool_rejected_percent: 0.0,
-            pool_stale_percent: 0.0,
+            device_hardware_ratio: 0.0,
+            device_rejected_ratio: 0.0,
+            pool_rejected_ratio: 0.0,
+            pool_stale_ratio: 0.0,
             last_getwork: 0,
         })
     }
@@ -287,8 +287,8 @@ impl command::Handler for TestHandler {
             difficulty_rejected: 0.0,
             last_share_difficulty: 0.0,
             last_valid_work: 0,
-            device_hardware_percent: 0.0,
-            device_rejected_percent: 0.0,
+            device_hardware_ratio: 0.0,
+            device_rejected_ratio: 0.0,
             device_elapsed: 0,
         })
     }

@@ -258,9 +258,9 @@ pub struct Pool {
     #[serde(rename = "Best Share")]
     pub best_share: u64,
     #[serde(rename = "Pool Rejected%")]
-    pub pool_rejected_percent: Percent,
+    pub pool_rejected_ratio: Percent,
     #[serde(rename = "Pool Stale%")]
-    pub pool_stale_percent: Percent,
+    pub pool_stale_ratio: Percent,
     #[serde(rename = "Bad Work")]
     pub bad_work: u64,
     #[serde(rename = "Current Block Height")]
@@ -335,9 +335,9 @@ pub struct Asc {
     #[serde(rename = "Last Valid Work")]
     pub last_valid_work: Time,
     #[serde(rename = "Device Hardware%")]
-    pub device_hardware_percent: Percent,
+    pub device_hardware_ratio: Percent,
     #[serde(rename = "Device Rejected%")]
-    pub device_rejected_percent: Percent,
+    pub device_rejected_ratio: Percent,
     #[serde(rename = "Device Elapsed")]
     pub device_elapsed: Elapsed,
 }
@@ -417,13 +417,13 @@ pub struct Summary {
     #[serde(rename = "Best Share")]
     pub best_share: u64,
     #[serde(rename = "Device Hardware%")]
-    pub device_hardware_percent: Percent,
+    pub device_hardware_ratio: Percent,
     #[serde(rename = "Device Rejected%")]
-    pub device_rejected_percent: Percent,
+    pub device_rejected_ratio: Percent,
     #[serde(rename = "Pool Rejected%")]
-    pub pool_rejected_percent: Percent,
+    pub pool_rejected_ratio: Percent,
     #[serde(rename = "Pool Stale%")]
-    pub pool_stale_percent: Percent,
+    pub pool_stale_ratio: Percent,
     #[serde(rename = "Last getwork")]
     pub last_getwork: Time,
 }
