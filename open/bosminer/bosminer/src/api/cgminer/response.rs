@@ -33,6 +33,7 @@ pub type Interval = f64;
 pub type Percent = f64;
 pub type Difficulty = f64;
 pub type MegaHashes = f64;
+pub type GigaHashes = MegaHashes;
 pub type TotalMegaHashes = f64;
 pub type Utility = f64;
 pub type Temperature = f64;
@@ -115,6 +116,7 @@ pub enum StatusCode {
     Coin = 78,
     AscCount = 104,
     Asc = 106,
+    Lcd = 125,
 
     // error status codes
     InvalidCommand = 14,
@@ -689,5 +691,39 @@ impl From<AscCount> for Response {
             StatusCode::AscCount,
             "ASC count".to_string(),
         )
+    }
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct Lcd {
+    #[serde(rename = "Elapsed")]
+    pub elapsed: Elapsed,
+    #[serde(rename = "GHS av")]
+    pub ghs_av: GigaHashes,
+    #[serde(rename = "GHS 5m")]
+    pub ghs_5m: GigaHashes,
+    #[serde(rename = "GHS 5s")]
+    pub ghs_5s: GigaHashes,
+    #[serde(rename = "Temperature")]
+    pub temperature: Temperature,
+    #[serde(rename = "Last Share Difficulty")]
+    pub last_share_difficulty: Difficulty,
+    #[serde(rename = "Last Share Time")]
+    pub last_share_time: Time,
+    #[serde(rename = "Best Share")]
+    pub best_share: u64,
+    #[serde(rename = "Last Valid Work")]
+    pub last_valid_work: Time,
+    #[serde(rename = "Found Blocks")]
+    pub found_blocks: u32,
+    #[serde(rename = "Current Pool")]
+    pub current_pool: String,
+    #[serde(rename = "User")]
+    pub user: String,
+}
+
+impl From<Lcd> for Response {
+    fn from(lcd: Lcd) -> Response {
+        Response::from_success(vec![lcd], "LCD", StatusCode::Lcd, "LCD".to_string())
     }
 }

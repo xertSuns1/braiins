@@ -48,6 +48,7 @@ const CHECK: &str = "check";
 const COIN: &str = "coin";
 const ASC_COUNT: &str = "asccount";
 const ASC: &str = "asc";
+const LCD: &str = "lcd";
 
 pub type Result<T> = std::result::Result<T, response::Error>;
 
@@ -67,6 +68,7 @@ pub trait Handler: Send + Sync {
     async fn handle_coin(&self) -> Result<response::Coin>;
     async fn handle_asc_count(&self) -> Result<response::AscCount>;
     async fn handle_asc(&self, parameter: Option<&json::Value>) -> Result<response::Asc>;
+    async fn handle_lcd(&self) -> Result<response::Lcd>;
 }
 
 /// Holds an incoming API command
@@ -181,7 +183,8 @@ impl Receiver {
             (ESTATS, handler, handle_estats, ParameterLess),
             (COIN, handler, handle_coin, ParameterLess),
             (ASC_COUNT, handler, handle_asc_count, ParameterLess),
-            (ASC, handler, handle_asc, Parameter(check_asc))
+            (ASC, handler, handle_asc, Parameter(check_asc)),
+            (LCD, handler, handle_lcd, ParameterLess)
         ];
 
         // add special built-in commands
