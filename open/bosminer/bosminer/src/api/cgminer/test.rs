@@ -248,6 +248,16 @@ impl command::Handler for TestHandler {
         })
     }
 
+    async fn handle_coin(&self) -> command::Result<response::Coin> {
+        Ok(response::Coin {
+            hash_method: "".to_string(),
+            current_block_time: 0.0,
+            current_block_hash: "".to_string(),
+            lp: false,
+            network_difficulty: 0.0,
+        })
+    }
+
     async fn handle_asc(&self, _parameter: Option<&json::Value>) -> command::Result<response::Asc> {
         Ok(response::Asc {
             idx: 0,
