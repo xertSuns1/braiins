@@ -215,7 +215,7 @@ impl Handler {
         response::Asc {
             idx: idx as i32,
             // TODO: get actual ASIC name from work solver
-            name: "BC5".to_string(),
+            name: "".to_string(),
             // TODO: get idx from work solver (it can represent real index of hash chain)
             id: idx as i32,
             // TODO: get actual state from work solver
@@ -257,6 +257,31 @@ impl Handler {
     async fn collect_asc_statuses(&self) -> Vec<response::Asc> {
         self.collect_data(self.core.get_work_solvers(), 0, |idx, work_solver| {
             async move { Self::get_asc_status(idx, &work_solver).await }
+        })
+        .await
+    }
+
+    async fn get_dev_detail(
+        idx: usize,
+        _work_solver: &Arc<dyn node::WorkSolver>,
+    ) -> response::DevDetail {
+        response::DevDetail {
+            idx: idx as i32,
+            // TODO: get actual ASIC name from work solver
+            name: "".to_string(),
+            // TODO: get idx from work solver (it can represent real index of hash chain)
+            id: idx as i32,
+            // TODO: get remaining information from work solver
+            driver: "".to_string(),
+            kernel: "".to_string(),
+            model: "".to_string(),
+            device_path: "".to_string(),
+        }
+    }
+
+    async fn collect_dev_details(&self) -> Vec<response::DevDetail> {
+        self.collect_data(self.core.get_work_solvers(), 0, |idx, work_solver| {
+            async move { Self::get_dev_detail(idx, &work_solver).await }
         })
         .await
     }
@@ -452,13 +477,7 @@ impl command::Handler for Handler {
 
     async fn handle_dev_details(&self) -> command::Result<response::DevDetails> {
         Ok(response::DevDetails {
-            idx: 0,
-            name: "".to_string(),
-            id: 0,
-            driver: "".to_string(),
-            kernel: "".to_string(),
-            model: "".to_string(),
-            device_path: "".to_string(),
+            list: self.collect_dev_details().await,
         })
     }
 
@@ -515,6 +534,7 @@ impl command::Handler for Handler {
     }
 
     async fn handle_lcd(&self) -> command::Result<response::Lcd> {
+        // TODO: implement response
         Ok(response::Lcd {
             elapsed: 0,
             ghs_av: 0.0,
