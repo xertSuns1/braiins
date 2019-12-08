@@ -33,13 +33,21 @@ mod test;
 
 use crate::hub;
 use crate::node;
+use crate::stats::{self, UnixTime as _};
+
+use support::ValueExt as _;
 
 use serde_json as json;
 
-use crate::api::cgminer::support::ValueExt;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time;
+
+use stats::TIME_MEAN_INTERVAL_15M as INTERVAL_15M;
+use stats::TIME_MEAN_INTERVAL_1M as INTERVAL_1M;
+use stats::TIME_MEAN_INTERVAL_5M as INTERVAL_5M;
+use stats::TIME_MEAN_INTERVAL_5S as INTERVAL_5S;
 
 /// Version of CGMiner compatible API
 const API_VERSION: &str = "3.7";
@@ -124,7 +132,35 @@ impl Handler {
         .await
     }
 
-    async fn get_asc_status(idx: usize, _work_solver: &Arc<dyn node::WorkSolver>) -> response::Asc {
+    async fn get_asc_status(idx: usize, work_solver: &Arc<dyn node::WorkSolver>) -> response::Asc {
+        let mining_stats = work_solver.mining_stats();
+        let work_solver_stats = work_solver.work_solver_stats();
+        let last_work_time = work_solver_stats.last_work_time().take_snapshot().await;
+        let last_share = mining_stats.last_share().take_snapshot().await;
+        let valid_job_diff = mining_stats.valid_job_diff().take_snapshot().await;
+        let valid_backend_diff = mining_stats.valid_backend_diff().take_snapshot().await;
+        let error_backend_diff = mining_stats.error_backend_diff().take_snapshot().await;
+
+        let now = time::Instant::now();
+        let elapsed = now.duration_since(*mining_stats.start_time());
+
+        let last_work_time =
+            last_work_time.map_or(0, |time| time.get_unix_time().unwrap_or_default());
+        let last_share_time = last_share
+            .as_ref()
+            .map_or(0, |share| share.time.get_unix_time().unwrap_or_default());
+        let last_share_difficulty = last_share.map_or(0.0, |share| share.difficulty as f64);
+
+        let total_mega_hashes = valid_job_diff.shares.into_mega_hashes().into_f64();
+        let backend_valid_solutions = valid_backend_diff.solutions;
+        let backend_error_solutions = error_backend_diff.solutions;
+        let backend_all_solutions = backend_error_solutions + backend_valid_solutions;
+        let backend_error_rate = if backend_all_solutions != 0 {
+            backend_error_solutions as f64 / backend_all_solutions as f64 * 100.0
+        } else {
+            0.0
+        };
+
         response::Asc {
             idx: idx as u32,
             // TODO: get actual ASIC name from work solver
@@ -137,26 +173,33 @@ impl Handler {
             status: response::AscStatus::Alive,
             // TODO: get actual temperature from work solver?
             temperature: 0.0,
-            mhs_av: 0.0,
-            mhs_5s: 0.0,
-            mhs_1m: 0.0,
-            mhs_5m: 0.0,
-            mhs_15m: 0.0,
+            mhs_av: total_mega_hashes / elapsed.as_secs_f64(),
+            mhs_5s: valid_job_diff.to_mega_hashes(*INTERVAL_5S, now).into_f64(),
+            mhs_1m: valid_job_diff.to_mega_hashes(*INTERVAL_1M, now).into_f64(),
+            mhs_5m: valid_job_diff.to_mega_hashes(*INTERVAL_5M, now).into_f64(),
+            mhs_15m: valid_job_diff.to_mega_hashes(*INTERVAL_15M, now).into_f64(),
+            // TODO: bOSminer does not account this information
             accepted: 0,
+            // TODO: bOSminer does not account this information
             rejected: 0,
-            hardware_errors: 0,
+            hardware_errors: backend_error_solutions as u32,
+            // TODO: bOSminer does not account accepted
             utility: 0.0,
-            last_share_pool: 0,
-            last_share_time: 0,
-            total_mh: 0.0,
-            diff1_work: 0,
+            // TODO: bOSminer does not account accepted
+            last_share_pool: -1,
+            last_share_time,
+            total_mega_hashes,
+            diff1_work: backend_valid_solutions,
+            // TODO: bOSminer does not account accepted
             difficulty_accepted: 0.0,
+            // TODO: bOSminer does not account rejected
             difficulty_rejected: 0.0,
-            last_share_difficulty: 0.0,
-            last_valid_work: 0,
-            device_hardware_percent: 0.0,
+            last_share_difficulty,
+            last_valid_work: last_work_time,
+            device_hardware_percent: backend_error_rate,
+            // TODO: bOSminer does not account rejected
             device_rejected_percent: 0.0,
-            device_elapsed: 0,
+            device_elapsed: elapsed.as_secs() as u32,
         }
     }
 
