@@ -480,10 +480,13 @@ impl command::Handler for Handler {
 
     async fn handle_coin(&self) -> command::Result<response::Coin> {
         Ok(response::Coin {
-            hash_method: "".to_string(),
+            hash_method: "sha256".to_string(),
+            // TODO: get actual value from clients
             current_block_time: 0.0,
+            // TODO: get actual value from clients
             current_block_hash: "".to_string(),
-            lp: false,
+            lp: true,
+            // TODO: get actual value from clients
             network_difficulty: 0.0,
         })
     }
