@@ -137,7 +137,7 @@ impl command::Handler for TestHandler {
             local_work: 0,
             remote_failures: 0,
             network_blocks: 0,
-            total_mh: 0.0,
+            total_mega_hashes: 0.0,
             work_utility: 0.0,
             difficulty_accepted: 0.0,
             difficulty_rejected: 0.0,
