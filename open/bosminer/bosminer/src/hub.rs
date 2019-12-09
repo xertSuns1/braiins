@@ -51,6 +51,7 @@ impl work::ExhaustedHandler for EventHandler {
     }
 }
 
+/// Responsible for delivering work solution to the client from which the work has been generated
 struct SolutionRouter {
     job_executor: Arc<scheduler::JobExecutor>,
     client_registry: Arc<Mutex<client::Registry>>,
