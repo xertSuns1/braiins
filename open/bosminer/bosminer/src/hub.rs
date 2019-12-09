@@ -93,6 +93,8 @@ impl SolutionRouter {
                 solution_sender
                     .unbounded_send(solution)
                     .expect("solution queue send failed");
+            } else {
+                warn!("Hub: solution has been discarded because client does not exist anymore");
             }
         }
     }
