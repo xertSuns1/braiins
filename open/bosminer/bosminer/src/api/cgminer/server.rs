@@ -44,6 +44,7 @@ use std::sync::Arc;
 #[derive(Default, Debug)]
 pub struct Codec(LinesCodec);
 
+/// TODO: replace this with standard From<> implementation to convert to failure based error
 fn no_max_line_length(err: LinesCodecError) -> io::Error {
     match err {
         LinesCodecError::Io(io) => io,
