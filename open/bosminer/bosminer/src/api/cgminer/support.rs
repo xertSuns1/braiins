@@ -25,6 +25,8 @@
 use super::response;
 use super::TIMESTAMP;
 
+use crate::version;
+
 use serde::{Serialize, Serializer};
 use serde_json as json;
 
@@ -119,10 +121,12 @@ impl Response {
     ) -> response::StatusInfo {
         response::StatusInfo {
             status,
+            // TODO: move timestamp to `command::Receiver` to improve tests
             when: TIMESTAMP.get(),
             code,
             msg,
-            description: String::new(), // FIXME: Miner ID (?)
+            // TODO: move description to `command::Receiver` to improve tests
+            description: format!("{} {}", super::SIGNATURE, version::STRING.clone()),
         }
     }
 }

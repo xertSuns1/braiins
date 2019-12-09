@@ -153,7 +153,7 @@ impl command::Handler for TestHandler {
 
     async fn handle_version(&self) -> command::Result<response::Version> {
         Ok(response::Version {
-            miner: "bOSminer_am1-s9-20190605-0_0de55997".to_string(),
+            miner: "0.1.0-eedd8d53".to_string(),
             api: "3.7".to_string(),
         })
     }
@@ -402,11 +402,11 @@ async fn test_api_basic() {
             "When": 0,
             "Code": 22,
             "Msg": "bOSminer versions",
-            "Description": ""
+            "Description": format!("{} {}", super::SIGNATURE, version::STRING.clone()),
         }],
         "VERSION": [{
             "API": "3.7",
-            "bOSminer": "bOSminer_am1-s9-20190605-0_0de55997"
+            "bOSminer": "0.1.0-eedd8d53"
         }],
         "id": 1
     });
@@ -422,7 +422,7 @@ async fn test_api_multiple() {
         "config": [{
             "STATUS": [{
                 "Code": 33,
-                "Description": "",
+                "Description": format!("{} {}", super::SIGNATURE, version::STRING.clone()),
                 "Msg": "bOSminer config",
                 "STATUS": "S",
                 "When": 0
@@ -442,14 +442,14 @@ async fn test_api_multiple() {
         "version": [{
             "STATUS": [{
                 "Code": 22,
-                "Description": "",
+                "Description": format!("{} {}", super::SIGNATURE, version::STRING.clone()),
                 "Msg": "bOSminer versions",
                 "STATUS": "S",
                 "When": 0
             }],
             "VERSION": [{
                 "API": "3.7",
-                "bOSminer": "bOSminer_am1-s9-20190605-0_0de55997"
+                "bOSminer": "0.1.0-eedd8d53"
             }],
             "id": 1
         }],
