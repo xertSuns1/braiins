@@ -78,6 +78,8 @@ impl PartialEq for ClientHandle {
     }
 }
 
+/// Used for measuring generated work from global counter and allows the scheduler to arbitrarily
+/// reset this counter
 #[derive(Debug)]
 pub struct LocalGeneratedWork {
     global_counter: u64,
@@ -99,7 +101,7 @@ impl LocalGeneratedWork {
     pub fn update(&mut self, global_counter: u64) -> u64 {
         assert!(
             global_counter >= self.global_counter,
-            "generated work global counter must be monotonous"
+            "generated work global counter must be monotonic"
         );
 
         let counter_delta = global_counter - self.global_counter;
@@ -110,6 +112,7 @@ impl LocalGeneratedWork {
     }
 }
 
+/// Responsible for selecting and switching jobs
 struct JobDispatcher {
     engine_sender: Option<work::EngineSender>,
     active_client: Option<Arc<client::Handle>>,
@@ -225,6 +228,7 @@ impl JobDispatcher {
     }
 }
 
+/// Responsible for dispatching new clients and planning generated jobs to be solved
 pub struct JobExecutor {
     frontend: Arc<crate::Frontend>,
     dispatcher: Mutex<JobDispatcher>,
