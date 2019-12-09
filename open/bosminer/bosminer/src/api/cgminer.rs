@@ -34,6 +34,7 @@ mod test;
 use crate::hub;
 use crate::node::{self, Stats as _, WorkSolverStats as _};
 use crate::stats::{self, UnixTime as _};
+use crate::version;
 
 use support::ValueExt as _;
 
@@ -454,8 +455,7 @@ impl command::Handler for Handler {
 
     async fn handle_version(&self) -> command::Result<response::Version> {
         Ok(response::Version {
-            // TODO: get actual bosminer version
-            miner: "bOSminer_am1-s9-20190605-0_0de55997".into(),
+            miner: version::STRING.clone(),
             api: API_VERSION.into(),
         })
     }
