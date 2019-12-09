@@ -406,7 +406,8 @@ impl HashChain {
     /// Puts the board into reset mode and disables the associated IP core
     fn enter_reset(&mut self) -> error::Result<()> {
         self.common_io.disable_ip_core();
-        // perform reset of the hashboard
+        // Warning: Reset pin DOESN'T reset the PIC. The PIC needs to be reset by other means.
+        // Perform reset of the hashboard
         self.reset_pin.enter_reset()?;
         Ok(())
     }
