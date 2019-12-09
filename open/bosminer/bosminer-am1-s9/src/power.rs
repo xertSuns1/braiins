@@ -382,6 +382,22 @@ impl Control {
 
     pub async fn reset(&self) -> error::Result<()> {
         info!("Voltage controller reset");
+        // Workaround for not having PIC reset:
+        // The I2C state machine in PIC controller is broken, because if it receives sequence:
+        //   [0x55, 0x55, 0xaa, 0x07]
+        // it won't detect correctly the magic byte (because it doesn't try to rematch it in
+        // the initial state, it is likely implemented like this:
+        // ```
+        //   const char magic[] = { 0x55, 0xaa };
+        //   input(c) {
+        //     if (state == 2) input_cmd(c);
+        //     else if (c == magic[state]) state++;
+        //     else state = 0;
+        //   }
+        // ```
+        // So we feed it by some non-magic bytes first to reset the PIC I2C parsing state machine.
+        // (We send so many of them in case the PIC is in "argument-parsing" state.)
+        self.write(0x00, &[0u8; 16]).await?;
         self.write_delay(RESET_PIC, &[], Self::RESET_DELAY).await
     }
 
