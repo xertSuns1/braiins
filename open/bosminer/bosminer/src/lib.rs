@@ -33,6 +33,7 @@ pub mod node;
 pub mod runtime_config;
 pub mod scheduler;
 pub mod stats;
+pub mod version;
 pub mod work;
 
 pub mod test_utils;
