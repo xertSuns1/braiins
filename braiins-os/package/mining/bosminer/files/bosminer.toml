@@ -42,5 +42,5 @@ min_fans = 1
 
 # Declares pools. This section can be repeated.
 [[pool]]
-url = "v2.stratum.slushpool.com"
+url = "v2.stratum.slushpool.com:3336"
 user = "!non-existent-user!"
