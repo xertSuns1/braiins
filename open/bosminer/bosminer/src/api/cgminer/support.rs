@@ -69,6 +69,7 @@ pub trait ValueExt {
     }
 }
 
+/// Support CGMiner specific type conversions
 impl ValueExt for json::Value {
     fn to_i32(&self) -> Option<i32> {
         match self {

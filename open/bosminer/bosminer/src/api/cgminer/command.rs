@@ -106,6 +106,7 @@ impl HandlerType {
     }
 }
 
+/// Describes individual commands and async handler associated with this command
 pub struct Descriptor {
     handler: HandlerType,
     parameter_check: Option<ParameterCheckHandler>,
@@ -128,6 +129,8 @@ impl Descriptor {
     }
 }
 
+/// Generates a descriptor for a specified command type (`ParameterLess` or `Parameter`) that also
+/// contains an appropriate handler
 macro_rules! command {
     ($name:ident, $handler:expr, $method:ident, ParameterLess) => {{
         let handler = $handler.clone();
@@ -155,6 +158,7 @@ macro_rules! command {
     }};
 }
 
+/// Generates a map that associated a command name with its descriptor
 macro_rules! commands {
     () => (
         HashMap::new()
@@ -229,6 +233,8 @@ impl Receiver {
         })
     }
 
+    /// Handles a single `command` with option `parameter`. `multi_command` flag ensures that no
+    /// command with parameters can be processed in batched mode.
     pub async fn handle_single(
         &self,
         command: &str,
@@ -262,6 +268,7 @@ impl Receiver {
         response.unwrap_or_else(|error| error.into())
     }
 
+    /// Handles a command request that can actually be a batched request of multiple commands
     pub async fn handle(&self, command_request: Request) -> ResponseType {
         let command = match command_request
             .value
