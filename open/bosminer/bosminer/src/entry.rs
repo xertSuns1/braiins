@@ -151,10 +151,10 @@ pub async fn main<T: hal::Backend>() {
     }
 
     // parse user input to fail fast when it is incorrect
-    // TODO: insert here pool insertion && processing
-    let pool = &pools[0]; // Whoa!
-    let client_descriptor =
-        client::parse(pool.url.clone(), pool.user.clone()).expect("Server parameters");
+    let client_descriptors: Vec<_> = pools
+        .iter()
+        .map(|pool| client::parse(pool.url.clone(), pool.user.clone()).expect("Server parameters"))
+        .collect();
 
     // Set default backend midstate count
     runtime_config::set_midstate_count(T::DEFAULT_MIDSTATE_COUNT);
@@ -176,7 +176,9 @@ pub async fn main<T: hal::Backend>() {
     ));
 
     // start client based on user input
-    client::register(&core, client_descriptor).await.enable();
+    for client_descriptor in client_descriptors {
+        client::register(&core, client_descriptor).await.enable();
+    }
 
     // the bosminer is controlled with API which also controls when the miner will end
     api::run(core).await;
