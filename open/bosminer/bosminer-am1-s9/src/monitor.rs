@@ -40,7 +40,7 @@ use ii_async_compat::tokio;
 use tokio::time::delay_for;
 
 /// If miner start takes longer than this, mark it as `Broken`
-const START_TIMEOUT: Duration = Duration::from_secs(120);
+const START_TIMEOUT: Duration = Duration::from_secs(180);
 /// If miner doesn't send temperature update within this time, mark it as dead.
 /// This timeout doubles as hashchain watchdog timeout.
 /// TODO: Synchronize timeout with temperature monitor task
