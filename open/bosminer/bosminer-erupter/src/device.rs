@@ -452,7 +452,8 @@ pub mod test {
 
     #[test]
     fn test_block_erupter_solver() {
-        let work_generator = test_utils::create_test_work_generator();
+        let work_solver = test_utils::create_test_work_solver();
+        let work_generator = test_utils::create_test_work_generator(work_solver.clone());
         let (device, _device_guard) = get_block_erupter().into_device();
 
         // convert Block Erupter device to work solver

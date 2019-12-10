@@ -32,6 +32,9 @@ pub use ii_bitcoin::{TestBlock, TEST_BLOCKS};
 
 use bosminer_macros::{ClientNode, MiningNode, WorkSolverNode};
 
+use futures::lock::Mutex;
+use ii_async_compat::futures;
+
 use std::fmt;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 
@@ -334,6 +337,10 @@ impl work::Engine for TestWorkEngine {
     }
 }
 
+pub fn create_test_work_solver() -> Arc<TestWorkSolver> {
+    Arc::new(TestWorkSolver::new())
+}
+
 pub fn create_test_work_receiver() -> work::EngineReceiver {
     let work_engine = Arc::new(TestWorkEngine::new());
     let (sender, receiver) = work::engine_channel(work::IgnoreEvents);
@@ -341,10 +348,11 @@ pub fn create_test_work_receiver() -> work::EngineReceiver {
     receiver
 }
 
-pub fn create_test_work_generator() -> work::Generator {
+pub fn create_test_work_generator(work_solver: Arc<dyn node::WorkSolver>) -> work::Generator {
     work::Generator::new(
         create_test_work_receiver(),
-        vec![Arc::new(TestWorkSolver::new())],
+        vec![],
+        Arc::new(Mutex::new(Some(Arc::downgrade(&work_solver)))),
     )
 }
 

@@ -25,9 +25,10 @@ use crate::backend;
 use crate::node;
 
 use futures::channel::mpsc;
+use futures::lock::Mutex;
 use ii_async_compat::futures;
 
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time;
 
 type WorkSolverPath = Vec<Arc<dyn node::WorkSolver>>;
@@ -135,13 +136,25 @@ where
         U: node::WorkSolver + 'static,
         F: FnOnce(Generator, SolutionSender) -> U,
     {
+        // prepare inner worker for storing actual work solver after it is created
+        let inner_work_solver = Arc::new(Mutex::new(None));
+
         let path = self.get_path();
-        let work_generator = Generator::new(self.engine_receiver.clone(), path);
+        let work_generator = Generator::new(
+            self.engine_receiver.clone(),
+            path,
+            inner_work_solver.clone(),
+        );
         let solution_sender = self.solution_sender.clone();
 
         let work_solver = Arc::new(create(work_generator, solution_sender));
         self.call_hierarchy_builder(node::WorkSolverType::WorkSolver(work_solver.clone()))
             .await;
+
+        // create weak reference to newly created work solver to prevent circular dependency
+        *inner_work_solver.lock().await = Some(Arc::downgrade(
+            &(work_solver.clone() as Arc<dyn node::WorkSolver>),
+        ));
 
         work_solver
     }
@@ -153,14 +166,23 @@ where
 pub struct Generator {
     /// Unique path describing internal hierarchy of backend solvers
     path: WorkSolverPath,
+    /// Work solver node associated with this generator
+    /// NOTE: Generator and work solver can have a circular relationship
+    /// TODO: Create trait with generator method for work solver nodes to solve this problem
+    work_solver: Arc<Mutex<Option<Weak<dyn node::WorkSolver>>>>,
     /// Source of trait objects that implement `WorkEngine` interface
     engine_receiver: EngineReceiver,
 }
 
 impl Generator {
-    pub fn new(engine_receiver: EngineReceiver, path: WorkSolverPath) -> Self {
+    pub fn new(
+        engine_receiver: EngineReceiver,
+        path: WorkSolverPath,
+        work_solver: Arc<Mutex<Option<Weak<dyn node::WorkSolver>>>>,
+    ) -> Self {
         Self {
             path,
+            work_solver,
             engine_receiver,
         }
     }
@@ -168,6 +190,15 @@ impl Generator {
     /// Loops until new work is available or no more `WorkEngines` are supplied (signals
     /// Generator shutdown)
     pub async fn generate(&mut self) -> Option<Assignment> {
+        let work_solver = self
+            .work_solver
+            .lock()
+            .await
+            .as_ref()
+            .expect("BUG: calling work generator before full registration")
+            .upgrade()
+            .expect("BUG: calling work generator after node destruction");
+
         loop {
             let engine = match self.engine_receiver.get_engine().await {
                 // end of stream
@@ -200,7 +231,7 @@ impl Generator {
 
             // account generated work in all work solvers in the path
             let now = time::SystemTime::now();
-            for node in self.path.iter() {
+            for node in self.path.iter().chain(iter::once(&work_solver)) {
                 let work_solver_stats = node.work_solver_stats();
                 // Arc does not support dynamic casting to trait bounds so there must be used
                 // another Arc indirection with implemented `node::Info` trait.
