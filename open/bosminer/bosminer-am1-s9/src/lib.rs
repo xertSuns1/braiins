@@ -103,7 +103,7 @@ const FPGA_IPCORE_F_CLK_BASE_BAUD_DIV: usize = 16;
 const TEMP_CHIP: ChipAddress = ChipAddress::One(61);
 
 /// Timeout for completion of haschain halt
-const HALT_TIMEOUT: Duration = Duration::from_secs(2);
+const HALT_TIMEOUT: Duration = Duration::from_secs(30);
 
 lazy_static! {
     /// What is our target?
