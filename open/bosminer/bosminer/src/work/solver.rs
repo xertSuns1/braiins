@@ -104,7 +104,7 @@ where
                 self.hierarchy_builder.add_root(node).await;
             }
             NodeType::WorkHub(work_hub) => {
-                self.hierarchy_builder.branch(work_hub.clone(), node);
+                self.hierarchy_builder.branch(work_hub.clone(), node).await;
             }
         };
     }

@@ -48,7 +48,7 @@ pub trait HierarchyBuilder: Send + Sync {
     }
 
     async fn add_root(&self, node: WorkSolverType<Arc<dyn node::WorkSolver>>) {
-        self.add_node(node);
+        self.add_node(node).await;
     }
 
     async fn branch(
@@ -56,7 +56,7 @@ pub trait HierarchyBuilder: Send + Sync {
         _parent_work_hub: Arc<dyn node::WorkSolver>,
         node: WorkSolverType<Arc<dyn node::WorkSolver>>,
     ) {
-        self.add_node(node);
+        self.add_node(node).await;
     }
 }
 
