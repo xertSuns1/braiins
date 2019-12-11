@@ -40,6 +40,8 @@ format:
     stage: format
     script:
         - open/scripts/projecter cargo fmt -- --check
+        # fork in subshell since gitlab runner does not like bashistic way of inverting errorcode
+        - bash <<< '! grep -R --include=*.rs -nC 3 dbg! open/'
 
 check:
     <<: *base-rust
@@ -48,6 +50,8 @@ check:
         RUSTFLAGS: "-D warnings"
     script:
         - open/scripts/projecter -d open/ cargo build
+        # check for Cargo.lock changes
+        - git diff --exit-code $( find open/ -name Cargo.lock )
         - open/scripts/projecter -d open/ cargo test
         - (cd open/bosminer/bosminer-am1-s9 && cargo test --verbose -- --host=${TEST_DEVICE_S9} --path=/tmp/ci )
 
