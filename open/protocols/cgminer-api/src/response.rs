@@ -41,7 +41,7 @@ pub type Temperature = f64;
 #[allow(dead_code)]
 /// CGMiner API Status indicator.
 /// (warning and info levels not currently used.)
-#[derive(Serialize, Eq, PartialEq, Clone, Debug)]
+#[derive(Serialize, Eq, PartialEq, Copy, Clone, Debug)]
 pub enum Status {
     W,
     I,

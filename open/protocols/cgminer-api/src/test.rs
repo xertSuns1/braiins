@@ -316,7 +316,8 @@ impl command::Handler for TestHandler {
 async fn codec_roundtrip(command: &str) -> Value {
     TIMESTAMP.enable(false);
 
-    let command_receiver = command::Receiver::new(TestHandler);
+    let command_receiver =
+        command::Receiver::new(TestHandler, "TestMiner".to_string(), "1.0-test".to_string());
     let mut codec = Codec::default();
 
     let mut command_buf = BytesMut::with_capacity(256);
@@ -401,12 +402,12 @@ async fn test_api_basic() {
             "STATUS": "S",
             "When": 0,
             "Code": 22,
-            "Msg": "bOSminer versions",
+            "Msg": "CGMiner versions",
             "Description": "",
         }],
         "VERSION": [{
             "API": "3.7",
-            "bOSminer": "0.1.0-eedd8d53"
+            "CGMiner": "0.1.0-eedd8d53"
         }],
         "id": 1
     });
@@ -423,7 +424,7 @@ async fn test_api_multiple() {
             "STATUS": [{
                 "Code": 33,
                 "Description": "",
-                "Msg": "bOSminer config",
+                "Msg": "CGMiner config",
                 "STATUS": "S",
                 "When": 0
             }],
@@ -443,13 +444,13 @@ async fn test_api_multiple() {
             "STATUS": [{
                 "Code": 22,
                 "Description": "",
-                "Msg": "bOSminer versions",
+                "Msg": "CGMiner versions",
                 "STATUS": "S",
                 "When": 0
             }],
             "VERSION": [{
                 "API": "3.7",
-                "bOSminer": "0.1.0-eedd8d53"
+                "CGMiner": "0.1.0-eedd8d53"
             }],
             "id": 1
         }],

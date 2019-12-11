@@ -41,6 +41,9 @@ use stats::TIME_MEAN_INTERVAL_1M as INTERVAL_1M;
 use stats::TIME_MEAN_INTERVAL_5M as INTERVAL_5M;
 use stats::TIME_MEAN_INTERVAL_5S as INTERVAL_5S;
 
+/// Miner signature where `CGMiner` text is used to be
+const SIGNATURE: &str = "bOSminer";
+
 /// Default interval used for computation of default rolling average.
 const DEFAULT_LOG_INTERVAL: u32 = 5;
 
@@ -537,7 +540,9 @@ impl command::Handler for Handler {
 
 pub async fn run(core: Arc<hub::Core>, listen_addr: SocketAddr) {
     let handler = Handler::new(core);
-    let command_receiver = command::Receiver::new(handler);
+    let command_receiver =
+        command::Receiver::new(handler, SIGNATURE.to_string(), version::STRING.to_string());
+
     ii_cgminer_api::run(command_receiver, listen_addr)
         .await
         .unwrap();

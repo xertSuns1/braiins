@@ -48,9 +48,8 @@ static TIMESTAMP: support::Timestamp = support::Timestamp::new();
 
 /// Version of CGMiner compatible API
 pub const API_VERSION: &str = "3.7";
-
-/// Miner signature where `CGMiner` text is used to be
-const SIGNATURE: &str = "bOSminer";
+/// Default signature of CGMiner API
+pub const SIGNATURE: &str = "CGMiner";
 
 /// Codec for the CGMiner API.
 /// The `Codec` decodes `Command`s and encodes `ResponseSet`s.
