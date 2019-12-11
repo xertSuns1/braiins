@@ -458,7 +458,8 @@ impl From<Summary> for Dispatch {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct Version {
+pub(crate) struct Version {
+    pub signature: String,
     pub miner: String,
     pub api: String,
 }
@@ -470,7 +471,7 @@ impl Serialize for Version {
     {
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(Some(2))?;
-        map.serialize_entry(super::SIGNATURE, &self.miner)?;
+        map.serialize_entry(&self.signature, &self.miner)?;
         map.serialize_entry("API", &self.api)?;
         map.end()
     }
@@ -663,7 +664,7 @@ impl From<Stats> for Dispatch {
 }
 
 #[derive(Serialize, PartialEq, Clone, Debug)]
-pub struct Check {
+pub(crate) struct Check {
     #[serde(rename = "Exists")]
     pub exists: Bool,
     #[serde(rename = "Access")]

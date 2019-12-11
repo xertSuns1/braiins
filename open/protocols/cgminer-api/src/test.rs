@@ -409,7 +409,7 @@ async fn test_api_basic() {
         }],
         "VERSION": [{
             "API": "3.7",
-            "CGMiner": "v1.0"
+            "TestMiner": "v1.0"
         }],
         "id": 1
     });
@@ -452,7 +452,7 @@ async fn test_api_multiple() {
             }],
             "VERSION": [{
                 "API": "3.7",
-                "CGMiner": "v1.0"
+                "TestMiner": "v1.0"
             }],
             "id": 1
         }],

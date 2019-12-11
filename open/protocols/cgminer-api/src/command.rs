@@ -179,7 +179,6 @@ macro_rules! commands {
 
 pub struct Receiver<T = UnixTime> {
     commands: HashMap<&'static str, Descriptor>,
-    #[allow(dead_code)]
     miner_signature: String,
     miner_version: String,
     description: String,
@@ -241,6 +240,7 @@ where
 
     fn handle_version(&self) -> Result<response::Version> {
         Ok(response::Version {
+            signature: self.miner_signature.to_string(),
             miner: self.miner_version.to_string(),
             api: crate::API_VERSION.to_string(),
         })
