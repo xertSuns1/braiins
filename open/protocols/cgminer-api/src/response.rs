@@ -22,6 +22,7 @@
 
 //! Defines all the CGMiner API responses
 
+use crate::support;
 use crate::TIMESTAMP;
 
 use serde::{Serialize, Serializer};
@@ -135,6 +136,13 @@ pub enum ErrorCode {
     AccessDeniedCmd(String),
     MissingCheckCmd,
     InvalidAscId(i32, i32),
+}
+
+impl ErrorCode {
+    #[inline]
+    pub fn into_response(self) -> support::SingleResponse {
+        Dispatch::from(self).into_response()
+    }
 }
 
 impl From<ErrorCode> for Dispatch {
@@ -794,22 +802,11 @@ impl Dispatch {
             description: "".to_string(), // TODO: format!("{} {}", super::SIGNATURE, version::STRING.clone())
         }
     }
-}
 
-impl Serialize for Dispatch {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let status = self.create_status_info();
-
-        use serde::ser::SerializeMap;
-        let mut map = serializer.serialize_map(Some(3))?;
-        map.serialize_entry("STATUS", &[&status])?;
-        if let Some((name, responses)) = &self.body {
-            map.serialize_entry(name, responses)?;
+    pub fn into_response(self) -> support::SingleResponse {
+        support::SingleResponse {
+            status_info: self.create_status_info(),
+            body: self.body,
         }
-        map.serialize_entry("id", &1)?;
-        map.end()
     }
 }

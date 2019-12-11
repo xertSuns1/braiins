@@ -24,7 +24,7 @@
 
 use crate::response;
 
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use serde_json as json;
 
 use std::collections::HashMap;
@@ -88,11 +88,33 @@ impl ValueExt for json::Value {
     }
 }
 
+#[derive(Debug)]
+pub struct SingleResponse {
+    pub status_info: response::StatusInfo,
+    pub body: Option<(&'static str, json::Value)>,
+}
+
+impl Serialize for SingleResponse {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(3))?;
+        map.serialize_entry("STATUS", &[&self.status_info])?;
+        if let Some((name, responses)) = &self.body {
+            map.serialize_entry(name, responses)?;
+        }
+        map.serialize_entry("id", &1)?;
+        map.end()
+    }
+}
+
 /// Container for a multi-response
 #[derive(Serialize, Debug)]
 pub struct MultiResponse {
     #[serde(flatten)]
-    responses: HashMap<String, json::Value>,
+    responses: HashMap<String, Vec<SingleResponse>>,
     id: usize,
 }
 
@@ -104,10 +126,8 @@ impl MultiResponse {
         }
     }
 
-    pub fn add_response(&mut self, name: &str, dispatch: response::Dispatch) {
-        let response = json::to_value(&dispatch).expect("BUG: cannot serialize response to JSON");
-        self.responses
-            .insert(name.to_string(), json::Value::Array(vec![response]));
+    pub fn add_response(&mut self, name: &str, response: SingleResponse) {
+        self.responses.insert(name.to_string(), vec![response]);
     }
 }
 
@@ -116,6 +136,6 @@ impl MultiResponse {
 #[derive(Serialize, Debug)]
 #[serde(untagged)]
 pub enum ResponseType {
-    Single(response::Dispatch),
+    Single(SingleResponse),
     Multi(MultiResponse),
 }
