@@ -23,7 +23,7 @@
 //! Tests for the CGMiner API module
 
 use super::*;
-use crate::server::Codec;
+use crate::Codec;
 
 use ii_async_compat::{bytes, tokio, tokio_util};
 use tokio_util::codec::Decoder;

@@ -29,7 +29,7 @@ use crate::stats::{self, UnixTime as _};
 use crate::version;
 
 use ii_cgminer_api::support::ValueExt as _;
-use ii_cgminer_api::{command, json, response, server};
+use ii_cgminer_api::{command, json, response};
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -537,5 +537,5 @@ impl command::Handler for Handler {
 
 pub async fn run(core: Arc<hub::Core>, listen_addr: SocketAddr) {
     let handler = Handler::new(core);
-    server::run(handler, listen_addr).await.unwrap();
+    ii_cgminer_api::run(handler, listen_addr).await.unwrap();
 }
