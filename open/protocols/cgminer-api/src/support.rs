@@ -28,33 +28,20 @@ use serde::{Serialize, Serializer};
 use serde_json as json;
 
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 
-/// Flag whether a real timestamp should be used when serializing.
-/// When turned off, a timestamp of 0 is used instad, this is useful for tests.
-pub struct Timestamp(AtomicBool);
+pub trait When: Send + Sync {
+    fn when() -> response::Time;
+}
 
-impl Timestamp {
-    pub const fn new() -> Self {
-        Self(AtomicBool::new(true))
-    }
+pub struct UnixTime;
 
-    #[allow(dead_code)]
-    pub fn enable(&self, enable: bool) {
-        self.0.store(enable, Ordering::Relaxed);
-    }
-
-    pub fn get(&self) -> u32 {
-        if self.0.load(Ordering::Relaxed) {
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .map(|duration| duration.as_secs() as u32)
-                .unwrap_or(0)
-        } else {
-            0
-        }
+impl When for UnixTime {
+    fn when() -> response::Time {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|duration| duration.as_secs() as u32)
+            .unwrap_or(0)
     }
 }
 

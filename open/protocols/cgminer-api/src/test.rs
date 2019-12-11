@@ -313,11 +313,20 @@ impl command::Handler for TestHandler {
     }
 }
 
-async fn codec_roundtrip(command: &str) -> Value {
-    TIMESTAMP.enable(false);
+struct ZeroTime;
 
-    let command_receiver =
-        command::Receiver::new(TestHandler, "TestMiner".to_string(), "v1.0".to_string());
+impl support::When for ZeroTime {
+    fn when() -> response::Time {
+        0
+    }
+}
+
+async fn codec_roundtrip(command: &str) -> Value {
+    let command_receiver = command::Receiver::<ZeroTime>::new(
+        TestHandler,
+        "TestMiner".to_string(),
+        "v1.0".to_string(),
+    );
     let mut codec = Codec::default();
 
     let mut command_buf = BytesMut::with_capacity(256);

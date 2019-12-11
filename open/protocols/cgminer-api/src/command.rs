@@ -24,13 +24,14 @@
 
 use crate::response;
 use crate::support::ValueExt as _;
-use crate::support::{MultiResponse, ResponseType};
+use crate::support::{MultiResponse, ResponseType, UnixTime, When};
 
 use serde_json as json;
 
 use ii_async_compat::futures::Future;
 
 use std::collections::HashMap;
+use std::marker;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -176,17 +177,21 @@ macro_rules! commands {
 }
 
 #[allow(dead_code)]
-pub struct Receiver {
+pub struct Receiver<T = UnixTime> {
     commands: HashMap<&'static str, Descriptor>,
     miner_signature: String,
     miner_version: String,
     description: String,
+    _marker: marker::PhantomData<T>,
 }
 
-impl Receiver {
-    pub fn new<T>(handler: T, miner_signature: String, miner_version: String) -> Self
+impl<T> Receiver<T>
+where
+    T: When,
+{
+    pub fn new<U>(handler: U, miner_signature: String, miner_version: String) -> Self
     where
-        T: Handler + 'static,
+        U: Handler + 'static,
     {
         let handler = Arc::new(handler);
 
@@ -219,6 +224,7 @@ impl Receiver {
             miner_signature,
             miner_version,
             description,
+            _marker: marker::PhantomData,
         }
     }
 
@@ -245,7 +251,7 @@ impl Receiver {
 
     /// Handles a single `command` with option `parameter`. `multi_command` flag ensures that no
     /// command with parameters can be processed in batched mode.
-    pub async fn handle_single(
+    async fn handle_single(
         &self,
         command: &str,
         parameter: Option<&json::Value>,
@@ -280,9 +286,7 @@ impl Receiver {
 
     #[inline]
     fn get_single_response(&self, dispatch: response::Dispatch) -> ResponseType {
-        let when = crate::TIMESTAMP.get();
-
-        ResponseType::Single(dispatch.into_response(when, self.description.clone()))
+        ResponseType::Single(dispatch.into_response(T::when(), self.description.clone()))
     }
 
     /// Handles a command request that can actually be a batched request of multiple commands
