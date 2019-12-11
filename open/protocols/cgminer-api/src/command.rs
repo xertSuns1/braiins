@@ -180,6 +180,7 @@ pub struct Receiver {
     commands: HashMap<&'static str, Descriptor>,
     miner_signature: String,
     miner_version: String,
+    description: String,
 }
 
 impl Receiver {
@@ -212,10 +213,12 @@ impl Receiver {
         // add special built-in commands
         commands.insert(CHECK, Descriptor::new(CHECK, HandlerType::Check, None));
 
+        let description = format!("{} {}", miner_signature.clone(), miner_version.clone());
         Self {
             commands,
             miner_signature,
             miner_version,
+            description,
         }
     }
 
@@ -275,6 +278,13 @@ impl Receiver {
         dispatch.unwrap_or_else(|error| error.into())
     }
 
+    #[inline]
+    fn get_single_response(&self, dispatch: response::Dispatch) -> ResponseType {
+        let when = crate::TIMESTAMP.get();
+
+        ResponseType::Single(dispatch.into_response(when, self.description.clone()))
+    }
+
     /// Handles a command request that can actually be a batched request of multiple commands
     pub async fn handle(&self, command_request: Request) -> ResponseType {
         let command = match command_request
@@ -282,9 +292,7 @@ impl Receiver {
             .get("command")
             .and_then(json::Value::as_str)
         {
-            None => {
-                return ResponseType::Single(response::ErrorCode::MissingCommand.into_response());
-            }
+            None => return self.get_single_response(response::ErrorCode::MissingCommand.into()),
             Some(value) => value,
         };
         let commands: Vec<_> = command
@@ -294,18 +302,17 @@ impl Receiver {
         let parameter = command_request.value.get("parameter");
 
         if commands.len() == 0 {
-            ResponseType::Single(response::ErrorCode::InvalidCommand.into_response())
+            self.get_single_response(response::ErrorCode::InvalidCommand.into())
         } else if commands.len() == 1 {
-            ResponseType::Single(
-                self.handle_single(command, parameter, false)
-                    .await
-                    .into_response(),
-            )
+            self.get_single_response(self.handle_single(command, parameter, false).await)
         } else {
             let mut responses = MultiResponse::new();
             for command in commands {
-                let dispatch = self.handle_single(command, parameter, true).await;
-                responses.add_response(command, dispatch.into_response());
+                if let ResponseType::Single(response) =
+                    self.get_single_response(self.handle_single(command, parameter, true).await)
+                {
+                    responses.add_response(command, response);
+                }
             }
             ResponseType::Multi(responses)
         }

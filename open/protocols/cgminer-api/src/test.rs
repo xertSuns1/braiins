@@ -317,7 +317,7 @@ async fn codec_roundtrip(command: &str) -> Value {
     TIMESTAMP.enable(false);
 
     let command_receiver =
-        command::Receiver::new(TestHandler, "TestMiner".to_string(), "1.0-test".to_string());
+        command::Receiver::new(TestHandler, "TestMiner".to_string(), "v1.0".to_string());
     let mut codec = Codec::default();
 
     let mut command_buf = BytesMut::with_capacity(256);
@@ -403,7 +403,7 @@ async fn test_api_basic() {
             "When": 0,
             "Code": 22,
             "Msg": "CGMiner versions",
-            "Description": "",
+            "Description": "TestMiner v1.0",
         }],
         "VERSION": [{
             "API": "3.7",
@@ -423,7 +423,7 @@ async fn test_api_multiple() {
         "config": [{
             "STATUS": [{
                 "Code": 33,
-                "Description": "",
+                "Description": "TestMiner v1.0",
                 "Msg": "CGMiner config",
                 "STATUS": "S",
                 "When": 0
@@ -443,7 +443,7 @@ async fn test_api_multiple() {
         "version": [{
             "STATUS": [{
                 "Code": 22,
-                "Description": "",
+                "Description": "TestMiner v1.0",
                 "Msg": "CGMiner versions",
                 "STATUS": "S",
                 "When": 0
