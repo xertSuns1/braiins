@@ -438,14 +438,6 @@ impl command::Handler for Handler {
         })
     }
 
-    async fn handle_version(&self) -> command::Result<response::Version> {
-        // TODO: create built-in handler
-        Ok(response::Version {
-            miner: version::STRING.clone(),
-            api: ii_cgminer_api::API_VERSION.into(),
-        })
-    }
-
     async fn handle_config(&self) -> command::Result<response::Config> {
         Ok(response::Config {
             asc_count: self.core.get_work_solvers().await.len() as i32,
