@@ -22,14 +22,14 @@
 
 //! Defines the API command handler (`Handler`)
 
-use super::response;
-use super::support::{MultiResponse, Response, ResponseType};
+use crate::response;
+use crate::support::ValueExt as _;
+use crate::support::{MultiResponse, Response, ResponseType};
 
 use serde_json as json;
 
 use ii_async_compat::futures::Future;
 
-use crate::api::cgminer::support::ValueExt;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;

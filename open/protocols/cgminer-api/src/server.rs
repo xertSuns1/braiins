@@ -24,8 +24,8 @@
 
 use ii_logging::macros::*;
 
-use super::command;
-use super::support;
+use crate::command;
+use crate::support;
 
 use ii_async_compat::{bytes, futures, tokio, tokio_util};
 

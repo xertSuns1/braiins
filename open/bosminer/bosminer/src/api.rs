@@ -20,13 +20,13 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-//mod cgminer;
+mod cgminer;
 
 use crate::hub;
 
 use std::sync::Arc;
 
-pub async fn run(_core: Arc<hub::Core>) {
-    //    let addr = "0.0.0.0:4028".parse().unwrap();
-    //    cgminer::run(core, addr).await;
+pub async fn run(core: Arc<hub::Core>) {
+    let addr = "0.0.0.0:4028".parse().unwrap();
+    cgminer::run(core, addr).await;
 }

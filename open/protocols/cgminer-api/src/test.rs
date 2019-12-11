@@ -22,8 +22,8 @@
 
 //! Tests for the CGMiner API module
 
-use super::server::Codec;
 use super::*;
+use crate::server::Codec;
 
 use ii_async_compat::{bytes, tokio, tokio_util};
 use tokio_util::codec::Decoder;
@@ -402,7 +402,7 @@ async fn test_api_basic() {
             "When": 0,
             "Code": 22,
             "Msg": "bOSminer versions",
-            "Description": format!("{} {}", super::SIGNATURE, version::STRING.clone()),
+            "Description": "",
         }],
         "VERSION": [{
             "API": "3.7",
@@ -422,7 +422,7 @@ async fn test_api_multiple() {
         "config": [{
             "STATUS": [{
                 "Code": 33,
-                "Description": format!("{} {}", super::SIGNATURE, version::STRING.clone()),
+                "Description": "",
                 "Msg": "bOSminer config",
                 "STATUS": "S",
                 "When": 0
@@ -442,7 +442,7 @@ async fn test_api_multiple() {
         "version": [{
             "STATUS": [{
                 "Code": 22,
-                "Description": format!("{} {}", super::SIGNATURE, version::STRING.clone()),
+                "Description": "",
                 "Msg": "bOSminer versions",
                 "STATUS": "S",
                 "When": 0

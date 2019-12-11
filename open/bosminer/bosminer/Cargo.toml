@@ -9,6 +9,7 @@ edition = '2018'
 bosminer-macros = { path = "../bosminer-macros" }
 ii-async-compat = { path = "../../utils-rs/async-compat" }
 ii-bitcoin = { path = "../../coins/bitcoin" }
+ii-cgminer-api = { path = "../../protocols/cgminer-api" }
 ii-logging = { path = "../../utils-rs/logging" }
 ii-stats = { path = "../../utils-rs/stats" }
 ii-stratum = { path = "../../protocols/stratum" }
