@@ -132,7 +132,7 @@ impl Descriptor {
 /// Generates a descriptor for a specified command type (`ParameterLess` or `Parameter`) that also
 /// contains an appropriate handler
 macro_rules! command {
-    ($name:ident, $handler:expr, $method:ident, ParameterLess) => {{
+    ($name:ident: ParameterLess -> $handler:ident . $method:ident) => {{
         let handler = $handler.clone();
         let f: ParameterLessHandler = Box::new(move || {
             let handler = handler.clone();
@@ -141,7 +141,7 @@ macro_rules! command {
         let handler = HandlerType::ParameterLess(f);
         Descriptor::new($name, handler, None)
     }};
-    ($name:ident, $handler:expr, $method:ident, Parameter($check:expr)) => {{
+    ($name:ident: Parameter($check:expr) -> $handler:ident . $method:ident) => {{
         let handler = $handler.clone();
         let f: ParameterHandler = Box::new(move |parameter| {
             let handler = handler.clone();
@@ -163,11 +163,11 @@ macro_rules! commands {
     () => (
         HashMap::new()
     );
-    ($(($name:ident, $handler:expr, $method:ident, $type:ident$(($parameter:expr))?)),+) => {
+    ($(($name:ident: $type:ident$(($parameter:expr))? $(-> $handler:ident . $method:ident)?)),+) => {
         {
             let mut map = HashMap::new();
             $(
-                let descriptor = command!($name, $handler, $method, $type $(($parameter))?);
+                let descriptor = command!($name: $type $(($parameter))? $(-> $handler . $method)?);
                 map.insert($name, descriptor);
             )*
             map
@@ -191,19 +191,19 @@ impl Receiver {
 
         // add generic commands
         let mut commands = commands![
-            (POOLS, handler, handle_pools, ParameterLess),
-            (DEVS, handler, handle_devs, ParameterLess),
-            (EDEVS, handler, handle_edevs, ParameterLess),
-            (SUMMARY, handler, handle_summary, ParameterLess),
-            (VERSION, handler, handle_version, ParameterLess),
-            (CONFIG, handler, handle_config, ParameterLess),
-            (DEVDETAILS, handler, handle_dev_details, ParameterLess),
-            (STATS, handler, handle_stats, ParameterLess),
-            (ESTATS, handler, handle_estats, ParameterLess),
-            (COIN, handler, handle_coin, ParameterLess),
-            (ASC_COUNT, handler, handle_asc_count, ParameterLess),
-            (ASC, handler, handle_asc, Parameter(check_asc)),
-            (LCD, handler, handle_lcd, ParameterLess)
+            (POOLS: ParameterLess -> handler.handle_pools),
+            (DEVS: ParameterLess -> handler.handle_devs),
+            (EDEVS: ParameterLess -> handler.handle_edevs),
+            (SUMMARY: ParameterLess -> handler.handle_summary),
+            (VERSION: ParameterLess -> handler.handle_version),
+            (CONFIG: ParameterLess -> handler.handle_config),
+            (DEVDETAILS: ParameterLess -> handler.handle_dev_details),
+            (STATS: ParameterLess -> handler.handle_stats),
+            (ESTATS: ParameterLess -> handler.handle_estats),
+            (COIN: ParameterLess -> handler.handle_coin),
+            (ASC_COUNT: ParameterLess -> handler.handle_asc_count),
+            (ASC: Parameter(check_asc) -> handler.handle_asc),
+            (LCD: ParameterLess -> handler.handle_lcd)
         ];
 
         // add special built-in commands
