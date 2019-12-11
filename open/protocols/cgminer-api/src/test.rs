@@ -151,13 +151,6 @@ impl command::Handler for TestHandler {
         })
     }
 
-    async fn handle_version(&self) -> command::Result<response::Version> {
-        Ok(response::Version {
-            miner: "0.1.0-eedd8d53".to_string(),
-            api: "3.7".to_string(),
-        })
-    }
-
     async fn handle_config(&self) -> command::Result<response::Config> {
         Ok(response::Config {
             asc_count: 0,
@@ -416,7 +409,7 @@ async fn test_api_basic() {
         }],
         "VERSION": [{
             "API": "3.7",
-            "CGMiner": "0.1.0-eedd8d53"
+            "CGMiner": "v1.0"
         }],
         "id": 1
     });
@@ -459,7 +452,7 @@ async fn test_api_multiple() {
             }],
             "VERSION": [{
                 "API": "3.7",
-                "CGMiner": "0.1.0-eedd8d53"
+                "CGMiner": "v1.0"
             }],
             "id": 1
         }],

@@ -61,7 +61,6 @@ pub trait Handler: Send + Sync {
     async fn handle_devs(&self) -> Result<response::Devs>;
     async fn handle_edevs(&self) -> Result<response::Devs>;
     async fn handle_summary(&self) -> Result<response::Summary>;
-    async fn handle_version(&self) -> Result<response::Version>;
     async fn handle_config(&self) -> Result<response::Config>;
     async fn handle_dev_details(&self) -> Result<response::DevDetails>;
     async fn handle_stats(&self) -> Result<response::Stats>;
@@ -94,6 +93,7 @@ pub type ParameterCheckHandler =
 pub enum HandlerType {
     ParameterLess(ParameterLessHandler),
     Parameter(ParameterHandler),
+    Version,
     Check,
 }
 
@@ -102,6 +102,7 @@ impl HandlerType {
         match self {
             HandlerType::ParameterLess(_) => false,
             HandlerType::Parameter(_) => true,
+            HandlerType::Version => false,
             HandlerType::Check => true,
         }
     }
@@ -176,9 +177,9 @@ macro_rules! commands {
     }
 }
 
-#[allow(dead_code)]
 pub struct Receiver<T = UnixTime> {
     commands: HashMap<&'static str, Descriptor>,
+    #[allow(dead_code)]
     miner_signature: String,
     miner_version: String,
     description: String,
@@ -204,7 +205,6 @@ where
             (DEVS: ParameterLess -> handler.handle_devs),
             (EDEVS: ParameterLess -> handler.handle_edevs),
             (SUMMARY: ParameterLess -> handler.handle_summary),
-            (VERSION: ParameterLess -> handler.handle_version),
             (CONFIG: ParameterLess -> handler.handle_config),
             (DEVDETAILS: ParameterLess -> handler.handle_dev_details),
             (STATS: ParameterLess -> handler.handle_stats),
@@ -216,6 +216,10 @@ where
         ];
 
         // add special built-in commands
+        commands.insert(
+            VERSION,
+            Descriptor::new(VERSION, HandlerType::Version, None),
+        );
         commands.insert(CHECK, Descriptor::new(CHECK, HandlerType::Check, None));
 
         let description = format!("{} {}", miner_signature.clone(), miner_version.clone());
@@ -233,6 +237,13 @@ where
             Some(value) if value.is_i32() => Ok(()),
             _ => Err(response::ErrorCode::MissingAscParameter.into()),
         }
+    }
+
+    fn handle_version(&self) -> Result<response::Version> {
+        Ok(response::Version {
+            miner: self.miner_version.to_string(),
+            api: crate::API_VERSION.to_string(),
+        })
     }
 
     fn handle_check(&self, parameter: Option<&json::Value>) -> Result<response::Check> {
@@ -270,6 +281,9 @@ where
                         Ok(_) => match &descriptor.handler {
                             HandlerType::ParameterLess(handle) => handle().await,
                             HandlerType::Parameter(handle) => handle(parameter).await,
+                            HandlerType::Version => {
+                                self.handle_version().map(|response| response.into())
+                            }
                             HandlerType::Check => {
                                 self.handle_check(parameter).map(|response| response.into())
                             }
