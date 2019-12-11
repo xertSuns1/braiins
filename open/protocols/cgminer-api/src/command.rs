@@ -175,12 +175,15 @@ macro_rules! commands {
     }
 }
 
+#[allow(dead_code)]
 pub struct Receiver {
     commands: HashMap<&'static str, Descriptor>,
+    miner_signature: String,
+    miner_version: String,
 }
 
 impl Receiver {
-    pub fn new<T>(handler: T) -> Self
+    pub fn new<T>(handler: T, miner_signature: String, miner_version: String) -> Self
     where
         T: Handler + 'static,
     {
@@ -209,7 +212,11 @@ impl Receiver {
         // add special built-in commands
         commands.insert(CHECK, Descriptor::new(CHECK, HandlerType::Check, None));
 
-        Self { commands }
+        Self {
+            commands,
+            miner_signature,
+            miner_version,
+        }
     }
 
     fn check_asc(_command: &str, parameter: &Option<&json::Value>) -> Result<()> {
@@ -292,8 +299,6 @@ impl Receiver {
             let mut responses = MultiResponse::new();
             for command in commands {
                 let response = self.handle_single(command, parameter, true).await;
-                let response =
-                    json::to_value(&response).expect("BUG: cannot serialize response to JSON");
                 responses.add_response(command, response);
             }
             ResponseType::Multi(responses)

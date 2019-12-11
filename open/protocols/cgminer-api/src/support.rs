@@ -92,9 +92,10 @@ impl ValueExt for json::Value {
 /// Generic container for any response, ensures conforming serialization
 #[derive(Debug)]
 pub struct Response {
-    status: response::StatusInfo,
-    responses: Option<(&'static str, json::Value)>,
-    id: usize,
+    status: response::Status,
+    code: response::StatusCode,
+    msg: String,
+    body: Option<(&'static str, json::Value)>,
 }
 
 impl Response {
@@ -107,23 +108,20 @@ impl Response {
         let responses = json::to_value(responses).expect("Response serialization failed");
 
         Self {
-            status: Self::create_status_info(response::Status::S, code, msg),
-            responses: Some((name, responses)),
-            id: 1,
+            status: response::Status::S,
+            code,
+            msg,
+            body: Some((name, responses)),
         }
     }
 
-    fn create_status_info(
-        status: response::Status,
-        code: response::StatusCode,
-        msg: String,
-    ) -> response::StatusInfo {
+    fn create_status_info(&self) -> response::StatusInfo {
         response::StatusInfo {
-            status,
+            status: self.status,
             // TODO: move timestamp to `command::Receiver` to improve tests
             when: TIMESTAMP.get(),
-            code,
-            msg,
+            code: self.code,
+            msg: self.msg.clone(),
             // TODO: move description to `command::Receiver` to improve tests
             description: "".to_string(), // TODO: format!("{} {}", super::SIGNATURE, version::STRING.clone())
         }
@@ -133,9 +131,10 @@ impl Response {
 impl From<response::Error> for Response {
     fn from(error: response::Error) -> Response {
         Self {
-            status: Self::create_status_info(response::Status::E, error.code, error.msg().clone()),
-            responses: None,
-            id: 1,
+            status: response::Status::E,
+            code: error.code,
+            msg: error.msg().clone(),
+            body: None,
         }
     }
 }
@@ -151,13 +150,15 @@ impl Serialize for Response {
     where
         S: Serializer,
     {
+        let status = self.create_status_info();
+
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(Some(3))?;
-        map.serialize_entry("STATUS", &[&self.status])?;
-        if let Some((name, responses)) = &self.responses {
+        map.serialize_entry("STATUS", &[&status])?;
+        if let Some((name, responses)) = &self.body {
             map.serialize_entry(name, responses)?;
         }
-        map.serialize_entry("id", &self.id)?;
+        map.serialize_entry("id", &1)?;
         map.end()
     }
 }
@@ -178,7 +179,8 @@ impl MultiResponse {
         }
     }
 
-    pub fn add_response(&mut self, name: &str, response: json::Value) {
+    pub fn add_response(&mut self, name: &str, response: Response) {
+        let response = json::to_value(&response).expect("BUG: cannot serialize response to JSON");
         self.responses
             .insert(name.to_string(), json::Value::Array(vec![response]));
     }
