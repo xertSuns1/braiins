@@ -20,13 +20,19 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-//mod cgminer;
+pub mod command;
+pub mod response;
+pub mod server;
+pub mod support;
 
-use crate::hub;
+#[cfg(test)]
+mod test;
 
-use std::sync::Arc;
+/// Global `Timestamp` flag, controls whether responses contain real timestamps.
+/// See also the `Timestamp` type.
+static TIMESTAMP: support::Timestamp = support::Timestamp::new();
 
-pub async fn run(_core: Arc<hub::Core>) {
-    //    let addr = "0.0.0.0:4028".parse().unwrap();
-    //    cgminer::run(core, addr).await;
-}
+/// Version of CGMiner compatible API
+const API_VERSION: &str = "3.7";
+/// Miner signature where `CGMiner` text is used to be
+const SIGNATURE: &str = "bOSminer";

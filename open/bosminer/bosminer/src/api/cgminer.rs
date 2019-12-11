@@ -23,14 +23,6 @@
 //! This module implements CGMiner compatible API server to control bOSminer and to extract
 //! statistics from it.
 
-mod command;
-mod response;
-mod server;
-mod support;
-
-#[cfg(test)]
-mod test;
-
 use crate::hub;
 use crate::node::{self, Stats as _, WorkSolverStats as _};
 use crate::stats::{self, UnixTime as _};
@@ -50,17 +42,8 @@ use stats::TIME_MEAN_INTERVAL_1M as INTERVAL_1M;
 use stats::TIME_MEAN_INTERVAL_5M as INTERVAL_5M;
 use stats::TIME_MEAN_INTERVAL_5S as INTERVAL_5S;
 
-/// Version of CGMiner compatible API
-const API_VERSION: &str = "3.7";
-/// Miner signature where `CGMiner` text is used to be
-const SIGNATURE: &str = "bOSminer";
-
 /// Default interval used for computation of default rolling average.
 const DEFAULT_LOG_INTERVAL: u32 = 5;
-
-/// Global `Timestamp` flag, controls whether responses contain real timestamps.
-/// See also the `Timestamp` type.
-static TIMESTAMP: support::Timestamp = support::Timestamp::new();
 
 struct Handler {
     core: Arc<hub::Core>,
