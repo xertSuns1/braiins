@@ -23,7 +23,6 @@
 //! Defines all the CGMiner API responses
 
 use crate::support;
-use crate::TIMESTAMP;
 
 use serde::{Serialize, Serializer};
 use serde_json as json;
@@ -136,13 +135,6 @@ pub enum ErrorCode {
     AccessDeniedCmd(String),
     MissingCheckCmd,
     InvalidAscId(i32, i32),
-}
-
-impl ErrorCode {
-    #[inline]
-    pub fn into_response(self) -> support::SingleResponse {
-        Dispatch::from(self).into_response()
-    }
 }
 
 impl From<ErrorCode> for Dispatch {
@@ -791,21 +783,19 @@ impl Dispatch {
         }
     }
 
-    fn create_status_info(&self) -> StatusInfo {
+    fn create_status_info(&self, when: Time, description: String) -> StatusInfo {
         StatusInfo {
             status: self.status,
-            // TODO: move timestamp to `command::Receiver` to improve tests
-            when: TIMESTAMP.get(),
+            when,
             code: self.code,
             msg: self.msg.clone(),
-            // TODO: move description to `command::Receiver` to improve tests
-            description: "".to_string(), // TODO: format!("{} {}", super::SIGNATURE, version::STRING.clone())
+            description,
         }
     }
 
-    pub fn into_response(self) -> support::SingleResponse {
+    pub fn into_response(self, when: Time, description: String) -> support::SingleResponse {
         support::SingleResponse {
-            status_info: self.create_status_info(),
+            status_info: self.create_status_info(when, description),
             body: self.body,
         }
     }
