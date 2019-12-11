@@ -42,10 +42,6 @@ use std::sync::Arc;
 /// Re-export json because it is required in command handlers
 pub use serde_json as json;
 
-/// Global `Timestamp` flag, controls whether responses contain real timestamps.
-/// See also the `Timestamp` type.
-static TIMESTAMP: support::Timestamp = support::Timestamp::new();
-
 /// Version of CGMiner compatible API
 pub const API_VERSION: &str = "3.7";
 /// Default signature of CGMiner API
