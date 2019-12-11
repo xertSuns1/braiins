@@ -24,7 +24,7 @@
 
 use crate::response;
 use crate::support::ValueExt as _;
-use crate::support::{MultiResponse, Response, ResponseType};
+use crate::support::{MultiResponse, ResponseType};
 
 use serde_json as json;
 
@@ -82,7 +82,7 @@ impl Request {
     }
 }
 
-pub type AsyncHandler = Pin<Box<dyn Future<Output = Result<Response>> + Send + 'static>>;
+pub type AsyncHandler = Pin<Box<dyn Future<Output = Result<response::Dispatch>> + Send + 'static>>;
 
 pub type ParameterLessHandler = Box<dyn Fn() -> AsyncHandler + Send + Sync>;
 pub type ParameterHandler = Box<dyn Fn(Option<&json::Value>) -> AsyncHandler + Send + Sync>;
@@ -247,8 +247,8 @@ impl Receiver {
         command: &str,
         parameter: Option<&json::Value>,
         multi_command: bool,
-    ) -> Response {
-        let response = match self.commands.get(command) {
+    ) -> response::Dispatch {
+        let dispatch = match self.commands.get(command) {
             Some(descriptor) => {
                 if multi_command && descriptor.has_parameters() {
                     Err(response::ErrorCode::AccessDeniedCmd(command.to_string()).into())
@@ -272,7 +272,7 @@ impl Receiver {
             None => Err(response::ErrorCode::InvalidCommand.into()),
         };
 
-        response.unwrap_or_else(|error| error.into())
+        dispatch.unwrap_or_else(|error| error.into())
     }
 
     /// Handles a command request that can actually be a batched request of multiple commands

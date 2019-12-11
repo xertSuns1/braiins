@@ -22,9 +22,10 @@
 
 //! Defines all the CGMiner API responses
 
-use crate::support::Response;
+use crate::TIMESTAMP;
 
 use serde::{Serialize, Serializer};
+use serde_json as json;
 use serde_repr::Serialize_repr;
 
 pub type Time = u32;
@@ -136,6 +137,12 @@ pub enum ErrorCode {
     InvalidAscId(i32, i32),
 }
 
+impl From<ErrorCode> for Dispatch {
+    fn from(code: ErrorCode) -> Dispatch {
+        Error::from(code).into()
+    }
+}
+
 pub struct Error {
     pub code: StatusCode,
     msg: String,
@@ -178,6 +185,17 @@ impl From<ErrorCode> for Error {
         };
 
         Self { code, msg }
+    }
+}
+
+impl From<Error> for Dispatch {
+    fn from(error: Error) -> Dispatch {
+        Self {
+            status: Status::E,
+            code: error.code,
+            msg: error.msg().clone(),
+            body: None,
+        }
     }
 }
 
@@ -274,10 +292,10 @@ pub struct Pools {
     pub list: Vec<Pool>,
 }
 
-impl From<Pools> for Response {
-    fn from(pools: Pools) -> Response {
+impl From<Pools> for Dispatch {
+    fn from(pools: Pools) -> Dispatch {
         let pool_count = pools.list.len();
-        Response::from_success(
+        Dispatch::from_success(
             pools.list,
             "POOLS",
             StatusCode::Pool,
@@ -342,10 +360,10 @@ pub struct Asc {
     pub device_elapsed: Elapsed,
 }
 
-impl From<Asc> for Response {
-    fn from(asc: Asc) -> Response {
+impl From<Asc> for Dispatch {
+    fn from(asc: Asc) -> Dispatch {
         let idx = asc.idx;
-        Response::from_success(vec![asc], "ASC", StatusCode::Asc, format!("ASC{}", idx))
+        Dispatch::from_success(vec![asc], "ASC", StatusCode::Asc, format!("ASC{}", idx))
     }
 }
 
@@ -354,10 +372,10 @@ pub struct Devs {
     pub list: Vec<Asc>,
 }
 
-impl From<Devs> for Response {
-    fn from(devs: Devs) -> Response {
+impl From<Devs> for Dispatch {
+    fn from(devs: Devs) -> Dispatch {
         let asc_count = devs.list.len();
-        Response::from_success(
+        Dispatch::from_success(
             devs.list,
             "DEVS",
             StatusCode::Devs,
@@ -428,9 +446,9 @@ pub struct Summary {
     pub last_getwork: Time,
 }
 
-impl From<Summary> for Response {
-    fn from(summary: Summary) -> Response {
-        Response::from_success(
+impl From<Summary> for Dispatch {
+    fn from(summary: Summary) -> Dispatch {
+        Dispatch::from_success(
             vec![summary],
             "SUMMARY",
             StatusCode::Summary,
@@ -458,9 +476,9 @@ impl Serialize for Version {
     }
 }
 
-impl From<Version> for Response {
-    fn from(version: Version) -> Response {
-        Response::from_success(
+impl From<Version> for Dispatch {
+    fn from(version: Version) -> Dispatch {
+        Dispatch::from_success(
             vec![version],
             "VERSION",
             StatusCode::Version,
@@ -489,9 +507,9 @@ pub struct Config {
     pub hotplug: String,
 }
 
-impl From<Config> for Response {
-    fn from(config: Config) -> Response {
-        Response::from_success(
+impl From<Config> for Dispatch {
+    fn from(config: Config) -> Dispatch {
+        Dispatch::from_success(
             vec![config],
             "CONFIG",
             StatusCode::MineConfig,
@@ -523,9 +541,9 @@ pub struct DevDetails {
     pub list: Vec<DevDetail>,
 }
 
-impl From<DevDetails> for Response {
-    fn from(dev_details: DevDetails) -> Response {
-        Response::from_success(
+impl From<DevDetails> for Dispatch {
+    fn from(dev_details: DevDetails) -> Dispatch {
+        Dispatch::from_success(
             dev_details.list,
             "DEVDETAILS",
             StatusCode::DevDetails,
@@ -633,9 +651,9 @@ impl Stats {
     }
 }
 
-impl From<Stats> for Response {
-    fn from(stats: Stats) -> Response {
-        Response::from_success(
+impl From<Stats> for Dispatch {
+    fn from(stats: Stats) -> Dispatch {
+        Dispatch::from_success(
             stats.into_list(),
             "STATS",
             StatusCode::Stats,
@@ -652,9 +670,9 @@ pub struct Check {
     pub access: Bool,
 }
 
-impl From<Check> for Response {
-    fn from(check: Check) -> Response {
-        Response::from_success(
+impl From<Check> for Dispatch {
+    fn from(check: Check) -> Dispatch {
+        Dispatch::from_success(
             vec![check],
             "CHECK",
             StatusCode::Check,
@@ -677,9 +695,9 @@ pub struct Coin {
     pub network_difficulty: Difficulty,
 }
 
-impl From<Coin> for Response {
-    fn from(coin: Coin) -> Response {
-        Response::from_success(
+impl From<Coin> for Dispatch {
+    fn from(coin: Coin) -> Dispatch {
+        Dispatch::from_success(
             vec![coin],
             "COIN",
             StatusCode::Coin,
@@ -694,9 +712,9 @@ pub struct AscCount {
     pub count: i32,
 }
 
-impl From<AscCount> for Response {
-    fn from(asc_count: AscCount) -> Response {
-        Response::from_success(
+impl From<AscCount> for Dispatch {
+    fn from(asc_count: AscCount) -> Dispatch {
+        Dispatch::from_success(
             vec![asc_count],
             "ASCS",
             StatusCode::AscCount,
@@ -733,8 +751,65 @@ pub struct Lcd {
     pub user: String,
 }
 
-impl From<Lcd> for Response {
-    fn from(lcd: Lcd) -> Response {
-        Response::from_success(vec![lcd], "LCD", StatusCode::Lcd, "LCD".to_string())
+impl From<Lcd> for Dispatch {
+    fn from(lcd: Lcd) -> Dispatch {
+        Dispatch::from_success(vec![lcd], "LCD", StatusCode::Lcd, "LCD".to_string())
+    }
+}
+
+/// Generic container for any response, ensures conforming serialization
+#[derive(Debug)]
+pub struct Dispatch {
+    status: Status,
+    code: StatusCode,
+    msg: String,
+    body: Option<(&'static str, json::Value)>,
+}
+
+impl Dispatch {
+    pub fn from_success<S: Serialize>(
+        responses: Vec<S>,
+        name: &'static str,
+        code: StatusCode,
+        msg: String,
+    ) -> Self {
+        let responses = json::to_value(responses).expect("Response serialization failed");
+
+        Self {
+            status: Status::S,
+            code,
+            msg,
+            body: Some((name, responses)),
+        }
+    }
+
+    fn create_status_info(&self) -> StatusInfo {
+        StatusInfo {
+            status: self.status,
+            // TODO: move timestamp to `command::Receiver` to improve tests
+            when: TIMESTAMP.get(),
+            code: self.code,
+            msg: self.msg.clone(),
+            // TODO: move description to `command::Receiver` to improve tests
+            description: "".to_string(), // TODO: format!("{} {}", super::SIGNATURE, version::STRING.clone())
+        }
+    }
+}
+
+impl Serialize for Dispatch {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let status = self.create_status_info();
+
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(3))?;
+        map.serialize_entry("STATUS", &[&status])?;
+        if let Some((name, responses)) = &self.body {
+            map.serialize_entry(name, responses)?;
+        }
+        map.serialize_entry("id", &1)?;
+        map.end()
     }
 }

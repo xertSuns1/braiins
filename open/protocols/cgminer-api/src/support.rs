@@ -23,9 +23,8 @@
 //! Defines support structures for API responses serialization
 
 use crate::response;
-use crate::TIMESTAMP;
 
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 use serde_json as json;
 
 use std::collections::HashMap;
@@ -89,81 +88,7 @@ impl ValueExt for json::Value {
     }
 }
 
-/// Generic container for any response, ensures conforming serialization
-#[derive(Debug)]
-pub struct Response {
-    status: response::Status,
-    code: response::StatusCode,
-    msg: String,
-    body: Option<(&'static str, json::Value)>,
-}
-
-impl Response {
-    pub fn from_success<S: Serialize>(
-        responses: Vec<S>,
-        name: &'static str,
-        code: response::StatusCode,
-        msg: String,
-    ) -> Self {
-        let responses = json::to_value(responses).expect("Response serialization failed");
-
-        Self {
-            status: response::Status::S,
-            code,
-            msg,
-            body: Some((name, responses)),
-        }
-    }
-
-    fn create_status_info(&self) -> response::StatusInfo {
-        response::StatusInfo {
-            status: self.status,
-            // TODO: move timestamp to `command::Receiver` to improve tests
-            when: TIMESTAMP.get(),
-            code: self.code,
-            msg: self.msg.clone(),
-            // TODO: move description to `command::Receiver` to improve tests
-            description: "".to_string(), // TODO: format!("{} {}", super::SIGNATURE, version::STRING.clone())
-        }
-    }
-}
-
-impl From<response::Error> for Response {
-    fn from(error: response::Error) -> Response {
-        Self {
-            status: response::Status::E,
-            code: error.code,
-            msg: error.msg().clone(),
-            body: None,
-        }
-    }
-}
-
-impl From<response::ErrorCode> for Response {
-    fn from(code: response::ErrorCode) -> Response {
-        response::Error::from(code).into()
-    }
-}
-
-impl Serialize for Response {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let status = self.create_status_info();
-
-        use serde::ser::SerializeMap;
-        let mut map = serializer.serialize_map(Some(3))?;
-        map.serialize_entry("STATUS", &[&status])?;
-        if let Some((name, responses)) = &self.body {
-            map.serialize_entry(name, responses)?;
-        }
-        map.serialize_entry("id", &1)?;
-        map.end()
-    }
-}
-
-/// Container for a multi-reponse
+/// Container for a multi-response
 #[derive(Serialize, Debug)]
 pub struct MultiResponse {
     #[serde(flatten)]
@@ -179,8 +104,8 @@ impl MultiResponse {
         }
     }
 
-    pub fn add_response(&mut self, name: &str, response: Response) {
-        let response = json::to_value(&response).expect("BUG: cannot serialize response to JSON");
+    pub fn add_response(&mut self, name: &str, dispatch: response::Dispatch) {
+        let response = json::to_value(&dispatch).expect("BUG: cannot serialize response to JSON");
         self.responses
             .insert(name.to_string(), json::Value::Array(vec![response]));
     }
@@ -191,6 +116,6 @@ impl MultiResponse {
 #[derive(Serialize, Debug)]
 #[serde(untagged)]
 pub enum ResponseType {
-    Single(Response),
+    Single(response::Dispatch),
     Multi(MultiResponse),
 }
