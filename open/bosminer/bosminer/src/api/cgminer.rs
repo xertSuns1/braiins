@@ -537,5 +537,8 @@ impl command::Handler for Handler {
 
 pub async fn run(core: Arc<hub::Core>, listen_addr: SocketAddr) {
     let handler = Handler::new(core);
-    ii_cgminer_api::run(handler, listen_addr).await.unwrap();
+    let command_receiver = command::Receiver::new(handler);
+    ii_cgminer_api::run(command_receiver, listen_addr)
+        .await
+        .unwrap();
 }

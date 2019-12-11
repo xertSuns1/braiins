@@ -121,12 +121,9 @@ async fn handle_connection_task(mut conn: Connection, command_receiver: Arc<comm
 }
 
 /// Start up an API server with a `handler` object, listening on `listen_addr`
-pub async fn run<T>(handler: T, listen_addr: SocketAddr) -> io::Result<()>
-where
-    T: command::Handler + 'static,
-{
+pub async fn run(command_receiver: command::Receiver, listen_addr: SocketAddr) -> io::Result<()> {
     let mut server = Server::bind(&listen_addr)?;
-    let command_receiver = Arc::new(command::Receiver::new(handler));
+    let command_receiver = Arc::new(command_receiver);
 
     while let Some(conn) = server.next().await {
         if let Ok(conn) = conn {
