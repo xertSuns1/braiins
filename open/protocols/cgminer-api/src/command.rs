@@ -158,6 +158,9 @@ macro_rules! command {
         let handler = HandlerType::Parameter(f);
         Descriptor::new($name, handler, $check)
     }};
+    ($name:ident: BuiltIn($type:ident)) => {
+        Descriptor::new($name, HandlerType::$type, None)
+    };
 }
 
 /// Generates a map that associated a command name with its descriptor
@@ -165,7 +168,7 @@ macro_rules! commands {
     () => (
         HashMap::new()
     );
-    ($(($name:ident: $type:ident$(($parameter:expr))? $(-> $handler:ident . $method:ident)?)),+) => {
+    ($(($name:ident: $type:ident$(($parameter:ident))? $(-> $handler:ident . $method:ident)?)),+) => {
         {
             let mut map = HashMap::new();
             $(
@@ -198,8 +201,8 @@ where
         let check_asc: ParameterCheckHandler =
             Box::new(|command, parameter| Self::check_asc(command, parameter));
 
-        // add generic commands
-        let mut commands = commands![
+        let commands = commands![
+            // generic commands
             (POOLS: ParameterLess -> handler.handle_pools),
             (DEVS: ParameterLess -> handler.handle_devs),
             (EDEVS: ParameterLess -> handler.handle_edevs),
@@ -211,15 +214,11 @@ where
             (COIN: ParameterLess -> handler.handle_coin),
             (ASC_COUNT: ParameterLess -> handler.handle_asc_count),
             (ASC: Parameter(check_asc) -> handler.handle_asc),
-            (LCD: ParameterLess -> handler.handle_lcd)
+            (LCD: ParameterLess -> handler.handle_lcd),
+            // special built-in commands
+            (VERSION: BuiltIn(Version)),
+            (CHECK: BuiltIn(Check))
         ];
-
-        // add special built-in commands
-        commands.insert(
-            VERSION,
-            Descriptor::new(VERSION, HandlerType::Version, None),
-        );
-        commands.insert(CHECK, Descriptor::new(CHECK, HandlerType::Check, None));
 
         let description = format!("{} {}", miner_signature.clone(), miner_version.clone());
         Self {
