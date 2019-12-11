@@ -404,7 +404,7 @@ async fn test_api_basic() {
             "STATUS": "S",
             "When": 0,
             "Code": 22,
-            "Msg": "CGMiner versions",
+            "Msg": "TestMiner versions",
             "Description": "TestMiner v1.0",
         }],
         "VERSION": [{
@@ -426,7 +426,7 @@ async fn test_api_multiple() {
             "STATUS": [{
                 "Code": 33,
                 "Description": "TestMiner v1.0",
-                "Msg": "CGMiner config",
+                "Msg": "TestMiner config",
                 "STATUS": "S",
                 "When": 0
             }],
@@ -446,7 +446,7 @@ async fn test_api_multiple() {
             "STATUS": [{
                 "Code": 22,
                 "Description": "TestMiner v1.0",
-                "Msg": "CGMiner versions",
+                "Msg": "TestMiner versions",
                 "STATUS": "S",
                 "When": 0
             }],
