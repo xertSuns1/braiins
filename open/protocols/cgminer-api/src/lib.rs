@@ -28,11 +28,15 @@ pub mod support;
 #[cfg(test)]
 mod test;
 
+/// Re-export json because it is required in command handlers
+pub use serde_json as json;
+
 /// Global `Timestamp` flag, controls whether responses contain real timestamps.
 /// See also the `Timestamp` type.
 static TIMESTAMP: support::Timestamp = support::Timestamp::new();
 
 /// Version of CGMiner compatible API
-const API_VERSION: &str = "3.7";
+pub const API_VERSION: &str = "3.7";
+
 /// Miner signature where `CGMiner` text is used to be
 const SIGNATURE: &str = "bOSminer";

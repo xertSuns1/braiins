@@ -28,9 +28,8 @@ use crate::node::{self, Stats as _, WorkSolverStats as _};
 use crate::stats::{self, UnixTime as _};
 use crate::version;
 
-use support::ValueExt as _;
-
-use serde_json as json;
+use ii_cgminer_api::support::ValueExt as _;
+use ii_cgminer_api::{command, json, response, server};
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -437,9 +436,10 @@ impl command::Handler for Handler {
     }
 
     async fn handle_version(&self) -> command::Result<response::Version> {
+        // TODO: create built-in handler
         Ok(response::Version {
             miner: version::STRING.clone(),
-            api: API_VERSION.into(),
+            api: ii_cgminer_api::API_VERSION.into(),
         })
     }
 

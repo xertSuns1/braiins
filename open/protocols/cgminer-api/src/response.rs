@@ -22,7 +22,7 @@
 
 //! Defines all the CGMiner API responses
 
-use super::support::Response;
+use crate::support::Response;
 
 use serde::{Serialize, Serializer};
 use serde_repr::Serialize_repr;

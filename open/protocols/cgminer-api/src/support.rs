@@ -22,10 +22,8 @@
 
 //! Defines support structures for API responses serialization
 
-use super::response;
-use super::TIMESTAMP;
-
-use crate::version;
+use crate::response;
+use crate::TIMESTAMP;
 
 use serde::{Serialize, Serializer};
 use serde_json as json;
@@ -127,7 +125,7 @@ impl Response {
             code,
             msg,
             // TODO: move description to `command::Receiver` to improve tests
-            description: format!("{} {}", super::SIGNATURE, version::STRING.clone()),
+            description: "".to_string(), // TODO: format!("{} {}", super::SIGNATURE, version::STRING.clone())
         }
     }
 }
