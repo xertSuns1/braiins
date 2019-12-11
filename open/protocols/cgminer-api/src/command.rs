@@ -300,7 +300,11 @@ where
 
     #[inline]
     fn get_single_response(&self, dispatch: response::Dispatch) -> ResponseType {
-        ResponseType::Single(dispatch.into_response(T::when(), self.description.clone()))
+        ResponseType::Single(dispatch.into_response(
+            T::when(),
+            &self.miner_signature,
+            &self.description,
+        ))
     }
 
     /// Handles a command request that can actually be a batched request of multiple commands

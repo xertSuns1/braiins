@@ -483,7 +483,7 @@ impl From<Version> for Dispatch {
             vec![version],
             "VERSION",
             StatusCode::Version,
-            format!("{} versions", super::SIGNATURE),
+            format!("{} versions", crate::SIGNATURE_TAG),
         )
     }
 }
@@ -514,7 +514,7 @@ impl From<Config> for Dispatch {
             vec![config],
             "CONFIG",
             StatusCode::MineConfig,
-            format!("{} config", super::SIGNATURE),
+            format!("{} config", crate::SIGNATURE_TAG),
         )
     }
 }
@@ -658,7 +658,7 @@ impl From<Stats> for Dispatch {
             stats.into_list(),
             "STATS",
             StatusCode::Stats,
-            format!("{} stats", super::SIGNATURE),
+            format!("{} stats", crate::SIGNATURE_TAG),
         )
     }
 }
@@ -702,7 +702,7 @@ impl From<Coin> for Dispatch {
             vec![coin],
             "COIN",
             StatusCode::Coin,
-            format!("{} coin", super::SIGNATURE),
+            format!("{} coin", crate::SIGNATURE_TAG),
         )
     }
 }
@@ -784,19 +784,29 @@ impl Dispatch {
         }
     }
 
-    fn create_status_info(&self, when: Time, description: String) -> StatusInfo {
+    fn create_status_info(
+        &self,
+        when: Time,
+        signature: &String,
+        description: &String,
+    ) -> StatusInfo {
         StatusInfo {
             status: self.status,
             when,
             code: self.code,
-            msg: self.msg.clone(),
-            description,
+            msg: self.msg.replace(crate::SIGNATURE_TAG, signature.as_str()),
+            description: description.clone(),
         }
     }
 
-    pub fn into_response(self, when: Time, description: String) -> support::SingleResponse {
+    pub fn into_response(
+        self,
+        when: Time,
+        signature: &String,
+        description: &String,
+    ) -> support::SingleResponse {
         support::SingleResponse {
-            status_info: self.create_status_info(when, description),
+            status_info: self.create_status_info(when, signature, description),
             body: self.body,
         }
     }

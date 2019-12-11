@@ -44,8 +44,11 @@ pub use serde_json as json;
 
 /// Version of CGMiner compatible API
 pub const API_VERSION: &str = "3.7";
+
 /// Default signature of CGMiner API
 pub const SIGNATURE: &str = "CGMiner";
+/// Format tag for response messages replaced in dispatcher with real signature
+pub const SIGNATURE_TAG: &str = "{SIGNATURE}";
 
 /// Codec for the CGMiner API.
 /// The `Codec` decodes `Command`s and encodes `ResponseSet`s.
