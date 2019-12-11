@@ -282,7 +282,9 @@ impl Receiver {
             .get("command")
             .and_then(json::Value::as_str)
         {
-            None => return ResponseType::Single(response::ErrorCode::MissingCommand.into()),
+            None => {
+                return ResponseType::Single(response::ErrorCode::MissingCommand.into_response());
+            }
             Some(value) => value,
         };
         let commands: Vec<_> = command
@@ -292,14 +294,18 @@ impl Receiver {
         let parameter = command_request.value.get("parameter");
 
         if commands.len() == 0 {
-            ResponseType::Single(response::ErrorCode::InvalidCommand.into())
+            ResponseType::Single(response::ErrorCode::InvalidCommand.into_response())
         } else if commands.len() == 1 {
-            ResponseType::Single(self.handle_single(command, parameter, false).await)
+            ResponseType::Single(
+                self.handle_single(command, parameter, false)
+                    .await
+                    .into_response(),
+            )
         } else {
             let mut responses = MultiResponse::new();
             for command in commands {
-                let response = self.handle_single(command, parameter, true).await;
-                responses.add_response(command, response);
+                let dispatch = self.handle_single(command, parameter, true).await;
+                responses.add_response(command, dispatch.into_response());
             }
             ResponseType::Multi(responses)
         }
