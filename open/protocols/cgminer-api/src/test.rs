@@ -307,20 +307,32 @@ impl command::Handler for TestHandler {
     }
 }
 
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+#[repr(u32)]
+pub enum CustomStatusCode {
+    // command status codes
+    CustomCommandOne = 1,
+}
+
+impl From<CustomStatusCode> for u32 {
+    fn from(code: CustomStatusCode) -> Self {
+        code as u32
+    }
+}
+
 #[derive(Serialize, PartialEq, Clone, Debug)]
-pub struct CustomCommand {
+pub struct CustomCommandOne {
     #[serde(rename = "Attribute")]
     pub attribute: String,
 }
 
-impl From<CustomCommand> for response::Dispatch {
-    fn from(custom_command: CustomCommand) -> response::Dispatch {
-        response::Dispatch::from_success(
+impl From<CustomCommandOne> for response::Dispatch {
+    fn from(custom_command: CustomCommandOne) -> Self {
+        response::Dispatch::from_custom_success(
             vec![custom_command],
-            "CUSTOM_COMMAND",
-            // TODO: implement custom status codes
-            response::StatusCode::Pool,
-            format!("{} custom command", crate::SIGNATURE_TAG),
+            "CUSTOM_COMMAND_ONE",
+            CustomStatusCode::CustomCommandOne,
+            format!("{} custom command {}", crate::SIGNATURE_TAG, 1),
         )
     }
 }
@@ -328,8 +340,8 @@ impl From<CustomCommand> for response::Dispatch {
 struct TestCustomHandler;
 
 impl TestCustomHandler {
-    async fn handle_config(&self) -> command::Result<CustomCommand> {
-        Ok(CustomCommand {
+    async fn handle_config(&self) -> command::Result<CustomCommandOne> {
+        Ok(CustomCommandOne {
             attribute: "value".to_string(),
         })
     }
@@ -504,23 +516,23 @@ async fn test_multiple() {
 async fn test_single_custom_command() {
     let handler = Arc::new(TestCustomHandler);
 
-    const CUSTOM_COMMAND: &str = "custom_command";
+    const CUSTOM_COMMAND_ONE: &str = "custom_command_one";
     let custom_commands = commands![
-        (CUSTOM_COMMAND: ParameterLess -> handler.handle_config)
+        (CUSTOM_COMMAND_ONE: ParameterLess -> handler.handle_config)
     ];
 
-    let command: json::Value = json::json!({ "command": CUSTOM_COMMAND });
+    let command: json::Value = json::json!({ "command": CUSTOM_COMMAND_ONE });
 
     let response = codec_roundtrip(command, custom_commands).await;
     let expected = json::json!({
         "STATUS": [{
             "STATUS": "S",
             "When": 0,
-            "Code": 7,
-            "Msg": "TestMiner custom command",
+            "Code": 301,
+            "Msg": "TestMiner custom command 1",
             "Description": "TestMiner v1.0",
         }],
-        "CUSTOM_COMMAND": [{
+        "CUSTOM_COMMAND_ONE": [{
             "Attribute": "value",
         }],
         "id": 1

@@ -26,7 +26,6 @@ use crate::support;
 
 use serde::{Serialize, Serializer};
 use serde_json as json;
-use serde_repr::Serialize_repr;
 
 pub type Time = u32;
 pub type Elapsed = u64;
@@ -102,7 +101,7 @@ pub enum MultipoolStrategy {
     Balance,
 }
 
-#[derive(Serialize_repr, Eq, PartialEq, Copy, Clone, Debug)]
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
 #[repr(u32)]
 pub enum StatusCode {
     // command status codes
@@ -126,6 +125,34 @@ pub enum StatusCode {
     AccessDeniedCmd = 45,
     MissingCheckCmd = 71,
     InvalidAscId = 107,
+
+    // special value which is added to the custom status codes
+    CustomBase = 300,
+}
+
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+pub enum StatusCodeType {
+    Protocol(StatusCode),
+    Custom(u32),
+}
+
+impl From<StatusCode> for StatusCodeType {
+    fn from(code: StatusCode) -> Self {
+        StatusCodeType::Protocol(code)
+    }
+}
+
+impl Serialize for StatusCodeType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let code = match self {
+            StatusCodeType::Protocol(code) => *code as u32,
+            StatusCodeType::Custom(code) => StatusCode::CustomBase as u32 + *code,
+        };
+        serializer.serialize_u32(code)
+    }
 }
 
 pub enum ErrorCode {
@@ -138,13 +165,13 @@ pub enum ErrorCode {
 }
 
 impl From<ErrorCode> for Dispatch {
-    fn from(code: ErrorCode) -> Dispatch {
+    fn from(code: ErrorCode) -> Self {
         Error::from(code).into()
     }
 }
 
 pub struct Error {
-    pub code: StatusCode,
+    pub code: StatusCodeType,
     msg: String,
 }
 
@@ -184,12 +211,15 @@ impl From<ErrorCode> for Error {
             ),
         };
 
-        Self { code, msg }
+        Self {
+            code: code.into(),
+            msg,
+        }
     }
 }
 
 impl From<Error> for Dispatch {
-    fn from(error: Error) -> Dispatch {
+    fn from(error: Error) -> Self {
         Self {
             status: Status::E,
             code: error.code,
@@ -206,7 +236,7 @@ pub struct StatusInfo {
     #[serde(rename = "STATUS")]
     pub status: Status,
     pub when: Time,
-    pub code: StatusCode,
+    pub code: StatusCodeType,
     pub msg: String,
     pub description: String,
 }
@@ -293,12 +323,12 @@ pub struct Pools {
 }
 
 impl From<Pools> for Dispatch {
-    fn from(pools: Pools) -> Dispatch {
+    fn from(pools: Pools) -> Self {
         let pool_count = pools.list.len();
         Dispatch::from_success(
             pools.list,
             "POOLS",
-            StatusCode::Pool,
+            StatusCode::Pool.into(),
             format!("{} Pool(s)", pool_count),
         )
     }
@@ -361,9 +391,14 @@ pub struct Asc {
 }
 
 impl From<Asc> for Dispatch {
-    fn from(asc: Asc) -> Dispatch {
+    fn from(asc: Asc) -> Self {
         let idx = asc.idx;
-        Dispatch::from_success(vec![asc], "ASC", StatusCode::Asc, format!("ASC{}", idx))
+        Dispatch::from_success(
+            vec![asc],
+            "ASC",
+            StatusCode::Asc.into(),
+            format!("ASC{}", idx),
+        )
     }
 }
 
@@ -373,12 +408,12 @@ pub struct Devs {
 }
 
 impl From<Devs> for Dispatch {
-    fn from(devs: Devs) -> Dispatch {
+    fn from(devs: Devs) -> Self {
         let asc_count = devs.list.len();
         Dispatch::from_success(
             devs.list,
             "DEVS",
-            StatusCode::Devs,
+            StatusCode::Devs.into(),
             format!("{} ASC(s)", asc_count),
         )
     }
@@ -447,11 +482,11 @@ pub struct Summary {
 }
 
 impl From<Summary> for Dispatch {
-    fn from(summary: Summary) -> Dispatch {
+    fn from(summary: Summary) -> Self {
         Dispatch::from_success(
             vec![summary],
             "SUMMARY",
-            StatusCode::Summary,
+            StatusCode::Summary.into(),
             "Summary".to_string(),
         )
     }
@@ -478,11 +513,11 @@ impl Serialize for Version {
 }
 
 impl From<Version> for Dispatch {
-    fn from(version: Version) -> Dispatch {
+    fn from(version: Version) -> Self {
         Dispatch::from_success(
             vec![version],
             "VERSION",
-            StatusCode::Version,
+            StatusCode::Version.into(),
             format!("{} versions", crate::SIGNATURE_TAG),
         )
     }
@@ -509,11 +544,11 @@ pub struct Config {
 }
 
 impl From<Config> for Dispatch {
-    fn from(config: Config) -> Dispatch {
+    fn from(config: Config) -> Self {
         Dispatch::from_success(
             vec![config],
             "CONFIG",
-            StatusCode::MineConfig,
+            StatusCode::MineConfig.into(),
             format!("{} config", crate::SIGNATURE_TAG),
         )
     }
@@ -543,11 +578,11 @@ pub struct DevDetails {
 }
 
 impl From<DevDetails> for Dispatch {
-    fn from(dev_details: DevDetails) -> Dispatch {
+    fn from(dev_details: DevDetails) -> Self {
         Dispatch::from_success(
             dev_details.list,
             "DEVDETAILS",
-            StatusCode::DevDetails,
+            StatusCode::DevDetails.into(),
             "Device Details".to_string(),
         )
     }
@@ -653,11 +688,11 @@ impl Stats {
 }
 
 impl From<Stats> for Dispatch {
-    fn from(stats: Stats) -> Dispatch {
+    fn from(stats: Stats) -> Self {
         Dispatch::from_success(
             stats.into_list(),
             "STATS",
-            StatusCode::Stats,
+            StatusCode::Stats.into(),
             format!("{} stats", crate::SIGNATURE_TAG),
         )
     }
@@ -672,11 +707,11 @@ pub(crate) struct Check {
 }
 
 impl From<Check> for Dispatch {
-    fn from(check: Check) -> Dispatch {
+    fn from(check: Check) -> Self {
         Dispatch::from_success(
             vec![check],
             "CHECK",
-            StatusCode::Check,
+            StatusCode::Check.into(),
             "Check command".to_string(),
         )
     }
@@ -697,11 +732,11 @@ pub struct Coin {
 }
 
 impl From<Coin> for Dispatch {
-    fn from(coin: Coin) -> Dispatch {
+    fn from(coin: Coin) -> Self {
         Dispatch::from_success(
             vec![coin],
             "COIN",
-            StatusCode::Coin,
+            StatusCode::Coin.into(),
             format!("{} coin", crate::SIGNATURE_TAG),
         )
     }
@@ -714,11 +749,11 @@ pub struct AscCount {
 }
 
 impl From<AscCount> for Dispatch {
-    fn from(asc_count: AscCount) -> Dispatch {
+    fn from(asc_count: AscCount) -> Self {
         Dispatch::from_success(
             vec![asc_count],
             "ASCS",
-            StatusCode::AscCount,
+            StatusCode::AscCount.into(),
             "ASC count".to_string(),
         )
     }
@@ -753,8 +788,8 @@ pub struct Lcd {
 }
 
 impl From<Lcd> for Dispatch {
-    fn from(lcd: Lcd) -> Dispatch {
-        Dispatch::from_success(vec![lcd], "LCD", StatusCode::Lcd, "LCD".to_string())
+    fn from(lcd: Lcd) -> Self {
+        Dispatch::from_success(vec![lcd], "LCD", StatusCode::Lcd.into(), "LCD".to_string())
     }
 }
 
@@ -762,16 +797,16 @@ impl From<Lcd> for Dispatch {
 #[derive(Debug)]
 pub struct Dispatch {
     status: Status,
-    code: StatusCode,
+    code: StatusCodeType,
     msg: String,
     body: Option<(&'static str, json::Value)>,
 }
 
 impl Dispatch {
-    pub fn from_success<S: Serialize>(
+    fn from_success<S: Serialize>(
         responses: Vec<S>,
         name: &'static str,
-        code: StatusCode,
+        code: StatusCodeType,
         msg: String,
     ) -> Self {
         let responses = json::to_value(responses).expect("Response serialization failed");
@@ -782,6 +817,19 @@ impl Dispatch {
             msg,
             body: Some((name, responses)),
         }
+    }
+
+    pub fn from_custom_success<S, T>(
+        responses: Vec<S>,
+        name: &'static str,
+        code: T,
+        msg: String,
+    ) -> Self
+    where
+        S: Serialize,
+        T: Into<u32>,
+    {
+        Self::from_success(responses, name, StatusCodeType::Custom(code.into()), msg)
     }
 
     fn create_status_info(
