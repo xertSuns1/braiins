@@ -133,19 +133,20 @@ impl Descriptor {
 
 /// Generates a descriptor for a specified command type (`ParameterLess` or `Parameter`) that also
 /// contains an appropriate handler
+#[macro_export]
 macro_rules! command {
     ($name:ident: ParameterLess -> $handler:ident . $method:ident) => {{
         let handler = $handler.clone();
-        let f: ParameterLessHandler = Box::new(move || {
+        let f: $crate::command::ParameterLessHandler = Box::new(move || {
             let handler = handler.clone();
             Box::pin(async move { handler.$method().await.map(|response| response.into()) })
         });
-        let handler = HandlerType::ParameterLess(f);
-        Descriptor::new($name, handler, None)
+        let handler = $crate::command::HandlerType::ParameterLess(f);
+        $crate::command::Descriptor::new($name, handler, None)
     }};
     ($name:ident: Parameter($check:expr) -> $handler:ident . $method:ident) => {{
         let handler = $handler.clone();
-        let f: ParameterHandler = Box::new(move |parameter| {
+        let f: $crate::command::ParameterHandler = Box::new(move |parameter| {
             let handler = handler.clone();
             let parameter = parameter.cloned();
             Box::pin(async move {
@@ -155,22 +156,23 @@ macro_rules! command {
                     .map(|response| response.into())
             })
         });
-        let handler = HandlerType::Parameter(f);
-        Descriptor::new($name, handler, $check)
+        let handler = $crate::command::HandlerType::Parameter(f);
+        $crate::command::Descriptor::new($name, handler, $check)
     }};
     ($name:ident: BuiltIn($type:ident)) => {
-        Descriptor::new($name, HandlerType::$type, None)
+        $crate::command::Descriptor::new($name, $crate::command::HandlerType::$type, None)
     };
 }
 
 /// Generates a map that associated a command name with its descriptor
+#[macro_export]
 macro_rules! commands {
     () => (
-        HashMap::new()
+        ::std::collections::HashMap::new()
     );
     ($(($name:ident: $type:ident$(($parameter:ident))? $(-> $handler:ident . $method:ident)?)),+) => {
         {
-            let mut map = HashMap::new();
+            let mut map = ::std::collections::HashMap::new();
             $(
                 let descriptor = command!($name: $type $(($parameter))? $(-> $handler . $method)?);
                 map.insert($name, descriptor);
@@ -192,16 +194,22 @@ impl<T> Receiver<T>
 where
     T: When,
 {
-    pub fn new<U>(handler: U, miner_signature: String, miner_version: String) -> Self
+    pub fn new<U, V>(
+        handler: U,
+        miner_signature: String,
+        miner_version: String,
+        custom_commands: V,
+    ) -> Self
     where
         U: Handler + 'static,
+        V: Into<Option<HashMap<&'static str, Descriptor>>>,
     {
         let handler = Arc::new(handler);
 
         let check_asc: ParameterCheckHandler =
             Box::new(|command, parameter| Self::check_asc(command, parameter));
 
-        let commands = commands![
+        let mut commands = commands![
             // generic commands
             (POOLS: ParameterLess -> handler.handle_pools),
             (DEVS: ParameterLess -> handler.handle_devs),
@@ -219,6 +227,10 @@ where
             (VERSION: BuiltIn(Version)),
             (CHECK: BuiltIn(Check))
         ];
+
+        if let Some(custom_commands) = custom_commands.into() {
+            commands.extend(custom_commands.into_iter());
+        }
 
         let description = format!("{} {}", miner_signature.clone(), miner_version.clone());
         Self {
