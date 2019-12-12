@@ -34,8 +34,6 @@ use json::Value;
 use serde::Serialize;
 use serde_json as json;
 
-use std::collections::HashMap;
-
 struct TestHandler;
 
 #[async_trait::async_trait]
@@ -347,7 +345,7 @@ impl support::When for ZeroTime {
 
 async fn codec_roundtrip<T>(command: json::Value, custom_commands: T) -> Value
 where
-    T: Into<Option<HashMap<&'static str, command::Descriptor>>>,
+    T: Into<Option<command::Map>>,
 {
     let command_receiver = command::Receiver::<ZeroTime>::new(
         TestHandler,

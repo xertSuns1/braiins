@@ -52,6 +52,8 @@ const ASC: &str = "asc";
 const LCD: &str = "lcd";
 
 pub type Result<T> = std::result::Result<T, response::Error>;
+/// Type describing command table
+pub type Map = HashMap<&'static str, Descriptor>;
 
 /// A handler to be implemented by the API implementation,
 /// takes care of producing a response for each command.
@@ -168,11 +170,11 @@ macro_rules! command {
 #[macro_export]
 macro_rules! commands {
     () => (
-        ::std::collections::HashMap::new()
+        $crate::command::Map::new()
     );
     ($(($name:ident: $type:ident$(($parameter:ident))? $(-> $handler:ident . $method:ident)?)),+) => {
         {
-            let mut map = ::std::collections::HashMap::new();
+            let mut map = $crate::command::Map::new();
             $(
                 let descriptor = command!($name: $type $(($parameter))? $(-> $handler . $method)?);
                 map.insert($name, descriptor);
@@ -183,7 +185,7 @@ macro_rules! commands {
 }
 
 pub struct Receiver<T = UnixTime> {
-    commands: HashMap<&'static str, Descriptor>,
+    commands: Map,
     miner_signature: String,
     miner_version: String,
     description: String,
@@ -202,7 +204,7 @@ where
     ) -> Self
     where
         U: Handler + 'static,
-        V: Into<Option<HashMap<&'static str, Descriptor>>>,
+        V: Into<Option<Map>>,
     {
         let handler = Arc::new(handler);
 

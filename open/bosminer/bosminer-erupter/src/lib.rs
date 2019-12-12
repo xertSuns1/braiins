@@ -165,8 +165,19 @@ impl hal::Backend for Backend {
         }))
     }
 
-    async fn init_work_solver(work_solver: Arc<Self>) {
+    async fn init_work_hub(
+        _work_hub: work::SolverBuilder<Self::Type>,
+    ) -> bosminer::Result<hal::FrontendConfiguration> {
+        panic!("BUG: called `init_work_hub`");
+    }
+
+    async fn init_work_solver(
+        work_solver: Arc<Self>,
+    ) -> bosminer::Result<hal::FrontendConfiguration> {
         // TODO: remove it after `node::WorkSolver` trait will be extended with `enable` method
         work_solver.enable();
+        Ok(hal::FrontendConfiguration {
+            cgminer_custom_commands: None,
+        })
     }
 }

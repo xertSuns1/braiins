@@ -20,8 +20,11 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use crate::error;
 use crate::node;
 use crate::work;
+
+use ii_cgminer_api::command;
 
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -49,6 +52,10 @@ pub type WorkNode<T> = node::WorkSolverType<
     Box<dyn FnOnce(work::Generator, work::SolutionSender) -> T + Send + Sync>,
 >;
 
+pub struct FrontendConfiguration {
+    pub cgminer_custom_commands: Option<command::Map>,
+}
+
 /// Minimal interface for running compatible backend with bOSminer crate
 #[async_trait]
 pub trait Backend: Send + Sync + 'static {
@@ -74,12 +81,20 @@ pub trait Backend: Send + Sync + 'static {
     /// blocking operation should be moved to init method which is asynchronous.
     fn create(args: clap::ArgMatches<'_>, backend_config: ::config::Value) -> WorkNode<Self::Type>;
 
+    // TODO: Create empty default implementation for `init_*` functions after `async_trait` will
+    // allow default implementation for methods with return value.
+
     /// Function is called when `create` function returns `node::WorkSolverType::WorkHub`
     /// Passed work hub should be used for creating backend hierarchy consisting of work hubs and
     /// work solvers. All nodes should be also initialized.
-    async fn init_work_hub(_work_hub: work::SolverBuilder<Self::Type>) {}
+    async fn init_work_hub(
+        _work_hub: work::SolverBuilder<Self::Type>,
+    ) -> error::Result<FrontendConfiguration>;
+
     /// Function is called when `create` function returns `node::WorkSolverType::WorkSolver`
     /// Passed work solver is available for time consuming initialization which should not be done
     /// in create function.
-    async fn init_work_solver(_work_solver: Arc<Self::Type>) {}
+    async fn init_work_solver(
+        _work_solver: Arc<Self::Type>,
+    ) -> error::Result<FrontendConfiguration>;
 }
