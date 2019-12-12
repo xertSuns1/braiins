@@ -176,8 +176,20 @@ pub struct Error {
 }
 
 impl Error {
+    #[inline]
     pub fn msg(&self) -> &String {
         &self.msg
+    }
+
+    #[inline]
+    pub fn from_custom_error<T>(code: T, msg: String) -> Self
+    where
+        T: Into<u32>,
+    {
+        Self {
+            code: StatusCodeType::Custom(code.into()),
+            msg,
+        }
     }
 }
 
