@@ -310,8 +310,8 @@ impl command::Handler for TestHandler {
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
 #[repr(u32)]
 pub enum CustomStatusCode {
-    // command status codes
     CustomCommandOne = 1,
+    CustomCommandTwo = 2,
 }
 
 impl From<CustomStatusCode> for u32 {
@@ -337,13 +337,41 @@ impl From<CustomCommandOne> for response::Dispatch {
     }
 }
 
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct CustomCommandTwo {
+    #[serde(rename = "Attribute")]
+    pub value: u32,
+}
+
+impl From<CustomCommandTwo> for response::Dispatch {
+    fn from(custom_command: CustomCommandTwo) -> Self {
+        response::Dispatch::from_custom_success(
+            vec![custom_command],
+            "CUSTOM_COMMAND_TWO",
+            CustomStatusCode::CustomCommandTwo,
+            format!(
+                "{} custom command {} with parameters",
+                crate::SIGNATURE_TAG,
+                2
+            ),
+        )
+    }
+}
+
 struct TestCustomHandler;
 
 impl TestCustomHandler {
-    async fn handle_config(&self) -> command::Result<CustomCommandOne> {
+    async fn handle_command_one(&self) -> command::Result<CustomCommandOne> {
         Ok(CustomCommandOne {
             attribute: "value".to_string(),
         })
+    }
+
+    async fn handle_command_two(
+        &self,
+        _parameter: Option<&json::Value>,
+    ) -> command::Result<CustomCommandTwo> {
+        Ok(CustomCommandTwo { value: 0 })
     }
 }
 
@@ -516,12 +544,12 @@ async fn test_multiple() {
 async fn test_single_custom_command() {
     let handler = Arc::new(TestCustomHandler);
 
-    const CUSTOM_COMMAND_ONE: &str = "custom_command_one";
+    const CUSTOM_COMMAND: &str = "custom_command";
     let custom_commands = commands![
-        (CUSTOM_COMMAND_ONE: ParameterLess -> handler.handle_config)
+        (CUSTOM_COMMAND: ParameterLess -> handler.handle_command_one)
     ];
 
-    let command: json::Value = json::json!({ "command": CUSTOM_COMMAND_ONE });
+    let command: json::Value = json::json!({ "command": CUSTOM_COMMAND });
 
     let response = codec_roundtrip(command, custom_commands).await;
     let expected = json::json!({
@@ -536,6 +564,52 @@ async fn test_single_custom_command() {
             "Attribute": "value",
         }],
         "id": 1
+    });
+
+    assert_json_eq(&response, &expected);
+}
+
+#[tokio::test]
+async fn test_multiple_custom_commands() {
+    let handler = Arc::new(TestCustomHandler);
+
+    const CUSTOM_COMMAND_ONE: &str = "custom_command_one";
+    const CUSTOM_COMMAND_TWO: &str = "custom_command_two";
+
+    let custom_commands = commands![
+        (CUSTOM_COMMAND_ONE: ParameterLess -> handler.handle_command_one),
+        (CUSTOM_COMMAND_TWO: Parameter(None) -> handler.handle_command_two)
+    ];
+
+    let command: json::Value =
+        json::json!({ "command": format!("{}+{}", CUSTOM_COMMAND_ONE, CUSTOM_COMMAND_TWO) });
+
+    let response = codec_roundtrip(command, custom_commands).await;
+    let expected = json::json!({
+        "custom_command_one": [{
+            "STATUS": [{
+                "Code": 301,
+                "Description": "TestMiner v1.0",
+                "Msg": "TestMiner custom command 1",
+                "STATUS": "S",
+                "When": 0
+            }],
+            "CUSTOM_COMMAND_ONE": [{
+                "Attribute": "value",
+            }],
+            "id": 1
+        }],
+        "custom_command_two": [{
+            "STATUS": [{
+                "Code": 45,
+                "Description": "TestMiner v1.0",
+                "Msg": "Access denied to 'custom_command_two' command",
+                "STATUS": "E",
+                "When": 0
+            }],
+            "id": 1
+        }],
+        "id": 1,
     });
 
     assert_json_eq(&response, &expected);
