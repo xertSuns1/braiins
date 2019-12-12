@@ -269,6 +269,98 @@ fn blocks(size: usize, block_size: usize) -> (usize, usize) {
     (size / block_size, size % block_size)
 }
 
+/// Representation of `BADCORE` section in PIC flash
+/// TODO: where to put this?
+#[derive(Debug, Clone)]
+pub struct FlashBadcore {
+    pub bad_cores: Vec<u8>,
+}
+
+impl FlashBadcore {
+    /// Location of `BADCORE` info in flash
+    const START: PicAddress = PicAddress(0xf80);
+    const LEN: PicWords = PicWords(0x20);
+
+    /// Magic byte
+    const MAGIC: u8 = 0x23;
+
+    /// How many badcore information is stored here?
+    const NUM_CHIPS: usize = 63;
+
+    pub fn parse(data: Vec<u8>) -> Option<Self> {
+        assert_eq!(data.len(), 0x40);
+
+        // Is flash valid?
+        if data[0] != Self::MAGIC {
+            warn!("Power controller: BADCORE flash invalid");
+            return None;
+        }
+
+        // Make a badcore vector
+        let bad_cores = (0..Self::NUM_CHIPS)
+            .map(|i| {
+                if i % 2 == 0 {
+                    data[i + 1] >> 4
+                } else {
+                    data[i] & 0x0f
+                }
+            })
+            .collect::<Vec<u8>>();
+
+        // Build structure
+        Some(Self { bad_cores })
+    }
+}
+
+/// Representation of `FREQ` section in PIC flash
+/// TODO: where to put this?
+/// TODO: provide actual frequencies, not just frequency indexes
+#[derive(Debug, Clone)]
+pub struct FlashFreq {
+    pub pic_temp_offset: u8,
+    pub base_freq_index: u8,
+    pub freq_index: Vec<u8>,
+}
+
+impl FlashFreq {
+    /// Location of `FREQ` info in flash
+    const START: PicAddress = PicAddress(0xfa0);
+    const LEN: PicWords = PicWords(0x40);
+
+    /// Magic byte
+    const MAGIC: u8 = 0x7d;
+
+    /// How many badcore information is stored here?
+    const NUM_CHIPS: usize = 63;
+
+    pub fn parse(data: Vec<u8>) -> Option<Self> {
+        assert_eq!(data.len(), 0x80);
+
+        // Is flash valid?
+        if data[1] != Self::MAGIC {
+            warn!("Power controller: FREQ flash invalid");
+            return None;
+        }
+
+        // Parse flash
+        let mut step_down = data[0] & 0x3f;
+        if step_down == 0x3f {
+            step_down = 0;
+        }
+        let pic_temp_offset = ((data[2] & 0x0f) << 4) | (data[4] & 0x0f);
+        let base_freq_index = ((data[6] & 0x0f) << 4) | (data[8] & 0x0f);
+        let freq_index = (0..Self::NUM_CHIPS)
+            .map(|i| data[3 + i * 2] - step_down)
+            .collect::<Vec<u8>>();
+
+        Some(Self {
+            pic_temp_offset,
+            base_freq_index,
+            freq_index,
+        })
+    }
+}
+
 /// Represents a voltage controller for a particular hashboard
 ///
 /// NOTE: Some I2C PIC commands require explicit wait time before issuing new
@@ -289,6 +381,9 @@ pub struct Control {
     /// Tracks current voltage
     /// Locks: first take this, then `backend`
     current_voltage: Mutex<Option<Voltage>>,
+    /// Information from PIC flash
+    badcore_flash: Mutex<Option<FlashBadcore>>,
+    freq_flash: Mutex<Option<FlashFreq>>,
 }
 
 impl Control {
@@ -351,6 +446,7 @@ impl Control {
     /// be divisible `FLASH_XFER_BLOCK_SIZE_BYTES`.
     /// Beware that you are specifying the size in `PicWords`, and you get twice as many bytes
     /// as a result.
+    /// TODO: maybe return `Vec<PicWord>` and a way to convert it to `Vec<u8>`
     pub async fn read_flash(
         &self,
         start: PicAddress,
@@ -528,11 +624,21 @@ impl Control {
         Self {
             backend: Mutex::new(HashboardBackend::new(backend, hashboard_idx)),
             current_voltage: Mutex::new(None),
+            badcore_flash: Mutex::new(None),
+            freq_flash: Mutex::new(None),
         }
     }
 
     async fn reset_and_start_app(&self) -> error::Result<u8> {
         self.reset().await?;
+        // Dump PIC flash. This can be done only before jumping to app.
+        *self.badcore_flash.lock().await = FlashBadcore::parse(
+            self.read_flash(FlashBadcore::START, FlashBadcore::LEN)
+                .await?,
+        );
+        *self.freq_flash.lock().await =
+            FlashFreq::parse(self.read_flash(FlashFreq::START, FlashFreq::LEN).await?);
+
         self.jump_from_loader_to_app().await?;
         Ok(self.get_version().await?)
     }
