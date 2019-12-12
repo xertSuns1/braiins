@@ -312,11 +312,31 @@ impl command::Handler for TestHandler {
 pub enum CustomStatusCode {
     CustomCommandOne = 1,
     CustomCommandTwo = 2,
+
+    // custom error codes
+    MissingParameter = 10,
 }
 
 impl From<CustomStatusCode> for u32 {
     fn from(code: CustomStatusCode) -> Self {
         code as u32
+    }
+}
+
+pub enum CustomErrorCode {
+    MissingParameter(String),
+}
+
+impl From<CustomErrorCode> for response::Error {
+    fn from(code: CustomErrorCode) -> Self {
+        let (code, msg) = match code {
+            CustomErrorCode::MissingParameter(name) => (
+                CustomStatusCode::MissingParameter,
+                format!("Missing parameter '{}'", name),
+            ),
+        };
+
+        Self::from_custom_error(code, msg)
     }
 }
 
@@ -371,8 +391,12 @@ impl TestCustomHandler {
         &self,
         parameter: Option<&json::Value>,
     ) -> command::Result<CustomCommandTwo> {
-        let value = parameter.unwrap().as_u64().unwrap() as u32;
-        Ok(CustomCommandTwo { value })
+        parameter
+            .ok_or_else(|| CustomErrorCode::MissingParameter("value".to_string()).into())
+            .map(|value| {
+                let value = value.as_u64().unwrap() as u32;
+                CustomCommandTwo { value }
+            })
     }
 }
 
@@ -595,6 +619,32 @@ async fn test_single_custom_command_with_parameter() {
         }],
         "CUSTOM_COMMAND_TWO": [{
             "Value": 42,
+        }],
+        "id": 1
+    });
+
+    assert_json_eq(&response, &expected);
+}
+
+#[tokio::test]
+async fn test_single_custom_command_error() {
+    let handler = Arc::new(TestCustomHandler);
+
+    const CUSTOM_COMMAND: &str = "custom_command";
+    let custom_commands = commands![
+        (CUSTOM_COMMAND: Parameter(None) -> handler.handle_command_two)
+    ];
+
+    let command: json::Value = json::json!({ "command": CUSTOM_COMMAND });
+
+    let response = codec_roundtrip(command, custom_commands).await;
+    let expected = json::json!({
+        "STATUS": [{
+            "STATUS": "E",
+            "When": 0,
+            "Code": 310,
+            "Msg": "Missing parameter 'value'",
+            "Description": "TestMiner v1.0",
         }],
         "id": 1
     });
