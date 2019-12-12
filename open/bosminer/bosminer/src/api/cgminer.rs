@@ -530,13 +530,17 @@ impl command::Handler for Handler {
     }
 }
 
-pub async fn run(core: Arc<hub::Core>, listen_addr: SocketAddr) {
+pub async fn run(
+    core: Arc<hub::Core>,
+    listen_addr: SocketAddr,
+    custom_commands: Option<command::Map>,
+) {
     let handler = Handler::new(core);
     let command_receiver = command::Receiver::new(
         handler,
         SIGNATURE.to_string(),
         version::STRING.to_string(),
-        None,
+        custom_commands,
     );
 
     ii_cgminer_api::run(command_receiver, listen_addr)

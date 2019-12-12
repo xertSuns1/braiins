@@ -1257,7 +1257,9 @@ impl hal::Backend for Backend {
         node::WorkSolverType::WorkHub(Box::new(move || Self::new(configuration)))
     }
 
-    async fn init_work_hub(work_hub: work::SolverBuilder<Self>) {
+    async fn init_work_hub(
+        work_hub: work::SolverBuilder<Self>,
+    ) -> bosminer::Result<hal::FrontendConfiguration> {
         let configuration = work_hub.to_node().configuration.clone();
         runtime_config::set_midstate_count(configuration.midstate_count());
         let gpio_mgr = gpio::ControlPinManager::new();
@@ -1278,6 +1280,16 @@ impl hal::Backend for Backend {
             .await;
         // Hook Ctrl-C
         halt_sender.hook_ctrlc();
+
+        Ok(hal::FrontendConfiguration {
+            cgminer_custom_commands: None,
+        })
+    }
+
+    async fn init_work_solver(
+        _work_solver: Arc<Self>,
+    ) -> bosminer::Result<hal::FrontendConfiguration> {
+        panic!("BUG: called `init_work_solver`");
     }
 }
 

@@ -328,11 +328,11 @@ pub async fn run<T: hal::Backend>() {
     ) {
         node::WorkSolverType::WorkHub(create) => {
             let work_hub = work_solver_builder.create_work_hub(create).await;
-            T::init_work_hub(work_hub).await;
+            T::init_work_hub(work_hub).await.unwrap();
         }
         node::WorkSolverType::WorkSolver(create) => {
             let work_solver = work_solver_builder.create_work_solver(create).await;
-            T::init_work_solver(work_solver).await;
+            T::init_work_solver(work_solver).await.unwrap();
         }
     }
 

@@ -27,6 +27,7 @@ use ii_logging::macros::*;
 
 use crate::backend;
 use crate::client;
+use crate::error;
 use crate::hal;
 use crate::job;
 use crate::node;
@@ -146,7 +147,7 @@ impl Core {
         &self,
         args: clap::ArgMatches<'_>,
         backend_config: ::config::Value,
-    ) {
+    ) -> error::Result<hal::FrontendConfiguration> {
         let work_solver_builder = work::SolverBuilder::new(
             self.frontend.clone(),
             self.backend_registry.clone(),
@@ -162,12 +163,12 @@ impl Core {
                 // Initialization of backend hierarchy is done dynamically with provided work hub
                 // which can be used for registration of another work hubs or work solvers. The
                 // hierarchy has no limitation but is restricted only with tree structure.
-                T::init_work_hub(work_hub).await;
+                T::init_work_hub(work_hub).await
             }
             // the simplest hierarchy where the backend is single device
             node::WorkSolverType::WorkSolver(create) => {
                 let work_solver = work_solver_builder.create_work_solver(create).await;
-                T::init_work_solver(work_solver).await;
+                T::init_work_solver(work_solver).await
             }
         }
     }

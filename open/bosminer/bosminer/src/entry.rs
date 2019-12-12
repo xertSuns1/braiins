@@ -63,15 +63,6 @@ pub struct GenericConfig {
     pub backend_config: ::config::Value,
 }
 
-/// Registration is run in separate task to avoid blocking while the backend is being e.g. started
-async fn backend_registration_task<T: hal::Backend>(
-    core: Arc<hub::Core>,
-    args: clap::ArgMatches<'_>,
-    backend_config: ::config::Value,
-) {
-    core.add_backend::<T>(args, backend_config).await
-}
-
 /// Parse config (either specified or the default one)
 pub fn parse_config(config_path: &str) -> GenericConfig {
     let mut settings = config::Config::default();
@@ -161,13 +152,13 @@ pub async fn main<T: hal::Backend>() {
 
     // Initialize hub core which manages all resources
     let core = Arc::new(hub::Core::new());
-
     tokio::spawn(core.clone().run());
-    tokio::spawn(backend_registration_task::<T>(
-        core.clone(),
-        matches,
-        generic_config.backend_config,
-    ));
+
+    // Create and initialize the backend
+    let configuration = core
+        .add_backend::<T>(matches, generic_config.backend_config)
+        .await
+        .expect("Backend initialization failed");
 
     // start statistics processing
     tokio::spawn(stats::mining_task(
@@ -181,5 +172,5 @@ pub async fn main<T: hal::Backend>() {
     }
 
     // the bosminer is controlled with API which also controls when the miner will end
-    api::run(core).await;
+    api::run(core, configuration).await;
 }

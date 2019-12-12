@@ -22,11 +22,12 @@
 
 mod cgminer;
 
+use crate::hal;
 use crate::hub;
 
 use std::sync::Arc;
 
-pub async fn run(core: Arc<hub::Core>) {
+pub async fn run(core: Arc<hub::Core>, configuration: hal::FrontendConfiguration) {
     let addr = "0.0.0.0:4028".parse().unwrap();
-    cgminer::run(core, addr).await;
+    cgminer::run(core, addr, configuration.cgminer_custom_commands).await;
 }
