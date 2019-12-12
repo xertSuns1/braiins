@@ -31,7 +31,10 @@ use tokio_util::codec::Decoder;
 use bytes::BytesMut;
 
 use json::Value;
+use serde::Serialize;
 use serde_json as json;
+
+use std::collections::HashMap;
 
 struct TestHandler;
 
@@ -306,6 +309,34 @@ impl command::Handler for TestHandler {
     }
 }
 
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct CustomCommand {
+    #[serde(rename = "Attribute")]
+    pub attribute: String,
+}
+
+impl From<CustomCommand> for response::Dispatch {
+    fn from(custom_command: CustomCommand) -> response::Dispatch {
+        response::Dispatch::from_success(
+            vec![custom_command],
+            "CUSTOM_COMMAND",
+            // TODO: implement custom status codes
+            response::StatusCode::Pool,
+            format!("{} custom command", crate::SIGNATURE_TAG),
+        )
+    }
+}
+
+struct TestCustomHandler;
+
+impl TestCustomHandler {
+    async fn handle_config(&self) -> command::Result<CustomCommand> {
+        Ok(CustomCommand {
+            attribute: "value".to_string(),
+        })
+    }
+}
+
 struct ZeroTime;
 
 impl support::When for ZeroTime {
@@ -314,15 +345,20 @@ impl support::When for ZeroTime {
     }
 }
 
-async fn codec_roundtrip(command: &str) -> Value {
+async fn codec_roundtrip<T>(command: json::Value, custom_commands: T) -> Value
+where
+    T: Into<Option<HashMap<&'static str, command::Descriptor>>>,
+{
     let command_receiver = command::Receiver::<ZeroTime>::new(
         TestHandler,
         "TestMiner".to_string(),
         "v1.0".to_string(),
+        custom_commands,
     );
     let mut codec = Codec::default();
 
     let mut command_buf = BytesMut::with_capacity(256);
+    let command = format!("{}\n", command.to_string());
     command_buf.extend_from_slice(command.as_bytes());
 
     let command = codec.decode(&mut command_buf).unwrap().unwrap();
@@ -396,9 +432,11 @@ fn assert_json_eq(a: &Value, b: &Value) {
 }
 
 #[tokio::test]
-async fn test_api_basic() {
-    let resp = codec_roundtrip("{\"command\":\"version\"}\n").await;
-
+async fn test_single() {
+    let command: json::Value = json::json!({
+        "command": "version"
+    });
+    let response = codec_roundtrip(command, None).await;
     let expected = json::json!({
         "STATUS": [{
             "STATUS": "S",
@@ -414,13 +452,15 @@ async fn test_api_basic() {
         "id": 1
     });
 
-    assert_json_eq(&resp, &expected);
+    assert_json_eq(&response, &expected);
 }
 
 #[tokio::test]
-async fn test_api_multiple() {
-    let resp = codec_roundtrip("{\"command\":\"version+config\"}\n").await;
-
+async fn test_multiple() {
+    let command: json::Value = json::json!({
+        "command": "version+config"
+    });
+    let response = codec_roundtrip(command, None).await;
     let expected = json::json!({
         "config": [{
             "STATUS": [{
@@ -459,5 +499,34 @@ async fn test_api_multiple() {
         "id": 1,
     });
 
-    assert_json_eq(&resp, &expected);
+    assert_json_eq(&response, &expected);
+}
+
+#[tokio::test]
+async fn test_single_custom_command() {
+    let handler = Arc::new(TestCustomHandler);
+
+    const CUSTOM_COMMAND: &str = "custom_command";
+    let custom_commands = commands![
+        (CUSTOM_COMMAND: ParameterLess -> handler.handle_config)
+    ];
+
+    let command: json::Value = json::json!({ "command": CUSTOM_COMMAND });
+
+    let response = codec_roundtrip(command, custom_commands).await;
+    let expected = json::json!({
+        "STATUS": [{
+            "STATUS": "S",
+            "When": 0,
+            "Code": 7,
+            "Msg": "TestMiner custom command",
+            "Description": "TestMiner v1.0",
+        }],
+        "CUSTOM_COMMAND": [{
+            "Attribute": "value",
+        }],
+        "id": 1
+    });
+
+    assert_json_eq(&response, &expected);
 }
