@@ -339,7 +339,7 @@ impl From<CustomCommandOne> for response::Dispatch {
 
 #[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct CustomCommandTwo {
-    #[serde(rename = "Attribute")]
+    #[serde(rename = "Value")]
     pub value: u32,
 }
 
@@ -350,7 +350,7 @@ impl From<CustomCommandTwo> for response::Dispatch {
             "CUSTOM_COMMAND_TWO",
             CustomStatusCode::CustomCommandTwo,
             format!(
-                "{} custom command {} with parameters",
+                "{} custom command {} with parameter",
                 crate::SIGNATURE_TAG,
                 2
             ),
@@ -369,9 +369,10 @@ impl TestCustomHandler {
 
     async fn handle_command_two(
         &self,
-        _parameter: Option<&json::Value>,
+        parameter: Option<&json::Value>,
     ) -> command::Result<CustomCommandTwo> {
-        Ok(CustomCommandTwo { value: 0 })
+        let value = parameter.unwrap().as_u64().unwrap() as u32;
+        Ok(CustomCommandTwo { value })
     }
 }
 
@@ -562,6 +563,38 @@ async fn test_single_custom_command() {
         }],
         "CUSTOM_COMMAND_ONE": [{
             "Attribute": "value",
+        }],
+        "id": 1
+    });
+
+    assert_json_eq(&response, &expected);
+}
+
+#[tokio::test]
+async fn test_single_custom_command_with_parameter() {
+    let handler = Arc::new(TestCustomHandler);
+
+    const CUSTOM_COMMAND: &str = "custom_command";
+    let custom_commands = commands![
+        (CUSTOM_COMMAND: Parameter(None) -> handler.handle_command_two)
+    ];
+
+    let command: json::Value = json::json!({
+        "command": CUSTOM_COMMAND,
+        "parameter": 42
+    });
+
+    let response = codec_roundtrip(command, custom_commands).await;
+    let expected = json::json!({
+        "STATUS": [{
+            "STATUS": "S",
+            "When": 0,
+            "Code": 302,
+            "Msg": "TestMiner custom command 2 with parameter",
+            "Description": "TestMiner v1.0",
+        }],
+        "CUSTOM_COMMAND_TWO": [{
+            "Value": 42,
         }],
         "id": 1
     });
