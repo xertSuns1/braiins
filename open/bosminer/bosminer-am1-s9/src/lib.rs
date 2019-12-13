@@ -49,7 +49,6 @@ use bosminer::runtime_config;
 use bosminer::stats;
 use bosminer::work;
 
-use bosminer_config::clap;
 use bosminer_macros::WorkSolverNode;
 
 use std::fmt;
@@ -1124,14 +1123,12 @@ impl hal::BackendSolution for Solution {
 pub struct Backend {
     #[member_work_solver_stats]
     work_solver_stats: stats::BasicWorkSolver,
-    configuration: config::Configuration,
 }
 
 impl Backend {
-    pub fn new(configuration: config::Configuration) -> Self {
+    pub fn new() -> Self {
         Self {
             work_solver_stats: Default::default(),
-            configuration,
         }
     }
 
@@ -1245,23 +1242,14 @@ impl hal::Backend for Backend {
     const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
-    fn add_args<'a, 'b>(app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
-        config::Configuration::add_args(app)
-    }
-
-    fn create(
-        matches: clap::ArgMatches<'_>,
-        backend_config: ::config::Value,
-    ) -> hal::WorkNode<Self> {
-        let configuration = config::Configuration::parse(&matches, backend_config);
-
-        node::WorkSolverType::WorkHub(Box::new(move || Self::new(configuration)))
+    fn create() -> hal::WorkNode<Self> {
+        node::WorkSolverType::WorkHub(Box::new(Self::new))
     }
 
     async fn init_work_hub(
         work_hub: work::SolverBuilder<Self>,
     ) -> bosminer::Result<hal::FrontendConfiguration> {
-        let configuration = work_hub.to_node().configuration.clone();
+        let (clients, configuration) = config::Configuration::parse();
         runtime_config::set_midstate_count(configuration.midstate_count());
         let gpio_mgr = gpio::ControlPinManager::new();
         let halt_sender = Self::start_miner(
@@ -1283,6 +1271,7 @@ impl hal::Backend for Backend {
         halt_sender.hook_ctrlc();
 
         Ok(hal::FrontendConfiguration {
+            clients,
             cgminer_custom_commands: None,
         })
     }

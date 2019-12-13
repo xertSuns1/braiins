@@ -30,7 +30,6 @@ use ii_logging::macros::*;
 use ii_bitcoin::HashTrait;
 
 use crate::backend;
-use crate::entry;
 use crate::hal;
 use crate::job::Bitcoin;
 use crate::node;
@@ -322,10 +321,7 @@ pub async fn run<T: hal::Backend>() {
     let registry = Arc::new(Mutex::new(Registry::new()));
 
     // start HW backend for selected target
-    match T::create(
-        Default::default(),
-        entry::parse_config(entry::DEFAULT_CONFIG_PATH).backend_config,
-    ) {
+    match T::create() {
         node::WorkSolverType::WorkHub(create) => {
             let work_hub = work_solver_builder.create_work_hub(create).await;
             T::init_work_hub(work_hub).await.unwrap();
