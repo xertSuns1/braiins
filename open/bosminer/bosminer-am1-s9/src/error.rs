@@ -63,6 +63,10 @@ pub enum ErrorKind {
     #[fail(display = "Hashchip: {}", _0)]
     Hashchip(String),
 
+    /// Error concerning hashchip enumeration.
+    #[fail(display = "Enumeration: {}", _0)]
+    ChipEnumeration(String),
+
     /// Error concerning I2C on hashchip.
     #[fail(display = "I2C hashchip: {}", _0)]
     I2cHashchip(String),
