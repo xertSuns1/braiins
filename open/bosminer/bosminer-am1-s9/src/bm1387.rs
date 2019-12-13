@@ -368,11 +368,11 @@ impl Register for I2cControlReg {
     const REG_NUM: u8 = 0x20;
 }
 
-#[derive(PackedStruct, Debug, Clone, PartialEq, Default)]
+#[derive(PackedStruct, Debug, Clone, PartialEq)]
 #[packed_struct(endian = "msb", size_bytes = "4")]
 pub struct GetAddressReg {
     #[packed_field(ty = "enum", element_size_bytes = "2")]
-    pub chip_rev: ChipRev,
+    pub chip_rev: EnumCatchAll<ChipRev>,
     _reserved1: u8,
     pub addr: u8,
 }
@@ -392,6 +392,10 @@ impl Default for ChipRev {
         ChipRev::Bm1387
     }
 }
+
+/// Chip revision with `EnumCatchAll` wrapper so we would have to import `packed_struct`
+/// everywhere.
+pub const CHIP_REV_BM1387: EnumCatchAll<ChipRev> = EnumCatchAll::Enum(ChipRev::Bm1387);
 
 /// This register represents ASIC difficulty
 ///
@@ -810,10 +814,9 @@ mod test {
     #[test]
     fn build_chip_addr_reg() {
         let reg = GetAddressReg {
-            chip_rev: ChipRev::Bm1387,
+            chip_rev: CHIP_REV_BM1387,
             _reserved1: 0x90,
             addr: 0x00,
-            ..Default::default()
         };
         let expected_reg = [0x13u8, 0x87, 0x90, 0x00];
 
@@ -829,15 +832,10 @@ mod test {
     #[test]
     fn test_broken_chip_addr_value() {
         // intentionally specify incorrect/unsupported chip version
-        let broken_reg_bytes = [0x13u8, 0x86, 0x90, 0x04, 0x00, 0x00];
-        let reg = GetAddressReg::unpack_from_slice(&broken_reg_bytes);
-        assert!(
-            reg.is_err(),
-            "Unpacking should have failed due to incompatible chip version \
-             parsed: {:?}, sliced view: {:#04x?}",
-            reg,
-            broken_reg_bytes
-        );
+        let broken_reg_bytes = [0x13u8, 0x86, 0x90, 0x04];
+        let reg = GetAddressReg::unpack_from_slice(&broken_reg_bytes).expect("unpack failed");
+        // Unpack should succeed with "CatchAll" value filled
+        assert_eq!(reg.chip_rev, EnumCatchAll::CatchAll(0x1386));
     }
 
     #[test]

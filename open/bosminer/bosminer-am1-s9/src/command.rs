@@ -168,9 +168,8 @@ impl InnerContext {
             if let Some(chip_count) = self.chip_count {
                 // for broadcast we expect chip_count responses
                 if chip_count != responses.len() {
-                    warn!("received responses: {:#x?}", responses);
                     Err(ErrorKind::Hashchip(format!(
-                        "Number of responses {} of GetStatusCmd(reg={:x}) doesn't match chip count {}",
+                        "Number of responses {} of GetStatusCmd(reg={:#x}) doesn't match chip count {}",
                         responses.len(),
                         T::REG_NUM,
                         chip_count

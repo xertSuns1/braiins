@@ -79,11 +79,17 @@ use tokio::time::delay_for;
 /// Timing constants
 const INACTIVATE_FROM_CHAIN_DELAY: Duration = Duration::from_millis(100);
 /// Base delay quantum during hashboard initialization
-const INIT_DELAY: Duration = Duration::from_millis(1000);
+const INIT_DELAY: Duration = Duration::from_secs(1);
+/// Time to wait between successive hashboard initialization attempts
+const ENUM_RETRY_DELAY: Duration = Duration::from_secs(2);
+/// How many times to retry the enumeration
+const ENUM_RETRY_COUNT: usize = 6;
 
 /// Maximum number of chips is limitted by the fact that there is only 8-bit address field and
 /// addresses to the chips need to be assigned with step of 4 (e.g. 0, 4, 8, etc.)
 const MAX_CHIPS_ON_CHAIN: usize = 64;
+/// Number of chips to consider OK for initialization
+const EXPECTED_CHIPS_ON_CHAIN: usize = 63;
 
 /// Oscillator speed for all chips on S9 hash boards
 const CHIP_OSC_CLK_HZ: usize = 25_000_000;
@@ -432,7 +438,42 @@ impl HashChain {
         Ok(())
     }
 
+    /// Reset hashboard and try to enumerate the chips
+    /// If not enough chips were found and this is not the `last_try`, treat it as error.
+    async fn reset_and_enumerate(&mut self, last_try: bool) -> error::Result<()> {
+        // Reset hashboard, toggle voltage
+        info!("Resetting hash board");
+        self.enter_reset()?;
+        self.voltage_ctrl.disable_voltage().await?;
+        delay_for(INIT_DELAY).await;
+        self.voltage_ctrl.enable_voltage().await?;
+        delay_for(INIT_DELAY * 2).await;
+        self.exit_reset()?;
+        delay_for(INIT_DELAY).await;
+
+        // Enumerate chips
+        info!("Starting chip enumeration");
+        self.enumerate_chips().await?;
+
+        // Figure out if we found enough chips
+        info!("Discovered {} chips", self.chip_count);
+        self.command_context.set_chip_count(self.chip_count).await;
+
+        // Not full number of chips? Let's try again if we have tries left
+        if self.chip_count < EXPECTED_CHIPS_ON_CHAIN && !last_try {
+            Err(ErrorKind::ChipEnumeration(
+                "Not enough chips on chain".into(),
+            ))?;
+        }
+
+        Ok(())
+    }
+
     /// Initializes the complete hashboard including enumerating all chips
+    ///
+    /// * if enumeration fails (for enumeration-related reason), try to retry
+    ///   it up to pre-defined number of times
+    /// * if less than 63 chips is found, retry the enumeration
     async fn init(
         &mut self,
         halt_receiver: halt::Receiver,
@@ -447,24 +488,32 @@ impl HashChain {
         self.ip_core_init().await?;
         info!("Hashboard IP core initialized");
         self.voltage_ctrl.clone().init(halt_receiver).await?;
-        info!("Resetting hash board");
-        self.enter_reset()?;
-        // disable voltage
-        self.voltage_ctrl.disable_voltage().await?;
-        delay_for(INIT_DELAY).await;
-        self.voltage_ctrl.enable_voltage().await?;
-        delay_for(INIT_DELAY * 2).await;
-        self.exit_reset()?;
-        delay_for(INIT_DELAY).await;
-        //        let voltage = self.voltage_ctrl.get_voltage()?;
-        //        if voltage != 0 {
-        //            return Err(io::Error::new(
-        //                io::ErrorKind::Other, format!("Detected voltage {}", voltage)));
-        //        }
-        info!("Starting chip enumeration");
-        self.enumerate_chips().await?;
-        info!("Discovered {} chips", self.chip_count);
-        self.command_context.set_chip_count(self.chip_count).await;
+
+        // Try to enumerate chips until we get full number of them or we run out of attempts.
+        // Some hashboard refuse to enumerate properly if they are "hot" -- they either return
+        // garbage for `chip_revision` or they don't respond at all.
+        let mut tries_left: usize = ENUM_RETRY_COUNT;
+        loop {
+            if let Err(e) = self.reset_and_enumerate(tries_left == 0).await {
+                info!("Chip enumeration failed: {}", e);
+                if let error::ErrorKind::ChipEnumeration(_) = e.kind() {
+                    // This is enumeration-related reason, try to retry
+                    if tries_left == 0 {
+                        return Err(e);
+                    }
+                } else {
+                    // Some other error, we are doomed
+                    return Err(e);
+                }
+            } else {
+                // Success!
+                break;
+            }
+
+            info!("Retrying enumeration...");
+            tries_left -= 1;
+            delay_for(ENUM_RETRY_DELAY).await;
+        }
 
         // set PLL
         self.set_pll(initial_frequency).await?;
@@ -511,30 +560,33 @@ impl HashChain {
             .read_register::<bm1387::GetAddressReg>(ChipAddress::All)
             .await?;
 
+        // Reset chip count (we might get called multiple times)
+        self.chip_count = 0;
         // Check if are responses meaningful
         for (address, addr_reg) in responses.iter().enumerate() {
-            if addr_reg.chip_rev != bm1387::ChipRev::Bm1387 {
-                Err(ErrorKind::Hashchip(format!(
-                    "unexpected revision of chip {} (expected: {:?} received: {:?})",
+            if addr_reg.chip_rev != bm1387::CHIP_REV_BM1387 {
+                Err(ErrorKind::ChipEnumeration(format!(
+                    "unexpected revision of chip {} (expected: {:#x?} received: {:#x?})",
                     address,
+                    bm1387::CHIP_REV_BM1387,
                     addr_reg.chip_rev,
-                    bm1387::ChipRev::Bm1387
                 )))?
             }
             self.chip_count += 1;
         }
-
         if self.chip_count >= MAX_CHIPS_ON_CHAIN {
-            Err(ErrorKind::Hashchip(format!(
-                "detected {} chips, expected less than 256 chips on 1 chain. Possibly a hardware issue?",
-                self.chip_count
+            Err(ErrorKind::ChipEnumeration(format!(
+                "detected {} chips, expected less than {} chips on one chain. Possibly a hardware issue?",
+                self.chip_count,
+                MAX_CHIPS_ON_CHAIN,
             )))?
         }
         if self.chip_count == 0 {
-            Err(ErrorKind::Hashchip(
+            Err(ErrorKind::ChipEnumeration(
                 "no chips detected on the current chain".to_string(),
             ))?
         }
+
         // Set all chips to be offline before address assignment. This is important so that each
         // chip after initially accepting the address will pass on further addresses down the chain
         let inactivate_from_chain_cmd = bm1387::InactivateFromChainCmd::new().pack();
@@ -802,6 +854,7 @@ impl HashChain {
 
     /// Hashrate monitor task
     /// Fetch perodically information about hashrate
+    #[allow(dead_code)]
     async fn hashrate_monitor_task(command_context: command::Context) {
         info!("Hashrate monitor task started");
         loop {
@@ -859,10 +912,13 @@ impl HashChain {
             ));
 
         // spawn hashrate monitor
+        // Disabled until we found a use for this
+        /*
         halt_receiver
             .register_client("hashrate monitor".into())
             .await
             .spawn(Self::hashrate_monitor_task(command_context.clone()));
+        */
 
         // spawn temperature monitor
         halt_receiver
