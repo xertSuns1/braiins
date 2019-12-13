@@ -43,8 +43,6 @@ pub use entry::main;
 // reexport `Result` which is used in hal interface
 pub use error::Result;
 
-// reexport needed in `hal::Backend::add_args`
-pub use clap;
 // reexport needed for implementation of `hal::Backend` trait
 pub use async_trait::async_trait;
 

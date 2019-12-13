@@ -22,13 +22,13 @@
 
 //! This module handles S9 configuration and configuration file parsing
 
-use bosminer::clap;
-
 use crate::bm1387::MidstateCount;
 use crate::fan;
 use crate::monitor;
 use crate::power;
 use crate::FrequencySettings;
+
+use bosminer_config::clap;
 
 use serde::Deserialize;
 use std::collections::HashMap;

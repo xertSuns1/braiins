@@ -20,20 +20,22 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use ii_logging::macros::*;
+
 pub mod config;
 pub mod device;
 pub mod error;
 pub mod icarus;
 
-use ii_logging::macros::*;
-
+use bosminer::async_trait;
 use bosminer::error::backend::ResultExt;
 use bosminer::hal;
 use bosminer::node;
 use bosminer::stats;
 use bosminer::work;
-use bosminer::{async_trait, clap};
 use bosminer_macros::WorkSolverNode;
+
+use bosminer_config::clap;
 
 use error::ErrorKind;
 

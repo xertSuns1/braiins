@@ -22,14 +22,14 @@
 
 use ii_logging::macros::*;
 
-use ii_bitcoin::HashTrait;
-
-use crate::client;
 use crate::job;
 use crate::node;
 use crate::stats;
 use crate::work;
 
+use ii_bitcoin::HashTrait;
+
+use bosminer_config::client;
 use bosminer_macros::ClientNode;
 
 use async_trait::async_trait;

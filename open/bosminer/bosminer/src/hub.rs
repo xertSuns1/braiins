@@ -34,6 +34,9 @@ use crate::node;
 use crate::scheduler;
 use crate::work;
 
+use bosminer_config::clap;
+use bosminer_config::config;
+
 use futures::channel::mpsc;
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
@@ -146,7 +149,7 @@ impl Core {
     pub async fn add_backend<T: hal::Backend>(
         &self,
         args: clap::ArgMatches<'_>,
-        backend_config: ::config::Value,
+        backend_config: config::Value,
     ) -> error::Result<hal::FrontendConfiguration> {
         let work_solver_builder = work::SolverBuilder::new(
             self.frontend.clone(),

@@ -25,59 +25,18 @@
 
 pub mod stratum_v2;
 
-use crate::error;
 use crate::hub;
 use crate::node;
 use crate::scheduler;
 use crate::work;
 
+use bosminer_config::client::{Descriptor, Protocol};
+
 use futures::channel::mpsc;
 use ii_async_compat::futures;
 
-use std::fmt;
-use std::net::{SocketAddr, ToSocketAddrs};
 use std::slice;
 use std::sync::Arc;
-
-use failure::ResultExt;
-
-#[derive(Copy, Clone, Debug)]
-pub enum Protocol {
-    StratumV2,
-}
-
-impl fmt::Display for Protocol {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            Protocol::StratumV2 => write!(f, "Stratum V2"),
-        }
-    }
-}
-
-/// Contains basic information about client used for obtaining jobs for solving.
-#[derive(Debug)]
-pub struct Descriptor {
-    pub url: String,
-    pub user: String,
-    pub protocol: Protocol,
-    pub socket_addr: SocketAddr,
-}
-
-/// Create client `Descriptor` from information provided by user.
-pub fn parse(url: String, user: String) -> error::Result<Descriptor> {
-    let socket_addr = url
-        .to_socket_addrs()
-        .context("Invalid server address")?
-        .next()
-        .ok_or("Cannot resolve any IP address")?;
-
-    Ok(Descriptor {
-        url,
-        user,
-        protocol: Protocol::StratumV2,
-        socket_addr,
-    })
-}
 
 #[derive(Debug)]
 pub struct Handle {

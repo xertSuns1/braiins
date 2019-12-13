@@ -155,9 +155,8 @@ name = "bosminer"
 version = "0.1.0"
 dependencies = [
  "async-trait 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bosminer-config 0.1.0",
  "bosminer-macros 0.1.0",
- "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "config 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "downcast-rs 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "git-version 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -180,6 +179,7 @@ dependencies = [
  "approx 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "async-trait 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "bosminer 0.1.0",
+ "bosminer-config 0.1.0",
  "bosminer-macros 0.1.0",
  "chrono 0.4.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "config 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -202,10 +202,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "bosminer-config"
+version = "0.1.0"
+dependencies = [
+ "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "config 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "bosminer-erupter"
 version = "0.1.0"
 dependencies = [
  "bosminer 0.1.0",
+ "bosminer-config 0.1.0",
  "bosminer-macros 0.1.0",
  "config 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
