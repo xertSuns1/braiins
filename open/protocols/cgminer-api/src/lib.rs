@@ -33,9 +33,10 @@ use ii_logging::macros::*;
 
 use ii_async_compat::{bytes, futures, tokio, tokio_util};
 
-use bytes::BytesMut;
+use bytes::{Buf, BufMut, BytesMut};
 use futures::{SinkExt, StreamExt};
-use tokio_util::codec::{Decoder, Encoder, LinesCodec, LinesCodecError};
+use serde_json::Deserializer;
+use tokio_util::codec::{Decoder, Encoder};
 
 use std::io;
 use std::net::SocketAddr;
@@ -55,14 +56,8 @@ pub const SIGNATURE_TAG: &str = "{SIGNATURE}";
 /// Codec for the CGMiner API.
 /// The `Codec` decodes `Command`s and encodes `ResponseSet`s.
 #[derive(Default, Debug)]
-pub struct Codec(LinesCodec);
-
-/// TODO: replace this with standard From<> implementation to convert to failure based error
-fn no_max_line_length(err: LinesCodecError) -> io::Error {
-    match err {
-        LinesCodecError::Io(io) => io,
-        LinesCodecError::MaxLineLengthExceeded => unreachable!(),
-    }
+pub struct Codec {
+    encode_buf: Vec<u8>,
 }
 
 impl Decoder for Codec {
@@ -70,15 +65,28 @@ impl Decoder for Codec {
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let line = self.0.decode(src).map_err(no_max_line_length)?;
+        let (res, offset) = {
+            let mut stream = Deserializer::from_slice(&*src).into_iter();
+            (stream.next(), stream.byte_offset())
+        };
 
-        if let Some(line) = line {
-            json::from_str(line.as_str())
-                .map(command::Request::new)
-                .map(Option::Some)
-                .map_err(Into::into)
-        } else {
-            Ok(None)
+        match res {
+            Some(Ok(json)) => {
+                src.advance(offset);
+
+                if src.as_ref().iter().any(|byte| !byte.is_ascii_whitespace()) {
+                    // There was a non-whitespace byte following the JSON
+                    Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Stray data following JSON",
+                    ))
+                } else {
+                    Ok(Some(command::Request::new(json)))
+                }
+            }
+            Some(Err(err)) if err.is_eof() => Ok(None),
+            Some(Err(err)) => Err(err.into()),
+            None => Ok(None),
         }
     }
 }
@@ -88,8 +96,11 @@ impl Encoder for Codec {
     type Error = io::Error;
 
     fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let line = json::to_string(&item)?;
-        self.0.encode(line, dst).map_err(no_max_line_length)
+        self.encode_buf.clear();
+        json::to_writer(&mut self.encode_buf, &item)?;
+        dst.reserve(self.encode_buf.len());
+        dst.put_slice(&self.encode_buf);
+        Ok(())
     }
 }
 
@@ -111,13 +122,18 @@ type Server = ii_wire::Server<Framing>;
 type Connection = ii_wire::Connection<Framing>;
 
 async fn handle_connection_task(mut conn: Connection, command_receiver: Arc<command::Receiver>) {
-    if let Some(Ok(command)) = conn.next().await {
-        let response = command_receiver.handle(command).await;
-        conn.tx
-            .send(response)
-            .await
-            .unwrap_or_else(|e| warn!("CGMiner API: cannot send response ({})", e));
-    }
+    let response = match conn.next().await {
+        Some(Ok(command)) => command_receiver.handle(command).await,
+        Some(Err(err)) if err.kind() == io::ErrorKind::InvalidData => {
+            command_receiver.error_response(response::ErrorCode::InvalidCommand)
+        }
+        _ => return, // We pretty much ignore I/O errors here
+    };
+
+    conn.tx
+        .send(response)
+        .await
+        .unwrap_or_else(|e| warn!("CGMiner API: cannot send response ({})", e));
 }
 
 /// Start up an API server with a `command_receiver` object, listening on `listen_addr`

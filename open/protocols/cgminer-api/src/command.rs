@@ -325,6 +325,10 @@ where
         ))
     }
 
+    pub fn error_response(&self, error_code: response::ErrorCode) -> ResponseType {
+        self.get_single_response(error_code.into())
+    }
+
     /// Handles a command request that can actually be a batched request of multiple commands
     pub async fn handle(&self, command_request: Request) -> ResponseType {
         let command = match command_request
