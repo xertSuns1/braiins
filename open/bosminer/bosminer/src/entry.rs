@@ -30,141 +30,27 @@ use crate::hal;
 use crate::hub;
 use crate::runtime_config;
 use crate::stats;
-use crate::version;
-
-use bosminer_config::clap::{self, Arg};
-use bosminer_config::config;
-
-use serde::Deserialize;
 
 use ii_async_compat::tokio;
 
 use std::sync::Arc;
 
-/// Location of default config
-/// TODO: Maybe don't add `.toml` prefix so we could use even JSON
-pub const DEFAULT_CONFIG_PATH: &'static str = "/etc/bosminer/bosminer.toml";
-
-/// Expected configuration version
-const CONFIG_VERSION: &'static str = "alpha";
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(deny_unknown_fields)]
-struct PoolConfig {
-    url: String,
-    user: String,
-    password: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct GenericConfig {
-    config_version: String,
-    #[serde(rename = "pool")]
-    pools: Option<Vec<PoolConfig>>,
-    #[serde(flatten)]
-    pub backend_config: config::Value,
-}
-
-/// Parse config (either specified or the default one)
-pub fn parse_config(config_path: &str) -> GenericConfig {
-    let mut settings = config::Config::default();
-    settings
-        .merge(config::File::with_name(config_path))
-        .expect("failed to parse config file");
-
-    // Parse it into structure
-    let generic_config = settings
-        .try_into::<GenericConfig>()
-        .expect("failed to interpret config");
-
-    // Check config is of the correct version
-    if generic_config.config_version != CONFIG_VERSION {
-        panic!("config_version should be {}", CONFIG_VERSION);
-    }
-
-    generic_config
-}
-
 pub async fn main<T: hal::Backend>() {
     let _log_guard = ii_logging::setup_for_app();
-
-    let app = clap::App::new("bosminer")
-        .version(version::STRING.as_str())
-        .arg(
-            clap::Arg::with_name("config")
-                .long("config")
-                .help("Set config file path")
-                .required(false)
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("pool")
-                .short("p")
-                .long("pool")
-                .value_name("HOSTNAME:PORT")
-                .help("Address the stratum V2 server")
-                .required(false)
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("user")
-                .short("u")
-                .long("user")
-                .value_name("USERNAME.WORKERNAME")
-                .help("Specify user and worker name")
-                .required(false)
-                .takes_value(true),
-        );
-
-    // Pass pre-build arguments to backend for further modification
-    let matches = T::add_args(app).get_matches();
-
-    // Parse config file - either user specified or the default one
-    let mut generic_config =
-        parse_config(matches.value_of("config").unwrap_or(DEFAULT_CONFIG_PATH));
-
-    // Parse pools
-    // Don't worry if is this section missing, maybe there are some pools on command line
-    let mut pools = generic_config.pools.take().unwrap_or_else(|| Vec::new());
-
-    // Add pools from command line
-    if let Some(url) = matches.value_of("pool") {
-        if let Some(user) = matches.value_of("user") {
-            pools.push(PoolConfig {
-                url: url.to_string(),
-                user: user.to_string(),
-                password: None,
-            });
-        }
-    }
-
-    // Check if there's enough pools
-    if pools.len() == 0 {
-        panic!("No pools specified.");
-    }
-
-    // parse user input to fail fast when it is incorrect
-    let client_descriptors: Vec<_> = pools
-        .iter()
-        .map(|pool| {
-            bosminer_config::client::parse(pool.url.clone(), pool.user.clone())
-                .expect("Server parameters")
-        })
-        .collect();
 
     // Set default backend midstate count
     runtime_config::set_midstate_count(T::DEFAULT_MIDSTATE_COUNT);
 
     // Initialize hub core which manages all resources
     let core = Arc::new(hub::Core::new());
-    tokio::spawn(core.clone().run());
 
     // Create and initialize the backend
-    let configuration = core
-        .add_backend::<T>(matches, generic_config.backend_config)
+    let mut configuration = core
+        .add_backend::<T>()
         .await
         .expect("Backend initialization failed");
 
+    tokio::spawn(core.clone().run());
     // start statistics processing
     tokio::spawn(stats::mining_task(
         core.frontend.clone(),
@@ -172,7 +58,7 @@ pub async fn main<T: hal::Backend>() {
     ));
 
     // start client based on user input
-    for client_descriptor in client_descriptors {
+    for client_descriptor in configuration.clients.drain(..) {
         client::register(&core, client_descriptor).await.enable();
     }
 

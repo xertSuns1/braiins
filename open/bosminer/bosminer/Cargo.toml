@@ -3,7 +3,7 @@ name = "bosminer"
 version = "0.1.0"
 authors = ["Braiins <braiins@braiins.com>"]
 license = "GPL-3.0-or-later"
-edition = '2018'
+edition = "2018"
 
 [dependencies]
 bosminer-config = { path = "../bosminer-config" }
@@ -21,4 +21,3 @@ once_cell = "1.2"
 downcast-rs = "1.0.4"
 hex = "0.3.1"
 git-version = "0.3.3"
-serde = "1.0"

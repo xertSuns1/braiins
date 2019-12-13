@@ -34,9 +34,6 @@ use crate::node;
 use crate::scheduler;
 use crate::work;
 
-use bosminer_config::clap;
-use bosminer_config::config;
-
 use futures::channel::mpsc;
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
@@ -146,11 +143,7 @@ impl Core {
         }
     }
 
-    pub async fn add_backend<T: hal::Backend>(
-        &self,
-        args: clap::ArgMatches<'_>,
-        backend_config: config::Value,
-    ) -> error::Result<hal::FrontendConfiguration> {
+    pub async fn add_backend<T: hal::Backend>(&self) -> error::Result<hal::FrontendConfiguration> {
         let work_solver_builder = work::SolverBuilder::new(
             self.frontend.clone(),
             self.backend_registry.clone(),
@@ -159,7 +152,7 @@ impl Core {
         );
 
         // call backend create to determine the preferred hierarchy
-        match T::create(args, backend_config) {
+        match T::create() {
             // the generic tree hierarchy where the backend consists of multiple devices
             node::WorkSolverType::WorkHub(create) => {
                 let work_hub = work_solver_builder.create_work_hub(create).await;

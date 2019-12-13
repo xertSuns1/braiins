@@ -34,6 +34,10 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::time::Duration;
 
+/// Location of default config
+/// TODO: Maybe don't add `.toml` prefix so we could use even JSON
+pub const DEFAULT_CONFIG_PATH: &'static str = "/etc/bosminer/bosminer.toml";
+
 /// Default number of midstates
 pub const DEFAULT_MIDSTATE_COUNT: usize = 4;
 
@@ -97,6 +101,13 @@ pub struct ResolvedChainConfig {
 impl Configuration {
     pub fn add_args<'a, 'b>(app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
         app.arg(
+            clap::Arg::with_name("config")
+                .long("config")
+                .help("Set config file path")
+                .required(false)
+                .takes_value(true),
+        )
+        .arg(
             clap::Arg::with_name("disable-asic-boost")
                 .long("disable-asic-boost")
                 .help("Disable ASIC boost (use just one midstate)")
@@ -190,8 +201,66 @@ impl Configuration {
         }
     }
 
-    pub fn parse(matches: &clap::ArgMatches, backend_config: ::config::Value) -> Self {
-        let mut configuration = backend_config
+    pub fn parse() -> (Vec<bosminer_config::client::Descriptor>, Self) {
+        let app = clap::App::new("bosminer")
+            .version(bosminer::version::STRING.as_str())
+            .arg(
+                clap::Arg::with_name("pool")
+                    .short("p")
+                    .long("pool")
+                    .value_name("HOSTNAME:PORT")
+                    .help("Address the stratum V2 server")
+                    .required(false)
+                    .takes_value(true),
+            )
+            .arg(
+                clap::Arg::with_name("user")
+                    .short("u")
+                    .long("user")
+                    .value_name("USERNAME.WORKERNAME")
+                    .help("Specify user and worker name")
+                    .required(false)
+                    .takes_value(true),
+            );
+
+        // Pass pre-build arguments to backend for further modification
+        let matches = Self::add_args(app).get_matches();
+
+        // Parse config file - either user specified or the default one
+        let mut generic_config =
+            bosminer_config::parse(matches.value_of("config").unwrap_or(DEFAULT_CONFIG_PATH));
+
+        // Parse pools
+        // Don't worry if is this section missing, maybe there are some pools on command line
+        let mut pools = generic_config.pools.take().unwrap_or_else(|| Vec::new());
+
+        // Add pools from command line
+        if let Some(url) = matches.value_of("pool") {
+            if let Some(user) = matches.value_of("user") {
+                pools.push(bosminer_config::PoolConfig {
+                    url: url.to_string(),
+                    user: user.to_string(),
+                    password: None,
+                });
+            }
+        }
+
+        // Check if there's enough pools
+        if pools.len() == 0 {
+            panic!("No pools specified.");
+        }
+
+        // parse user input to fail fast when it is incorrect
+        let client_descriptors = pools
+            .iter()
+            .map(|pool| {
+                bosminer_config::client::parse(pool.url.clone(), pool.user.clone())
+                    .expect("Server parameters")
+            })
+            .collect();
+
+        let mut configuration = generic_config
+            .backend_config
             .try_into::<Self>()
             .expect("failed to interpret config file");
 
@@ -205,7 +274,8 @@ impl Configuration {
         if let Some(value) = matches.value_of("voltage") {
             configuration.voltage = value.parse::<f32>().expect("not a float number");
         }
-        configuration
+
+        (client_descriptors, configuration)
     }
 }
 

@@ -35,8 +35,6 @@ use bosminer::stats;
 use bosminer::work;
 use bosminer_macros::WorkSolverNode;
 
-use bosminer_config::clap;
-
 use error::ErrorKind;
 
 use ii_async_compat::tokio;
@@ -104,6 +102,51 @@ impl Backend {
         }
     }
 
+    #[cfg(not(test))]
+    fn configure() -> Vec<bosminer_config::client::Descriptor> {
+        use bosminer_config::clap;
+
+        let app = clap::App::new("bosminer")
+            .version(bosminer::version::STRING.as_str())
+            .arg(
+                clap::Arg::with_name("pool")
+                    .short("p")
+                    .long("pool")
+                    .value_name("HOSTNAME:PORT")
+                    .help("Address the stratum V2 server")
+                    .required(true)
+                    .takes_value(true),
+            )
+            .arg(
+                clap::Arg::with_name("user")
+                    .short("u")
+                    .long("user")
+                    .value_name("USERNAME.WORKERNAME")
+                    .help("Specify user and worker name")
+                    .required(true)
+                    .takes_value(true),
+            );
+
+        let matches = app.get_matches();
+
+        let url = matches
+            .value_of("pool")
+            .expect("BUG: missing 'pool' attribute");
+        let user = matches
+            .value_of("user")
+            .expect("BUG: missing 'user' attribute");
+
+        let client_descriptor = bosminer_config::client::parse(url.to_string(), user.to_string())
+            .expect("Server parameters");
+
+        vec![client_descriptor]
+    }
+
+    #[cfg(test)]
+    fn configure() -> Vec<bosminer_config::client::Descriptor> {
+        vec![]
+    }
+
     fn run(&self) -> bosminer::error::Result<()> {
         info!("Block Erupter: finding device in USB...");
         let usb_context =
@@ -158,10 +201,7 @@ impl hal::Backend for Backend {
     const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
-    fn create(
-        _args: clap::ArgMatches<'_>,
-        _backend_config: ::config::Value,
-    ) -> hal::WorkNode<Self> {
+    fn create() -> hal::WorkNode<Self> {
         node::WorkSolverType::WorkSolver(Box::new(|work_generator, solution_sender| {
             Self::new(work_generator, solution_sender)
         }))
@@ -176,9 +216,13 @@ impl hal::Backend for Backend {
     async fn init_work_solver(
         work_solver: Arc<Self>,
     ) -> bosminer::Result<hal::FrontendConfiguration> {
+        let clients = Self::configure();
+
         // TODO: remove it after `node::WorkSolver` trait will be extended with `enable` method
         work_solver.enable();
+
         Ok(hal::FrontendConfiguration {
+            clients,
             cgminer_custom_commands: None,
         })
     }
