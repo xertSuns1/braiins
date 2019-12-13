@@ -43,12 +43,13 @@ pub mod test;
 use ii_logging::macros::*;
 
 use bosminer::async_trait;
-use bosminer::clap;
 use bosminer::hal;
 use bosminer::node;
 use bosminer::runtime_config;
 use bosminer::stats;
 use bosminer::work;
+
+use bosminer_config::clap;
 use bosminer_macros::WorkSolverNode;
 
 use std::fmt;

@@ -31,13 +31,15 @@ use crate::hub;
 use crate::runtime_config;
 use crate::stats;
 use crate::version;
+
+use bosminer_config::clap::{self, Arg};
+use bosminer_config::config;
+
 use serde::Deserialize;
 
 use ii_async_compat::tokio;
 
 use std::sync::Arc;
-
-use clap::{self, Arg};
 
 /// Location of default config
 /// TODO: Maybe don't add `.toml` prefix so we could use even JSON
@@ -60,7 +62,7 @@ pub struct GenericConfig {
     #[serde(rename = "pool")]
     pools: Option<Vec<PoolConfig>>,
     #[serde(flatten)]
-    pub backend_config: ::config::Value,
+    pub backend_config: config::Value,
 }
 
 /// Parse config (either specified or the default one)
@@ -144,7 +146,10 @@ pub async fn main<T: hal::Backend>() {
     // parse user input to fail fast when it is incorrect
     let client_descriptors: Vec<_> = pools
         .iter()
-        .map(|pool| client::parse(pool.url.clone(), pool.user.clone()).expect("Server parameters"))
+        .map(|pool| {
+            bosminer_config::client::parse(pool.url.clone(), pool.user.clone())
+                .expect("Server parameters")
+        })
         .collect();
 
     // Set default backend midstate count

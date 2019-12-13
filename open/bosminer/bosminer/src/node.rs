@@ -20,9 +20,10 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use crate::client;
 use crate::job;
 use crate::stats;
+
+use bosminer_config::client;
 
 use std::any::Any;
 use std::fmt::{Debug, Display};

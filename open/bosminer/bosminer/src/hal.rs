@@ -24,6 +24,8 @@ use crate::error;
 use crate::node;
 use crate::work;
 
+use bosminer_config::clap;
+use bosminer_config::config;
 use ii_cgminer_api::command;
 
 use std::fmt::Debug;
@@ -79,7 +81,7 @@ pub trait Backend: Send + Sync + 'static {
     /// bOSminer frontend and passed to appropriate backend method for future initialization
     /// (`init_work_hub` or `init_work_solver`). The create method should be non-blocking and all
     /// blocking operation should be moved to init method which is asynchronous.
-    fn create(args: clap::ArgMatches<'_>, backend_config: ::config::Value) -> WorkNode<Self::Type>;
+    fn create(args: clap::ArgMatches<'_>, backend_config: config::Value) -> WorkNode<Self::Type>;
 
     // TODO: Create empty default implementation for `init_*` functions after `async_trait` will
     // allow default implementation for methods with return value.
