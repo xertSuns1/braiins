@@ -102,51 +102,6 @@ impl Backend {
         }
     }
 
-    #[cfg(not(test))]
-    fn configure() -> Vec<bosminer_config::client::Descriptor> {
-        use bosminer_config::clap;
-
-        let app = clap::App::new("bosminer")
-            .version(bosminer::version::STRING.as_str())
-            .arg(
-                clap::Arg::with_name("pool")
-                    .short("p")
-                    .long("pool")
-                    .value_name("HOSTNAME:PORT")
-                    .help("Address the stratum V2 server")
-                    .required(true)
-                    .takes_value(true),
-            )
-            .arg(
-                clap::Arg::with_name("user")
-                    .short("u")
-                    .long("user")
-                    .value_name("USERNAME.WORKERNAME")
-                    .help("Specify user and worker name")
-                    .required(true)
-                    .takes_value(true),
-            );
-
-        let matches = app.get_matches();
-
-        let url = matches
-            .value_of("pool")
-            .expect("BUG: missing 'pool' attribute");
-        let user = matches
-            .value_of("user")
-            .expect("BUG: missing 'user' attribute");
-
-        let client_descriptor = bosminer_config::client::parse(url.to_string(), user.to_string())
-            .expect("Server parameters");
-
-        vec![client_descriptor]
-    }
-
-    #[cfg(test)]
-    fn configure() -> Vec<bosminer_config::client::Descriptor> {
-        vec![]
-    }
-
     fn run(&self) -> bosminer::error::Result<()> {
         info!("Block Erupter: finding device in USB...");
         let usb_context =
@@ -196,33 +151,33 @@ impl fmt::Display for Backend {
 #[async_trait]
 impl hal::Backend for Backend {
     type Type = Self;
+    type Config = config::Backend;
 
     const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;
     const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
-    fn create() -> hal::WorkNode<Self> {
+    fn create(_backend_config: &mut config::Backend) -> hal::WorkNode<Self> {
         node::WorkSolverType::WorkSolver(Box::new(|work_generator, solution_sender| {
             Self::new(work_generator, solution_sender)
         }))
     }
 
     async fn init_work_hub(
+        _backend_config: config::Backend,
         _work_hub: work::SolverBuilder<Self::Type>,
-    ) -> bosminer::Result<hal::FrontendConfiguration> {
+    ) -> bosminer::Result<hal::FrontendConfig> {
         panic!("BUG: called `init_work_hub`");
     }
 
     async fn init_work_solver(
+        _config: config::Backend,
         work_solver: Arc<Self>,
-    ) -> bosminer::Result<hal::FrontendConfiguration> {
-        let clients = Self::configure();
-
+    ) -> bosminer::Result<hal::FrontendConfig> {
         // TODO: remove it after `node::WorkSolver` trait will be extended with `enable` method
         work_solver.enable();
 
-        Ok(hal::FrontendConfiguration {
-            clients,
+        Ok(hal::FrontendConfig {
             cgminer_custom_commands: None,
         })
     }

@@ -28,7 +28,7 @@ use crate::monitor;
 use crate::power;
 use crate::FrequencySettings;
 
-use bosminer_config::clap;
+use bosminer::hal;
 
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -59,14 +59,23 @@ pub const DEFAULT_HASHRATE_INTERVAL: Duration = Duration::from_secs(60);
 /// Maximum time it takes to compute one job under normal circumstances
 pub const JOB_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[derive(Debug, Default, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 struct TempConfig {
     dangerous_temp: f32,
     hot_temp: f32,
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+impl Default for TempConfig {
+    fn default() -> Self {
+        Self {
+            dangerous_temp: 105.0,
+            hot_temp: 95.0,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 struct FanConfig {
     temperature: Option<f32>,
@@ -74,22 +83,57 @@ struct FanConfig {
     min_fans: usize,
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+impl Default for FanConfig {
+    fn default() -> Self {
+        Self {
+            temperature: Some(75.0),
+            speed: None,
+            min_fans: 1,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 struct ChainConfig {
     frequency: Option<f32>,
     voltage: Option<f32>,
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+impl Default for ChainConfig {
+    fn default() -> Self {
+        Self {
+            frequency: Some(650.0),
+            voltage: Some(9.0),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
-pub struct Configuration {
-    frequency: f32,
-    voltage: f32,
-    asic_boost: bool,
+pub struct Backend {
+    #[serde(skip)]
+    pub clients: Vec<bosminer_config::client::Descriptor>,
+    pub frequency: f32,
+    pub voltage: f32,
+    pub asic_boost: bool,
     temperature: Option<TempConfig>,
     fans: Option<FanConfig>,
     chain: Option<HashMap<String, ChainConfig>>,
+}
+
+impl Default for Backend {
+    fn default() -> Self {
+        Self {
+            clients: vec![],
+            frequency: 650.0,
+            voltage: 9.0,
+            asic_boost: true,
+            temperature: Some(Default::default()),
+            fans: Some(Default::default()),
+            chain: None,
+        }
+    }
 }
 
 pub struct ResolvedChainConfig {
@@ -98,37 +142,7 @@ pub struct ResolvedChainConfig {
     pub voltage: power::Voltage,
 }
 
-impl Configuration {
-    pub fn add_args<'a, 'b>(app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
-        app.arg(
-            clap::Arg::with_name("config")
-                .long("config")
-                .help("Set config file path")
-                .required(false)
-                .takes_value(true),
-        )
-        .arg(
-            clap::Arg::with_name("disable-asic-boost")
-                .long("disable-asic-boost")
-                .help("Disable ASIC boost (use just one midstate)")
-                .required(false),
-        )
-        .arg(
-            clap::Arg::with_name("frequency")
-                .long("frequency")
-                .help("Set chip frequency (in MHz)")
-                .required(false)
-                .takes_value(true),
-        )
-        .arg(
-            clap::Arg::with_name("voltage")
-                .long("voltage")
-                .help("Set chip voltage (in volts)")
-                .required(false)
-                .takes_value(true),
-        )
-    }
-
+impl Backend {
     pub fn midstate_count(&self) -> usize {
         if self.asic_boost {
             DEFAULT_MIDSTATE_COUNT
@@ -201,58 +215,17 @@ impl Configuration {
         }
     }
 
-    pub fn parse() -> (Vec<bosminer_config::client::Descriptor>, Self) {
-        let app = clap::App::new("bosminer")
-            .version(bosminer::version::STRING.as_str())
-            .arg(
-                clap::Arg::with_name("pool")
-                    .short("p")
-                    .long("pool")
-                    .value_name("HOSTNAME:PORT")
-                    .help("Address the stratum V2 server")
-                    .required(false)
-                    .takes_value(true),
-            )
-            .arg(
-                clap::Arg::with_name("user")
-                    .short("u")
-                    .long("user")
-                    .value_name("USERNAME.WORKERNAME")
-                    .help("Specify user and worker name")
-                    .required(false)
-                    .takes_value(true),
-            );
-
-        // Pass pre-build arguments to backend for further modification
-        let matches = Self::add_args(app).get_matches();
-
+    pub fn parse(config_path: &str) -> Self {
         // Parse config file - either user specified or the default one
-        let mut generic_config =
-            bosminer_config::parse(matches.value_of("config").unwrap_or(DEFAULT_CONFIG_PATH));
+        let mut generic_config = bosminer_config::parse(config_path);
 
         // Parse pools
         // Don't worry if is this section missing, maybe there are some pools on command line
-        let mut pools = generic_config.pools.take().unwrap_or_else(|| Vec::new());
-
-        // Add pools from command line
-        if let Some(url) = matches.value_of("pool") {
-            if let Some(user) = matches.value_of("user") {
-                pools.push(bosminer_config::PoolConfig {
-                    url: url.to_string(),
-                    user: user.to_string(),
-                    password: None,
-                });
-            }
-        }
-
-        // Check if there's enough pools
-        if pools.len() == 0 {
-            panic!("No pools specified.");
-        }
+        let pools = generic_config.pools.take().unwrap_or_else(|| Vec::new());
 
         // parse user input to fail fast when it is incorrect
-        let client_descriptors = pools
-            .iter()
+        let clients = pools
+            .into_iter()
             .map(|pool| {
                 bosminer_config::client::parse(pool.url.clone(), pool.user.clone())
                     .expect("Server parameters")
@@ -264,19 +237,14 @@ impl Configuration {
             .try_into::<Self>()
             .expect("failed to interpret config file");
 
-        // Set just 1 midstate if user requested disabling asicboost
-        if matches.is_present("disable-asic-boost") {
-            configuration.asic_boost = false;
-        }
-        if let Some(value) = matches.value_of("frequency") {
-            configuration.frequency = value.parse::<f32>().expect("not a float number");
-        }
-        if let Some(value) = matches.value_of("voltage") {
-            configuration.voltage = value.parse::<f32>().expect("not a float number");
-        }
+        configuration.clients = clients;
 
-        (client_descriptors, configuration)
+        configuration
     }
 }
 
-// write some tests please somebody
+impl hal::BackendConfig for Backend {
+    fn clients(&mut self) -> Vec<bosminer_config::client::Descriptor> {
+        self.clients.drain(..).collect()
+    }
+}
