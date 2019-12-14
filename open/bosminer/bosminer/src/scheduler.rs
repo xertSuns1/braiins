@@ -114,6 +114,7 @@ impl LocalGeneratedWork {
 
 /// Responsible for selecting and switching jobs
 struct JobDispatcher {
+    midstate_count: usize,
     engine_sender: Option<work::EngineSender>,
     active_client: Option<Arc<client::Handle>>,
     client_registry: Arc<Mutex<client::Registry>>,
@@ -146,7 +147,11 @@ impl JobDispatcher {
         let (solution_sender, solution_receiver) = mpsc::unbounded();
 
         let engine_sender = Arc::new(engine_sender);
-        let job_solver = job::Solver::new(engine_sender.clone(), solution_receiver);
+        let job_solver = job::Solver::new(
+            self.midstate_count,
+            engine_sender.clone(),
+            solution_receiver,
+        );
 
         let client_handle = ClientHandle::new(
             create(job_solver),
@@ -238,6 +243,7 @@ impl JobExecutor {
     const SCHEDULE_INTERVAL: time::Duration = time::Duration::from_secs(1);
 
     pub fn new(
+        midstate_count: usize,
         frontend: Arc<crate::Frontend>,
         engine_sender: work::EngineSender,
         client_registry: Arc<Mutex<client::Registry>>,
@@ -245,6 +251,7 @@ impl JobExecutor {
         Self {
             frontend,
             dispatcher: Mutex::new(JobDispatcher {
+                midstate_count,
                 engine_sender: Some(engine_sender),
                 active_client: None,
                 client_registry,

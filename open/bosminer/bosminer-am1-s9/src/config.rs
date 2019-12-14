@@ -28,7 +28,7 @@ use crate::monitor;
 use crate::power;
 use crate::FrequencySettings;
 
-use bosminer::hal;
+use bosminer::hal::{self, BackendConfig as _};
 
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -143,14 +143,6 @@ pub struct ResolvedChainConfig {
 }
 
 impl Backend {
-    pub fn midstate_count(&self) -> usize {
-        if self.asic_boost {
-            DEFAULT_MIDSTATE_COUNT
-        } else {
-            1
-        }
-    }
-
     pub fn resolve_chain_config(&self, hashboard_idx: usize) -> ResolvedChainConfig {
         // take top-level configuration or default value
         let mut frequency = self.frequency;
@@ -244,6 +236,15 @@ impl Backend {
 }
 
 impl hal::BackendConfig for Backend {
+    #[inline]
+    fn midstate_count(&self) -> usize {
+        if self.asic_boost {
+            DEFAULT_MIDSTATE_COUNT
+        } else {
+            1
+        }
+    }
+
     fn clients(&mut self) -> Vec<bosminer_config::client::Descriptor> {
         self.clients.drain(..).collect()
     }

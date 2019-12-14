@@ -43,9 +43,8 @@ pub mod test;
 use ii_logging::macros::*;
 
 use bosminer::async_trait;
-use bosminer::hal;
+use bosminer::hal::{self, BackendConfig as _};
 use bosminer::node;
-use bosminer::runtime_config;
 use bosminer::stats;
 use bosminer::work;
 
@@ -1239,7 +1238,6 @@ impl hal::Backend for Backend {
     type Type = Self;
     type Config = config::Backend;
 
-    const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;
     const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
@@ -1251,7 +1249,6 @@ impl hal::Backend for Backend {
         backend_config: config::Backend,
         work_hub: work::SolverBuilder<Self>,
     ) -> bosminer::Result<hal::FrontendConfig> {
-        runtime_config::set_midstate_count(backend_config.midstate_count());
         let gpio_mgr = gpio::ControlPinManager::new();
         let halt_sender = Self::start_miner(
             &gpio_mgr,

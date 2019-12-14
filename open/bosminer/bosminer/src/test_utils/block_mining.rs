@@ -30,10 +30,9 @@ use ii_logging::macros::*;
 use ii_bitcoin::HashTrait;
 
 use crate::backend;
-use crate::hal;
+use crate::hal::{self, BackendConfig as _};
 use crate::job::Bitcoin;
 use crate::node;
-use crate::runtime_config;
 use crate::test_utils;
 use crate::work;
 
@@ -85,27 +84,14 @@ impl Problem {
             target_midstate,
         }
     }
-}
 
-impl std::fmt::Debug for Problem {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            fmt,
-            "{:?} target_midstate={}",
-            &self.model_solution, self.target_midstate
-        )
-    }
-}
-
-/// Problem can be converted to MiningWork.
-///
-/// The in-soluble midstates (other than the one specified in the problem)
-/// are created from the original solution by increasing/decreasing the version
-/// slightly. There's no guarantee these blocks have no solution.
-impl From<Problem> for work::Assignment {
-    fn from(problem: Problem) -> Self {
-        let midstate_count = runtime_config::get_midstate_count();
-        let job: &test_utils::TestBlock = problem.model_solution.job();
+    /// Problem can be converted to MiningWork.
+    ///
+    /// The in-soluble midstates (other than the one specified in the problem)
+    /// are created from the original solution by increasing/decreasing the version
+    /// slightly. There's no guarantee these blocks have no solution.
+    fn into_work(self, midstate_count: usize) -> work::Assignment {
+        let job: &test_utils::TestBlock = self.model_solution.job();
         let time = job.time();
         let correct_version = job.version();
         let mut midstates = Vec::with_capacity(midstate_count);
@@ -120,7 +106,7 @@ impl From<Problem> for work::Assignment {
         // generate all midstates from given range of indexes
         for index in 0..midstate_count {
             // use index for generation compatible header version
-            let version = correct_version ^ (index as u32) ^ (problem.target_midstate as u32);
+            let version = correct_version ^ (index as u32) ^ (self.target_midstate as u32);
             block_chunk1.version = version;
             midstates.push(work::Midstate {
                 version,
@@ -128,6 +114,16 @@ impl From<Problem> for work::Assignment {
             })
         }
         work::Assignment::new(Arc::new(*job), midstates, time)
+    }
+}
+
+impl std::fmt::Debug for Problem {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            fmt,
+            "{:?} target_midstate={}",
+            &self.model_solution, self.target_midstate
+        )
     }
 }
 
@@ -311,7 +307,7 @@ pub async fn run<T: hal::Backend>(mut backend_config: T::Config) {
     // we expect all (generated) problems to be solved
     // ii_async_compat::run_main_exits(async move {
     // read config
-    let midstate_count = runtime_config::get_midstate_count();
+    let midstate_count = backend_config.midstate_count();
 
     // Create solver and channels to send/receive work
     let (engine_sender, solution_queue_rx, mut reschedule_receiver, work_solver_builder) =
@@ -340,7 +336,7 @@ pub async fn run<T: hal::Backend>(mut backend_config: T::Config) {
     // TODO: first work sent to miner is for some reason ignored
     // workaround: send two works
     engine_sender.broadcast(Arc::new(test_utils::OneWorkEngine::new(
-        Problem::new((&test_utils::TEST_BLOCKS[0]).into(), 0).into(),
+        Problem::new((&test_utils::TEST_BLOCKS[0]).into(), 0).into_work(midstate_count),
     )));
 
     // generate all blocks for all possible midstates
@@ -357,7 +353,7 @@ pub async fn run<T: hal::Backend>(mut backend_config: T::Config) {
             // wait for the work (engine) to be sent out (exhausted)
             reschedule_receiver.next().await;
             engine_sender.broadcast(Arc::new(test_utils::OneWorkEngine::new(
-                problem.clone().into(),
+                problem.clone().into_work(midstate_count),
             )));
         }
     }

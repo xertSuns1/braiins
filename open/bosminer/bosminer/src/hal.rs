@@ -53,6 +53,9 @@ pub type WorkNode<T> = node::WorkSolverType<
 >;
 
 pub trait BackendConfig: Debug + Send + Sync {
+    /// Number of midstates that backend is able to solve at once.
+    fn midstate_count(&self) -> usize;
+    /// List of clients which should be used after backend initialization.
     fn clients(&mut self) -> Vec<bosminer_config::client::Descriptor> {
         vec![]
     }
@@ -70,8 +73,6 @@ pub trait Backend: Send + Sync + 'static {
     /// Backend specific configuration with frontend specific settings
     type Config: BackendConfig;
 
-    /// Number of midstates
-    const DEFAULT_MIDSTATE_COUNT: usize;
     /// Default hashrate interval used for statistics
     const DEFAULT_HASHRATE_INTERVAL: Duration;
     /// Maximum time it takes to compute one job under normal circumstances

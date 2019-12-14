@@ -26,7 +26,6 @@ use ii_bitcoin::{HashTrait as _, MeetsTarget};
 
 use crate::job;
 use crate::node;
-use crate::runtime_config;
 use crate::stats::{self, DiffTargetType};
 use crate::work;
 
@@ -92,11 +91,12 @@ pub struct Solver {
 
 impl Solver {
     pub fn new(
+        midstate_count: usize,
         engine_sender: Arc<work::EngineSender>,
         solution_receiver: mpsc::UnboundedReceiver<work::Solution>,
     ) -> Self {
         Self {
-            job_sender: Sender::new(engine_sender),
+            job_sender: Sender::new(midstate_count, engine_sender),
             solution_receiver: SolutionReceiver::new(solution_receiver),
         }
     }
@@ -109,12 +109,16 @@ impl Solver {
 /// This is the entrypoint for new jobs and updates into processing.
 /// Typically the mining protocol handler will inject new jobs through it
 pub struct Sender {
+    midstate_count: usize,
     engine_sender: Arc<work::EngineSender>,
 }
 
 impl Sender {
-    pub fn new(engine_sender: Arc<work::EngineSender>) -> Self {
-        Self { engine_sender }
+    pub fn new(midstate_count: usize, engine_sender: Arc<work::EngineSender>) -> Self {
+        Self {
+            midstate_count,
+            engine_sender,
+        }
     }
 
     /// Check if the job has valid attributes
@@ -140,10 +144,7 @@ impl Sender {
         // send only jobs with correct data
         job.origin().client_stats().valid_jobs().inc();
         info!("--- broadcasting new job ---");
-        let engine = Arc::new(work::engine::VersionRolling::new(
-            job,
-            runtime_config::get_midstate_count(),
-        ));
+        let engine = Arc::new(work::engine::VersionRolling::new(job, self.midstate_count));
         self.engine_sender.broadcast(engine);
     }
 }
