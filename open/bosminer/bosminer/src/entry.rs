@@ -28,7 +28,6 @@ use crate::api;
 use crate::client;
 use crate::hal::{self, BackendConfig as _};
 use crate::hub;
-use crate::runtime_config;
 use crate::stats;
 
 use ii_async_compat::tokio;
@@ -41,12 +40,8 @@ pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
     // Get frontend specific settings from backend config
     let clients = backend_config.clients();
 
-    // Set default backend midstate count
-    // TODO: get this setting from backend config
-    runtime_config::set_midstate_count(T::DEFAULT_MIDSTATE_COUNT);
-
     // Initialize hub core which manages all resources
-    let core = Arc::new(hub::Core::new());
+    let core = Arc::new(hub::Core::new(backend_config.midstate_count()));
 
     // Create and initialize the backend
     let frontend_config = core

@@ -115,7 +115,7 @@ pub struct Core {
 
 /// Concentrates handles to all nodes associated with mining (backends, clients, work solvers)
 impl Core {
-    pub fn new() -> Self {
+    pub fn new(midstate_count: usize) -> Self {
         let frontend = Arc::new(crate::Frontend::new());
 
         let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
@@ -123,6 +123,7 @@ impl Core {
 
         let client_registry = Arc::new(Mutex::new(client::Registry::new()));
         let job_executor = Arc::new(scheduler::JobExecutor::new(
+            midstate_count,
             frontend.clone(),
             engine_sender,
             client_registry.clone(),
@@ -246,7 +247,7 @@ pub mod test {
         let (solution_sender, solution_receiver) = mpsc::unbounded();
         let frontend = Arc::new(crate::Frontend::new());
         (
-            job::Solver::new(Arc::new(engine_sender), solution_receiver),
+            job::Solver::new(1, Arc::new(engine_sender), solution_receiver),
             work::SolverBuilder::new(
                 frontend,
                 Arc::new(backend::Registry::new()),

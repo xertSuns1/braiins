@@ -45,6 +45,11 @@ impl Default for Backend {
 }
 
 impl hal::BackendConfig for Backend {
+    #[inline]
+    fn midstate_count(&self) -> usize {
+        DEFAULT_MIDSTATE_COUNT
+    }
+
     fn clients(&mut self) -> Vec<bosminer_config::client::Descriptor> {
         self.client
             .take()
