@@ -29,9 +29,6 @@ pub use config;
 
 use serde::Deserialize;
 
-/// Expected configuration version
-const CONFIG_VERSION: &'static str = "alpha";
-
 #[derive(Debug, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct PoolConfig {
@@ -40,17 +37,11 @@ pub struct PoolConfig {
     pub password: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct GenericConfig {
-    config_version: String,
-    #[serde(rename = "pool")]
-    pub pools: Option<Vec<PoolConfig>>,
-    #[serde(flatten)]
-    pub backend_config: config::Value,
-}
-
 /// Parse config (either specified or the default one)
-pub fn parse(config_path: &str) -> GenericConfig {
+pub fn parse<'a, T>(config_path: &str) -> T
+where
+    T: Deserialize<'a>,
+{
     let mut settings = config::Config::default();
     settings
         .merge(config::File::with_name(config_path))
@@ -58,13 +49,8 @@ pub fn parse(config_path: &str) -> GenericConfig {
 
     // Parse it into structure
     let generic_config = settings
-        .try_into::<GenericConfig>()
+        .try_into::<T>()
         .expect("failed to interpret config");
-
-    // Check config is of the correct version
-    if generic_config.config_version != CONFIG_VERSION {
-        panic!("config_version should be {}", CONFIG_VERSION);
-    }
 
     generic_config
 }
