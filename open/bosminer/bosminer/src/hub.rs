@@ -143,7 +143,10 @@ impl Core {
         }
     }
 
-    pub async fn add_backend<T: hal::Backend>(&self) -> error::Result<hal::FrontendConfiguration> {
+    pub async fn add_backend<T: hal::Backend>(
+        &self,
+        mut backend_config: T::Config,
+    ) -> error::Result<hal::FrontendConfig> {
         let work_solver_builder = work::SolverBuilder::new(
             self.frontend.clone(),
             self.backend_registry.clone(),
@@ -152,19 +155,19 @@ impl Core {
         );
 
         // call backend create to determine the preferred hierarchy
-        match T::create() {
+        match T::create(&mut backend_config) {
             // the generic tree hierarchy where the backend consists of multiple devices
             node::WorkSolverType::WorkHub(create) => {
                 let work_hub = work_solver_builder.create_work_hub(create).await;
                 // Initialization of backend hierarchy is done dynamically with provided work hub
                 // which can be used for registration of another work hubs or work solvers. The
                 // hierarchy has no limitation but is restricted only with tree structure.
-                T::init_work_hub(work_hub).await
+                T::init_work_hub(backend_config, work_hub).await
             }
             // the simplest hierarchy where the backend is single device
             node::WorkSolverType::WorkSolver(create) => {
                 let work_solver = work_solver_builder.create_work_solver(create).await;
-                T::init_work_solver(work_solver).await
+                T::init_work_solver(backend_config, work_solver).await
             }
         }
     }

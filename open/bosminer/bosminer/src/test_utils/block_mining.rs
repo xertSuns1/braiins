@@ -306,7 +306,7 @@ async fn collect_solutions(
     }
 }
 
-pub async fn run<T: hal::Backend>() {
+pub async fn run<T: hal::Backend>(mut backend_config: T::Config) {
     // this is a small miner core: we generate work, collect solutions, and we pair them together
     // we expect all (generated) problems to be solved
     // ii_async_compat::run_main_exits(async move {
@@ -321,14 +321,16 @@ pub async fn run<T: hal::Backend>() {
     let registry = Arc::new(Mutex::new(Registry::new()));
 
     // start HW backend for selected target
-    match T::create() {
+    match T::create(&mut backend_config) {
         node::WorkSolverType::WorkHub(create) => {
             let work_hub = work_solver_builder.create_work_hub(create).await;
-            T::init_work_hub(work_hub).await.unwrap();
+            T::init_work_hub(backend_config, work_hub).await.unwrap();
         }
         node::WorkSolverType::WorkSolver(create) => {
             let work_solver = work_solver_builder.create_work_solver(create).await;
-            T::init_work_solver(work_solver).await.unwrap();
+            T::init_work_solver(backend_config, work_solver)
+                .await
+                .unwrap();
         }
     }
 

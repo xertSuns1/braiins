@@ -20,10 +20,50 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use bosminer_config::clap;
+use bosminer_erupter::config;
+
 use ii_async_compat::tokio;
 
 #[tokio::main]
 async fn main() {
+    let app = clap::App::new("bosminer")
+        .version(bosminer::version::STRING.as_str())
+        .arg(
+            clap::Arg::with_name("pool")
+                .short("p")
+                .long("pool")
+                .value_name("HOSTNAME:PORT")
+                .help("Address the stratum V2 server")
+                .required(true)
+                .takes_value(true),
+        )
+        .arg(
+            clap::Arg::with_name("user")
+                .short("u")
+                .long("user")
+                .value_name("USERNAME.WORKERNAME")
+                .help("Specify user and worker name")
+                .required(true)
+                .takes_value(true),
+        );
+
+    let matches = app.get_matches();
+
+    let url = matches
+        .value_of("pool")
+        .expect("BUG: missing 'pool' attribute");
+    let user = matches
+        .value_of("user")
+        .expect("BUG: missing 'user' attribute");
+
+    let client_descriptor = bosminer_config::client::parse(url.to_string(), user.to_string())
+        .expect("Server parameters");
+
+    let backend_config = config::Backend {
+        client: Some(client_descriptor),
+    };
+
     ii_async_compat::setup_panic_handling();
-    bosminer::main::<bosminer_erupter::Backend>().await;
+    bosminer::main::<bosminer_erupter::Backend>(backend_config).await;
 }

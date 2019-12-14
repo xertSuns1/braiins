@@ -20,6 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use bosminer::hal;
+
 use std::time::Duration;
 
 /// Number of midstates
@@ -30,3 +32,23 @@ pub const DEFAULT_HASHRATE_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Maximum time it takes to compute one job under normal circumstances
 pub const JOB_TIMEOUT: Duration = Duration::from_secs(30);
+
+#[derive(Debug)]
+pub struct Backend {
+    pub client: Option<bosminer_config::client::Descriptor>,
+}
+
+impl Default for Backend {
+    fn default() -> Self {
+        Self { client: None }
+    }
+}
+
+impl hal::BackendConfig for Backend {
+    fn clients(&mut self) -> Vec<bosminer_config::client::Descriptor> {
+        self.client
+            .take()
+            .map(|client| vec![client])
+            .unwrap_or_default()
+    }
+}

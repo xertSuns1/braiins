@@ -41,7 +41,7 @@ impl fmt::Display for Protocol {
 }
 
 /// Contains basic information about client used for obtaining jobs for solving.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Descriptor {
     pub url: String,
     pub user: String,

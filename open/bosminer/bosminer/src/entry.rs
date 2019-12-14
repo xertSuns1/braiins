@@ -26,7 +26,7 @@
 
 use crate::api;
 use crate::client;
-use crate::hal;
+use crate::hal::{self, BackendConfig as _};
 use crate::hub;
 use crate::runtime_config;
 use crate::stats;
@@ -35,18 +35,22 @@ use ii_async_compat::tokio;
 
 use std::sync::Arc;
 
-pub async fn main<T: hal::Backend>() {
+pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
     let _log_guard = ii_logging::setup_for_app();
 
+    // Get frontend specific settings from backend config
+    let clients = backend_config.clients();
+
     // Set default backend midstate count
+    // TODO: get this setting from backend config
     runtime_config::set_midstate_count(T::DEFAULT_MIDSTATE_COUNT);
 
     // Initialize hub core which manages all resources
     let core = Arc::new(hub::Core::new());
 
     // Create and initialize the backend
-    let mut configuration = core
-        .add_backend::<T>()
+    let frontend_config = core
+        .add_backend::<T>(backend_config)
         .await
         .expect("Backend initialization failed");
 
@@ -58,10 +62,10 @@ pub async fn main<T: hal::Backend>() {
     ));
 
     // start client based on user input
-    for client_descriptor in configuration.clients.drain(..) {
+    for client_descriptor in clients {
         client::register(&core, client_descriptor).await.enable();
     }
 
     // the bosminer is controlled with API which also controls when the miner will end
-    api::run(core, configuration).await;
+    api::run(core, frontend_config).await;
 }

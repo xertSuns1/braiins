@@ -52,8 +52,13 @@ pub type WorkNode<T> = node::WorkSolverType<
     Box<dyn FnOnce(work::Generator, work::SolutionSender) -> T + Send + Sync>,
 >;
 
-pub struct FrontendConfiguration {
-    pub clients: Vec<bosminer_config::client::Descriptor>,
+pub trait BackendConfig: Debug + Send + Sync {
+    fn clients(&mut self) -> Vec<bosminer_config::client::Descriptor> {
+        vec![]
+    }
+}
+
+pub struct FrontendConfig {
     pub cgminer_custom_commands: Option<command::Map>,
 }
 
@@ -62,6 +67,8 @@ pub struct FrontendConfiguration {
 pub trait Backend: Send + Sync + 'static {
     /// Work solver type used for initialization of backend hierarchy
     type Type: node::WorkSolver;
+    /// Backend specific configuration with frontend specific settings
+    type Config: BackendConfig;
 
     /// Number of midstates
     const DEFAULT_MIDSTATE_COUNT: usize;
@@ -75,7 +82,7 @@ pub trait Backend: Send + Sync + 'static {
     /// bOSminer frontend and passed to appropriate backend method for future initialization
     /// (`init_work_hub` or `init_work_solver`). The create method should be non-blocking and all
     /// blocking operation should be moved to init method which is asynchronous.
-    fn create() -> WorkNode<Self::Type>;
+    fn create(backend_config: &mut Self::Config) -> WorkNode<Self::Type>;
 
     // TODO: Create empty default implementation for `init_*` functions after `async_trait` will
     // allow default implementation for methods with return value.
@@ -84,13 +91,15 @@ pub trait Backend: Send + Sync + 'static {
     /// Passed work hub should be used for creating backend hierarchy consisting of work hubs and
     /// work solvers. All nodes should be also initialized.
     async fn init_work_hub(
-        _work_hub: work::SolverBuilder<Self::Type>,
-    ) -> error::Result<FrontendConfiguration>;
+        backend_config: Self::Config,
+        work_hub: work::SolverBuilder<Self::Type>,
+    ) -> error::Result<FrontendConfig>;
 
     /// Function is called when `create` function returns `node::WorkSolverType::WorkSolver`
     /// Passed work solver is available for time consuming initialization which should not be done
     /// in create function.
     async fn init_work_solver(
-        _work_solver: Arc<Self::Type>,
-    ) -> error::Result<FrontendConfiguration>;
+        backend_config: Self::Config,
+        work_solver: Arc<Self::Type>,
+    ) -> error::Result<FrontendConfig>;
 }

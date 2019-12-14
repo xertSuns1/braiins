@@ -1151,18 +1151,18 @@ impl Backend {
         gpio_mgr: &gpio::ControlPinManager,
         enabled_chains: Vec<usize>,
         work_hub: work::SolverBuilder<Backend>,
-        configuration: &config::Configuration,
+        backend_config: config::Backend,
     ) -> Arc<halt::Sender> {
         let (halt_sender, halt_receiver) = halt::make_pair(HALT_TIMEOUT);
-        let monitor_config = configuration.resolve_monitor_config();
-        info!("Resolved monitor configuration: {:?}", monitor_config);
+        let monitor_config = backend_config.resolve_monitor_config();
+        info!("Resolved monitor backend_config: {:?}", monitor_config);
         let monitor = monitor::Monitor::new(monitor_config, halt_sender.clone()).await;
         let voltage_ctrl_backend = Arc::new(power::I2cBackend::new(0));
         let mut managers = Vec::new();
         info!(
             "Initializing miner, enabled_chains={:?}, midstate_count={}",
             enabled_chains,
-            configuration.midstate_count(),
+            backend_config.midstate_count(),
         );
         // build all hash chain managers and register ourselves with frontend
         for hashboard_idx in enabled_chains {
@@ -1170,7 +1170,7 @@ impl Backend {
             let monitor_tx =
                 monitor::Monitor::register_hashchain(monitor.clone(), hashboard_idx).await;
             // make pins
-            let chain_config = configuration.resolve_chain_config(hashboard_idx);
+            let chain_config = backend_config.resolve_chain_config(hashboard_idx);
 
             // build hashchain_node for statistics and static parameters
             let hash_chain_node = work_hub
@@ -1237,26 +1237,27 @@ impl Backend {
 #[async_trait]
 impl hal::Backend for Backend {
     type Type = Self;
+    type Config = config::Backend;
 
     const DEFAULT_MIDSTATE_COUNT: usize = config::DEFAULT_MIDSTATE_COUNT;
     const DEFAULT_HASHRATE_INTERVAL: Duration = config::DEFAULT_HASHRATE_INTERVAL;
     const JOB_TIMEOUT: Duration = config::JOB_TIMEOUT;
 
-    fn create() -> hal::WorkNode<Self> {
+    fn create(_backend_config: &mut config::Backend) -> hal::WorkNode<Self> {
         node::WorkSolverType::WorkHub(Box::new(Self::new))
     }
 
     async fn init_work_hub(
+        backend_config: config::Backend,
         work_hub: work::SolverBuilder<Self>,
-    ) -> bosminer::Result<hal::FrontendConfiguration> {
-        let (clients, configuration) = config::Configuration::parse();
-        runtime_config::set_midstate_count(configuration.midstate_count());
+    ) -> bosminer::Result<hal::FrontendConfig> {
+        runtime_config::set_midstate_count(backend_config.midstate_count());
         let gpio_mgr = gpio::ControlPinManager::new();
         let halt_sender = Self::start_miner(
             &gpio_mgr,
             Self::detect_hashboards(&gpio_mgr).expect("failed detecting hashboards"),
             work_hub,
-            &configuration,
+            backend_config,
         )
         .await;
 
@@ -1270,15 +1271,15 @@ impl hal::Backend for Backend {
         // Hook Ctrl-C
         halt_sender.hook_ctrlc();
 
-        Ok(hal::FrontendConfiguration {
-            clients,
+        Ok(hal::FrontendConfig {
             cgminer_custom_commands: None,
         })
     }
 
     async fn init_work_solver(
+        _backend_config: config::Backend,
         _work_solver: Arc<Self>,
-    ) -> bosminer::Result<hal::FrontendConfiguration> {
+    ) -> bosminer::Result<hal::FrontendConfig> {
         panic!("BUG: called `init_work_solver`");
     }
 }
