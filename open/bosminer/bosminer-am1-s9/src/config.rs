@@ -34,6 +34,9 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::time::Duration;
 
+/// Expected configuration version
+const CONFIG_VERSION: &'static str = "alpha";
+
 /// Location of default config
 /// TODO: Maybe don't add `.toml` prefix so we could use even JSON
 pub const DEFAULT_CONFIG_PATH: &'static str = "/etc/bosminer/bosminer.toml";
@@ -112,6 +115,9 @@ impl Default for ChainConfig {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Backend {
+    config_version: String,
+    #[serde(rename = "pool")]
+    pub pools: Option<Vec<bosminer_config::PoolConfig>>,
     #[serde(skip)]
     pub clients: Vec<bosminer_config::client::Descriptor>,
     pub frequency: f32,
@@ -125,6 +131,8 @@ pub struct Backend {
 impl Default for Backend {
     fn default() -> Self {
         Self {
+            config_version: Default::default(),
+            pools: None,
             clients: vec![],
             frequency: 650.0,
             voltage: 9.0,
@@ -209,11 +217,16 @@ impl Backend {
 
     pub fn parse(config_path: &str) -> Self {
         // Parse config file - either user specified or the default one
-        let mut generic_config = bosminer_config::parse(config_path);
+        let mut backend_config: Self = bosminer_config::parse(config_path);
+
+        // Check config is of the correct version
+        if backend_config.config_version != CONFIG_VERSION {
+            panic!("config_version should be {}", CONFIG_VERSION);
+        }
 
         // Parse pools
         // Don't worry if is this section missing, maybe there are some pools on command line
-        let pools = generic_config.pools.take().unwrap_or_else(|| Vec::new());
+        let pools = backend_config.pools.take().unwrap_or_else(|| Vec::new());
 
         // parse user input to fail fast when it is incorrect
         let clients = pools
@@ -224,14 +237,9 @@ impl Backend {
             })
             .collect();
 
-        let mut configuration = generic_config
-            .backend_config
-            .try_into::<Self>()
-            .expect("failed to interpret config file");
+        backend_config.clients = clients;
 
-        configuration.clients = clients;
-
-        configuration
+        backend_config
     }
 }
 
