@@ -44,7 +44,7 @@ pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
 
     // Create and initialize the backend
     let frontend_config = core
-        .add_backend::<T>(backend_config)
+        .build_backend::<T>(backend_config)
         .await
         .expect("Backend initialization failed");
 
