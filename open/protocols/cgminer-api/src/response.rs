@@ -130,6 +130,8 @@ pub enum StatusCode {
     CustomBase = 300,
 }
 
+/// Holds standard protocol status code or a custom one. Unifying these 2 variants allows
+/// adding custom status codes to the API.
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub enum StatusCodeType {
     Protocol(StatusCode),

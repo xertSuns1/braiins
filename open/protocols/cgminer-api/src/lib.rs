@@ -20,6 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+//! A generic CGMiner API server
+
 pub mod command;
 pub mod response;
 pub mod support;
@@ -118,7 +120,7 @@ async fn handle_connection_task(mut conn: Connection, command_receiver: Arc<comm
     }
 }
 
-/// Start up an API server with a `handler` object, listening on `listen_addr`
+/// Start up an API server with a `command_receiver` object, listening on `listen_addr`
 pub async fn run(command_receiver: command::Receiver, listen_addr: SocketAddr) -> io::Result<()> {
     let mut server = Server::bind(&listen_addr)?;
     let command_receiver = Arc::new(command_receiver);

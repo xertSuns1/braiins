@@ -184,6 +184,8 @@ macro_rules! commands {
     }
 }
 
+/// Generic command receiving and processing object that dispatches command handling
+/// user provided handler methods.
 pub struct Receiver<T = UnixTime> {
     commands: Map,
     miner_signature: String,
@@ -196,6 +198,9 @@ impl<T> Receiver<T>
 where
     T: When,
 {
+    /// Builds a new command receiver that delegates processing of all standard commands to the
+    /// provided `handler`. Optional `custom_commands` must be convertible to a `command::Map` and
+    /// extend the command map created for the basic commands.
     pub fn new<U, V>(
         handler: U,
         miner_signature: String,
@@ -273,7 +278,7 @@ where
         })
     }
 
-    /// Handles a single `command` with option `parameter`. `multi_command` flag ensures that no
+    /// Handles a single `command` with optional `parameter`. `multi_command` flag ensures that no
     /// command with parameters can be processed in batched mode.
     async fn handle_single(
         &self,
