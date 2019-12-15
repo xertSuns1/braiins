@@ -147,7 +147,7 @@ impl Core {
     /// Builds a new backend for a specified `backend_config`.
     /// The resulting `hal::FrontendConfig` is then available for starting additional bOSminer
     /// components
-    pub async fn add_backend<T: hal::Backend>(
+    pub async fn build_backend<T: hal::Backend>(
         &self,
         mut backend_config: T::Config,
     ) -> error::Result<hal::FrontendConfig> {
