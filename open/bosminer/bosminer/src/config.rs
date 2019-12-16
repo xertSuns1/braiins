@@ -22,4 +22,5 @@
 
 //! This module holds bOSminer configuration until better solution comes around.
 
-pub const DEFAULT_MIDSTATE_COUNT: usize = 1;
+/// Override the default drain channel size as miner tends to burst messages into the logger
+pub const ASYNC_LOGGER_DRAIN_CHANNEL_SIZE: usize = 4096;
