@@ -11,13 +11,13 @@ frequency = 650
 voltage = 9
 
 # Override frequency and voltage for chain 8
-[chain.8]
-frequency = 560
-voltage = 8.9
+#[chain.8]
+#frequency = 560
+#voltage = 8.9
 
 # Override voltage for chain 7
-[chain.7]
-voltage = 8.8
+#[chain.7]
+#voltage = 8.8
 
 # Configuration of temperature control
 #
@@ -41,6 +41,6 @@ temperature = 75
 min_fans = 1
 
 # Declares pools. This section can be repeated.
-[[pool]]
-url = "v2.stratum.slushpool.com:3336"
-user = "!non-existent-user!"
+#[[pool]]
+#url = "v2.stratum.slushpool.com:3336"
+#user = "!non-existent-user!"

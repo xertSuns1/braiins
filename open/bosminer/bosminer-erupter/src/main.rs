@@ -49,6 +49,8 @@ async fn main() {
         );
 
     let matches = app.get_matches();
+    let _log_guard =
+        ii_logging::setup_for_app(bosminer_erupter::config::ASYNC_LOGGER_DRAIN_CHANNEL_SIZE);
 
     let url = matches
         .value_of("pool")
