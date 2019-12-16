@@ -125,7 +125,7 @@ async fn handle_connection_task(mut conn: Connection, command_receiver: Arc<comm
     let response = match conn.next().await {
         Some(Ok(command)) => command_receiver.handle(command).await,
         Some(Err(err)) if err.kind() == io::ErrorKind::InvalidData => {
-            command_receiver.error_response(response::ErrorCode::InvalidCommand)
+            command_receiver.error_response(response::ErrorCode::InvalidJSON)
         }
         _ => return, // We pretty much ignore I/O errors here
     };
