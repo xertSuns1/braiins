@@ -121,6 +121,7 @@ pub enum StatusCode {
     // error status codes
     InvalidCommand = 14,
     MissingAscParameter = 15,
+    InvalidJSON = 23,
     MissingCommand = 24,
     AccessDeniedCmd = 45,
     MissingCheckCmd = 71,
@@ -160,6 +161,7 @@ impl Serialize for StatusCodeType {
 pub enum ErrorCode {
     InvalidCommand,
     MissingAscParameter,
+    InvalidJSON,
     MissingCommand,
     AccessDeniedCmd(String),
     MissingCheckCmd,
@@ -205,6 +207,7 @@ impl From<ErrorCode> for Error {
                 StatusCode::MissingAscParameter,
                 "Missing device id parameter".to_string(),
             ),
+            ErrorCode::InvalidJSON => (StatusCode::InvalidJSON, "Invalid JSON".to_string()),
             ErrorCode::MissingCommand => (
                 StatusCode::MissingCommand,
                 "Missing JSON 'command'".to_string(),
