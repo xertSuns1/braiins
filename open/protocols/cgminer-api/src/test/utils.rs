@@ -54,8 +54,7 @@ where
     let mut codec = Codec::default();
 
     let mut command_buf = BytesMut::with_capacity(256);
-    let command = format!("{}\n", command.to_string());
-    command_buf.extend_from_slice(command.as_bytes());
+    command_buf.extend_from_slice(command.to_string().as_bytes());
 
     let command = codec.decode(&mut command_buf).unwrap().unwrap();
     let response = command_receiver.handle(command).await;
