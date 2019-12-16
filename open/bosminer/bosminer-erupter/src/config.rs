@@ -24,6 +24,9 @@ use bosminer::hal;
 
 use std::time::Duration;
 
+/// Override the default drain channel size as miner tends to burst messages into the logger
+pub const ASYNC_LOGGER_DRAIN_CHANNEL_SIZE: usize = 128;
+
 /// Number of midstates
 pub const DEFAULT_MIDSTATE_COUNT: usize = 1;
 

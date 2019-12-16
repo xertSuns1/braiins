@@ -20,6 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use ii_logging::macros::*;
+
 use bosminer_am1_s9::config;
 use bosminer_config::clap;
 
@@ -43,6 +45,7 @@ async fn main() {
                 .value_name("HOSTNAME:PORT")
                 .help("Address the stratum V2 server")
                 .required(false)
+                .requires("user")
                 .takes_value(true),
         )
         .arg(
@@ -52,6 +55,7 @@ async fn main() {
                 .value_name("USERNAME.WORKERNAME")
                 .help("Specify user and worker name")
                 .required(false)
+                .requires("pool")
                 .takes_value(true),
         )
         .arg(
@@ -76,6 +80,8 @@ async fn main() {
         );
 
     let matches = app.get_matches();
+    let _log_guard =
+        ii_logging::setup_for_app(bosminer_am1_s9::config::ASYNC_LOGGER_DRAIN_CHANNEL_SIZE);
 
     let config_path = matches
         .value_of("config")
@@ -84,17 +90,31 @@ async fn main() {
 
     // Add pools from command line
     if let Some(url) = matches.value_of("pool") {
-        let user = matches.value_of("user").expect("missing 'user' argument");
+        let user = matches
+            .value_of("user")
+            .expect("BUG: missing 'user' argument");
 
         let client_descriptor = bosminer_config::client::parse(url.to_string(), user.to_string())
             .expect("Server parameters");
 
-        backend_config.clients.push(client_descriptor);
+        if !backend_config.clients.is_empty() {
+            warn!("Overriding pool settings located at '{}'", config_path);
+        }
+
+        backend_config.clients = vec![client_descriptor];
     }
 
     // Check if there's enough pools
     if backend_config.clients.len() == 0 {
-        panic!("No pools specified.");
+        error!("No pools specified!");
+        info!("Use cli arguments:");
+        info!("    bosminer --pool <HOSTNAME:PORT> --user <USERNAME.WORKERNAME>");
+        info!(
+            "Or specify pool(s) in configuration file '{}':",
+            config_path
+        );
+        info!("    in [[pool]] section");
+        return;
     }
 
     // Set just 1 midstate if user requested disabling asicboost

@@ -741,7 +741,7 @@ impl HashChain {
                         if !status.duplicate {
                             let hash = unique_solution.hash();
                             if !hash.meets(&ASIC_TARGET) {
-                                warn!("Solution from hashchain not hitting ASIC target");
+                                trace!("Solution from hashchain not hitting ASIC target");
                                 counter.lock().await.add_error(core_addr);
                             } else {
                                 counter.lock().await.add_valid(core_addr);

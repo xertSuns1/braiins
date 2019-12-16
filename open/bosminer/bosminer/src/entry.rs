@@ -25,7 +25,6 @@
 
 use crate::api;
 use crate::client;
-use crate::config;
 use crate::hal::{self, BackendConfig as _};
 use crate::hub;
 use crate::stats;
@@ -35,8 +34,6 @@ use ii_async_compat::tokio;
 use std::sync::Arc;
 
 pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
-    let _log_guard = ii_logging::setup_for_app(config::ASYNC_LOGGER_DRAIN_CHANNEL_SIZE);
-
     // Get frontend specific settings from backend config
     let clients = backend_config.clients();
 

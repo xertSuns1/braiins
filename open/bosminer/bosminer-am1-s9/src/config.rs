@@ -37,6 +37,9 @@ use std::time::Duration;
 /// Expected configuration version
 const CONFIG_VERSION: &'static str = "alpha";
 
+/// Override the default drain channel size as miner tends to burst messages into the logger
+pub const ASYNC_LOGGER_DRAIN_CHANNEL_SIZE: usize = 4096;
+
 /// Location of default config
 /// TODO: Maybe don't add `.toml` prefix so we could use even JSON
 pub const DEFAULT_CONFIG_PATH: &'static str = "/etc/bosminer/bosminer.toml";
