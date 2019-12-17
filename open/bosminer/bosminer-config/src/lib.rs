@@ -37,7 +37,7 @@ pub struct PoolConfig {
     pub password: Option<String>,
 }
 
-/// Parse config (either specified or the default one)
+/// Parse a configuration file from `config_path`.
 pub fn parse<'a, T>(config_path: &str) -> T
 where
     T: Deserialize<'a>,
