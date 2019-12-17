@@ -1,3 +1,22 @@
+## Overview
+
+This release marks a significant step in **Braiins OS** development since it replaces **cgminer** with a new software called **bOSminer** written from scratch.
+The goal of the release was to approach the existing feature set of the **cgminer** based **Braiins OS**, while using the new mining software.
+
+*NOTE:* This release is not **production ready** and is intended to preview the **bOSminer** software. Therefore, it is exclusively distributed as an **SD card** image for **Antminer S9**.
+
+## All mining hardware types
+
+- [feature] cgminer has been replaced by *bOSminer*. [README](../open/bosminer/README.md) provides additional details about features and known issues
+- [missing-feature] *web interface* currently lacks statistics, hashrate charts and configuration. A simple **overview page** with howto is provided instead
+
+## Antminer S9
+- no changes
+
+## Dragonmint T1
+
+- [feature] support for this hardware has been dropped for the time being.
+
 # 2019-06-05-0
 
 ## All mining hardware types
