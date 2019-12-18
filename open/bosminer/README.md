@@ -8,21 +8,18 @@ from scratch and written in a more modern programming language, Rust.
 
 ## Backend Agnostic Features
 
-- native **Stratum V2** support. The miner can be tested against `v2.stratum.slushpool.com:3336`. Alternatively it can be tested in combination with
-*V2->V1* [mining proxy](../stratum-proxy/README.md) running locally in your environment. 
+- native **Stratum V2** support. The miner can be tested against `v2.stratum.slushpool.com:3336`. Alternatively it can be tested in combination with a *V2->V1* [mining proxy](../stratum-proxy/README.md) running locally in your environment. 
 - **toml** based persistent configuration, default path (`/etc/bosminer/bosminer.toml`) can be overridden on the command line. The configuration file is schema based, therefore the software would **complain** about **missing** or **unknown** configuration fields.
-- **weighted pool switching** - User can specify multiple pools in the configuration and **bOSminer** will balance the hash rate across multiple pools. Currently it is not possible to specify weights for individual pools in the configuration nor on the command line.
+- **weighted pool switching** - user can specify multiple pools in the configuration and **bOSminer** will balance the hash rate across multiple pools. Currently it is not possible to specify weights for individual pools in the configuration nor on the command line.
 - **cgminer** compatible *read-only* **API**
 - **fan control** - user may specify a target temperature and the software will optimally control fan speed to reach the desired temperature. Alternatively, this mechanism can be overridden by a fixed fan speed.
-- **temperature monitoring** - software periodically monitors temperatures of individual hash chains and issues a warning if temperature exceeds one of the configured levels - see `dangerous_temp` and `hot_temp` configuration options below.
-
-*Note: If you are interested in trying out the bOSminer preview right away, there is a pre-built version which you can download here:* [https://feeds.braiins-os.org/](https://feeds.braiins-os.org/)
+- **temperature monitoring** - software periodically monitors the temperatures of individual hash chains and issues a warning if a temperature exceeds one of the configured levels - see `dangerous_temp` and `hot_temp` configuration options below.
 
 
 ## Antminer S9 Specific Features
 
-- **AsicBoost** - enable/disable multi-mid-state hashing aka **AsicBoost**
-- **per hash board** **voltage** and **frequency** configuration
+- **AsicBoost** - enable/disable multi-mid-state hashing aka **AsicBoost**.
+- **per hash board** **voltage** and **frequency** configuration.
 
 
 
@@ -117,15 +114,15 @@ Example output:
 
 Below is a list of use cases that we plan on implementing in the Beta MVP phase of the project:
 
-- fail-over between pools and upstream connection handling the bOSminer currently doesn't handle any upstream connectivity issues. If the upstream fails, the software wouldn't try to reconnect.
-- currently the API implements the read-only subset, writable part of cgminer compatible API is to be implemented
-- stratum V1 support - legacy mining protocol support is necessary for production environments
-- linear frequency scaling of factory calibration frequencies
+- fail-over between pools and upstream connection handling. The bOSminer Alpha doesn't handle any upstream connectivity issues (i.e. if the upstream fails, the software wouldn't try to reconnect).
+- currently the API implements the read-only subset, while the writable part of cgminer compatible API is still to be implemented.
+- stratum V1 support - legacy mining protocol support is necessary for production environments.
+- linear frequency scaling of factory calibration frequencies.
 
 
 # Configuration and Command Line Options
 
-Currently the software can be configured in 2 ways - sorted by priority:
+The software can be configured in 2 ways - sorted by priority:
 
 - command line options
 - configuration file
@@ -217,13 +214,14 @@ user = "YOURUSERNAME.WORKERNAME"
 
 From here on, you can read if you are interested in building bOSminer from sources.
 
+*Note: If you are interested in trying out the bOSminer preview right away, there is a pre-built version which you can download here:* [https://feeds.braiins-os.org/](https://feeds.braiins-os.org/)
+
 ## Directory Layout
 
 The project is structured as a set of Rust crates:
 
 - [bosminer](bosminer/README.md) - generic part of the software; you should not need to build this crate separately unless you are a developer
-- [bosminer-erupter](bosminer-erupter/README.md) - Block Erupter support is
-  provided for development purposees - it serves as a test bed for bosminer code base
+- [bosminer-erupter](bosminer-erupter/README.md) - Block Erupter support is provided for development purposees - it serves as a test bed for bosminer code base
 - [bosminer-am1-s9](bosminer-am1-s9/README.md) - Antminer S9 application
 
 Below are generic guidelines on how to setup your build environment. After that,
@@ -261,7 +259,7 @@ rustup component add rustfmt
 
 The actual mining devices are considered as *remote targets*, meaning that you can direct cargo to run the mining application or its tests remotely on a device that is already running an image of Braiins OS.
 
-In order to perform the steps below you have to descent to a specific target folder (am1-s9 is the only remote target for the time being)
+In order to perform the steps below you have to descend to a specific target folder (am1-s9 is the only remote target for the time being)
 
 ```shell
 cd bosminer-am1-s9
@@ -296,7 +294,7 @@ cargo test
 
 ## Running the bOSminer
 
-The miner can be run on a host target or on a remote one depending on the backend and supported targets. Again, the *Test.toml* allows remote hostname specification so that we don't have to specify every time the hostname on the command line.
+The miner can be run on a host target or on a remote one depending on the backend and supported targets. Again, the *Test.toml* allows remote hostname specification so that we don't have to specify the hostname every time on the command line.
 
 ```shell
 # run miner on host target (without runner)
