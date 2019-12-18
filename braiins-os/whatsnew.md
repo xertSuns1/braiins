@@ -1,3 +1,5 @@
+# 2019-12-18-0
+
 ## Overview
 
 This release marks a significant step in **Braiins OS** development since it replaces **cgminer** with a new software called **bOSminer** written from scratch.
