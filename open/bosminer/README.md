@@ -112,6 +112,16 @@ Example output:
 ```
 
 
+# Known Issues and Next Iteration Roadmap (MVP Beta)
+
+Below is a list of use cases that we plan on implementing in the Beta MVP phase of the project:
+
+- fail-over between pools and upstream connection handling the bOSminer currently doesn't handle any upstream connectivity issues. If the upstream fails, the software wouldn't try to reconnect.
+- currently the API implements the read-only subset, writable part of cgminer compatible API is to be implemented
+- stratum V1 support - legacy mining protocol support is necessary for production environments
+- linear frequency scaling of factory calibration frequencies
+
+
 # Configuration and Command Line Options
 
 Currently the software can be configured in 2 ways - sorted by priority:
@@ -200,14 +210,6 @@ user = "YOURUSERNAME.WORKERNAME"
 ```
 
 
-# Further Work
-
-Below is a list of use cases that we plan on implementing in the Beta MVP phase of the project:
-
-- fail-over between pools and upstream connection handling
-- full writable part of cgminer compatible API
-- stratum V1 support
-- linear frequency scaling of factory calibration frequencies
 
 
 # Developer Information
