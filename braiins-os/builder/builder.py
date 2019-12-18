@@ -2410,7 +2410,8 @@ class Builder:
         self.patch_whatsnew(self.WHATS_NEW, fw_version_short)
 
         # create commit with patched whatsnew file
-        repo_meta.index.add([self.WHATS_NEW])
+        # repo_meta.working_tree_dir
+        repo_meta.index.add([os.path.relpath(self.WHATS_NEW, repo_meta.working_tree_dir)])
         repo_meta.index.commit(self.WHATS_NEW_COMMENT)
 
         logging.debug("Detaching head from branch...")
@@ -2430,7 +2431,7 @@ class Builder:
             config.dump(default_config)
 
         logging.debug("Creating new release commit...")
-        repo_meta.index.add([self.DEFAULT_CONFIG])
+        repo_meta.index.add([os.path.relpath(self.DEFAULT_CONFIG, repo_meta.working_tree_dir)])
         repo_meta.index.commit("Release Firmware")
 
         fw_version_long = self.get_firmware_version()
