@@ -42,7 +42,9 @@ RUN apt-get update && apt-get install -y \
     texinfo \
     device-tree-compiler \
     python3-gdbm \
-    curl
+    curl \
+    dosfstools \
+    mtools
 
 FROM build-system
 
