@@ -93,7 +93,7 @@ const MAX_CHIPS_ON_CHAIN: usize = 64;
 const EXPECTED_CHIPS_ON_CHAIN: usize = 63;
 
 /// Oscillator speed for all chips on S9 hash boards
-const CHIP_OSC_CLK_HZ: usize = 25_000_000;
+pub const CHIP_OSC_CLK_HZ: usize = 25_000_000;
 
 /// Exact value of the initial baud rate after reset of the hashing chips.
 const INIT_CHIP_BAUD_RATE: usize = 115740;
@@ -612,18 +612,18 @@ impl HashChain {
         assert!(chip_id < self.chip_count);
 
         // convert frequency to PLL setting register
-        let pll_reg = bm1387::PllReg::try_pll_from_freq(CHIP_OSC_CLK_HZ, freq)?;
+        let pll = bm1387::PllFrequency::lookup_freq(freq)?;
 
         info!(
-            "setting frequency {} MHz on chip {} (real {})",
+            "setting frequency {} MHz on chip {} (error {})",
             freq / 1_000_000,
             chip_id,
-            pll_reg.calc(CHIP_OSC_CLK_HZ)
+            ((freq as i64) - (pll.frequency as i64)).abs(),
         );
 
         // NOTE: when PLL register is read back, it is or-ed with 0x8000_0000, not sure why
         self.command_context
-            .write_register(ChipAddress::One(chip_id), &pll_reg)
+            .write_register(ChipAddress::One(chip_id), &pll.reg)
             .await?;
 
         Ok(())
