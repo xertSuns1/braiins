@@ -65,6 +65,7 @@ COPY --chown=build:build ./requirements.md5 .
 ENV PATH="/home/$USER/.cargo/bin:${PATH}"
 RUN bash -c "curl --proto '=https' --tlsv1.2 -sSf 'https://sh.rustup.rs' | sh /dev/stdin -y"
 
-RUN rustup toolchain install beta-2019-11-06 && \
+RUN rustup toolchain install 1.40.0 && \
     rustup component add rustfmt && \
-    rustup target add arm-unknown-linux-musleabi --toolchain beta-2019-11-06
+    rustup target add arm-unknown-linux-musleabi --toolchain 1.40.0 && \
+    rustup default 1.40.0
