@@ -462,6 +462,7 @@ impl WorkTx {
 
 pub struct CommandRxTx {
     fifo: CommandRxTxFifos,
+    pub hashboard_idx: usize,
 }
 
 impl CommandRxTx {
@@ -527,6 +528,7 @@ impl CommandRxTx {
     fn new(hashboard_idx: usize) -> error::Result<Self> {
         Ok(Self {
             fifo: CommandRxTxFifos::new(hashboard_idx)?,
+            hashboard_idx,
         })
     }
 }

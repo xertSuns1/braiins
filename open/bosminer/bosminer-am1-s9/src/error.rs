@@ -95,13 +95,17 @@ pub enum ErrorKind {
     #[fail(display = "PLL: {}", _0)]
     PLL(String),
 
-    /// Work or command FIFO timeout.
+    /// Error from hashchain manager.
     #[fail(display = "HashChain Manager: {}", _0)]
     HashChainManager(HashChainManager),
 
-    /// Work or command FIFO timeout.
+    /// Error when halting.
     #[fail(display = "Halt: {}", _0)]
     Halt(String),
+
+    /// Error when dealing with sensors.
+    #[fail(display = "Sensors: {}", _0)]
+    Sensors(String),
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Fail)]

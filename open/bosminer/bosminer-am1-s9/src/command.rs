@@ -281,6 +281,10 @@ impl Context {
         inner.set_chip_count(chip_count);
     }
 
+    pub async fn get_hashboard_idx(&self) -> usize {
+        self.inner.lock().await.command_io.hashboard_idx
+    }
+
     pub fn new(command_io: io::CommandRxTx) -> Self {
         Self {
             inner: Arc::new(Mutex::new(InnerContext::new(command_io))),

@@ -818,35 +818,99 @@ impl HashChain {
         }
     }
 
-    /// Temperature monitor task
-    async fn temperature_monitor_task(
+    async fn try_to_initialize_sensor(
+        command_context: command::Context,
+    ) -> error::Result<Box<dyn sensor::Sensor>> {
+        // construct I2C bus via command interface
+        let i2c_bus = bm1387::i2c::Bus::new_and_init(command_context, TEMP_CHIP)
+            .await
+            .expect("bus construction failed");
+
+        // try to probe sensor
+        let sensor = sensor::probe_i2c_sensors(i2c_bus)
+            .await
+            .with_context(|_| ErrorKind::Sensors("error when probing sensors".into()))?;
+
+        // did we find anything?
+        let mut sensor = match sensor {
+            Some(sensor) => sensor,
+            None => Err(ErrorKind::Sensors("no sensors found".into()))?,
+        };
+
+        // try to initialize sensor
+        sensor
+            .init()
+            .await
+            .with_context(|_| ErrorKind::Sensors("failed to initialize sensors".into()))?;
+
+        // done
+        Ok(sensor)
+    }
+
+    /// Monitor watchdog task.
+    /// This task sends periodically ping to monitor task. It also tries to read temperature.
+    async fn monitor_watchdog_temp_task(
         command_context: command::Context,
         monitor_tx: mpsc::UnboundedSender<monitor::Message>,
     ) {
-        info!("Temperature monitor task started");
+        // fetch hashboard idx
+        let hashboard_idx = command_context.get_hashboard_idx().await;
+        info!(
+            "Monitor watchdog temperature task started for hashchain {}",
+            hashboard_idx
+        );
+
         // Wait some time before trying to initialize temperature controller
         // (Otherwise RX queue might be clogged with initial work and we will not get any replies)
         //
         // TODO: we should implement a more robust mechanism that controls access to the I2C bus of
         // a hashing chip only if the hashchain allows it (hashchain is in operation etc.)
         delay_for(Duration::from_secs(5)).await;
-        let i2c_bus = bm1387::i2c::Bus::new_and_init(command_context, TEMP_CHIP)
+
+        // Try to probe sensor
+        // This may fail - in which case we put `None` into `sensor`
+        let mut sensor = match Self::try_to_initialize_sensor(command_context)
             .await
-            .expect("bus construction failed");
-        let mut sensor = sensor::probe_i2c_sensors(i2c_bus)
-            .await
-            .expect("sensor probing failed")
-            .expect("no sensors found");
-        sensor.init().await.expect("failed to initialize sensor");
+            .with_context(|_| ErrorKind::Hashboard(hashboard_idx, "sensor error".into()))
+            .map_err(|e| e.into())
+        {
+            error::Result::Err(e) => {
+                error!("Sensor probing failed: {}", e);
+                None
+            }
+            error::Result::Ok(sensor) => Some(sensor),
+        };
+
+        // "Watchdog" loop that pings monitor every some seconds
         loop {
-            let temp = sensor
-                .read_temperature()
-                .await
-                .expect("failed to read temperature");
-            info!("Measured temperature: {:?}", temp);
+            // If we have temperature sensor, try to read it
+            let temp = if let Some(sensor) = sensor.as_mut() {
+                match sensor
+                    .read_temperature()
+                    .await
+                    .with_context(|_| {
+                        ErrorKind::Hashboard(hashboard_idx, "temperature read fail".into())
+                    })
+                    .map_err(|e| e.into())
+                {
+                    error::Result::Ok(temp) => {
+                        info!("Measured temperature: {:?}", temp);
+                        temp
+                    }
+                    error::Result::Err(e) => {
+                        error!("Sensor temperature read failed: {}", e);
+                        sensor::INVALID_TEMPERATURE_READING
+                    }
+                }
+            } else {
+                // Otherwise just make empty temperature reading
+                sensor::INVALID_TEMPERATURE_READING
+            };
+
             monitor_tx
                 .unbounded_send(monitor::Message::Running(temp))
                 .expect("send failed");
+
             // TODO: sync this delay with monitor task
             delay_for(Duration::from_secs(5)).await;
         }
@@ -924,7 +988,7 @@ impl HashChain {
         halt_receiver
             .register_client("temperature monitor".into())
             .await
-            .spawn(Self::temperature_monitor_task(
+            .spawn(Self::monitor_watchdog_temp_task(
                 command_context.clone(),
                 self.monitor_tx.clone(),
             ));
