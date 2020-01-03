@@ -20,12 +20,24 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use ii_cgminer_api::command::{FANS, TEMPCTRL, TEMPS};
+use ii_cgminer_api::command::{DEVDETAILS, FANS, TEMPCTRL, TEMPS};
 use ii_cgminer_api::{command, commands, response};
 
 use serde::Serialize;
 
 use std::sync::Arc;
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+pub struct DevDetailInfo {
+    #[serde(rename = "Voltage")]
+    pub voltage: f64,
+    #[serde(rename = "Frequency")]
+    pub frequency: u32,
+    #[serde(rename = "Chips")]
+    pub chips: u32,
+    #[serde(rename = "Cores")]
+    pub cores: u32,
+}
 
 #[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct TempInfo {
@@ -40,6 +52,26 @@ pub struct Handler;
 impl Handler {
     pub fn new() -> Self {
         Self
+    }
+
+    async fn handle_dev_details(&self) -> command::Result<response::DevDetails<DevDetailInfo>> {
+        Ok(response::DevDetails {
+            list: vec![response::DevDetail {
+                idx: 0,
+                name: "".to_string(),
+                id: 0,
+                driver: "".to_string(),
+                kernel: "".to_string(),
+                model: "".to_string(),
+                device_path: "".to_string(),
+                info: DevDetailInfo {
+                    voltage: 0.0,
+                    frequency: 0,
+                    chips: 0,
+                    cores: 0,
+                },
+            }],
+        })
     }
 
     async fn handle_temp_ctrl(&self) -> command::Result<response::ext::TempCtrl> {
@@ -80,6 +112,7 @@ pub fn create_custom_commands() -> Option<command::Map> {
     let handler = Arc::new(Handler::new());
 
     let custom_commands = commands![
+        (DEVDETAILS: ParameterLess -> handler.handle_dev_details),
         (TEMPCTRL: ParameterLess -> handler.handle_temp_ctrl),
         (TEMPS: ParameterLess -> handler.handle_temps),
         (FANS: ParameterLess -> handler.handle_fans)
