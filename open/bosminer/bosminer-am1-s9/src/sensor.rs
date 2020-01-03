@@ -72,6 +72,16 @@ pub enum Measurement {
     Ok(f32),
 }
 
+/// Allow converting measurement into "valid temperature or nothing"
+impl From<Measurement> for Option<f32> {
+    fn from(m: Measurement) -> Self {
+        match m {
+            Measurement::Ok(t) => Some(t),
+            _ => None,
+        }
+    }
+}
+
 /// Temperature reading
 #[derive(Debug, PartialEq, Clone)]
 pub struct Temperature {
