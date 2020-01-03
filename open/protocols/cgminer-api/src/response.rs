@@ -504,6 +504,9 @@ pub struct Summary {
     pub pool_stale_ratio: Percent,
     #[serde(rename = "Last getwork")]
     pub last_getwork: Time,
+    // Follows attribute extensions
+    #[serde(rename = "MHS 24h")]
+    pub mhs_24h: MegaHashes,
 }
 
 impl From<Summary> for Dispatch {

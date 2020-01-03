@@ -38,6 +38,7 @@ use std::time;
 
 use stats::TIME_MEAN_INTERVAL_15M as INTERVAL_15M;
 use stats::TIME_MEAN_INTERVAL_1M as INTERVAL_1M;
+use stats::TIME_MEAN_INTERVAL_24H as INTERVAL_24H;
 use stats::TIME_MEAN_INTERVAL_5M as INTERVAL_5M;
 use stats::TIME_MEAN_INTERVAL_5S as INTERVAL_5S;
 
@@ -404,6 +405,7 @@ impl command::Handler for Handler {
             mhs_1m: valid_job_diff.to_mega_hashes(*INTERVAL_1M, now).into_f64(),
             mhs_5m: valid_job_diff.to_mega_hashes(*INTERVAL_5M, now).into_f64(),
             mhs_15m: valid_job_diff.to_mega_hashes(*INTERVAL_15M, now).into_f64(),
+            mhs_24h: valid_job_diff.to_mega_hashes(*INTERVAL_24H, now).into_f64(),
             found_blocks: network_valid_solutions as u32,
             // TODO: bOSminer does not account this information
             getworks: 0,

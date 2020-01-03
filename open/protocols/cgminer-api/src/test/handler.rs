@@ -120,6 +120,7 @@ impl command::Handler for BasicTest {
             mhs_1m: 0.0,
             mhs_5m: 0.0,
             mhs_15m: 0.0,
+            mhs_24h: 0.0,
             found_blocks: 0,
             getworks: 0,
             accepted: 0,
