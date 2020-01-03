@@ -332,6 +332,9 @@ pub struct Pool {
     pub current_block_height: u32,
     #[serde(rename = "Current Block Version")]
     pub current_block_version: u32,
+    // Follows attribute extensions
+    #[serde(rename = "AsicBoost")]
+    pub asic_boost: bool,
 }
 
 #[derive(Serialize, PartialEq, Clone, Debug)]

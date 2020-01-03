@@ -68,6 +68,7 @@ impl command::Handler for BasicTest {
                 bad_work: 0,
                 current_block_height: 0,
                 current_block_version: 0,
+                asic_boost: false,
             }],
         })
     }

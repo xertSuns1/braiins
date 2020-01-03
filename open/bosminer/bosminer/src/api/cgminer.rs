@@ -159,6 +159,8 @@ impl Handler {
             // TODO: bOSminer does not have coinbase for Stratum V2
             current_block_height: 0,
             current_block_version,
+            // TODO: get actual value from client
+            asic_boost: true,
         }
     }
 
