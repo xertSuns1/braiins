@@ -255,31 +255,6 @@ impl Handler {
         .await
     }
 
-    async fn get_dev_detail(
-        idx: usize,
-        _work_solver: &Arc<dyn node::WorkSolver>,
-    ) -> response::DevDetail {
-        response::DevDetail {
-            idx: idx as i32,
-            // TODO: get actual ASIC name from work solver
-            name: "".to_string(),
-            // TODO: get idx from work solver (it can represent real index of hash chain)
-            id: idx as i32,
-            // TODO: get remaining information from work solver
-            driver: "".to_string(),
-            kernel: "".to_string(),
-            model: "".to_string(),
-            device_path: "".to_string(),
-        }
-    }
-
-    async fn collect_dev_details(&self) -> Vec<response::DevDetail> {
-        self.collect_data(self.core.get_work_solvers(), 0, |idx, work_solver| {
-            async move { Self::get_dev_detail(idx, &work_solver).await }
-        })
-        .await
-    }
-
     async fn get_pool_stats(idx: usize, _client: &Arc<dyn node::Client>) -> response::PoolStats {
         response::PoolStats {
             header: response::StatsHeader {
@@ -459,12 +434,6 @@ impl command::Handler for Handler {
             // TODO: detect underlying operation system
             os: "Braiins OS".to_string(),
             hotplug: "None".to_string(),
-        })
-    }
-
-    async fn handle_dev_details(&self) -> command::Result<response::DevDetails> {
-        Ok(response::DevDetails {
-            list: self.collect_dev_details().await,
         })
     }
 

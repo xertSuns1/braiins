@@ -590,7 +590,7 @@ impl From<Config> for Dispatch {
 }
 
 #[derive(Serialize, PartialEq, Clone, Debug)]
-pub struct DevDetail {
+pub struct DevDetail<T> {
     #[serde(rename = "DEVDETAILS")]
     pub idx: i32,
     #[serde(rename = "Name")]
@@ -605,15 +605,20 @@ pub struct DevDetail {
     pub model: String,
     #[serde(rename = "Device Path")]
     pub device_path: String,
+    #[serde(flatten)]
+    pub info: T,
 }
 
 #[derive(Serialize, PartialEq, Clone, Debug)]
-pub struct DevDetails {
-    pub list: Vec<DevDetail>,
+pub struct DevDetails<T> {
+    pub list: Vec<DevDetail<T>>,
 }
 
-impl From<DevDetails> for Dispatch {
-    fn from(dev_details: DevDetails) -> Self {
+impl<T> From<DevDetails<T>> for Dispatch
+where
+    T: serde::Serialize,
+{
+    fn from(dev_details: DevDetails<T>) -> Self {
         Dispatch::from_success(
             dev_details.list,
             "DEVDETAILS",

@@ -42,7 +42,6 @@ const EDEVS: &str = "edevs";
 const SUMMARY: &str = "summary";
 const VERSION: &str = "version";
 const CONFIG: &str = "config";
-const DEVDETAILS: &str = "devdetails";
 const STATS: &str = "stats";
 const ESTATS: &str = "estats";
 const CHECK: &str = "check";
@@ -50,6 +49,9 @@ const COIN: &str = "coin";
 const ASC_COUNT: &str = "asccount";
 const ASC: &str = "asc";
 const LCD: &str = "lcd";
+
+// List of all standard commands which can be optionally implemented.
+pub const DEVDETAILS: &str = "devdetails";
 
 // List of all extended commands which have to be implemented externally.
 pub const TEMPCTRL: &str = "tempctrl";
@@ -69,7 +71,6 @@ pub trait Handler: Send + Sync {
     async fn handle_edevs(&self) -> Result<response::Devs>;
     async fn handle_summary(&self) -> Result<response::Summary>;
     async fn handle_config(&self) -> Result<response::Config>;
-    async fn handle_dev_details(&self) -> Result<response::DevDetails>;
     async fn handle_stats(&self) -> Result<response::Stats>;
     async fn handle_estats(&self) -> Result<response::Stats>;
     async fn handle_coin(&self) -> Result<response::Coin>;
@@ -228,7 +229,6 @@ where
             (EDEVS: ParameterLess -> handler.handle_edevs),
             (SUMMARY: ParameterLess -> handler.handle_summary),
             (CONFIG: ParameterLess -> handler.handle_config),
-            (DEVDETAILS: ParameterLess -> handler.handle_dev_details),
             (STATS: ParameterLess -> handler.handle_stats),
             (ESTATS: ParameterLess -> handler.handle_estats),
             (COIN: ParameterLess -> handler.handle_coin),
