@@ -408,6 +408,11 @@ pub struct Asc {
     pub device_rejected_ratio: Percent,
     #[serde(rename = "Device Elapsed")]
     pub device_elapsed: Elapsed,
+    // Follows attribute extensions
+    #[serde(rename = "Hardware Error MHS 15m")]
+    pub hardware_error_mhs_15m: MegaHashes,
+    #[serde(rename = "Expected MHS")]
+    pub expected_mhs: MegaHashes,
 }
 
 impl From<Asc> for Dispatch {

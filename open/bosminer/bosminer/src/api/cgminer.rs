@@ -239,6 +239,11 @@ impl Handler {
             // TODO: bOSminer does not account rejected
             device_rejected_ratio: 0.0,
             device_elapsed: elapsed.as_secs(),
+            hardware_error_mhs_15m: error_backend_diff
+                .to_mega_hashes(*INTERVAL_15M, now)
+                .into_f64(),
+            // TODO: get actual value from work solver
+            expected_mhs: 0.0,
         }
     }
 

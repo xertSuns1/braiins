@@ -102,6 +102,8 @@ impl command::Handler for BasicTest {
                 device_hardware_ratio: 0.0,
                 device_rejected_ratio: 0.0,
                 device_elapsed: 0,
+                hardware_error_mhs_15m: 0.0,
+                expected_mhs: 0.0,
             }],
         })
     }
@@ -278,6 +280,8 @@ impl command::Handler for BasicTest {
             device_hardware_ratio: 0.0,
             device_rejected_ratio: 0.0,
             device_elapsed: 0,
+            hardware_error_mhs_15m: 0.0,
+            expected_mhs: 0.0,
         })
     }
 
