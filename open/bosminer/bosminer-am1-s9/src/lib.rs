@@ -22,6 +22,7 @@
 
 mod async_i2c;
 mod bm1387;
+mod cgminer;
 pub mod command;
 pub mod config;
 pub mod error;
@@ -1389,7 +1390,7 @@ impl hal::Backend for Backend {
         halt_sender.hook_ctrlc();
 
         Ok(hal::FrontendConfig {
-            cgminer_custom_commands: None,
+            cgminer_custom_commands: cgminer::create_custom_commands(),
         })
     }
 

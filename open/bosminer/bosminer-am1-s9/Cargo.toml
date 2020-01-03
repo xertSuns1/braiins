@@ -13,6 +13,7 @@ bosminer-config = { path = "../bosminer-config" }
 bosminer-macros = { path = "../bosminer-macros" }
 ii-async-compat = { path = "../../utils-rs/async-compat" }
 ii-bitcoin = { path = "../../coins/bitcoin" }
+ii-cgminer-api = { path = "../../protocols/cgminer-api" }
 ii-fpga-io-am1-s9 = { path = "../../hw/zynq-io-am1-s9/fpga-io" }
 ii-logging = { path = "../../utils-rs/logging" }
 failure = "0.1.5"

@@ -186,6 +186,7 @@ dependencies = [
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "ii-async-compat 0.2.0",
  "ii-bitcoin 0.1.0",
+ "ii-cgminer-api 0.1.0",
  "ii-fpga-io-am1-s9 0.1.0",
  "ii-logging 0.1.0",
  "inventory 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
