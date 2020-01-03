@@ -22,6 +22,8 @@
 
 //! Defines all the CGMiner API responses
 
+pub mod ext;
+
 use crate::support;
 
 use serde::{Serialize, Serializer};
@@ -117,6 +119,11 @@ pub enum StatusCode {
     AscCount = 104,
     Asc = 106,
     Lcd = 125,
+
+    // extended command status codes
+    TempCtrl = 200,
+    Temps = 201,
+    Fans = 202,
 
     // error status codes
     InvalidCommand = 14,

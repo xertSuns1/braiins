@@ -51,6 +51,11 @@ const ASC_COUNT: &str = "asccount";
 const ASC: &str = "asc";
 const LCD: &str = "lcd";
 
+// List of all extended commands which have to be implemented externally.
+pub const TEMPCTRL: &str = "tempctrl";
+pub const TEMPS: &str = "temps";
+pub const FANS: &str = "fans";
+
 pub type Result<T> = std::result::Result<T, response::Error>;
 /// Type describing command table
 pub type Map = HashMap<&'static str, Descriptor>;
