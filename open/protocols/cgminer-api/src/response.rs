@@ -480,7 +480,7 @@ pub struct Summary {
     #[serde(rename = "Discarded")]
     pub discarded: i64,
     #[serde(rename = "Stale")]
-    pub stale: i64,
+    pub stale: u64,
     #[serde(rename = "Get Failures")]
     pub get_failures: u32,
     #[serde(rename = "Local Work")]

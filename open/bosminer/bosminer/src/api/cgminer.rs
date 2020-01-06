@@ -373,6 +373,54 @@ impl command::Handler for Handler {
         } * 100.0;
         let work_utility = valid_backend_diff.shares.to_sharerate(elapsed) * 60.0;
 
+        let mut pools_valid_jobs: u64 = 0;
+        let mut pools_accepted = 0;
+        let mut pools_accepted_shares = 0.0;
+        let mut pools_rejected = 0;
+        let mut pools_rejected_shares = 0.0;
+        let mut pools_stale = 0;
+        let mut pools_stale_shares = 0.0;
+
+        for client in self.core.get_clients().await {
+            let client_stats = client.client_stats();
+
+            let valid_jobs = client_stats.valid_jobs().take_snapshot();
+            let accepted = client_stats.accepted().take_snapshot().await;
+            let rejected = client_stats.rejected().take_snapshot().await;
+            let stale = client_stats.stale().take_snapshot().await;
+
+            pools_valid_jobs += *valid_jobs as u64;
+            pools_accepted += accepted.solutions;
+            pools_accepted_shares += accepted.shares.as_f64();
+            pools_rejected += rejected.solutions;
+            pools_rejected_shares += rejected.shares.as_f64();
+            pools_stale += stale.solutions;
+            pools_stale_shares += stale.shares.as_f64();
+        }
+
+        let pools_all_solutions = pools_accepted + pools_rejected + pools_stale;
+        let pools_rejected_ratio = if pools_all_solutions != 0 {
+            pools_rejected as f64 / pools_all_solutions as f64
+        } else {
+            0.0
+        } * 100.0;
+        let pools_stale_ratio = if pools_all_solutions != 0 {
+            pools_stale as f64 / pools_all_solutions as f64
+        } else {
+            0.0
+        } * 100.0;
+        let pools_utility = if elapsed.as_secs() != 0 {
+            pools_accepted as f64 / elapsed.as_secs() as f64
+        } else {
+            pools_accepted as f64
+        } * 60.0;
+
+        let backend_rejected_ratio = if backend_valid_solutions != 0 {
+            pools_rejected_shares as f64 / backend_valid_solutions as f64
+        } else {
+            0.0
+        } * 100.0;
+
         Ok(response::Summary {
             elapsed: elapsed.as_secs(),
             mhs_av: total_mega_hashes / elapsed.as_secs_f64(),
@@ -382,19 +430,14 @@ impl command::Handler for Handler {
             mhs_15m: valid_job_diff.to_mega_hashes(*INTERVAL_15M, now).into_f64(),
             mhs_24h: valid_job_diff.to_mega_hashes(*INTERVAL_24H, now).into_f64(),
             found_blocks: network_valid_solutions as u32,
-            // TODO: bOSminer does not account this information
-            getworks: 0,
-            // TODO: bOSminer does not account this information
-            accepted: 0,
-            // TODO: bOSminer does not account this information
-            rejected: 0,
+            getworks: pools_valid_jobs,
+            accepted: pools_accepted,
+            rejected: pools_rejected,
             hardware_errors: backend_error_solutions as i32,
-            // TODO: bOSminer does not account accepted
-            utility: 0.0,
-            // TODO: bOSminer does not account accepted
-            discarded: 0,
+            utility: pools_utility,
             // TODO: bOSminer does not account this information
-            stale: 0,
+            discarded: 0,
+            stale: pools_stale,
             // TODO: bOSminer does not account this information
             get_failures: 0,
             local_work: *generated_work as u32,
@@ -404,20 +447,14 @@ impl command::Handler for Handler {
             network_blocks: 0,
             total_mega_hashes,
             work_utility,
-            // TODO: bOSminer does not account this information
-            difficulty_accepted: 0.0,
-            // TODO: bOSminer does not account this information
-            difficulty_rejected: 0.0,
-            // TODO: bOSminer does not account this information
-            difficulty_stale: 0.0,
+            difficulty_accepted: pools_accepted_shares,
+            difficulty_rejected: pools_rejected_shares,
+            difficulty_stale: pools_stale_shares,
             best_share: best_share.map(|inner| *inner).unwrap_or_default() as u64,
             device_hardware_ratio: backend_error_ratio,
-            // TODO: bosminer does not account rejected
-            device_rejected_ratio: 0.0,
-            // TODO: bosminer does not account rejected
-            pool_rejected_ratio: 0.0,
-            // TODO: bosminer does not account stale
-            pool_stale_ratio: 0.0,
+            device_rejected_ratio: backend_rejected_ratio,
+            pool_rejected_ratio: pools_rejected_ratio,
+            pool_stale_ratio: pools_stale_ratio,
             last_getwork: last_work_time,
         })
     }
