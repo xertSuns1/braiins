@@ -26,21 +26,21 @@
 # export XILINXD_LICENSE_FILE=
 
 print_help() {
-	echo ""
-	echo "Usage: ./run.sh BOARD"
-	echo "  BOARD - name of the board, available values: S9"
+    echo ""
+    echo "Usage: ./run.sh BOARD"
+    echo "  BOARD - name of the board, available values: S9, S9k, S11, S15, T15, S17, T17"
 }
 
 if [ "$1" == "--help" ]; then
-	echo "Synthesis script for S9 board"
-	print_help
-	exit 0
+    echo "Synthesis script for Xilinx FPGAs used in Antminer control boards"
+    print_help
+    exit 0
 fi
 
 if [ "$#" -ne 1 ]; then
-	echo "Wrong number of arguments!"
-	print_help
-	exit 1
+    echo "Wrong number of arguments!"
+    print_help
+    exit 1
 fi
 
 WORK="build_$1"

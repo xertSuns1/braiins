@@ -21,7 +21,7 @@
 -- of such proprietary license or if you have any other questions, please
 -- contact us at opensource@braiins.com.
 ----------------------------------------------------------------------------------------------------
--- Project Name:   S9 Board Interface IP
+-- Project Name:   Braiins OS
 -- Description:    UART Interface Receiver Module
 --
 -- Engineer:       Marian Pristach

@@ -21,8 +21,8 @@
 -- of such proprietary license or if you have any other questions, please
 -- contact us at opensource@braiins.com.
 ----------------------------------------------------------------------------------------------------
--- Project Name:   S9 Board Interface IP
--- Description:    FIFO buffer with synchronous read using block memory and threshold detection
+-- Project Name:   Braiins OS
+-- Description:    FIFO buffer with synchronous read using block memory
 --
 -- Engineer:       Marian Pristach
 -- Revision:       1.0.0 (18.08.2018)
@@ -32,7 +32,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity fifo_block_thr is
+entity fifo_block is
     generic(
         A : natural := 5;           -- number of address bits
         W : natural := 8            -- number of data bits
@@ -44,17 +44,10 @@ entity fifo_block_thr is
         -- synchronous clear of FIFO
         clear  : in std_logic;
 
-        -- threshold value and signalization for IRQ
-        thr_value : in  std_logic_vector(A-1 downto 0);
-        thr_irq   : out std_logic;
-
-        -- threshold value and signalization for work send
-        thr_work_value : in  std_logic_vector(A-1 downto 0);
-        thr_work_ready : out std_logic;
-
         -- write port
         wr     : in  std_logic;
         full   : out std_logic;
+        a_full : out std_logic;    -- almost full signal
         data_w : in  std_logic_vector(W-1 downto 0);
 
         -- read port
@@ -62,9 +55,9 @@ entity fifo_block_thr is
         empty  : out std_logic;
         data_r : out std_logic_vector(W-1 downto 0)
     );
-end fifo_block_thr;
+end fifo_block;
 
-architecture rtl of fifo_block_thr is
+architecture rtl of fifo_block is
 
     -- definition of memory type
     type ram_t is array(0 to (2**A)-1) of std_logic_vector(W-1 downto 0);
@@ -197,11 +190,8 @@ begin
     -- volume of buffer is calculated as difference between write and read pointer
     volume <= w_ptr_q - r_ptr_q;
 
-    -- threshold for IRQ, when we comparing volume, we must consider also empty flag
-    thr_irq <= '1' when ((volume < unsigned(thr_value)) or (empty_q = '1')) else '0';
-
-    -- threshold for work send - check of min. value, we must consider also full flag
-    thr_work_ready <= '1' when ((volume >= unsigned(thr_work_value)) or (full_q = '1')) else '0';
+    -- almost full - set when only one item remains free, we must consider also full flag
+    a_full <= '1' when ((volume >= (2**A)-1) or (full_q = '1')) else '0';
 
     ------------------------------------------------------------------------------------------------
     -- output signals

@@ -21,8 +21,8 @@
  * of such proprietary license or if you have any other questions, please
  * contact us at opensource@braiins.com.
  ***************************************************************************************************
- * Project Name:   S9 Board Interface IP
- * Description:    Testbench for s9io IP core
+ * Project Name:   Braiins OS
+ * Description:    Testbench for AXI BM13xx IP core
  *
  * Engineer:       Marian Pristach
  * Revision:       1.1.0 (22.07.2019)
@@ -33,16 +33,16 @@
 `timescale 1ns / 1ps
 
 import axi_vip_pkg::*;
-import s9io_pkg::*;
-import s9io_bfm_master_0_0_pkg::*;
+import axi_bm13xx_pkg::*;
+import axi_bm13xx_bfm_master_0_0_pkg::*;
 
-module s9io_v0_2_tb();
+module axi_bm13xx_tb();
 
     // Simulation parameters
     parameter VERBOSE_LEVEL = 0;
 
     // instance of AXI master BFM agent
-    s9io_bfm_master_0_0_mst_t mst_agent;
+    axi_bm13xx_bfm_master_0_0_mst_t mst_agent;
 
     // counter of errors
     integer err_counter = 0;
@@ -59,7 +59,7 @@ module s9io_v0_2_tb();
 
     // ---------------------------------------------------------------------------------------------
     // instance of DUT
-    s9io_bfm_wrapper DUT (
+    axi_bm13xx_bfm_wrapper DUT (
         .ACLK(clock),
         .ARESETN(reset),
         .rxd_0(uart_rx),
@@ -79,7 +79,7 @@ module s9io_v0_2_tb();
     initial begin
         automatic xil_axi_uint mst_agent_verbosity = 0;
 
-        mst_agent = new("master vip agent",DUT.s9io_bfm_i.master_0.inst.IF);
+        mst_agent = new("master vip agent",DUT.axi_bm13xx_bfm_i.master_0.inst.IF);
         mst_agent.vif_proxy.set_dummy_drive_type(XIL_AXI_VIF_DRIVE_NONE);
         mst_agent.set_agent_tag("Master VIP");
         mst_agent.set_verbosity(mst_agent_verbosity);
@@ -113,9 +113,13 @@ module s9io_v0_2_tb();
 
         // configure IP core
         $display("Configuring IP core: work time 1us, UART baudrate 3.125M");
-        axi_write(BAUD_REG, 0);           // @50MHz -> 3.125 MBd
+`ifdef BM139X
+        $display(" - enabled BM139x mode");
+`endif
+
+        axi_write(BAUD_REG, 1);           // @50MHz -> 3.125 MBd
         axi_write(WORK_TIME, 50);         // @50MHz -> 1us
-        axi_write(CTRL_REG, CTRL_ENABLE); // enable IP core, 1 midstate
+        enable_ip(CTRL_MIDSTATE_1);       // enable IP core, 1 midstate
 
         // checking status
         axi_read(STAT_REG, rdata);
@@ -142,6 +146,7 @@ module s9io_v0_2_tb();
 
         // testcase 2 - test of work send (1 and 4 midstates)
         tc_send_work_midstate1();
+        tc_send_work_midstate2();
         tc_send_work_midstate4();
         tc_send_cmd_after_work();
 
@@ -176,6 +181,9 @@ module s9io_v0_2_tb();
         // testcase 8 - test of error counter register and unexpected data
         tc_error_counter_1();
         tc_error_counter_2();
+`ifdef BM139X
+        tc_error_counter_3();
+`endif
 
         // testcase 9 - test of baudrate speed change
         tc_baudrate_sync();
@@ -197,7 +205,7 @@ module s9io_v0_2_tb();
 
     // simulation timeout check
     initial begin
-        #5ms;
+        #20ms;
         $display("############################################################");
         $display("Simulation timeout");
         $display("############################################################");
@@ -218,7 +226,7 @@ module s9io_v0_2_tb();
         $display("Testcase 0a: read version register");
 
         axi_read(VERSION, rdata);
-        compare_data(32'h00090002, rdata, "VERSION");
+        compare_data(32'h00901000, rdata, "VERSION");
     endtask
 
 
@@ -227,10 +235,7 @@ module s9io_v0_2_tb();
     // ---------------------------------------------------------------------------------------------
     // send 5 bytes commands
     task tc_send_cmd5();
-        // Tx FIFO data:
-        // - check_asic_reg(CHIP_ADDRESS) -> read_asic_register(chain, 1, 0, CHIP_ADDRESS)
-        // - software_set_address
-        // - software_set_address -> 64x set_address(i, 0, chip_addr) // chip_addr = 0, 4, 8, 12
+        // Tx FIFO data - BM1387
         static logic[31:0] fifo_data1[$] = {32'h00000554};
         static logic[31:0] fifo_data2[$] = {32'h00000555};
         static logic[31:0] fifo_data3[$] = {32'h00000541};
@@ -241,7 +246,18 @@ module s9io_v0_2_tb();
         static logic[31:0] fifo_data8[$] = {32'h00f80541};
         static logic[31:0] fifo_data9[$] = {32'h00fc0541};
 
-        // reference data send out through UART
+        // Tx FIFO data - BM1391
+        static logic[31:0] fifo_data10[$] = {32'h00000540};
+        static logic[31:0] fifo_data11[$] = {32'h00030540};
+        static logic[31:0] fifo_data12[$] = {32'h1C240542};
+        static logic[31:0] fifo_data13[$] = {32'h18240542};
+        static logic[31:0] fifo_data14[$] = {32'h1C330542};
+        static logic[31:0] fifo_data15[$] = {32'h18330542};
+        static logic[31:0] fifo_data16[$] = {32'h1C9F0542};
+        static logic[31:0] fifo_data17[$] = {32'h00000552};
+        static logic[31:0] fifo_data18[$] = {32'h00000553};
+
+        // reference data send out through UART - BM1387
         static logic[7:0] uart_data1[$] = {8'h54, 8'h05, 8'h00, 8'h00, 8'h19};
         static logic[7:0] uart_data2[$] = {8'h55, 8'h05, 8'h00, 8'h00, 8'h10};
         static logic[7:0] uart_data3[$] = {8'h41, 8'h05, 8'h00, 8'h00, 8'h15};
@@ -252,7 +268,21 @@ module s9io_v0_2_tb();
         static logic[7:0] uart_data8[$] = {8'h41, 8'h05, 8'hf8, 8'h00, 8'h14};
         static logic[7:0] uart_data9[$] = {8'h41, 8'h05, 8'hfc, 8'h00, 8'h0b};
 
+        // reference data send out through UART - BM1391
+        static logic[7:0] uart_data10[$] = {8'h40, 8'h05, 8'h00, 8'h00, 8'h1C};
+        static logic[7:0] uart_data11[$] = {8'h40, 8'h05, 8'h03, 8'h00, 8'h1D};
+        static logic[7:0] uart_data12[$] = {8'h42, 8'h05, 8'h24, 8'h1C, 8'h11};
+        static logic[7:0] uart_data13[$] = {8'h42, 8'h05, 8'h24, 8'h18, 8'h05};
+        static logic[7:0] uart_data14[$] = {8'h42, 8'h05, 8'h33, 8'h1C, 8'h1C};
+        static logic[7:0] uart_data15[$] = {8'h42, 8'h05, 8'h33, 8'h18, 8'h08};
+        static logic[7:0] uart_data16[$] = {8'h42, 8'h05, 8'h9F, 8'h1C, 8'h17};
+        static logic[7:0] uart_data17[$] = {8'h52, 8'h05, 8'h00, 8'h00, 8'h0A};
+        static logic[7:0] uart_data18[$] = {8'h53, 8'h05, 8'h00, 8'h00, 8'h03};
+
+
         $display("Testcase 1a: send 5 bytes commands");
+
+        // test sequences - BM1387
         fifo_write_cmd(fifo_data1);
         uart_read_and_compare(uart_data1);
 
@@ -279,18 +309,41 @@ module s9io_v0_2_tb();
 
         fifo_write_cmd(fifo_data9);
         uart_read_and_compare(uart_data9);
+
+        // test sequences - BM1391
+        fifo_write_cmd(fifo_data10);
+        uart_read_and_compare(uart_data10);
+
+        fifo_write_cmd(fifo_data11);
+        uart_read_and_compare(uart_data11);
+
+        fifo_write_cmd(fifo_data12);
+        uart_read_and_compare(uart_data12);
+
+        fifo_write_cmd(fifo_data13);
+        uart_read_and_compare(uart_data13);
+
+        fifo_write_cmd(fifo_data14);
+        uart_read_and_compare(uart_data14);
+
+        fifo_write_cmd(fifo_data15);
+        uart_read_and_compare(uart_data15);
+
+        fifo_write_cmd(fifo_data16);
+        uart_read_and_compare(uart_data16);
+
+        fifo_write_cmd(fifo_data17);
+        uart_read_and_compare(uart_data17);
+
+        fifo_write_cmd(fifo_data18);
+        uart_read_and_compare(uart_data18);
     endtask
 
 
     // ---------------------------------------------------------------------------------------------
     // send 9 bytes commands
     task tc_send_cmd9();
-        // Tx FIFO data:
-        // - set_frequency(dev->frequency) -> set_frequency_with_addr_plldatai(pllindex, mode, addr, chain)
-        // - open_core_one_chain(chainIndex, nullwork_enable) ->
-        // -   BC_COMMAND_BUFFER_READY | BC_COMMAND_EN_CHAIN_ID | (chainIndex << 16) | (bc_command & 0xfff0ffff)
-        // - set_asic_ticket_mask(63)
-        // - set_hcnt(0)
+        // Tx FIFO data - BM1387
         static logic[31:0] fifo_data1[$]  = {32'h0c000948, 32'h21026800};
         static logic[31:0] fifo_data2[$]  = {32'h0c040948, 32'h21026800};
         static logic[31:0] fifo_data3[$]  = {32'h0c080948, 32'h21026800};
@@ -300,10 +353,19 @@ module s9io_v0_2_tb();
         static logic[31:0] fifo_data7[$]  = {32'h0cf00948, 32'h21026800};
         static logic[31:0] fifo_data8[$]  = {32'h0cf40948, 32'h21026800};
         static logic[31:0] fifo_data9[$]  = {32'h1c000958, 32'h809a2040};
-        static logic[31:0] fifo_data10[$] = {32'h18000958, 32'h3f000000};
-        static logic[31:0] fifo_data11[$] = {32'h14000958, 32'h00000000};
 
-        // reference data send out through UART
+        // Tx FIFO data - BM1391
+        static logic[31:0] fifo_data10[$] = {32'h00000941, 32'hAB009313};
+        static logic[31:0] fifo_data11[$] = {32'h08000941, 32'h1102B840};
+        static logic[31:0] fifo_data12[$] = {32'h1C240941, 32'h00009801};
+        static logic[31:0] fifo_data13[$] = {32'h08AB0941, 32'h1102B840};
+        static logic[31:0] fifo_data14[$] = {32'h70AB0941, 32'h090F0F0F};
+        static logic[31:0] fifo_data15[$] = {32'h14000951, 32'hFC000000};
+        static logic[31:0] fifo_data16[$] = {32'h3C000951, 32'hAA84AA00};
+        static logic[31:0] fifo_data17[$] = {32'h3C000951, 32'h04800080};
+        static logic[31:0] fifo_data18[$] = {32'h60000951, 32'h773F1080};
+
+        // reference data send out through UART - BM1387
         static logic[7:0] uart_data1[$]  = {8'h48, 8'h09, 8'h00, 8'h0c, 8'h00, 8'h68, 8'h02, 8'h21, 8'h02};
         static logic[7:0] uart_data2[$]  = {8'h48, 8'h09, 8'h04, 8'h0c, 8'h00, 8'h68, 8'h02, 8'h21, 8'h19};
         static logic[7:0] uart_data3[$]  = {8'h48, 8'h09, 8'h08, 8'h0c, 8'h00, 8'h68, 8'h02, 8'h21, 8'h11};
@@ -313,10 +375,20 @@ module s9io_v0_2_tb();
         static logic[7:0] uart_data7[$]  = {8'h48, 8'h09, 8'hf0, 8'h0c, 8'h00, 8'h68, 8'h02, 8'h21, 8'h13};
         static logic[7:0] uart_data8[$]  = {8'h48, 8'h09, 8'hf4, 8'h0c, 8'h00, 8'h68, 8'h02, 8'h21, 8'h08};
         static logic[7:0] uart_data9[$]  = {8'h58, 8'h09, 8'h00, 8'h1c, 8'h40, 8'h20, 8'h9a, 8'h80, 8'h00};
-        static logic[7:0] uart_data10[$] = {8'h58, 8'h09, 8'h00, 8'h18, 8'h00, 8'h00, 8'h00, 8'h3f, 8'h00};
-        static logic[7:0] uart_data11[$] = {8'h58, 8'h09, 8'h00, 8'h14, 8'h00, 8'h00, 8'h00, 8'h00, 8'h0a};
+
+        // reference data send out through UART - BM1391
+        static logic[7:0] uart_data10[$] = {8'h41, 8'h09, 8'h00, 8'h00, 8'h13, 8'h93, 8'h00, 8'hAB, 8'h08};
+        static logic[7:0] uart_data11[$] = {8'h41, 8'h09, 8'h00, 8'h08, 8'h40, 8'hB8, 8'h02, 8'h11, 8'h06};
+        static logic[7:0] uart_data12[$] = {8'h41, 8'h09, 8'h24, 8'h1C, 8'h01, 8'h98, 8'h00, 8'h00, 8'h0B};
+        static logic[7:0] uart_data13[$] = {8'h41, 8'h09, 8'hAB, 8'h08, 8'h40, 8'hB8, 8'h02, 8'h11, 8'h09};
+        static logic[7:0] uart_data14[$] = {8'h41, 8'h09, 8'hAB, 8'h70, 8'h0F, 8'h0F, 8'h0F, 8'h09, 8'h16};
+        static logic[7:0] uart_data15[$] = {8'h51, 8'h09, 8'h00, 8'h14, 8'h00, 8'h00, 8'h00, 8'hFC, 8'h07};
+        static logic[7:0] uart_data16[$] = {8'h51, 8'h09, 8'h00, 8'h3C, 8'h00, 8'hAA, 8'h84, 8'hAA, 8'h00};
+        static logic[7:0] uart_data17[$] = {8'h51, 8'h09, 8'h00, 8'h3C, 8'h80, 8'h00, 8'h80, 8'h04, 8'h1C};
+        static logic[7:0] uart_data18[$] = {8'h51, 8'h09, 8'h00, 8'h60, 8'h80, 8'h10, 8'h3F, 8'h77, 8'h17};
 
         $display("Testcase 1b: send 9 bytes commands");
+        // test sequences - BM1387
         fifo_write_cmd(fifo_data1);
         uart_read_and_compare(uart_data1);
 
@@ -344,11 +416,33 @@ module s9io_v0_2_tb();
         fifo_write_cmd(fifo_data9);
         uart_read_and_compare(uart_data9);
 
+        // test sequences - BM1391
         fifo_write_cmd(fifo_data10);
         uart_read_and_compare(uart_data10);
 
         fifo_write_cmd(fifo_data11);
         uart_read_and_compare(uart_data11);
+
+        fifo_write_cmd(fifo_data12);
+        uart_read_and_compare(uart_data12);
+
+        fifo_write_cmd(fifo_data13);
+        uart_read_and_compare(uart_data13);
+
+        fifo_write_cmd(fifo_data14);
+        uart_read_and_compare(uart_data14);
+
+        fifo_write_cmd(fifo_data15);
+        uart_read_and_compare(uart_data15);
+
+        fifo_write_cmd(fifo_data16);
+        uart_read_and_compare(uart_data16);
+
+        fifo_write_cmd(fifo_data17);
+        uart_read_and_compare(uart_data17);
+
+        fifo_write_cmd(fifo_data18);
+        uart_read_and_compare(uart_data18);
     endtask
 
 
@@ -363,6 +457,15 @@ module s9io_v0_2_tb();
             32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000
         };
 
+        static logic[31:0] fifo_data2[$] = {
+            32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000,
+            32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000
+        };
+        static logic[31:0] fifo_data3[$] = {
+            32'h00000001, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000,
+            32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000
+        };
+
         // reference data send out through UART
         static logic[7:0] uart_data1[$] = {
             8'h21, 8'h36, 8'h00, 8'h01, 8'h00, 8'h00, 8'h00, 8'h00, 8'hff, 8'hff, 8'hff, 8'hff,
@@ -371,16 +474,105 @@ module s9io_v0_2_tb();
             8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
             8'h00, 8'h00, 8'h00, 8'h00, 8'h5f, 8'hd3
         };
+        static logic[7:0] uart_data2[$] = {
+            8'h21, 8'h36, 8'h00, 8'h01, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h98, 8'h99
+        };
+        static logic[7:0] uart_data3[$] = {
+            8'h21, 8'h36, 8'h01, 8'h01, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h8A, 8'hEF
+        };
 
         $display("Testcase 2a: send 1 midstate work");
 
         // set 1 midstate mode
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+        enable_ip(CTRL_MIDSTATE_1);
 
         fifo_write_work(fifo_data1);
         uart_read_and_compare(uart_data1);
+
+        fifo_write_work(fifo_data2);
+        uart_read_and_compare(uart_data2);
+
+        fifo_write_work(fifo_data3);
+        uart_read_and_compare(uart_data3);
     endtask
 
+    // ---------------------------------------------------------------------------------------------
+    // send 2 midstates work
+    task tc_send_work_midstate2();
+        // Tx FIFO data
+        static logic[31:0] fifo_data1[$] = {
+            32'h00000000, 32'h1725FD03, 32'h5D0B7D52, 32'hDE474074, 32'h41E79803, 32'h634A932B,
+            32'hD79AE784, 32'hFE7179A6, 32'h1FF0CCD2, 32'h07D0C195, 32'hC34829B3, 32'h8A307647,
+            32'hBEB7E7F6, 32'h00DE500F, 32'h01E28ACF, 32'h7A97E115, 32'hA3893221, 32'h27B159FE,
+            32'hDC0C2081, 32'h7294FEF6
+        };
+        static logic[31:0] fifo_data2[$] = {
+            32'h00000002, 32'h1725FD03, 32'h5D0B7D52, 32'h7EF3CD65, 32'h9E003640, 32'hED70F53C,
+            32'hC597ECC5, 32'h0B2E3408, 32'h326E5C9C, 32'hD36AF7C1, 32'h7FF0843B, 32'h9FC1E0B2,
+            32'h4EEB0F38, 32'h238575B5, 32'h18DBE987, 32'h04C97447, 32'h790136AF, 32'h8C7B9D8B,
+            32'h973A66E6, 32'h7BB43DD7
+        };
+        static logic[31:0] fifo_data3[$] = {
+            32'h00000004, 32'h1725FD03, 32'h5D0B7D52, 32'hAF4FCB3F, 32'hE6CCA966, 32'hA3C8A9AD,
+            32'h4C870CA0, 32'hF5936186, 32'h32537329, 32'hE312877B, 32'h823F4AB2, 32'hE0120430,
+            32'h8A99E318, 32'h945A4E22, 32'h5E2CE432, 32'hFAF51137, 32'h4DCAE52C, 32'hF1820DAB,
+            32'hDDC2D7CF, 32'h028E9504
+        };
+
+        // reference data send out through UART
+        static logic[7:0] uart_data1[$] = {
+            8'h21, 8'h56, 8'h00, 8'h02, 8'h00, 8'h00, 8'h00, 8'h00, 8'h03, 8'hFD, 8'h25, 8'h17,
+            8'h52, 8'h7D, 8'h0B, 8'h5D, 8'h74, 8'h40, 8'h47, 8'hDE, 8'h41, 8'hE7, 8'h98, 8'h03,
+            8'h63, 8'h4A, 8'h93, 8'h2B, 8'hD7, 8'h9A, 8'hE7, 8'h84, 8'hFE, 8'h71, 8'h79, 8'hA6,
+            8'h1F, 8'hF0, 8'hCC, 8'hD2, 8'h07, 8'hD0, 8'hC1, 8'h95, 8'hC3, 8'h48, 8'h29, 8'hB3,
+            8'h8A, 8'h30, 8'h76, 8'h47, 8'hBE, 8'hB7, 8'hE7, 8'hF6, 8'h00, 8'hDE, 8'h50, 8'h0F,
+            8'h01, 8'hE2, 8'h8A, 8'hCF, 8'h7A, 8'h97, 8'hE1, 8'h15, 8'hA3, 8'h89, 8'h32, 8'h21,
+            8'h27, 8'hB1, 8'h59, 8'hFE, 8'hDC, 8'h0C, 8'h20, 8'h81, 8'h72, 8'h94, 8'hFE, 8'hF6,
+            8'hC1, 8'h18
+        };
+        static logic[7:0] uart_data2[$] = {
+            8'h21, 8'h56, 8'h02, 8'h02, 8'h00, 8'h00, 8'h00, 8'h00, 8'h03, 8'hFD, 8'h25, 8'h17,
+            8'h52, 8'h7D, 8'h0B, 8'h5D, 8'h65, 8'hCD, 8'hF3, 8'h7E, 8'h9E, 8'h00, 8'h36, 8'h40,
+            8'hED, 8'h70, 8'hF5, 8'h3C, 8'hC5, 8'h97, 8'hEC, 8'hC5, 8'h0B, 8'h2E, 8'h34, 8'h08,
+            8'h32, 8'h6E, 8'h5C, 8'h9C, 8'hD3, 8'h6A, 8'hF7, 8'hC1, 8'h7F, 8'hF0, 8'h84, 8'h3B,
+            8'h9F, 8'hC1, 8'hE0, 8'hB2, 8'h4E, 8'hEB, 8'h0F, 8'h38, 8'h23, 8'h85, 8'h75, 8'hB5,
+            8'h18, 8'hDB, 8'hE9, 8'h87, 8'h04, 8'hC9, 8'h74, 8'h47, 8'h79, 8'h01, 8'h36, 8'hAF,
+            8'h8C, 8'h7B, 8'h9D, 8'h8B, 8'h97, 8'h3A, 8'h66, 8'hE6, 8'h7B, 8'hB4, 8'h3D, 8'hD7,
+            8'h4F, 8'h35
+        };
+        static logic[7:0] uart_data3[$] = {
+            8'h21, 8'h56, 8'h04, 8'h02, 8'h00, 8'h00, 8'h00, 8'h00, 8'h03, 8'hFD, 8'h25, 8'h17,
+            8'h52, 8'h7D, 8'h0B, 8'h5D, 8'h3F, 8'hCB, 8'h4F, 8'hAF, 8'hE6, 8'hCC, 8'hA9, 8'h66,
+            8'hA3, 8'hC8, 8'hA9, 8'hAD, 8'h4C, 8'h87, 8'h0C, 8'hA0, 8'hF5, 8'h93, 8'h61, 8'h86,
+            8'h32, 8'h53, 8'h73, 8'h29, 8'hE3, 8'h12, 8'h87, 8'h7B, 8'h82, 8'h3F, 8'h4A, 8'hB2,
+            8'hE0, 8'h12, 8'h04, 8'h30, 8'h8A, 8'h99, 8'hE3, 8'h18, 8'h94, 8'h5A, 8'h4E, 8'h22,
+            8'h5E, 8'h2C, 8'hE4, 8'h32, 8'hFA, 8'hF5, 8'h11, 8'h37, 8'h4D, 8'hCA, 8'hE5, 8'h2C,
+            8'hF1, 8'h82, 8'h0D, 8'hAB, 8'hDD, 8'hC2, 8'hD7, 8'hCF, 8'h02, 8'h8E, 8'h95, 8'h04,
+            8'hA6, 8'h62
+        };
+
+        $display("Testcase 2b: send 2 midstates work");
+
+        // set 2 midstates mode
+        enable_ip(CTRL_MIDSTATE_2);
+
+        fifo_write_work(fifo_data1);
+        uart_read_and_compare(uart_data1);
+
+        fifo_write_work(fifo_data2);
+        uart_read_and_compare(uart_data2);
+
+        fifo_write_work(fifo_data3);
+        uart_read_and_compare(uart_data3);
+    endtask
 
     // ---------------------------------------------------------------------------------------------
     // send 4 midstates work
@@ -412,10 +604,10 @@ module s9io_v0_2_tb();
             8'he7, 8'h5b, 8'h21, 8'h8b, 8'h37, 8'h0a
         };
 
-        $display("Testcase 2b: send 4 midstates work");
+        $display("Testcase 2c: send 4 midstates work");
 
         // set 4 midstates mode
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_4);
+        enable_ip(CTRL_MIDSTATE_4);
 
         fifo_write_work(fifo_data1);
         uart_read_and_compare(uart_data1);
@@ -425,28 +617,28 @@ module s9io_v0_2_tb();
     // send command immediate after work
     task tc_send_cmd_after_work();
         // Tx FIFO data
-        static logic[31:0] fifo_data1[$] = {32'h00000554};
+        static logic[31:0] fifo_data1[$] = {32'h00000540};
         static logic[31:0] fifo_data2[$] = {
-            32'h00000000, 32'hffffffff, 32'hffffffff, 32'hffffffff, 32'h00000000, 32'h00000000,
+            32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000,
             32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000
         };
-        static logic[31:0] fifo_data3[$] = {32'h00000555};
+        static logic[31:0] fifo_data3[$] = {32'h00030540};
 
         // reference data send out through UART
-        static logic[7:0] uart_data1[$] = {8'h54, 8'h05, 8'h00, 8'h00, 8'h19};
+        static logic[7:0] uart_data1[$] = {8'h40, 8'h05, 8'h00, 8'h00, 8'h1C};
         static logic[7:0] uart_data2[$] = {
-            8'h21, 8'h36, 8'h00, 8'h01, 8'h00, 8'h00, 8'h00, 8'h00, 8'hff, 8'hff, 8'hff, 8'hff,
-            8'hff, 8'hff, 8'hff, 8'hff, 8'hff, 8'hff, 8'hff, 8'hff, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h21, 8'h36, 8'h00, 8'h01, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
             8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
             8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
-            8'h00, 8'h00, 8'h00, 8'h00, 8'h5f, 8'hd3
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h00,
+            8'h00, 8'h00, 8'h00, 8'h00, 8'h98, 8'h99
         };
-        static logic[7:0] uart_data3[$] = {8'h55, 8'h05, 8'h00, 8'h00, 8'h10};
+        static logic[7:0] uart_data3[$] = {8'h40, 8'h05, 8'h03, 8'h00, 8'h1D};
 
-        $display("Testcase 2c: send command after work");
+        $display("Testcase 2d: send command after work");
 
         // set 1 midstate mode
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+        enable_ip(CTRL_MIDSTATE_1);
 
         // first send command "to dirty" CRC engine
         fifo_write_cmd(fifo_data1);
@@ -465,7 +657,7 @@ module s9io_v0_2_tb();
     // ---------------------------------------------------------------------------------------------
     // receive of command response
     task tc_cmd_response();
-        // data send through UART
+        // data send through UART - BM1387
         static logic[7:0] uart_data1[$] = {8'h13, 8'h87, 8'h90, 8'h00, 8'h00, 8'h00, 8'h07};
         static logic[7:0] uart_data2[$] = {8'h13, 8'h87, 8'h90, 8'h04, 8'h00, 8'h00, 8'h10};
         static logic[7:0] uart_data3[$] = {8'h13, 8'h87, 8'h90, 8'h08, 8'h00, 8'h00, 8'h0c};
@@ -475,7 +667,17 @@ module s9io_v0_2_tb();
         static logic[7:0] uart_data7[$] = {8'h13, 8'h87, 8'h90, 8'hf0, 8'h00, 8'h00, 8'h0b};
         static logic[7:0] uart_data8[$] = {8'h13, 8'h87, 8'h90, 8'hf4, 8'h00, 8'h00, 8'h1c};
 
-        // reference Rx FIFO data
+        // data send through UART - BM1391
+        static logic[7:0] uart_data9[$]  = {8'h00, 8'h00, 8'h61, 8'h31, 8'h24, 8'h18, 8'h1F};
+        static logic[7:0] uart_data10[$] = {8'h01, 8'h00, 8'h00, 8'h00, 8'h24, 8'h1C, 8'h00};
+        static logic[7:0] uart_data11[$] = {8'h01, 8'h98, 8'h00, 8'h5C, 8'h33, 8'h1C, 8'h16};
+        static logic[7:0] uart_data12[$] = {8'h01, 8'h98, 8'h09, 8'h00, 8'h24, 8'h1C, 8'h1B};
+        static logic[7:0] uart_data13[$] = {8'h13, 8'h91, 8'h00, 8'h00, 8'h00, 8'h00, 8'h05};
+        static logic[7:0] uart_data14[$] = {8'h81, 8'h98, 8'h00, 8'h00, 8'h24, 8'h1C, 8'h17};
+        static logic[7:0] uart_data15[$] = {8'h81, 8'h98, 8'h00, 8'h5C, 8'h33, 8'h1C, 8'h08};
+        static logic[7:0] uart_data16[$] = {8'h81, 8'h98, 8'h09, 8'h00, 8'h24, 8'h1C, 8'h05};
+
+        // reference Rx FIFO data - BM1387
         static logic[31:0] fifo_data1[$] = {32'h00908713, 32'h07000000};
         static logic[31:0] fifo_data2[$] = {32'h04908713, 32'h10000000};
         static logic[31:0] fifo_data3[$] = {32'h08908713, 32'h0c000000};
@@ -485,7 +687,19 @@ module s9io_v0_2_tb();
         static logic[31:0] fifo_data7[$] = {32'hf0908713, 32'h0b000000};
         static logic[31:0] fifo_data8[$] = {32'hf4908713, 32'h1c000000};
 
+        // reference Rx FIFO data - BM1391
+        static logic[31:0] fifo_data9[$]  = {32'h31610000, 32'h1F001824};
+        static logic[31:0] fifo_data10[$] = {32'h00000001, 32'h00001C24};
+        static logic[31:0] fifo_data11[$] = {32'h5C009801, 32'h16001C33};
+        static logic[31:0] fifo_data12[$] = {32'h00099801, 32'h1B001C24};
+        static logic[31:0] fifo_data13[$] = {32'h00009113, 32'h05000000};
+        static logic[31:0] fifo_data14[$] = {32'h00009881, 32'h17001C24};
+        static logic[31:0] fifo_data15[$] = {32'h5C009881, 32'h08001C33};
+        static logic[31:0] fifo_data16[$] = {32'h00099881, 32'h05001C24};
+
         $display("Testcase 3a: command response");
+
+        // test sequences - BM1387
         uart_send_data(uart_data1);
         fifo_read_and_compare_cmd(fifo_data1);
 
@@ -509,13 +723,38 @@ module s9io_v0_2_tb();
 
         uart_send_data(uart_data8);
         fifo_read_and_compare_cmd(fifo_data8);
+
+        // test sequences - BM1391
+        uart_send_data(uart_data9);
+        fifo_read_and_compare_cmd(fifo_data9);
+
+        uart_send_data(uart_data10);
+        fifo_read_and_compare_cmd(fifo_data10);
+
+        uart_send_data(uart_data11);
+        fifo_read_and_compare_cmd(fifo_data11);
+
+        uart_send_data(uart_data12);
+        fifo_read_and_compare_cmd(fifo_data12);
+
+        uart_send_data(uart_data13);
+        fifo_read_and_compare_cmd(fifo_data13);
+
+        uart_send_data(uart_data14);
+        fifo_read_and_compare_cmd(fifo_data14);
+
+        uart_send_data(uart_data15);
+        fifo_read_and_compare_cmd(fifo_data15);
+
+        uart_send_data(uart_data16);
+        fifo_read_and_compare_cmd(fifo_data16);
     endtask
 
 
     // ---------------------------------------------------------------------------------------------
     // receive of work response
     task tc_work_response();
-        // data send through UART
+        // data send through UART - BM1387
         static logic[7:0] uart_data1[$] = {8'h72, 8'h03, 8'hea, 8'h83, 8'h00, 8'h03, 8'h98};
         static logic[7:0] uart_data2[$] = {8'h72, 8'h03, 8'hea, 8'h83, 8'h00, 8'h04, 8'h9e};
         static logic[7:0] uart_data3[$] = {8'h72, 8'h03, 8'hea, 8'h83, 8'h00, 8'h05, 8'h93};
@@ -526,7 +765,18 @@ module s9io_v0_2_tb();
         static logic[7:0] uart_data8[$] = {8'h72, 8'h03, 8'hea, 8'h83, 8'h00, 8'h71, 8'h8d};
         static logic[7:0] uart_data9[$] = {8'h48, 8'h06, 8'h3c, 8'h08, 8'h00, 8'h12, 8'h99};
 
-        // reference Rx FIFO data - the real value depends on the last work ID
+        // data send through UART - BM1391
+        static logic[7:0] uart_data10[$] = {8'h01, 8'h51, 8'h37, 8'h82, 8'h00, 8'h2D, 8'h90};
+        static logic[7:0] uart_data11[$] = {8'h1C, 8'h0D, 8'h4F, 8'h78, 8'h02, 8'h3D, 8'h93};
+        static logic[7:0] uart_data12[$] = {8'h25, 8'h19, 8'hF7, 8'h93, 8'h00, 8'h31, 8'h9B};
+        static logic[7:0] uart_data13[$] = {8'h45, 8'h74, 8'h06, 8'h89, 8'h00, 8'h70, 8'h90};
+        static logic[7:0] uart_data14[$] = {8'h63, 8'hBD, 8'hC7, 8'hA3, 8'h03, 8'h7C, 8'h8E};
+        static logic[7:0] uart_data15[$] = {8'h99, 8'h2E, 8'hE4, 8'hB2, 8'h01, 8'h22, 8'h99};
+        static logic[7:0] uart_data16[$] = {8'hAB, 8'hA9, 8'h3B, 8'h2C, 8'h04, 8'h4F, 8'h92};
+        static logic[7:0] uart_data17[$] = {8'hC9, 8'hB7, 8'h30, 8'hDA, 8'h01, 8'h12, 8'h8B};
+        static logic[7:0] uart_data18[$] = {8'hD5, 8'h84, 8'hC3, 8'hE1, 8'h01, 8'h13, 8'h9D};
+
+        // reference Rx FIFO data - BM1387 - the real value depends on the last work ID
         static logic[31:0] fifo_data1[$] = {32'h83ea0372, 32'h98000300};
         static logic[31:0] fifo_data2[$] = {32'h83ea0372, 32'h9e000400};
         static logic[31:0] fifo_data3[$] = {32'h83ea0372, 32'h93000500};
@@ -537,7 +787,20 @@ module s9io_v0_2_tb();
         static logic[31:0] fifo_data8[$] = {32'h83ea0372, 32'h8d007100};
         static logic[31:0] fifo_data9[$] = {32'h083c0648, 32'h99001200};
 
+        // reference Rx FIFO data - BM1391 - the real value depends on the last work ID
+        static logic[31:0] fifo_data10[$] = {32'h82375101, 32'h90002D00};
+        static logic[31:0] fifo_data11[$] = {32'h784F0D1C, 32'h93003D02};
+        static logic[31:0] fifo_data12[$] = {32'h93F71925, 32'h9B003100};
+        static logic[31:0] fifo_data13[$] = {32'h89067445, 32'h90007000};
+        static logic[31:0] fifo_data14[$] = {32'hA3C7BD63, 32'h8E007C03};
+        static logic[31:0] fifo_data15[$] = {32'hB2E42E99, 32'h99002201};
+        static logic[31:0] fifo_data16[$] = {32'h2C3BA9AB, 32'h92004F04};
+        static logic[31:0] fifo_data17[$] = {32'hDA30B7C9, 32'h8B001201};
+        static logic[31:0] fifo_data18[$] = {32'hE1C384D5, 32'h9D001301};
+
         $display("Testcase 3b: work response");
+
+        // test sequences - BM1387
 
         // initialization of work ID to max. value
         init_work_id();
@@ -565,6 +828,41 @@ module s9io_v0_2_tb();
 
         uart_send_data(uart_data8);
         fifo_read_and_compare_work(fifo_data8);
+
+        uart_send_data(uart_data9);
+        fifo_read_and_compare_work(fifo_data9);
+
+        // test sequences - BM1391
+
+        // initialization of work ID to max. value
+        init_work_id();
+
+        uart_send_data(uart_data10);
+        fifo_read_and_compare_work(fifo_data10);
+
+        uart_send_data(uart_data11);
+        fifo_read_and_compare_work(fifo_data11);
+
+        uart_send_data(uart_data12);
+        fifo_read_and_compare_work(fifo_data12);
+
+        uart_send_data(uart_data13);
+        fifo_read_and_compare_work(fifo_data13);
+
+        uart_send_data(uart_data14);
+        fifo_read_and_compare_work(fifo_data14);
+
+        uart_send_data(uart_data15);
+        fifo_read_and_compare_work(fifo_data15);
+
+        uart_send_data(uart_data16);
+        fifo_read_and_compare_work(fifo_data16);
+
+        uart_send_data(uart_data17);
+        fifo_read_and_compare_work(fifo_data17);
+
+        uart_send_data(uart_data18);
+        fifo_read_and_compare_work(fifo_data18);
     endtask
 
 
@@ -620,7 +918,7 @@ module s9io_v0_2_tb();
         fifo_write_cmd(fifo_data2);
 
         // wait for work time
-        #1us;
+        #900ns;
 
         // check if FIFO is not empty
         check_status(CMD_STAT_REG, STAT_TX_EMPTY, 1'b0, "FIFO is empty after write");
@@ -629,7 +927,7 @@ module s9io_v0_2_tb();
         axi_write(CMD_CTRL_REG, CTRL_RST_TX_FIFO);
 
         // wait for work time
-        #1us;
+        #900ns;
 
         // check if FIFO is empty
         check_status(CMD_STAT_REG, STAT_TX_EMPTY, 1'b1, "FIFO is not empty after reset");
@@ -675,9 +973,9 @@ module s9io_v0_2_tb();
     // ---------------------------------------------------------------------------------------------
     // test of FIFOs reset and flags, work TX FIFO
     task tc_fifo_work_tx();
-        // data are not complete - missing 5 words
+        // data are not complete - missing 6 words
         static logic[31:0] fifo_data1[$] = {
-            32'h00000000, 32'hffffffff, 32'hffffffff, 32'hffffffff, 32'h00000000, 32'h00000000
+            32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000
         };
 
         $display("Testcase 4d: FIFO reset/flags, work TX FIFO");
@@ -686,7 +984,7 @@ module s9io_v0_2_tb();
         check_status(WORK_TX_STAT_REG, STAT_TX_EMPTY, 1'b1, "FIFO is not empty");
 
         // set 1 midstate mode
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+        enable_ip(CTRL_MIDSTATE_1);
 
         // send data
         fifo_write_work(fifo_data1);
@@ -749,6 +1047,9 @@ module s9io_v0_2_tb();
 
         // check IRQ ports and flags
         check_irq(3'b000, 3'b001, "all data already read");
+
+        // disable IRQ
+        axi_write(CMD_CTRL_REG, 0);
     endtask
 
     // ---------------------------------------------------------------------------------------------
@@ -793,6 +1094,9 @@ module s9io_v0_2_tb();
 
          // check IRQ ports
         check_irq(3'b000, 3'b001, "all data already read");
+
+        // disable IRQ
+        axi_write(WORK_RX_CTRL_REG, 0);
     endtask
 
     // ---------------------------------------------------------------------------------------------
@@ -822,7 +1126,7 @@ module s9io_v0_2_tb();
         check_irq(3'b000, 3'b001, "initial state");
 
         // set 1 midstate mode, IRQ enabled
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+        enable_ip(CTRL_MIDSTATE_1);
         axi_write(WORK_TX_CTRL_REG, CTRL_IRQ_EN);
         // set IRQ threshold in words
         axi_write(WORK_TX_IRQ_THR, 6);
@@ -854,6 +1158,9 @@ module s9io_v0_2_tb();
 
         // check IRQ ports
         check_irq(3'b001, 3'b001, "FIFO is again empty");
+
+        // disable IRQ
+        axi_write(WORK_TX_CTRL_REG, 0);
     endtask
 
     // ---------------------------------------------------------------------------------------------
@@ -885,7 +1192,7 @@ module s9io_v0_2_tb();
         $display("Testcase 6a: work ID, response with same ID");
 
         // set 1 midstate mode
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+        enable_ip(CTRL_MIDSTATE_1);
 
         fifo_write_work(fifo_data1);
         uart_read_and_compare(uart_data1);
@@ -922,7 +1229,7 @@ module s9io_v0_2_tb();
         $display("Testcase 6b: work ID, response with same ID, full range");
 
         // set 1 midstate mode
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+        enable_ip(CTRL_MIDSTATE_1);
 
         fifo_write_work(fifo_data1);
         uart_read_and_compare(uart_data1);
@@ -959,7 +1266,7 @@ module s9io_v0_2_tb();
         $display("Testcase 6c: work ID, response with smaller ID then last work");
 
         // set 1 midstate mode
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+        enable_ip(CTRL_MIDSTATE_1);
 
         fifo_write_work(fifo_data1);
         uart_read_and_compare(uart_data1);
@@ -996,7 +1303,7 @@ module s9io_v0_2_tb();
         $display("Testcase 6d: work ID, response with higher ID then last work");
 
         // set 1 midstate mode
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+        enable_ip(CTRL_MIDSTATE_1);
 
         fifo_write_work(fifo_data1);
         uart_read_and_compare(uart_data1);
@@ -1046,7 +1353,7 @@ module s9io_v0_2_tb();
         $display("Testcase 6e: work ID, 4-midstates work, response with non-zero work ID LSBs");
 
         // set 1 midstate mode
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_4);
+        enable_ip(CTRL_MIDSTATE_4);
 
         fifo_write_work(fifo_data1);
         uart_read_and_compare(uart_data1);
@@ -1084,8 +1391,8 @@ module s9io_v0_2_tb();
         check_status(CMD_STAT_REG, STAT_RX_EMPTY, 1'b1, "FIFO is not empty after partial write");
 
         // reset of IP core
-        axi_write(CTRL_REG, 32'h0);
-        axi_write(CTRL_REG, CTRL_ENABLE);
+        disable_ip();
+        enable_ip(CTRL_MIDSTATE_1);
 
         // check if FIFO is empty
         check_status(CMD_STAT_REG, STAT_RX_EMPTY, 1'b1, "FIFO is not empty after IP core reset");
@@ -1127,8 +1434,8 @@ module s9io_v0_2_tb();
         check_status(CMD_STAT_REG, STAT_TX_EMPTY, 1'b0, "FIFO is empty after partial write");
 
         // reset of IP core
-        axi_write(CTRL_REG, 32'h0);
-        axi_write(CTRL_REG, CTRL_ENABLE);
+        disable_ip();
+        enable_ip(CTRL_MIDSTATE_1);
 
         // check if FIFO is empty
         check_status(CMD_STAT_REG, STAT_TX_EMPTY, 1'b1, "FIFO is not empty after IP core reset");
@@ -1173,8 +1480,8 @@ module s9io_v0_2_tb();
         check_status(WORK_RX_STAT_REG, STAT_RX_EMPTY, 1'b1, "FIFO is empty after partial write");
 
         // reset of IP core
-        axi_write(CTRL_REG, 32'h0);
-        axi_write(CTRL_REG, CTRL_ENABLE);
+        disable_ip();
+        enable_ip(CTRL_MIDSTATE_1);
 
         // check if FIFO is empty
         check_status(WORK_RX_STAT_REG, STAT_RX_EMPTY, 1'b1, "FIFO is not empty after reset");
@@ -1222,7 +1529,7 @@ module s9io_v0_2_tb();
         check_status(WORK_TX_STAT_REG, STAT_TX_EMPTY, 1'b1, "FIFO is not empty");
 
         // set 1 midstate mode
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+        enable_ip(CTRL_MIDSTATE_1);
 
         // send data
         fifo_write_work(fifo_data1);
@@ -1231,8 +1538,8 @@ module s9io_v0_2_tb();
         check_status(WORK_TX_STAT_REG, STAT_TX_EMPTY, 1'b0, "FIFO is empty after write");
 
         // reset of IP core
-        axi_write(CTRL_REG, 32'h0);
-        axi_write(CTRL_REG, CTRL_ENABLE);
+        disable_ip();
+        enable_ip(CTRL_MIDSTATE_1);
 
         // check if FIFO is empty
         check_status(WORK_TX_STAT_REG, STAT_TX_EMPTY, 1'b1, "FIFO is not empty after reset");
@@ -1270,7 +1577,7 @@ module s9io_v0_2_tb();
         compare_data(32'h0, rdata, "ERR_COUNTER");
 
         // clear error counter register
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_ERR_CNT_CLEAR);
+        clear_err_cnt();
 
         // send corrupted command response
         uart_send_data(uart_data1);
@@ -1286,24 +1593,32 @@ module s9io_v0_2_tb();
 
         // check if counter is incremented and FIFO is empty
         axi_read(ERR_COUNTER, rdata);
+
+        // number of errors depends on mode
+`ifdef BM139X
+        // nine wrong bytes received - whole message
+        compare_data(32'd10, rdata, "ERR_COUNTER");
+`else
         // seven wrong bytes received - whole message
-        compare_data(32'h8, rdata, "ERR_COUNTER");
+        compare_data(32'd8, rdata, "ERR_COUNTER");
+`endif
+
         check_status(WORK_RX_STAT_REG, STAT_RX_EMPTY, 1'b1, "RX work FIFO is not empty");
 
         // clear error counter register
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_ERR_CNT_CLEAR);
+        clear_err_cnt();
 
         // check if register is zero
         axi_read(ERR_COUNTER, rdata);
         compare_data(32'h0, rdata, "ERR_COUNTER");
 
         // reset IP core
-        axi_write(CTRL_REG, 32'h0);
-        axi_write(CTRL_REG, CTRL_ENABLE);
+        disable_ip();
+        enable_ip(CTRL_MIDSTATE_1);
     endtask
 
     // ---------------------------------------------------------------------------------------------
-    // test of receiving unexpected bytes between frames
+    // test of receiving incomplete frame
     task tc_error_counter_2();
         // data send through UART - unexpected data
         static logic[7:0] uart_data1[$] = {8'he1, 8'h40, 8'h00, 8'h00};
@@ -1313,14 +1628,14 @@ module s9io_v0_2_tb();
 
         automatic int rdata = 0;
 
-        $display("Testcase 8b: error counter register, unexpected bytes");
+        $display("Testcase 8b: error counter register, incomplete frame");
 
         // check if register is zero
         axi_read(ERR_COUNTER, rdata);
         compare_data(32'h0, rdata, "ERR_COUNTER");
 
         // clear error counter register
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_ERR_CNT_CLEAR);
+        clear_err_cnt();
 
         // send unexpected data
         uart_send_data(uart_data1);
@@ -1330,16 +1645,69 @@ module s9io_v0_2_tb();
 
         // check if counter is incremented and FIFO is not empty
         axi_read(ERR_COUNTER, rdata);
-        compare_data(32'h4, rdata, "ERR_COUNTER");
+
+        // number of errors depends on mode
+`ifdef BM139X
+        compare_data(32'd6, rdata, "ERR_COUNTER");
+`else
+        compare_data(32'd4, rdata, "ERR_COUNTER");
+`endif
+
         check_status(WORK_RX_STAT_REG, STAT_RX_EMPTY, 1'b0, "RX work FIFO is empty");
 
         // clear error counter register by reset of IP core
-        axi_write(CTRL_REG, 32'h0);
-        axi_write(CTRL_REG, CTRL_ENABLE);
+        disable_ip();
+        enable_ip(CTRL_MIDSTATE_1);
 
         // check if register is zero
         axi_read(ERR_COUNTER, rdata);
         compare_data(32'h0, rdata, "ERR_COUNTER");
+    endtask
+
+    // ---------------------------------------------------------------------------------------------
+    // test of error frame header
+    task tc_error_counter_3();
+        // data send through UART - unexpected data after first correct frame
+        static logic[7:0] uart_data1[$] = {
+            8'h72, 8'h03, 8'hea, 8'h83, 8'h00, 8'h39, 8'h97,
+            8'h00, 8'hAA, 8'h00, 8'h55, 8'hAA
+        };
+
+        // data send through UART - work response
+        static logic[7:0] uart_data2[$] = {8'h72, 8'h03, 8'hea, 8'h83, 8'h00, 8'h39, 8'h97};
+
+        automatic int rdata = 0;
+
+        $display("Testcase 8c: error counter register, unexpected header bytes");
+
+        // check if register is zero
+        axi_read(ERR_COUNTER, rdata);
+        compare_data(32'h0, rdata, "ERR_COUNTER");
+
+        // clear error counter register
+        clear_err_cnt();
+
+        // send unexpected data
+        uart_send_data(uart_data1);
+
+        // send correct work response
+        uart_send_data(uart_data2);
+
+        // check if counter is incremented and FIFO is not empty
+        axi_read(ERR_COUNTER, rdata);
+        compare_data(32'd4, rdata, "ERR_COUNTER");
+        check_status(WORK_RX_STAT_REG, STAT_RX_EMPTY, 1'b0, "RX work FIFO is empty");
+
+        // clear error counter register
+        clear_err_cnt();
+
+        // check if register is zero
+        axi_read(ERR_COUNTER, rdata);
+        compare_data(32'h0, rdata, "ERR_COUNTER");
+
+        // reset IP core
+        disable_ip();
+        enable_ip(CTRL_MIDSTATE_1);
     endtask
 
 
@@ -1366,14 +1734,14 @@ module s9io_v0_2_tb();
         $display("Testcase 9a: baudrate speed change and synchronization");
 
         // set 1 midstate mode
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+        enable_ip(CTRL_MIDSTATE_1);
 
         // send work
         fifo_write_work(fifo_data1);
 
         // wait some time and change UART baudrate speed to 1.5625 MBd (@50MHz)
         # 1us;
-        axi_write(BAUD_REG, 1);
+        axi_write(BAUD_REG, 3);
 
         // check reference data that should be at previous speed
         uart_read_and_compare(uart_data1);
@@ -1386,12 +1754,42 @@ module s9io_v0_2_tb();
         uart_read_and_compare(uart_data1);
 
         // revert UART baudrate speed to 3.125 MBd (@50MHz)
-        axi_write(BAUD_REG, 0);
+        axi_write(BAUD_REG, 1);
     endtask
 
 
     // ---------------------------------------------------------------------------------------------
     //                               Auxiliary Functions
+    // ---------------------------------------------------------------------------------------------
+    // enable IP core for defined number of midstates
+    task enable_ip(input logic[31:0] midstate);
+`ifdef BM139X
+        // enable IP core with BM139x mode
+        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_BM139X | midstate);
+`else
+        // enable IP core without BM139x mode
+        axi_write(CTRL_REG, CTRL_ENABLE | midstate);
+`endif
+    endtask
+
+    // ---------------------------------------------------------------------------------------------
+    // disable IP core
+    task disable_ip();
+        axi_write(CTRL_REG, 32'h0);
+    endtask
+
+    // ---------------------------------------------------------------------------------------------
+    // clear error counter
+    task clear_err_cnt();
+        automatic int rdata = 0;
+
+        // read content of control register
+        axi_read(CTRL_REG, rdata);
+
+        // write back data and clear error counter
+        axi_write(CTRL_REG, rdata | CTRL_ERR_CNT_CLEAR);
+    endtask
+
     // ---------------------------------------------------------------------------------------------
     // AXI write word
     task axi_read(input logic[31:0] addr, output logic[31:0] rdata);
@@ -1439,6 +1837,12 @@ module s9io_v0_2_tb();
 
     // ---------------------------------------------------------------------------------------------
     task uart_send_data(input logic[7:0] array[$]);
+        // add header 0xAA, 0x55 if BM139x mode is enabled
+`ifdef BM139X
+        array.insert(0, 8'h55);
+        array.insert(0, 8'hAA);
+`endif
+
         for (int i = 0; i < array.size; i++) begin
             i_uart.send_frame_tx(array[i]);
         end
@@ -1449,6 +1853,12 @@ module s9io_v0_2_tb();
     // ---------------------------------------------------------------------------------------------
     task uart_read_and_compare(input logic[7:0] expected[$]);
         automatic logic[7:0] rdata = 0;
+
+        // add header 0x55, 0xAA if BM139x mode is enabled
+`ifdef BM139X
+        expected.insert(0, 8'hAA);
+        expected.insert(0, 8'h55);
+`endif
 
         for (int i = 0; i < expected.size; i++) begin
             // wait for trigger
@@ -1586,7 +1996,7 @@ module s9io_v0_2_tb();
         };
 
         // set 1 midstate mode
-        axi_write(CTRL_REG, CTRL_ENABLE | CTRL_MIDSTATE_1);
+        enable_ip(CTRL_MIDSTATE_1);
 
         fifo_write_work(fifo_data1);
         uart_read_and_compare(uart_data1);

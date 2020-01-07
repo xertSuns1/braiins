@@ -21,8 +21,8 @@
  * of such proprietary license or if you have any other questions, please
  * contact us at opensource@braiins.com.
  ***************************************************************************************************
- * Project Name:   S9 Board Interface IP
- * Description:    Package with s9io IP core parameters
+ * Project Name:   Braiins OS
+ * Description:    Package with AXI BM13xx IP core parameters
  *
  * Engineer:       Marian Pristach
  * Revision:       1.1.0 (22.07.2019)
@@ -32,7 +32,7 @@
 
 `timescale 1ns / 1ps
 
-package s9io_pkg;
+package axi_bm13xx_pkg;
 
     // ---------------------------------------------------------------------------------------------
     // clock parameter
@@ -84,6 +84,8 @@ package s9io_pkg;
     // ---------------------------------------------------------------------------------------------
     // Control Registers
     // ---------------------------------------------------------------------------------------------
+    // Enable support for chips BM1391, BM1397
+    parameter CTRL_BM139X = 32'h10;
     // Enable, read/write
     parameter CTRL_ENABLE = 32'h8;
     // Number of midstates per work, encoded as log2 of values: 1, 2, 4, read/write
@@ -113,4 +115,4 @@ package s9io_pkg;
     // Work Interface Receive FIFO Empty
     parameter STAT_RX_EMPTY = 32'h01;
 
-endpackage : s9io_pkg
+endpackage : axi_bm13xx_pkg

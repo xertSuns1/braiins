@@ -21,32 +21,33 @@
 -- of such proprietary license or if you have any other questions, please
 -- contact us at opensource@braiins.com.
 ----------------------------------------------------------------------------------------------------
--- Project Name:   S9 Board Interface IP
--- Description:    CRC-5 with Polynomial 0x5, Serial Calculation per Bits
+-- Project Name:   Braiins OS
+-- Description:    CRC-5 with Polynomial 0xD (modified), Serial Calculation per Bits
 --
 -- Engineer:       Marian Pristach
--- Revision:       1.0.0 (18.08.2018)
--- Comments:       Initial value 0x1F, no final xor
+-- Revision:       1.0.1 (04.01.2019)
+-- Comments:       Initial value defined by input, no final xor
 --                 MSB first of data_in, CRC results in direct order
 ----------------------------------------------------------------------------------------------------
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity crc5_serial is
+entity crc5_resp_serial is
     port (
         clk     : in  std_logic;
         rst     : in  std_logic;                        -- synchronous, active low
         clear   : in  std_logic;                        -- synchronous clear
+        init    : in  std_logic_vector(4 downto 0);     -- initial value of calculation
         data_wr : in  std_logic;                        -- write enable
         data_in : in  std_logic_vector(7 downto 0);     -- input data
         ready   : out std_logic;                        -- crc engine is ready
         crc     : out std_logic_vector(4 downto 0)      -- crc-5 output
     );
-end crc5_serial;
+end crc5_resp_serial;
 
 
-architecture rtl of crc5_serial is
+architecture rtl of crc5_resp_serial is
 
     -- FSM type and signals declaration
     type fsm_type_t is (st_idle, st_calc);
@@ -131,10 +132,11 @@ begin
             if (rst = '0') then
                 crc_reg <= (others => '1');
             elsif (clear = '1') then
-                crc_reg <= (others => '1');
+                crc_reg <= init;
             elsif (clk_en = '1') then
                 crc_reg <= crc_reg(3 downto 0) & crc_in;        -- universal shift
                 crc_reg(2) <= crc_reg(1) xor crc_in;            -- update bit based on crc polynom
+                crc_reg(3) <= crc_reg(2) xor data_shift_q(7);   -- non-standard update
             end if;
         end if;
     end process;

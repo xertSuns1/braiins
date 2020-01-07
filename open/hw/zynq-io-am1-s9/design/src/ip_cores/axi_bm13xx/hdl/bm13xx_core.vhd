@@ -21,8 +21,8 @@
 -- of such proprietary license or if you have any other questions, please
 -- contact us at opensource@braiins.com.
 ----------------------------------------------------------------------------------------------------
--- Project Name:   S9 Board Interface IP
--- Description:    IP core for S9 Board Interface
+-- Project Name:   Braiins OS
+-- Description:    IP core for AXI BM13xx Interface
 --
 -- Engineer:       Marian Pristach
 -- Revision:       1.1.0 (22.07.2019)
@@ -32,7 +32,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity s9io_core is
+entity bm13xx_core is
     port (
         clk               : in  std_logic;
         rst               : in  std_logic;
@@ -40,6 +40,9 @@ entity s9io_core is
         -- UART interface
         rxd               : in  std_logic;
         txd               : out std_logic;
+
+        -- enable UART interface IO driver
+        uart_en           : out std_logic;
 
         -- Interrupt Request
         irq_work_tx       : out std_logic;
@@ -66,34 +69,34 @@ entity s9io_core is
         work_tx_fifo_data : in  std_logic_vector(31 downto 0);
 
         -- Control Registers
-        reg_ctrl          : in  std_logic_vector(3 downto 0);
+        reg_ctrl          : in  std_logic_vector(4 downto 0);
         reg_ctrl_cmd      : in  std_logic_vector(2 downto 0);
         reg_ctrl_work_rx  : in  std_logic_vector(2 downto 0);
         reg_ctrl_work_tx  : in  std_logic_vector(2 downto 0);
 
-        -- Control Registers
+        -- Status Registers
         reg_status_cmd     : out std_logic_vector(4 downto 0);
         reg_status_work_rx : out std_logic_vector(4 downto 0);
         reg_status_work_tx : out std_logic_vector(4 downto 0);
 
         -- UART baudrate divisor Register
-        reg_uart_divisor  : in  std_logic_vector(11 downto 0);
+        reg_uart_divisor   : in  std_logic_vector(11 downto 0);
 
         -- Work time delay Register
-        reg_work_time     : in  std_logic_vector(23 downto 0);
+        reg_work_time      : in  std_logic_vector(23 downto 0);
 
         -- Threshold for Work Transmit FIFO IRQ
-        reg_irq_fifo_thr  : in  std_logic_vector(10 downto 0);
+        reg_irq_fifo_thr   : in  std_logic_vector(10 downto 0);
 
         -- Error counter
-        reg_err_counter   : out std_logic_vector(31 downto 0);
+        reg_err_counter    : out std_logic_vector(31 downto 0);
 
         -- Last Work ID send to ASICs
         reg_last_work_id   : out std_logic_vector(15 downto 0)
     );
-end entity s9io_core;
+end entity bm13xx_core;
 
-architecture RTL of s9io_core is
+architecture RTL of bm13xx_core is
 
     -- work delay counter
     signal work_time_cnt_d      : unsigned(23 downto 0);
@@ -107,9 +110,11 @@ architecture RTL of s9io_core is
     -- Tx FSM type and signals declaration
     type fsm_type_t is (
         st_idle, st_wait_sync, st_check,
-        st_work_cmd, st_work_length, st_work_id, st_work_optv, st_work_nonce, st_work_chunk2,
+        st_work_cmd_55, st_work_cmd_AA, st_work_cmd, st_work_length, st_work_id, st_work_optv,
+        st_work_nonce, st_work_chunk2,
         st_work_midstate, st_work_crc16,
-        st_cmd_read, st_cmd_check, st_cmd_cmd, st_cmd_data, st_cmd_crc5
+        st_cmd_read, st_cmd_check, st_cmd_check_1, st_cmd_55, st_cmd_AA, st_cmd_cmd, st_cmd_data,
+        st_cmd_crc5
     );
     signal fsm_d                : fsm_type_t;
     signal fsm_q                : fsm_type_t;
@@ -134,8 +139,8 @@ architecture RTL of s9io_core is
     signal work_id_rx_cmp       : std_logic_vector(6 downto 0);
 
     -- Rx FSM type and signals declaration
-    type fsm_rx_type_t is (st_idle, st_wait, st_read, st_calc_crc, st_check_crc,
-        st_write_work1, st_write_work2, st_write_cmd1, st_write_cmd2, st_crc_err
+    type fsm_rx_type_t is (st_idle, st_wait, st_read_AA, st_read_55, st_read, st_calc_crc,
+        st_check_crc, st_write_work1, st_write_work2, st_write_cmd1, st_write_cmd2, st_crc_err
     );
     signal fsm_rx_d             : fsm_rx_type_t;
     signal fsm_rx_q             : fsm_rx_type_t;
@@ -151,6 +156,7 @@ architecture RTL of s9io_core is
 
 
     -- Control Register
+    signal ctrl_bm139x          : std_logic;
     signal ctrl_enable          : std_logic;
     signal ctrl_midstate_cnt    : std_logic_vector(1 downto 0);
     signal ctrl_irq_en_work_rx  : std_logic;
@@ -165,6 +171,7 @@ architecture RTL of s9io_core is
     -- Command receive FIFO
     signal cmd_rx_fifo_wr       : std_logic;
     signal cmd_rx_fifo_full     : std_logic;
+    signal cmd_rx_fifo_a_full   : std_logic;
     signal cmd_rx_fifo_data_w   : std_logic_vector(31 downto 0);
     signal cmd_rx_fifo_empty    : std_logic;
 
@@ -177,6 +184,7 @@ architecture RTL of s9io_core is
     -- Work receive FIFO
     signal work_rx_fifo_wr      : std_logic;
     signal work_rx_fifo_full    : std_logic;
+    signal work_rx_fifo_a_full  : std_logic;
     signal work_rx_fifo_data_w  : std_logic_vector(31 downto 0);
     signal work_rx_fifo_empty   : std_logic;
 
@@ -243,6 +251,9 @@ architecture RTL of s9io_core is
     signal work_ready           : std_logic;
     signal cmd_tx_ready         : std_logic;
 
+    -- Rx header error (0xAA, 0x55), drop of result due to full FIFO
+    signal receive_err          : std_logic;
+
     -- error counter
     signal err_cnt_q            : unsigned(31 downto 0);
     signal err_cnt_clear        : std_logic;
@@ -286,6 +297,7 @@ begin
 
     ------------------------------------------------------------------------------------------------
     -- Control Registers
+    ctrl_bm139x         <= reg_ctrl(4);
     ctrl_enable         <= reg_ctrl(3);
     ctrl_midstate_cnt   <= reg_ctrl(2 downto 1);
     ctrl_err_cnt_clear  <= reg_ctrl(0);
@@ -334,7 +346,7 @@ begin
         cmd_tx_fifo_empty, cmd_tx_fifo_data_r,
         work_ready, cmd_tx_ready,
         byte_cnt_q, word_cnt_q, byte_rest_q, work_id_tx_q,
-        crc5_tx, crc16
+        crc5_tx, crc16, ctrl_bm139x
     ) begin
 
         -- default assignment to registers and signals
@@ -399,12 +411,30 @@ begin
 
             when st_check =>                        -- check of reset FIFOs, reload of baudrate, ...
                 if (work_tx_fifo_thr_ready = '1') then    -- work has higher priority, start only when complete work is in FIFO
-                    fsm_d <= st_work_cmd;
+                    if (ctrl_bm139x = '1') then
+                        fsm_d <= st_work_cmd_55;
+                    else
+                        fsm_d <= st_work_cmd;
+                    end if;
                     crc16_clear <= '1';
                 elsif (cmd_tx_fifo_empty = '0') then  -- control has lower priority
                     fsm_d <= st_cmd_read;
                 else
                     fsm_d <= st_wait_sync;
+                end if;
+
+            when st_work_cmd_55 =>
+                if (work_ready = '1') then
+                    fsm_d <= st_work_cmd_AA;
+                    uart_tx_write <= '1';
+                    uart_tx_data_wr <= X"55";
+                end if;
+
+            when st_work_cmd_AA =>
+                if (work_ready = '1') then
+                    fsm_d <= st_work_cmd;
+                    uart_tx_write <= '1';
+                    uart_tx_data_wr <= X"AA";
                 end if;
 
             when st_work_cmd =>
@@ -559,13 +589,37 @@ begin
                 cmd_tx_fifo_rd <= '1';
 
             when st_cmd_check =>
-                fsm_d <= st_cmd_cmd;
+                fsm_d <= st_cmd_check_1;
                 byte_cnt_d <= "00";    -- first to send is command
                 word_cnt_d <= resize(shift_right(unsigned(cmd_tx_fifo_data_r(15 downto 8)) - X"02", 2), 5);
                 byte_rest_d <= unsigned(cmd_tx_fifo_data_r(9 downto 8)) - "10";  -- skip CRC
 
-            when st_cmd_cmd =>
+            when st_cmd_check_1 =>
+                -- wait until all data are ready
                 if ((cmd_tx_ready = '1') and ((cmd_tx_fifo_empty = '0') or (word_cnt_q = "00000"))) then
+                    if (ctrl_bm139x = '1') then
+                        fsm_d <= st_cmd_55;
+                    else
+                        fsm_d <= st_cmd_cmd;
+                    end if;
+                end if;
+
+            when st_cmd_55 =>
+                if (cmd_tx_ready = '1') then
+                    fsm_d <= st_cmd_AA;
+                    uart_tx_write <= '1';
+                    uart_tx_data_wr <= X"55";
+                end if;
+
+            when st_cmd_AA =>
+                if (cmd_tx_ready = '1') then
+                    fsm_d <= st_cmd_cmd;
+                    uart_tx_write <= '1';
+                    uart_tx_data_wr <= X"AA";
+                end if;
+
+            when st_cmd_cmd =>
+                if (cmd_tx_ready = '1') then
                     fsm_d <= st_cmd_data;
 
                     byte_cnt_d <= byte_cnt_q + 1;
@@ -634,6 +688,7 @@ begin
         -- write port - from FSM
         wr     => cmd_rx_fifo_wr,
         full   => cmd_rx_fifo_full,
+        a_full => cmd_rx_fifo_a_full,
         data_w => cmd_rx_fifo_data_w,
 
         -- read port - from CPU
@@ -659,6 +714,7 @@ begin
         -- write port - from CPU
         wr     => cmd_tx_fifo_wr,
         full   => cmd_tx_fifo_full,
+        a_full => open,
         data_w => cmd_tx_fifo_data,
 
         -- read port - from FSM
@@ -684,6 +740,7 @@ begin
         -- write port - from FSM
         wr     => work_rx_fifo_wr,
         full   => work_rx_fifo_full,
+        a_full => work_rx_fifo_a_full,
         data_w => work_rx_fifo_data_w,
 
         -- read port - from CPU
@@ -809,11 +866,11 @@ begin
 
     -- combinational part of receive FSM (next-state logic)
     p_fsm_rx_cmb: process (fsm_rx_q, ctrl_enable,
-        work_rx_fifo_full, cmd_rx_fifo_full,
+        work_rx_fifo_full, cmd_rx_fifo_full, work_rx_fifo_a_full, cmd_rx_fifo_a_full,
         uart_rx_empty, uart_rx_data_rd,
         byte_cnt_rx_q, response_q, crc5_rx_ready, crc5_rx_crc, work_id,
         irq_pending_work_rx_q, irq_pending_cmd_rx_q,
-        work_rx_fifo_rd, cmd_rx_fifo_rd, rst_fifo_work_rx, rst_fifo_cmd_rx
+        work_rx_fifo_rd, cmd_rx_fifo_rd, rst_fifo_work_rx, rst_fifo_cmd_rx, ctrl_bm139x
     ) begin
 
         -- default assignment to registers and signals
@@ -837,6 +894,8 @@ begin
 
         uart_rx_read <= '0';
 
+        receive_err <= '0';
+
         if ((work_rx_fifo_rd = '1') or (rst_fifo_work_rx = '1') or (ctrl_enable = '0')) then
             irq_pending_work_rx_d <= '0';
         end if;
@@ -854,8 +913,41 @@ begin
 
             when st_wait =>
                 if (uart_rx_empty = '0') then
-                    fsm_rx_d <= st_read;
+                    if (ctrl_bm139x = '1') then
+                        fsm_rx_d <= st_read_AA;
+                    else
+                        fsm_rx_d <= st_read;
+                    end if;
                     byte_cnt_rx_d <= "000";
+                end if;
+
+            when st_read_AA =>
+                if (uart_rx_empty = '0') then
+                    uart_rx_read <= '1';
+
+                    -- check data
+                    if (uart_rx_data_rd = X"AA") then
+                        fsm_rx_d <= st_read_55;
+                    else
+                        fsm_rx_d <= st_wait;
+                        receive_err <= '1';
+                    end if;
+                end if;
+
+            when st_read_55 =>
+                if (uart_rx_empty = '0') then
+                    uart_rx_read <= '1';
+
+                    -- check data
+                    if (uart_rx_data_rd = X"55") then
+                        fsm_rx_d <= st_read;
+                    elsif (uart_rx_data_rd = X"AA") then
+                        fsm_rx_d <= st_read_55;
+                        receive_err <= '1';
+                    else
+                        fsm_rx_d <= st_wait;
+                        receive_err <= '1';
+                    end if;
                 end if;
 
             when st_read =>
@@ -907,10 +999,13 @@ begin
                 end if;
 
             when st_write_work1 =>
-                if (work_rx_fifo_full = '0') then
+                if (work_rx_fifo_a_full = '0') then
                     fsm_rx_d <= st_write_work2;
                     work_rx_fifo_wr <= '1';
                     work_rx_fifo_data_w <= response_q(3) & response_q(2) & response_q(1) & response_q(0);
+                else
+                    fsm_rx_d <= st_wait;    -- drop response if FIFO is full
+                    receive_err <= '1';
                 end if;
 
             when st_write_work2 =>
@@ -922,14 +1017,17 @@ begin
                 end if;
 
             when st_write_cmd1 =>
-                if (work_rx_fifo_full = '0') then
+                if (cmd_rx_fifo_a_full = '0') then
                     fsm_rx_d <= st_write_cmd2;
                     cmd_rx_fifo_wr <= '1';
                     cmd_rx_fifo_data_w <= response_q(3) & response_q(2) & response_q(1) & response_q(0);
+                else
+                    fsm_rx_d <= st_wait;    -- drop response if FIFO is full
+                    receive_err <= '1';
                 end if;
 
             when st_write_cmd2 =>
-                if (work_rx_fifo_full = '0') then
+                if (cmd_rx_fifo_full = '0') then
                     fsm_rx_d <= st_wait;
                     irq_pending_cmd_rx_d <= '1';
                     cmd_rx_fifo_wr <= '1';
@@ -1001,7 +1099,7 @@ begin
                 err_cnt_q <= (others => '0');
             elsif ((ctrl_err_cnt_clear = '1') or (err_cnt_clear = '1')) then
                 err_cnt_q <= (others => '0');
-            elsif (fsm_rx_q = st_crc_err) then
+            elsif ((fsm_rx_q = st_crc_err) or (receive_err = '1')) then
                 err_cnt_q <= err_cnt_q + 1;
             end if;
         end if;
@@ -1039,6 +1137,9 @@ begin
 
     -- last work ID
     reg_last_work_id <= work_id_tx_q;
+
+    -- enable UART interface IO driver
+    uart_en <= ctrl_enable;
 
 end architecture;
 

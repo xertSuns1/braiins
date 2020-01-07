@@ -43,10 +43,21 @@ if {$argc == 1} {
     exit 1
 }
 
+# list of supported boards
+set supported_boards [list \
+    "S9" \
+    "S9k" \
+    "S11" \
+    "S15" \
+    "T15" \
+    "S17" \
+    "T17" \
+]
+
 # check name of the board
-if {$board != "S9"} {
+if {$board ni $supported_boards} {
     puts "ERROR: Unknown board: $board"
-    puts "List of supported boards: S9"
+    puts "List of supported boards: [join $supported_boards {, }]"
     exit 1
 }
 
@@ -60,10 +71,13 @@ set project "Zynq IO"
 set design "system"
 
 # Device name
-set partname "xc7z010clg400-1"
-
-# Define number of parallel jobs
-set jobs 8
+if {$board == "S9"} {
+    set fpga "xc7z010"
+    set partname "xc7z010clg400-1"
+} else {
+    set fpga "xc7z007s"
+    set partname "xc7z007sclg225-1"
+}
 
 # Project directory
 set projdir "./build_$board"
@@ -73,13 +87,9 @@ set ip_repos [ list \
     "$projdir" \
 ]
 
-# Set source files
-set hdl_files [ \
-]
-
 # Set synthesis and implementation constraints files
 set constraints_files [list \
-    "src/constrs/pin_assignment.tcl" \
+    "src/constrs/pin_assignment_${fpga}.tcl" \
 ]
 
 ####################################################################################################
@@ -108,7 +118,7 @@ source "system_init.tcl"
 source "system_build.tcl"
 
 # Run simulation & verification
-source "src/s9io_0.2/fve/sim.tcl"
+source "src/ip_cores/axi_bm13xx/fve/sim.tcl"
 
 ####################################################################################################
 # Exit Vivado

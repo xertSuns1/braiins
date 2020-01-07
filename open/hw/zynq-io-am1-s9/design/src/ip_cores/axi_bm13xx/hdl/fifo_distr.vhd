@@ -21,8 +21,8 @@
 -- of such proprietary license or if you have any other questions, please
 -- contact us at opensource@braiins.com.
 ----------------------------------------------------------------------------------------------------
--- Project Name:   S9 Board Interface IP
--- Description:    FIFO buffer with synchronous read using block memory
+-- Project Name:   Braiins OS
+-- Description:    FIFO buffer with asynchronous read using distributed memory
 --
 -- Engineer:       Marian Pristach
 -- Revision:       1.0.0 (18.08.2018)
@@ -32,17 +32,17 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity fifo_block is
+entity fifo_distr is
     generic(
         A : natural := 5;           -- number of address bits
         W : natural := 8            -- number of data bits
     );
-    port (
+    port(
         clk    : in  std_logic;
-        rst    : in  std_logic;
+        rst    : in  std_logic;     -- asynchronous reset, active low
 
         -- synchronous clear of FIFO
-        clear  : in std_logic;
+        clear  : in  std_logic;
 
         -- write port
         wr     : in  std_logic;
@@ -54,9 +54,9 @@ entity fifo_block is
         empty  : out std_logic;
         data_r : out std_logic_vector(W-1 downto 0)
     );
-end fifo_block;
+end fifo_distr;
 
-architecture rtl of fifo_block is
+architecture rtl of fifo_distr is
 
     -- definition of memory type
     type ram_t is array(0 to (2**A)-1) of std_logic_vector(W-1 downto 0);
@@ -107,14 +107,8 @@ begin
         end if;
     end process;
 
-    -- access to memory - synchronous read port
-    p_read: process (clk) begin
-        if rising_edge(clk) then
-            if (rd_en = '1') then
-                data_r_d <= ram(to_integer(r_ptr_q));
-            end if;
-        end if;
-    end process;
+    -- access to memory - read port
+    data_r_d <= ram(to_integer(r_ptr_q));
 
     ------------------------------------------------------------------------------------------------
     -- incremented pointer values

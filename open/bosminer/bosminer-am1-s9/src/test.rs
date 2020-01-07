@@ -72,6 +72,18 @@ fn test_calc_baud_div_correct_baud_rate_bm1387() {
     }
 }
 
+#[test]
+fn test_calc_baud_div_correct_baud_rate_fpga() {
+    // these are baudrates commonly used with UART on FPGA
+    let correct_bauds_and_divs = [(115_740usize, 53usize), (1_562_500, 3), (3_125_000, 1)];
+    for &(baud_rate, baud_div) in correct_bauds_and_divs.iter() {
+        let (baud_clock_div, _actual_baud_rate) =
+            calc_baud_clock_div(baud_rate, io::F_CLK_SPEED_HZ, io::F_CLK_BASE_BAUD_DIV)
+                .expect("failed to calculate divisor");
+        assert_eq!(baud_clock_div, baud_div);
+    }
+}
+
 /// Test higher baud rate than supported
 #[test]
 fn test_calc_baud_div_over_baud_rate_bm1387() {

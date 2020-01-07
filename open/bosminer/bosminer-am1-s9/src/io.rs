@@ -55,10 +55,15 @@ use ii_logging::macros::*;
 const EXPECTED_S9IO_VERSION: Version = Version {
     miner_type: MinerType::Known(MINER_TYPE_A::ANTMINER),
     model: 9,
-    major: 0,
-    minor: 2,
+    major: 1,
+    minor: 0,
     patch: 0,
 };
+
+/// Base clock speed of the IP core running in the FPGA
+pub const F_CLK_SPEED_HZ: usize = 50_000_000;
+/// Divisor of the base clock. The resulting clock is connected to UART
+pub const F_CLK_BASE_BAUD_DIV: usize = 8;
 
 /// Util structure to help us work with enums
 #[derive(Debug, Clone, PartialEq)]

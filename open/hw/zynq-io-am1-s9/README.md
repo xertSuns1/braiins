@@ -2,44 +2,83 @@
 
 ## General Parameters of the Platform
 
-**Target Board:** S9
+**Target Miners:** Antminer S9, S9k, S11, S15, T15, S17, T17
 
-**Device:** xc7z010clg400-1
+**FPGA Devices:** xc7z010clg400-1 (S9), xc7z007sclg225-1 (S9k, S11, S15, T15, S17, T17)
 
 **Vivado Design Suite version:** 2017.4
 
 
-## List of Implemented IP Cores
+## FPGA designs
 
-**FPGA design contains following IP cores:**
+There are two designs that differs in used FPGA (xc7z010 or xc7z007s) in control boards.
+
+### FPGA design for S9 miners
+
+FPGA design contains following IP cores:
 - axi_gpio - standard Xilinx GPIO module (2x)
 - axi_iic - standard Xilinx I2C module (1x)
-- axi_timer - standard Xilinx Timer module for PWM generation (1x)
-- axi_uart16550 - standard Xilinx AXI UART 16550 module (6x)
-- s9io - custom IP core for communication with hashing chips BM1387 (3x)
+- axi_fan_ctrl - custom IP core for PWM generation and fan speed monitoring (1x)
+- axi_bm13xx - custom IP core for communication with hashing chips BM1387, BM1391, BM1393 and BM1397 (3x)
 
-| Name of IP         | Type of IP                | Base address | Range  | IRQ             | Frequency [MHz] |
-| ------------------ | ------------------------- | :----------: | :----: | :-------------: | :-------------: |
-| axi_gpio_input     | Xilinx AXI GPIO v2.0      | 0x41200000   | 64kB   | false           | 50              |
-| axi_gpio_output    | Xilinx AXI GPIO v2.0      | 0x41210000   | 64kB   | false           | 50              |
-| axi_iic_0          | Xilinx AXI I2C v2.0       | 0x41600000   | 64kB   | true (61)       | 50              |
-| axi_timer_0        | Xilinx AXI Timer v2.0     | 0x42800000   | 64kB   | false           | 50              |
-| axi_uart16550_0    | Xilinx AXI UART16550 v2.0 | 0x43C00000   | 64kB   | true (62)       | 50              |
-| axi_uart16550_1    | Xilinx AXI UART16550 v2.0 | 0x43C10000   | 64kB   | true (63)       | 50              |
-| axi_uart16550_2    | Xilinx AXI UART16550 v2.0 | 0x43C20000   | 64kB   | true (64)       | 50              |
-| axi_uart16550_3    | Xilinx AXI UART16550 v2.0 | 0x43C30000   | 64kB   | true (65)       | 50              |
-| axi_uart16550_4    | Xilinx AXI UART16550 v2.0 | 0x43C40000   | 64kB   | true (66)       | 50              |
-| s9io_5             | Braiins AXI S9IO v0.2     | 0x43C50000   | 64kB   | true (67,68,84) | 50              |
-| s9io_6             | Braiins AXI S9IO v0.2     | 0x43C60000   | 64kB   | true (85..87)   | 50              |
-| s9io_7             | Braiins AXI S9IO v0.2     | 0x43C70000   | 64kB   | true (88..90)   | 50              |
-| axi_uart16550_8    | Xilinx AXI UART16550 v2.0 | 0x43C80000   | 64kB   | true (91)       | 50              |
+| Name of IP         | Type of IP                      | Base address | Range  | IRQ             | Frequency [MHz] |
+| ------------------ | ------------------------------- | :----------: | :----: | :-------------: | :-------------: |
+| axi_gpio_input     | Xilinx AXI GPIO v2.0            | 0x41200000   | 64kB   | false           | 50              |
+| axi_gpio_output    | Xilinx AXI GPIO v2.0            | 0x41210000   | 64kB   | false           | 50              |
+| axi_iic_hb         | Xilinx AXI I2C v2.0             | 0x41600000   | 64kB   | true (61)       | 50              |
+| axi_fan_ctrl       | Braiins AXI Fan Controller v1.0 | 0x42800000   | 64kB   | false           | 50              |
+| axi_bm13xx_0       | Braiins AXI BM13xx v1.0         | 0x43C00000   | 64kB   | true (62..64)   | 50              |
+| axi_bm13xx_1       | Braiins AXI BM13xx v1.0         | 0x43C10000   | 64kB   | true (65..67)   | 50              |
+| axi_bm13xx_2       | Braiins AXI BM13xx v1.0         | 0x43C20000   | 64kB   | true (68,84,85) | 50              |
 
-s9io IP cores are connected to connectors J6, J7 and J8.
+UART interfaces of AXI BM13xx IP cores are connected to connectors J6..J8.
 
-UART modules 0..4 and 8 are connected to ports J1..J5 and J9.
+The design is dedicated for S9 miners with C41 control board.
 
-# S9IO IP Core Description
-IP core is designed for sending control commands and work specifications into ASICs BM1387 used in Antminer S9 and provides basic post-processing of input data.
+
+### FPGA design for S9k, S11, S15, T15, S17, T17 miners
+
+FPGA design contains following IP cores:
+- axi_gpio - standard Xilinx GPIO module (2x)
+- axi_iic - standard Xilinx I2C module (2x)
+- axi_fan_ctrl - custom IP core for PWM generation and fan speed monitoring (1x)
+- axi_bm13xx - custom IP core for communication with hashing chips BM1387, BM1391, BM1393 and BM1397 (4x)
+
+| Name of IP         | Type of IP                      | Base address | Range  | IRQ             | Frequency [MHz] |
+| ------------------ | ------------------------------- | :----------: | :----: | :-------------: | :-------------: |
+| axi_gpio_input     | Xilinx AXI GPIO v2.0            | 0x41200000   | 64kB   | false           | 50              |
+| axi_gpio_output    | Xilinx AXI GPIO v2.0            | 0x41210000   | 64kB   | false           | 50              |
+| axi_iic_hb         | Xilinx AXI I2C v2.0             | 0x41600000   | 64kB   | true (61)       | 50              |
+| axi_iic_psu        | Xilinx AXI I2C v2.0             | 0x41610000   | 64kB   | true (89)       | 50              |
+| axi_fan_ctrl       | Braiins AXI Fan Controller v1.0 | 0x42800000   | 64kB   | false           | 50              |
+| axi_bm13xx_0       | Braiins AXI BM13xx v1.0         | 0x43C00000   | 64kB   | true (62..64)   | 50              |
+| axi_bm13xx_1       | Braiins AXI BM13xx v1.0         | 0x43C10000   | 64kB   | true (65..67)   | 50              |
+| axi_bm13xx_2       | Braiins AXI BM13xx v1.0         | 0x43C20000   | 64kB   | true (68,84,85) | 50              |
+| axi_bm13xx_3       | Braiins AXI BM13xx v1.0         | 0x43C30000   | 64kB   | true (86..88)   | 50              |
+
+AXI BM13xx IP cores are connected to connectors J1..J4.
+
+The design is common for all listed miners but there are some small variations according to the control boards.
+The following table summarizes control boards and their parameters for used miners:
+
+| Miner | Control Board | Number of connectors | Number of fans | I2C PSU |
+| :---: | :-----------: | :------------------: | :------------: | :-----: |
+| S9k   | C43           | 4 (3 used)           | 2              | no      |
+| S11   | C47           | 3                    | 2              | yes     |
+| S15   | C44           | 4                    | 2              | yes     |
+| T15   | C47           | 3                    | 2              | yes     |
+| S17   | C49           | 3                    | 4              | yes     |
+| T17   | C49           | 3                    | 4              | yes     |
+
+Control boards have almost the same FPGA pinouts, the difference is only in J4 connector and fans inputs
+(pins J4.RxD and J4.Txd are shared with FAN3.SENSE and FAN4.SENSE). The design contains a multiplexer to
+switch these pins - switching is based on state of `axi_bm13xx_3` IP core. When the IP core is enabled by
+register CTRL_REG.ENABLE then pins are represented as UART and connected into the IP core. Otherwise
+pins are represented as fan sense inputs and are connected into axi_fan_ctrl IP core.
+
+
+# AXI BM13xx IP Core Description
+IP core is designed for sending control commands and work specifications into ASICs BM1387, BM1391, BM1393 and BM1397 used in Antminers and provides basic post-processing of input data.
 IP core contains following features:
 - two interfaces - one is intended for control (commands) of the hashing chips and one for streaming mining works
 - four register's windows (common, CMD, WORK_RX, WORK_TX) for independent access in parallel way (4kB each)
@@ -51,7 +90,7 @@ IP core contains following features:
 
 Block diagram of IP core:
 
-![s9io_block_diagram](doc/s9io_block_diagram.png)
+![axi_bm13xx_block_diagram](doc/axi_bm13xx_block_diagram.png)
 
 Size of FIFO buffers is set to:
 - Command Interface Receive FIFO: 256 x 32b words
@@ -72,7 +111,7 @@ Address map of registers available through AXI interface:
 
 | Address | Name             | Access | Reset Value | Description                     |
 | :-----: | ---------------- | :----: | :---------: | ------------------------------- |
-| 0x0000  | VERSION          | R      | 0x00900200  | IP Core Version Register        |
+| 0x0000  | VERSION          | R      | 0x00901000  | IP Core Version Register        |
 | 0x0004  | BUILD_ID         | R      | BUILD_ID    | Build ID Register               |
 | 0x0008  | CTRL_REG         | RW     | 0x0000      | Control Register                |
 | 0x000C  | STAT_REG         | R      | 0x0000      | Status Register - reserved      |
@@ -98,7 +137,7 @@ Address map of registers available through AXI interface:
 ### IP Core Version Register (VERSION)
 Register contains verson of the IP core. Value is divided into following parts:
 - bits 31..28 - miner type (0 = Antminer)
-- bits 27..20 - IP core model (0x09 = S9)
+- bits 27..20 - IP core model (0x09 = S9 and newer)
 - bits 19..16 - reserved
 - bits 15..12 - IP core major version
 - bits 11..8 - IP core minor version
@@ -109,7 +148,7 @@ Register is 32-bit width and it is read-only.
 
 ### Build ID Register (BUILD_ID)
 Register contains Unix timestamp when the bitstream was generated. It can be used for identification of bitstream version.
-HDL file _s9io_version.vhd_ with timestamp is generated automatically before synthesis.
+HDL file _bm13xx_version.vhd_ with timestamp is generated automatically before synthesis.
 Also file with build history is generated in directory _design_. File contains information about git commit used for build.
 Build history file can contains a warning if the git work-tree is dirty (contains local changes).
 In this case a full diff of git work-tree is stored in file _git.diff_ in build directory.
@@ -121,11 +160,17 @@ Control register provides commonc configuration of the IP core. Register contain
 
 | Bits  | Name             | Access | Reset Value | Description                               |
 | :---: | ---------------- | :----: | :---------: | ----------------------------------------- |
+| 4     | BM139x           | RW     | 0           | Enable support for chips BM139x           |
 | 3     | ENABLE           | RW     | 0           | Enable of IP core                         |
 | 2..1  | MIDSTATE_CNT     | RW     | 0           | Number of midstates per work              |
 | 0     | ERR_CNT_CLEAR    | W      | 0           | Clear error counter                       |
 
 Enable flag is common for whole IP core and must be enabled for any operation in other register's windows.
+
+BM139x flag enables support for chips BM1391, BM1393 and BM1397:
+- add header 0x55, 0xAA into transmited frames
+- check header 0xAA, 0x55 in received frames
+- increment error counter if header is not is not correctly received
 
 Number of midstates per work is encoded as log2 of number of midstates:
 * 0 - 1 midstate
@@ -146,14 +191,14 @@ Register is 32-bit width but only 12 LSBs are used for modulo counter.
 
 Baudrate speed is defined by equation:
 ```
-baudrate = f_CLK / (16 * (BAUD_REG + 1))    [Bd; Hz, -]
+baudrate = f_CLK / (8 * (BAUD_REG + 1))    [Bd; Hz, -]
 ```
 Value of baudrate register is calculated by equation:
 ```
-BAUD_REG = (f_CLK / (16 * baudrate )) - 1    [-; Hz, Bd]
+BAUD_REG = (f_CLK / (8 * baudrate )) - 1    [-; Hz, Bd]
 ```
 _f_CLK_ is frequency of AXI interface, in this case 50 MHz.
-Register allows to set baudrate in range from 763 Bd/s to 3.125 MBd/s.
+Register allows to set baudrate in range from 1526 Bd/s to 6.25 MBd/s.
 
 
 ### Work Time Delay Register (WORK_TIME)
@@ -189,7 +234,7 @@ Register is 32-bit width and it is read-only. Register can be cleared by control
 Receive command interface is intended for reading responses of control commands from ASICs.
 Each response consists of two 32b words.
 
-For example, incoming data
+For example, incoming data (BM1387 format)
 ```
 0x13, 0x87, 0x90, 0xf4, 0x00, 0x00, 0x1c
 ```
@@ -214,7 +259,7 @@ Example for 5 bytes command - data written into register
 ```
 0x00fc0541
 ```
-are converted into
+are converted into (BM1387 format)
 ```
 0x41, 0x05, 0xfc, 0x00, 0x0b
 ```
@@ -224,7 +269,7 @@ Example for 9 bytes command - data written into register
 ```
 0x0c000948, 0x21026800
 ```
-are converted into
+are converted into (BM1387 format)
 ```
 0x48, 0x09, 0x00, 0x0c, 0x00, 0x68, 0x02, 0x21, 0x02
 ```
@@ -265,7 +310,7 @@ Status register provides status of command window of the IP core. Register conta
 Receive work interface is intended for reading work responses from ASICs.
 Each response consists of two 32b words.
 
-For example, incoming data
+For example, incoming data (BM1387 format)
 ```
 0x72, 0x03, 0xea, 0x83, 0x00, 0x03, 0x98
 ```
@@ -322,9 +367,11 @@ Each mining work specification have the following format:
 | 80-111  | midstate 2 (only for 4 midstates work)       |
 | 112-143 | midstate 3 (only for 4 midstates work)       |
 
-Extended work ID can be up to 16 bits. Lower 1 - 2 bits have to be 0 depending whether submitting work that contains 1, 2, or 4 midstates resp.
-Words in midstates are in reverse order `State[7]..State[0]`. However, unlike **BM1387** specification words don't have to be in big endian, IP core performs the ordering change on its own.
-Extended work ID allows pairing of assigned mining work with a result, currently, there are 7 bits available for the work ID send into ASICs. The work's IDs have to be assigned with a gap of # midstates (e.g. 0, 4, 8, 12 for 4 midstates, 0, 2, 4, ... for 2 midstates). The reason is that the chip communicates the midstate index via `work_id`.
+Extended work ID can be up to 16 bits. Lower 1 - 2 bits have to be 0 depending whether submitting work that contains 2 or 4 midstates.
+Words in midstates are in reverse order `State[7]..State[0]`.
+Extended work ID allows pairing of assigned mining work with a result, currently, there are 7 bits available for the work ID send into ASICs.
+The work's IDs have to be assigned with a gap of # midstates (e.g. 0, 4, 8, 12 for 4 midstates, 0, 2, 4, ... for 2 midstates).
+The reason is that the chip communicates the midstate index via `work_id`.
 
 Register is 32-bit width and it is write-only. Register must be written only by 32b words because each write access increments pointer in the buffer.
 
@@ -396,10 +443,41 @@ IP core contains 4 modules for CRC calculation:
 CRC calculation is executed sequentially - it takes 8 clock cycles for one byte of input data.
 
 
-## Synthesis and Verification
-There are prepared TCL scripts for synthesis, implementation and bitstream generation. Scripts are located in directory /design. Main script is run.sh that calls Vivado tools. Script requires one input argument - name of board (S9). The process of generation bitstream is fully automated. You have to set only correct path to Vivado tools. You have to use the same version of Vivado Design Suite as is defined on the document begin (version of used IP cores have to match). Script creates directory /design/build\_\<board\_name\> with all temporary files. The whole process takes a long time; depending on the CPU it can be up to 30 minutes. The output files (bitstream, binary file, hardware description file) are located in directory /design/build\_\<board\_name\>/results. Directory /design/build\_\<board\_name\>/reports contains some reports that should be checked after implementation (e.g. results of static timing analysis).
+# Fan Controller IP Core Description
 
-TCL scripts include verification of s9io IP core that is run at end of the build. Vivado simulator is used for simulation of HDL files. Verification is based on self-check testbench where reference values are compared with computed.
+Fan Controller IP core provides basic control and monitoring speed of fans.
+PWM signal is used to control speed of fans. PWM signal is common for all fans.
+Feedback from fans is read to determine real speed of fans. Feedback is individual from each fans.
+IP core supports up to 4 fans.
+
+## IP Core AXI Interface
+Address map of registers available through AXI interface:
+
+| Address | Name             | Access | Reset Value | Description                     |
+| :-----: | ---------------- | :----: | :---------: | ------------------------------- |
+| 0x0000  | FAN1_RPS         | R      | 0x00        | Fan 1 Rotation Speed            |
+| 0x0004  | FAN2_RPS         | R      | 0x00        | Fan 2 Rotation Speed            |
+| 0x0008  | FAN3_RPS         | R      | 0x00        | Fan 3 Rotation Speed            |
+| 0x000C  | FAN4_RPS         | R      | 0x00        | Fan 4 Rotation Speed            |
+| 0x0010  | FAN_PWM          | RW     | 0x00        | PWM Duty Cycle Register         |
+
+### Fan Rotation Speed Registers (FANx_RPS)
+Registers provide information about current speed of fans. Each fan input has one register.
+Value represents number of rotations per second. The value must be multiplied by 60 to get value in RPM.
+Value is updated every 500ms. If a fan is stopped then the register contains zero value.
+Maximum speed is limited to 15300 RPM.
+Registers are 32-bit width but only 8 LSBs contains valid data. Registers are read-only.
+
+### PWM Duty Cycle Register (FAN_PWM)
+Register provides settings of fan speed using PWM signal with frequency 25kHz.
+The value represents duty cycle of PWM signal direct in percentage. Usable range of values is 0..100 [%].
+Register is 32-bit width but only 7 LSBs are used.
+
+
+# Synthesis and Verification
+There are prepared TCL scripts for synthesis, implementation and bitstream generation. Scripts are located in directory /design. Main script is run.sh that calls Vivado tools. Script requires one input argument - name of board (S9, S15, ...). The process of generation bitstream is fully automated. You have to set only correct path to Vivado tools. You have to use the same version of Vivado Design Suite as is defined on the document begin (version of used IP cores have to match). Script creates directory /design/build\_\<board\_name\> with all temporary files. The whole process takes a long time; depending on the CPU it can be up to 30 minutes. The output files (bitstream, binary file, hardware description file) are located in directory /design/build\_\<board\_name\>/results. Directory /design/build\_\<board\_name\>/reports contains some reports that should be checked after implementation (e.g. results of static timing analysis).
+
+TCL scripts include verification of AXI BM13xx IP core that is run at end of the build. Vivado simulator is used for simulation of HDL files. Verification is based on self-check testbench where reference values are compared with computed.
 
 Vivado 2017.4 contains bug that causes a "double free or corruption" error during exiting simulator. A patch is available on Xilinx web [1]. Directory with patch must be extracted in exact directory described in readme file. For example, the path to AR70455.dat file looks like:
 ```
@@ -411,6 +489,6 @@ You can check if the patch is correctly loaded by information that is printed wh
 ****** Vivado v2017.4_AR70455 (64-bit)
 ```
 
-## References
+# References
 [1] AR70455: 2017.4 Vivado Simulator Tactical Patch: https://www.xilinx.com/support/answers/70455.html
 

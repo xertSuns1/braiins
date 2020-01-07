@@ -59,10 +59,12 @@ set_property -dict { PACKAGE_PIN R17 IOSTANDARD LVCMOS33 } [get_ports { gpio_1_t
 
 
 ####################################################################################################
-# Pin assignment for PWM
+# Pin assignment for fans
 ####################################################################################################
-set_property -dict { PACKAGE_PIN J18 IOSTANDARD LVCMOS33 } [get_ports { pwm0[0] }];  # S9: FAN1_4 ... FAN6_4, PWM
+set_property -dict {PACKAGE_PIN J18  IOSTANDARD LVCMOS33  DRIVE 16} [get_ports {pwm}];  # {FAN1 .. FAN6}.PWM
 
+set_property -dict {PACKAGE_PIN G17  IOSTANDARD LVCMOS33  PULLUP true} [get_ports {fan_sense[0]}];  # FAN1.SENSE
+set_property -dict {PACKAGE_PIN H20  IOSTANDARD LVCMOS33  PULLUP true} [get_ports {fan_sense[1]}];  # FAN2.SENSE
 
 ####################################################################################################
 # Pin assignment for I2C
@@ -75,24 +77,24 @@ set_property -dict { PACKAGE_PIN W19 IOSTANDARD LVCMOS33 PULLUP true } [get_port
 # Pin assignment for UARTs
 ####################################################################################################
 # connectors J1..J9 - RXD
-set_property -dict { PACKAGE_PIN U12 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_0 }];  # S9: J1_12, RX
-set_property -dict { PACKAGE_PIN W13 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_1 }];  # S9: J2_12, RX
-set_property -dict { PACKAGE_PIN R14 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_2 }];  # S9: J3_12, RX
-set_property -dict { PACKAGE_PIN Y14 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_3 }];  # S9: J4_12, RX
-set_property -dict { PACKAGE_PIN W15 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_4 }];  # S9: J5_12, RX
+# set_property -dict { PACKAGE_PIN U12 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_0 }];  # S9: J1_12, RX
+# set_property -dict { PACKAGE_PIN W13 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_1 }];  # S9: J2_12, RX
+# set_property -dict { PACKAGE_PIN R14 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_2 }];  # S9: J3_12, RX
+# set_property -dict { PACKAGE_PIN Y14 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_3 }];  # S9: J4_12, RX
+# set_property -dict { PACKAGE_PIN W15 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_4 }];  # S9: J5_12, RX
 set_property -dict { PACKAGE_PIN U19 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_5 }];  # S9: J6_12, RX
 set_property -dict { PACKAGE_PIN W20 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_6 }];  # S9: J7_12, RX
 set_property -dict { PACKAGE_PIN W16 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_7 }];  # S9: J8_12, RX
-set_property -dict { PACKAGE_PIN R18 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_8 }];  # S9: J9_12, RX
+# set_property -dict { PACKAGE_PIN R18 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { rxd_8 }];  # S9: J9_12, RX
 
 # connectors J1..J9 - TXD
-set_property -dict { PACKAGE_PIN T12 IOSTANDARD LVCMOS33 } [get_ports { txd_0 }];  # S9: J1_11, TX
-set_property -dict { PACKAGE_PIN V12 IOSTANDARD LVCMOS33 } [get_ports { txd_1 }];  # S9: J2_11, TX
-set_property -dict { PACKAGE_PIN P14 IOSTANDARD LVCMOS33 } [get_ports { txd_2 }];  # S9: J3_11, TX
-set_property -dict { PACKAGE_PIN W14 IOSTANDARD LVCMOS33 } [get_ports { txd_3 }];  # S9: J4_11, TX
-set_property -dict { PACKAGE_PIN V15 IOSTANDARD LVCMOS33 } [get_ports { txd_4 }];  # S9: J5_11, TX
+# set_property -dict { PACKAGE_PIN T12 IOSTANDARD LVCMOS33 } [get_ports { txd_0 }];  # S9: J1_11, TX
+# set_property -dict { PACKAGE_PIN V12 IOSTANDARD LVCMOS33 } [get_ports { txd_1 }];  # S9: J2_11, TX
+# set_property -dict { PACKAGE_PIN P14 IOSTANDARD LVCMOS33 } [get_ports { txd_2 }];  # S9: J3_11, TX
+# set_property -dict { PACKAGE_PIN W14 IOSTANDARD LVCMOS33 } [get_ports { txd_3 }];  # S9: J4_11, TX
+# set_property -dict { PACKAGE_PIN V15 IOSTANDARD LVCMOS33 } [get_ports { txd_4 }];  # S9: J5_11, TX
 set_property -dict { PACKAGE_PIN U18 IOSTANDARD LVCMOS33 } [get_ports { txd_5 }];  # S9: J6_11, TX
 set_property -dict { PACKAGE_PIN V20 IOSTANDARD LVCMOS33 } [get_ports { txd_6 }];  # S9: J7_11, TX
 set_property -dict { PACKAGE_PIN V16 IOSTANDARD LVCMOS33 } [get_ports { txd_7 }];  # S9: J8_11, TX
-set_property -dict { PACKAGE_PIN T17 IOSTANDARD LVCMOS33 } [get_ports { txd_8 }];  # S9: J9_11, TX
+# set_property -dict { PACKAGE_PIN T17 IOSTANDARD LVCMOS33 } [get_ports { txd_8 }];  # S9: J9_11, TX
 

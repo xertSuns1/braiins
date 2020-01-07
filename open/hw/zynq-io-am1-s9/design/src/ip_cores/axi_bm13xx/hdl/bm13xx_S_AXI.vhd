@@ -21,8 +21,8 @@
 -- of such proprietary license or if you have any other questions, please
 -- contact us at opensource@braiins.com.
 ----------------------------------------------------------------------------------------------------
--- Project Name:   S9 Board Interface IP
--- Description:    AXI Interface of S9 Board IP core
+-- Project Name:   Braiins OS
+-- Description:    AXI Interface of AXI BM13xx IP core
 --
 -- Engineer:       Marian Pristach
 -- Revision:       1.1.0 (22.07.2019)
@@ -32,7 +32,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity s9io_v0_2_S00_AXI is
+entity bm13xx_S_AXI is
     generic (
         -- Users to add parameters here
 
@@ -50,6 +50,9 @@ entity s9io_v0_2_S00_AXI is
         -- UART interface
         rxd : in  std_logic;
         txd : out std_logic;
+
+        -- enable UART interface IO driver
+        uart_en : out std_logic;
 
         -- Interrupt Request
         irq_work_tx : out std_logic;
@@ -120,9 +123,9 @@ entity s9io_v0_2_S00_AXI is
         -- accept the read data and response information.
         S_AXI_RREADY    : in std_logic
     );
-end s9io_v0_2_S00_AXI;
+end bm13xx_S_AXI;
 
-architecture arch_imp of s9io_v0_2_S00_AXI is
+architecture rtl of bm13xx_S_AXI is
 
     -- AXI4LITE signals
     signal axi_awaddr    : std_logic_vector(C_S_AXI_ADDR_WIDTH-1 downto 0);
@@ -308,7 +311,6 @@ begin
             for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
               if ( S_AXI_WSTRB(byte_index) = '1' ) then
                 -- Respective byte enables are asserted as per write strobes
-                -- slave registor 1
                 slv_cmd_tx_fifo(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
               end if;
             end loop;
@@ -318,7 +320,6 @@ begin
             for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
               if ( S_AXI_WSTRB(byte_index) = '1' ) then
                 -- Respective byte enables are asserted as per write strobes
-                -- slave registor 3
                 slv_work_tx_fifo(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
               end if;
             end loop;
@@ -360,7 +361,6 @@ begin
                 for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
                   if ( S_AXI_WSTRB(byte_index) = '1' ) then
                     -- Respective byte enables are asserted as per write strobes
-                    -- slave registor 4
                     slv_ctrl_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
                   end if;
                 end loop;
@@ -369,7 +369,6 @@ begin
                 for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
                   if ( S_AXI_WSTRB(byte_index) = '1' ) then
                     -- Respective byte enables are asserted as per write strobes
-                    -- slave registor 4
                     slv_cmd_ctrl_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
                   end if;
                 end loop;
@@ -378,7 +377,6 @@ begin
                 for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
                   if ( S_AXI_WSTRB(byte_index) = '1' ) then
                     -- Respective byte enables are asserted as per write strobes
-                    -- slave registor 4
                     slv_work_rx_ctrl_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
                   end if;
                 end loop;
@@ -387,7 +385,6 @@ begin
                 for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
                   if ( S_AXI_WSTRB(byte_index) = '1' ) then
                     -- Respective byte enables are asserted as per write strobes
-                    -- slave registor 4
                     slv_work_tx_ctrl_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
                   end if;
                 end loop;
@@ -396,7 +393,6 @@ begin
                 for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
                   if ( S_AXI_WSTRB(byte_index) = '1' ) then
                     -- Respective byte enables are asserted as per write strobes
-                    -- slave registor 6
                     slv_baud_reg(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
                   end if;
                 end loop;
@@ -405,7 +401,6 @@ begin
                 for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
                   if ( S_AXI_WSTRB(byte_index) = '1' ) then
                     -- Respective byte enables are asserted as per write strobes
-                    -- slave registor 7
                     slv_work_time(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
                   end if;
                 end loop;
@@ -414,7 +409,6 @@ begin
                 for byte_index in 0 to (C_S_AXI_DATA_WIDTH/8-1) loop
                   if ( S_AXI_WSTRB(byte_index) = '1' ) then
                     -- Respective byte enables are asserted as per write strobes
-                    -- slave registor 8
                     slv_work_tx_irq_thr(byte_index*8+7 downto byte_index*8) <= S_AXI_WDATA(byte_index*8+7 downto byte_index*8);
                   end if;
                 end loop;
@@ -506,7 +500,11 @@ begin
     -- and the slave is ready to accept the read address.
     slv_reg_rden <= axi_arready and S_AXI_ARVALID and (not axi_rvalid) ;
 
-    process (slv_ctrl_reg, slv_cmd_ctrl_reg, slv_work_rx_ctrl_reg, slv_work_tx_ctrl_reg, slv_cmd_stat_reg, slv_work_rx_stat_reg, slv_work_tx_stat_reg, slv_baud_reg, slv_work_time, slv_work_tx_irq_thr, slv_err_counter, slv_work_tx_last_id, slv_build_id, axi_araddr, slv_reg_rden)
+    process (slv_ctrl_reg, slv_cmd_ctrl_reg, slv_work_rx_ctrl_reg, slv_work_tx_ctrl_reg,
+        slv_cmd_stat_reg, slv_work_rx_stat_reg, slv_work_tx_stat_reg, slv_baud_reg,
+        slv_work_time, slv_work_tx_irq_thr, slv_err_counter, slv_work_tx_last_id,
+        slv_build_id, axi_araddr, slv_reg_rden
+    )
         variable loc_addr :std_logic_vector(OPT_MEM_ADDR_BITS downto 0);
     begin
         cmd_rx_fifo_rd <= '0';
@@ -517,7 +515,7 @@ begin
         case loc_addr is
             -- IP Core Version Register
             when VERSION =>
-                reg_data_out <= X"00900200";
+                reg_data_out <= X"00901000";
             -- Build ID Register
             when BUILD_ID =>
                 reg_data_out <= slv_build_id;
@@ -613,8 +611,8 @@ begin
     -- Add user logic here
     ------------------------------------------------------------------------------------------------
 
-    -- instance of s9io core
-    i_s9io: entity work.s9io_core
+    -- instance of bm13xx core
+    i_bm13xx: entity work.bm13xx_core
     port map (
         clk               => S_AXI_ACLK,
         rst               => S_AXI_ARESETN,
@@ -622,6 +620,9 @@ begin
         -- UART interface
         rxd               => rxd,
         txd               => txd,
+
+        -- enable UART interface IO driver
+        uart_en           => uart_en,
 
         -- Interrupt Request
         irq_work_tx       => irq_work_tx,
@@ -648,7 +649,7 @@ begin
         work_tx_fifo_data => slv_work_tx_fifo,
 
         -- Control Register
-        reg_ctrl           => slv_ctrl_reg(3 downto 0),
+        reg_ctrl           => slv_ctrl_reg(4 downto 0),
         reg_ctrl_cmd       => slv_cmd_ctrl_reg(2 downto 0),
         reg_ctrl_work_rx   => slv_work_rx_ctrl_reg(2 downto 0),
         reg_ctrl_work_tx   => slv_work_tx_ctrl_reg(2 downto 0),
@@ -676,8 +677,8 @@ begin
     );
 
     ------------------------------------------------------------------------------------------------
-    -- instance of s9io core version
-    i_s9io_version: entity work.s9io_version
+    -- instance of bm13xx core version
+    i_bm13xx_version: entity work.bm13xx_version
     port map (
         timestamp => slv_build_id
     );
@@ -686,4 +687,4 @@ begin
     -- User logic ends
     ------------------------------------------------------------------------------------------------
 
-end arch_imp;
+end rtl;

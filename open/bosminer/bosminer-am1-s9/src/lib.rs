@@ -100,11 +100,6 @@ const INIT_CHIP_BAUD_RATE: usize = 115740;
 /// Exact desired target baud rate when hashing at full speed (matches the divisor, too)
 const TARGET_CHIP_BAUD_RATE: usize = 1562500;
 
-/// Base clock speed of the IP core running in the FPGA
-const FPGA_IPCORE_F_CLK_SPEED_HZ: usize = 50_000_000;
-/// Divisor of the base clock. The resulting clock is connected to UART
-const FPGA_IPCORE_F_CLK_BASE_BAUD_DIV: usize = 16;
-
 /// Address of chip with connected temp sensor
 const TEMP_CHIP: ChipAddress = ChipAddress::One(61);
 
@@ -694,11 +689,8 @@ impl HashChain {
     /// Note: change baud rate of the FPGA is only desirable as a step after all chips in the
     /// chain have been reconfigured for a different speed, too.
     fn set_ip_core_baud_rate(&self, baud: usize) -> error::Result<()> {
-        let (baud_clock_div, actual_baud_rate) = calc_baud_clock_div(
-            baud,
-            FPGA_IPCORE_F_CLK_SPEED_HZ,
-            FPGA_IPCORE_F_CLK_BASE_BAUD_DIV,
-        )?;
+        let (baud_clock_div, actual_baud_rate) =
+            calc_baud_clock_div(baud, io::F_CLK_SPEED_HZ, io::F_CLK_BASE_BAUD_DIV)?;
         info!(
             "Setting IP core baud rate @ requested: {}, actual: {}, divisor {:#04x}",
             baud, actual_baud_rate, baud_clock_div
@@ -1483,5 +1475,5 @@ fn calculate_work_delay_for_pll(n_midstates: usize, pll_frequency: usize) -> f64
 ///
 /// Returns number of ticks.
 fn secs_to_fpga_ticks(secs: f64) -> u32 {
-    (secs * FPGA_IPCORE_F_CLK_SPEED_HZ as f64) as u32
+    (secs * io::F_CLK_SPEED_HZ as f64) as u32
 }

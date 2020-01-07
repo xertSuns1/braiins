@@ -21,8 +21,8 @@
 -- of such proprietary license or if you have any other questions, please
 -- contact us at opensource@braiins.com.
 ----------------------------------------------------------------------------------------------------
--- Project Name:   S9 Board Interface IP
--- Description:    FIFO buffer with asynchronous read using distributed memory
+-- Project Name:   Braiins OS
+-- Description:    FIFO buffer with synchronous read using block memory and threshold detection
 --
 -- Engineer:       Marian Pristach
 -- Revision:       1.0.0 (18.08.2018)
@@ -32,31 +32,39 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity fifo_distr is
+entity fifo_block_thr is
     generic(
         A : natural := 5;           -- number of address bits
         W : natural := 8            -- number of data bits
     );
-    port(
+    port (
         clk    : in  std_logic;
-        rst    : in  std_logic;     -- asynchronous reset, active low
+        rst    : in  std_logic;
 
         -- synchronous clear of FIFO
-        clear  : in  std_logic;
+        clear  : in std_logic;
+
+        -- threshold value and signalization for IRQ
+        thr_value : in  std_logic_vector(A-1 downto 0);
+        thr_irq   : out std_logic;
+
+        -- threshold value and signalization for work send
+        thr_work_value : in  std_logic_vector(A-1 downto 0);
+        thr_work_ready : out std_logic;
 
         -- write port
         wr     : in  std_logic;
         full   : out std_logic;
-        data_w : in  std_logic_vector(7 downto 0);
+        data_w : in  std_logic_vector(W-1 downto 0);
 
         -- read port
         rd     : in  std_logic;
         empty  : out std_logic;
-        data_r : out std_logic_vector(7 downto 0)
+        data_r : out std_logic_vector(W-1 downto 0)
     );
-end fifo_distr;
+end fifo_block_thr;
 
-architecture rtl of fifo_distr is
+architecture rtl of fifo_block_thr is
 
     -- definition of memory type
     type ram_t is array(0 to (2**A)-1) of std_logic_vector(W-1 downto 0);
@@ -88,6 +96,9 @@ architecture rtl of fifo_distr is
     -- local signals for read data
     signal data_r_d  : std_logic_vector(W-1 downto 0);
 
+    -- local signals for trigger
+    signal volume    : unsigned(A-1 downto 0);
+
 begin
 
     ------------------------------------------------------------------------------------------------
@@ -107,8 +118,14 @@ begin
         end if;
     end process;
 
-    -- access to memory - read port
-    data_r_d <= ram(to_integer(r_ptr_q));
+    -- access to memory - synchronous read port
+    p_read: process (clk) begin
+        if rising_edge(clk) then
+            if (rd_en = '1') then
+                data_r_d <= ram(to_integer(r_ptr_q));
+            end if;
+        end if;
+    end process;
 
     ------------------------------------------------------------------------------------------------
     -- incremented pointer values
@@ -175,6 +192,16 @@ begin
         end if;
 
     end process;
+
+    ------------------------------------------------------------------------------------------------
+    -- volume of buffer is calculated as difference between write and read pointer
+    volume <= w_ptr_q - r_ptr_q;
+
+    -- threshold for IRQ, when we comparing volume, we must consider also empty flag
+    thr_irq <= '1' when ((volume < unsigned(thr_value)) or (empty_q = '1')) else '0';
+
+    -- threshold for work send - check of min. value, we must consider also full flag
+    thr_work_ready <= '1' when ((volume >= unsigned(thr_work_value)) or (full_q = '1')) else '0';
 
     ------------------------------------------------------------------------------------------------
     -- output signals

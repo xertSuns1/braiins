@@ -21,7 +21,7 @@
 -- of such proprietary license or if you have any other questions, please
 -- contact us at opensource@braiins.com.
 ----------------------------------------------------------------------------------------------------
--- Project Name:   S9 Board Interface IP
+-- Project Name:   Braiins OS
 -- Description:    UART Interface Module
 --
 -- Engineer:       Marian Pristach
@@ -69,7 +69,7 @@ architecture RTL of uart is
     ------------------------------------------------------------------------------------------------
     -- UART configurations
     constant DB                    : natural := 8;        -- number of data bits
-    constant SPB                   : natural := 16;       -- number of samples per one bit
+    constant SPB                   : natural := 8;        -- number of samples per one bit
     constant FIFO_ADDR_WIDTH       : natural := 4;        -- 16 words
     constant MOD_DIVISON_WIDTH     : natural := 12;       -- define width of division register
 

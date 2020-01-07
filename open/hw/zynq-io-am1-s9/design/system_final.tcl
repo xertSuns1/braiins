@@ -26,6 +26,20 @@
 timestamp "Finishing build ..."
 
 ####################################################################################################
+# Get information about GIT repository
+####################################################################################################
+if { [catch {exec git status} msg] } {
+    set git_log "Warning: GIT repository not found!"
+    set git_diff ""
+    puts $git_log
+} else {
+    # get last commit
+    set git_log [exec git log -1]
+    # check if git worktree is clean
+    set git_diff [exec git diff HEAD]
+}
+
+####################################################################################################
 # Generate build history file
 ####################################################################################################
 # name of the build history file
@@ -46,12 +60,10 @@ puts $fd [string repeat "-" 80]
 puts $fd "Project:       $project"
 puts $fd "Board:         $board"
 puts $fd [string repeat "-" 80]
-puts $fd [exec git log -1]
+puts $fd $git_log
 puts $fd ""
 
-# check if git worktree is clean
-set diff [exec git diff HEAD]
-if { [string length $diff] > 0 } {
+if { [string length $git_diff] > 0 } {
     puts $fd "Warning: git worktree is dirty! Check git diff log in build directory."
     puts $fd ""
 }
@@ -67,10 +79,10 @@ close $fd
 ####################################################################################################
 # Save git diff into file in build directory
 ####################################################################################################
-if { [string length $diff] > 0 } {
+if { [string length $git_diff] > 0 } {
     set filename [file join $projdir git.diff]
     set fd [open $filename "w"]
-    puts $fd $diff
+    puts $fd $git_diff
     close $fd
 }
 
@@ -152,7 +164,7 @@ if { [file exists $filename] } {
 }
 
 # print report to CSV file
-puts -nonewline $fd "\"$project\",\"$top_module\",\"${build_id}\",\"${date_time}\",\"$partname\","
+puts -nonewline $fd "\"$project $board\",\"$top_module\",\"${build_id}\",\"${date_time}\",\"$partname\","
 puts -nonewline $fd "$numLUT,$percentLUT,"
 puts -nonewline $fd "$numLUTRAM,$percentLUTRAM,"
 puts -nonewline $fd "$numRegs,$percentRegs,"
