@@ -24,14 +24,19 @@
 
 use super::*;
 
+/// Basic temperature control settings
 #[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct TempCtrl {
     #[serde(rename = "Mode")]
     pub mode: String, // TODO: use enum
+    /// Temperature setpoint
     #[serde(rename = "Target")]
     pub target: f64,
+    /// Hot temperature threshold is typically intended to warn the user
     #[serde(rename = "Hot")]
     pub hot: f64,
+    /// Dangerous temperature is recommended to result in shutdown to prevent hardware damage
+    /// from overheating
     #[serde(rename = "Dangerous")]
     pub dangerous: f64,
 }
