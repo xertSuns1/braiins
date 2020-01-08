@@ -82,9 +82,9 @@ const INACTIVATE_FROM_CHAIN_DELAY: Duration = Duration::from_millis(100);
 /// Base delay quantum during hashboard initialization
 const INIT_DELAY: Duration = Duration::from_secs(1);
 /// Time to wait between successive hashboard initialization attempts
-const ENUM_RETRY_DELAY: Duration = Duration::from_secs(2);
+const ENUM_RETRY_DELAY: Duration = Duration::from_secs(10);
 /// How many times to retry the enumeration
-const ENUM_RETRY_COUNT: usize = 6;
+const ENUM_RETRY_COUNT: usize = 10;
 
 /// Maximum number of chips is limitted by the fact that there is only 8-bit address field and
 /// addresses to the chips need to be assigned with step of 4 (e.g. 0, 4, 8, etc.)
@@ -436,7 +436,11 @@ impl HashChain {
 
     /// Reset hashboard and try to enumerate the chips
     /// If not enough chips were found and this is not the `last_try`, treat it as error.
-    async fn reset_and_enumerate(&mut self, last_try: bool) -> error::Result<()> {
+    async fn reset_and_enumerate_and_init(
+        &mut self,
+        last_try: bool,
+        initial_frequency: &FrequencySettings,
+    ) -> error::Result<()> {
         // Reset hashboard, toggle voltage
         info!("Resetting hash board");
         self.enter_reset()?;
@@ -453,7 +457,9 @@ impl HashChain {
 
         // Figure out if we found enough chips
         info!("Discovered {} chips", self.chip_count);
-        self.command_context.set_chip_count(self.chip_count).await;
+        self.command_context
+            .set_chip_count(Some(self.chip_count))
+            .await;
 
         // Not full number of chips? Let's try again if we have tries left
         if self.chip_count < EXPECTED_CHIPS_ON_CHAIN && !last_try {
@@ -461,6 +467,17 @@ impl HashChain {
                 "Not enough chips on chain".into(),
             ))?;
         }
+
+        // set PLL
+        self.set_pll(initial_frequency).await?;
+
+        // configure the hashing chain to operate at desired baud rate. Note that gate block is
+        // enabled to allow continuous start of chips in the chain
+        self.configure_hash_chain(TARGET_CHIP_BAUD_RATE, false, true)
+            .await?;
+        self.set_ip_core_baud_rate(TARGET_CHIP_BAUD_RATE)?;
+
+        self.set_asic_diff(self.asic_difficulty).await?;
 
         Ok(())
     }
@@ -480,26 +497,40 @@ impl HashChain {
         self.monitor_tx
             .unbounded_send(monitor::Message::On)
             .expect("send failed");
-        info!("Initializing hash chain {}", self.hashboard_idx);
-        self.ip_core_init().await?;
         info!("Hashboard IP core initialized");
         self.voltage_ctrl.clone().init(halt_receiver).await?;
+
+        // This is dumb. We need to do this because we do not use freshly initialized
+        // `command_context` in between successive retries.
+        // If we don't do this, it will complain that it received wrong number of responses for
+        // the initial "GetAddressReg" command.
+        self.command_context.set_chip_count(None).await;
 
         // Try to enumerate chips until we get full number of them or we run out of attempts.
         // Some hashboard refuse to enumerate properly if they are "hot" -- they either return
         // garbage for `chip_revision` or they don't respond at all.
         let mut tries_left: usize = ENUM_RETRY_COUNT;
         loop {
-            if let Err(e) = self.reset_and_enumerate(tries_left == 0).await {
-                info!("Chip enumeration failed: {}", e);
-                if let error::ErrorKind::ChipEnumeration(_) = e.kind() {
-                    // This is enumeration-related reason, try to retry
-                    if tries_left == 0 {
+            info!("Initializing hash chain {}", self.hashboard_idx);
+            self.ip_core_init().await?;
+
+            if let Err(e) = self
+                .reset_and_enumerate_and_init(tries_left == 0, initial_frequency)
+                .await
+            {
+                warn!("Chip enumeration failed: {}", e);
+                match e.kind() {
+                    error::ErrorKind::ChipEnumeration(_) | error::ErrorKind::Hashchip(_) => {
+                        // This is enumeration-related reason, try to retry
+                        if tries_left == 0 {
+                            error!("No tries left");
+                            return Err(e);
+                        }
+                    }
+                    _ => {
+                        // Some other error, we are doomed
                         return Err(e);
                     }
-                } else {
-                    // Some other error, we are doomed
-                    return Err(e);
                 }
             } else {
                 // Success!
@@ -510,17 +541,6 @@ impl HashChain {
             tries_left -= 1;
             delay_for(ENUM_RETRY_DELAY).await;
         }
-
-        // set PLL
-        self.set_pll(initial_frequency).await?;
-
-        // configure the hashing chain to operate at desired baud rate. Note that gate block is
-        // enabled to allow continuous start of chips in the chain
-        self.configure_hash_chain(TARGET_CHIP_BAUD_RATE, false, true)
-            .await?;
-        self.set_ip_core_baud_rate(TARGET_CHIP_BAUD_RATE)?;
-
-        self.set_asic_diff(self.asic_difficulty).await?;
 
         // Build shared work registry
         // TX fifo determines the size of work registry
@@ -615,7 +635,8 @@ impl HashChain {
         let pll = bm1387::PllFrequency::lookup_freq(freq)?;
 
         info!(
-            "setting frequency {} MHz on chip {} (error {})",
+            "chain {}: setting frequency {} MHz on chip {} (error {} MHz)",
+            self.hashboard_idx,
             freq / 1_000_000,
             chip_id,
             ((freq as i64) - (pll.frequency as i64)).abs(),
@@ -1117,6 +1138,9 @@ impl HashChainManager {
                 self.params.voltage,
             )
             .await
+            .with_context(|_| {
+                ErrorKind::Hashboard(self.node.hashboard_idx, "hashchain initialization".into())
+            })
             .expect("hashchain initialization failed");
 
         // make counter with real number of cores
