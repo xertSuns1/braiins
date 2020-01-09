@@ -45,7 +45,7 @@ impl Speed {
 }
 
 /// Speed of fans read from feedback pins
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Feedback {
     pub rpm: Vec<usize>,
 }

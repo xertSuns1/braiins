@@ -37,6 +37,7 @@ use futures::lock::Mutex;
 use futures::stream::StreamExt;
 use ii_async_compat::futures;
 use ii_async_compat::tokio;
+use tokio::sync::watch;
 use tokio::time::delay_for;
 
 /// If miner start takes longer than this, mark it as `Broken`
@@ -420,6 +421,15 @@ impl TemperatureAccumulator {
     }
 }
 
+/// Status of `Monitor` for others to observe
+#[derive(Debug, Clone)]
+pub struct Status {
+    pub fan_feedback: fan::Feedback,
+    pub fan_speed: Option<fan::Speed>,
+    pub input_temperature: ChainTemperature,
+    pub decision_explained: ControlDecisionExplained,
+}
+
 /// Monitor - it holds states of all Chains and everything related to fan control
 pub struct Monitor {
     /// Each chain is registered here
@@ -428,6 +438,8 @@ pub struct Monitor {
     pub config: Config,
     /// Fan controller - can set RPM or read feedback
     fan_control: fan::Control,
+    /// Last fan speed that was set
+    current_fan_speed: Option<fan::Speed>,
     /// PID that controls fan with hashchain temperature as input
     pid: fan::pid::TempControl,
     /// Flag whether miner is in failure state - temperature critical, hashboards not responding,
@@ -435,10 +447,15 @@ pub struct Monitor {
     failure_state: bool,
     /// Context to shutdown when miner enters critical state
     miner_shutdown: Arc<halt::Sender>,
+    /// Broadcast channel to send/receive monitor status
+    status_sender: watch::Sender<Option<Status>>,
+    status_receiver: watch::Receiver<Option<Status>>,
 }
 
 impl Monitor {
     pub fn new(config: Config, miner_shutdown: Arc<halt::Sender>) -> Arc<Mutex<Self>> {
+        let (status_sender, status_receiver) = watch::channel(None);
+
         Arc::new(Mutex::new(Self {
             chains: Vec::new(),
             config,
@@ -446,12 +463,15 @@ impl Monitor {
             pid: fan::pid::TempControl::new(),
             miner_shutdown,
             failure_state: false,
+            current_fan_speed: None,
+            status_sender,
+            status_receiver,
         }))
     }
 
     /// Handler for application shutdown - just stop the fans
     async fn termination_handler(monitor: Arc<Mutex<Self>>) {
-        let monitor = monitor.lock().await;
+        let mut monitor = monitor.lock().await;
         // Decide whether to leave fans on (depending on whether we are in failure state or not)
         if monitor.failure_state {
             monitor.set_fan_speed(fan::Speed::FULL_SPEED);
@@ -481,9 +501,10 @@ impl Monitor {
     }
 
     /// Set fan speed
-    fn set_fan_speed(&self, fan_speed: fan::Speed) {
+    fn set_fan_speed(&mut self, fan_speed: fan::Speed) {
         info!("Monitor: setting fan to {:?}", fan_speed);
         self.fan_control.set_speed(fan_speed);
+        self.current_fan_speed = Some(fan_speed);
     }
 
     pub async fn get_chain_temperatures(monitor: Arc<Mutex<Self>>) -> Vec<ChainTemperature> {
@@ -562,6 +583,19 @@ impl Monitor {
                 }
                 ControlDecision::Nothing => {}
             }
+
+            // Broadcast `Status`
+            let monitor_status = Status {
+                fan_feedback,
+                fan_speed: monitor.current_fan_speed,
+                input_temperature: cumulative_temperature.temp,
+                decision_explained,
+            };
+            monitor
+                .status_sender
+                .broadcast(Some(monitor_status))
+                .expect("broadcast failed");
+
             // unlock monitor
             drop(monitor);
             // TODO: find some of kind "run every x secs" function
