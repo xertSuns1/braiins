@@ -238,8 +238,14 @@ pub struct Config {
     pub temp_config: Option<TempControlConfig>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ControlDecisionExplained {
+    pub decision: ControlDecision,
+    pub reason: &'static str,
+}
+
 /// Output of the decision process
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ControlDecision {
     /// Fail state - shutdown miner
     Shutdown,
@@ -257,53 +263,59 @@ impl ControlDecision {
         fan_config: &FanControlConfig,
         temp_config: &TempControlConfig,
         temp: ChainTemperature,
-    ) -> (Self, &'static str) {
+    ) -> ControlDecisionExplained {
         if temp == ChainTemperature::Unknown {
-            return (
-                Self::UseFixedSpeed(fan::Speed::FULL_SPEED),
-                "unknown temperature",
-            );
+            return ControlDecisionExplained {
+                decision: Self::UseFixedSpeed(fan::Speed::FULL_SPEED),
+                reason: "unknown temperature",
+            };
         }
         match &fan_config.mode {
             FanControlMode::FixedSpeed(pwm) => {
-                return (Self::UseFixedSpeed(*pwm), "user defined fan speed")
+                return ControlDecisionExplained {
+                    decision: Self::UseFixedSpeed(*pwm),
+                    reason: "user defined fan speed",
+                };
             }
             FanControlMode::TargetTemperature(target_temp) => match temp {
                 ChainTemperature::Failed | ChainTemperature::Unknown => {
-                    panic!("BUG: should've been caught earlier in this function")
+                    panic!("BUG: should've been caught earlier at the top of `decide()` function")
                 }
                 ChainTemperature::Ok(input_temp) => {
                     if input_temp >= temp_config.hot_temp {
-                        return (
-                            Self::UseFixedSpeed(fan::Speed::FULL_SPEED),
-                            "temperature above HOT",
-                        );
+                        return ControlDecisionExplained {
+                            decision: Self::UseFixedSpeed(fan::Speed::FULL_SPEED),
+                            reason: "temperature above HOT",
+                        };
                     }
-                    return (
-                        Self::UsePid {
+                    return ControlDecisionExplained {
+                        decision: Self::UsePid {
                             target_temp: *target_temp,
                             input_temp,
                         },
-                        "user requested PID",
-                    );
+                        reason: "user requested PID",
+                    };
                 }
             },
         }
     }
 
     /// Decision rules if fan control is enabled and temp control disabled
-    fn decide_fan_control_notemp(fan_config: &FanControlConfig) -> (Self, &'static str) {
+    fn decide_fan_control_notemp(fan_config: &FanControlConfig) -> ControlDecisionExplained {
         match fan_config.mode {
             FanControlMode::FixedSpeed(pwm) => {
-                return (Self::UseFixedSpeed(pwm), "user defined fan speed")
+                return ControlDecisionExplained {
+                    decision: Self::UseFixedSpeed(pwm),
+                    reason: "user defined fan speed",
+                };
             }
             FanControlMode::TargetTemperature(_) => {
                 // I don't know how to avoid this variant using type system alone
                 // Let's make it non-fatal
-                return (
-                    Self::UseFixedSpeed(fan::Speed::FULL_SPEED),
-                    "wrong configration - temp control off",
-                );
+                return ControlDecisionExplained {
+                    decision: Self::UseFixedSpeed(fan::Speed::FULL_SPEED),
+                    reason: "wrong configration - temp control off",
+                };
             }
         }
     }
@@ -314,17 +326,23 @@ impl ControlDecision {
         config: &Config,
         num_fans_running: usize,
         temp: ChainTemperature,
-    ) -> (Self, &'static str) {
+    ) -> ControlDecisionExplained {
         // This section is labeled `TEMP_DANGER` in the diagram
         // Check for dangerous temperature or dead sensors
         if let Some(temp_config) = config.temp_config.as_ref() {
             match temp {
                 ChainTemperature::Failed => {
-                    return (Self::Shutdown, "temperature readout FAILED");
+                    return ControlDecisionExplained {
+                        decision: Self::Shutdown,
+                        reason: "temperature readout FAILED",
+                    };
                 }
                 ChainTemperature::Ok(input_temp) => {
                     if input_temp >= temp_config.dangerous_temp {
-                        return (Self::Shutdown, "temperature above DANGEROUS");
+                        return ControlDecisionExplained {
+                            decision: Self::Shutdown,
+                            reason: "temperature above DANGEROUS",
+                        };
                     }
                 }
                 ChainTemperature::Unknown => {}
@@ -332,7 +350,7 @@ impl ControlDecision {
         }
         // Check the health of fans and decide their speed
         if let Some(fan_config) = config.fan_config.as_ref() {
-            let (decision, reason) = if let Some(temp_config) = config.temp_config.as_ref() {
+            let decision_explained = if let Some(temp_config) = config.temp_config.as_ref() {
                 Self::decide_fan_control(fan_config, temp_config, temp)
             } else {
                 Self::decide_fan_control_notemp(fan_config)
@@ -345,15 +363,21 @@ impl ControlDecision {
             // XXX: There's a problem however: if we are configured for stopped fans and then
             // the configuration changes at runtime to non-stopped fans, the delay of fans
             // taking some time to spin up will cause this check to fire off!
-            if decision != Self::UseFixedSpeed(fan::Speed::STOPPED) {
+            if decision_explained.decision != Self::UseFixedSpeed(fan::Speed::STOPPED) {
                 if num_fans_running < fan_config.min_fans {
-                    return (Self::Shutdown, "not enough fans");
+                    return ControlDecisionExplained {
+                        decision: Self::Shutdown,
+                        reason: "not enough fans",
+                    };
                 }
             }
-            (decision, reason)
+            decision_explained
         } else {
             // This is only valid if `FanControl` is turned off
-            (Self::Nothing, "no action")
+            ControlDecisionExplained {
+                decision: Self::Nothing,
+                reason: "no action",
+            }
         }
     }
 }
@@ -479,15 +503,15 @@ impl Monitor {
             );
 
             // all right, temperature has been aggregated, decide what to do
-            let (decision, reason) = ControlDecision::decide(
+            let decision_explained = ControlDecision::decide(
                 &monitor.config,
                 num_fans_running,
                 cumulative_temperature.temp,
             );
-            info!("Monitor: decision={:?} reason={}", decision, reason);
-            match decision {
+            info!("Monitor: {:?}", decision_explained);
+            match decision_explained.decision {
                 ControlDecision::Shutdown => {
-                    monitor.shutdown(reason.into()).await;
+                    monitor.shutdown(decision_explained.reason.into()).await;
                 }
                 ControlDecision::UseFixedSpeed(fan_speed) => {
                     monitor.set_fan_speed(fan_speed);
@@ -823,101 +847,101 @@ mod test {
         };
 
         assert_variant!(
-            ControlDecision::decide(&all_off_config, 0, dang_temp.clone()).0,
+            ControlDecision::decide(&all_off_config, 0, dang_temp.clone()).decision,
             ControlDecision::Nothing
         );
         assert_variant!(
-            ControlDecision::decide(&all_off_config, 0, ChainTemperature::Failed).0,
+            ControlDecision::decide(&all_off_config, 0, ChainTemperature::Failed).decision,
             ControlDecision::Nothing
         );
 
         assert_eq!(
-            ControlDecision::decide(&fans_on_config, 2, dang_temp.clone()).0,
+            ControlDecision::decide(&fans_on_config, 2, dang_temp.clone()).decision,
             ControlDecision::UseFixedSpeed(fan_speed)
         );
         assert_eq!(
-            ControlDecision::decide(&fans_on_config, 0, dang_temp.clone()).0,
+            ControlDecision::decide(&fans_on_config, 0, dang_temp.clone()).decision,
             ControlDecision::Shutdown
         );
         assert_eq!(
-            ControlDecision::decide(&fans_on_config, 1, dang_temp.clone()).0,
+            ControlDecision::decide(&fans_on_config, 1, dang_temp.clone()).decision,
             ControlDecision::Shutdown
         );
         assert_eq!(
-            ControlDecision::decide(&fans_on_config, 2, ChainTemperature::Failed).0,
+            ControlDecision::decide(&fans_on_config, 2, ChainTemperature::Failed).decision,
             ControlDecision::UseFixedSpeed(fan_speed)
         );
 
         // fans set to 0 -> do not check if fans are running
         assert_eq!(
-            ControlDecision::decide(&fans_off_config, 0, dang_temp.clone()).0,
+            ControlDecision::decide(&fans_off_config, 0, dang_temp.clone()).decision,
             ControlDecision::UseFixedSpeed(fans_off)
         );
 
         assert_eq!(
-            ControlDecision::decide(&temp_on_config, 0, ChainTemperature::Failed).0,
+            ControlDecision::decide(&temp_on_config, 0, ChainTemperature::Failed).decision,
             ControlDecision::Shutdown
         );
         assert_variant!(
-            ControlDecision::decide(&temp_on_config, 0, ChainTemperature::Unknown).0,
+            ControlDecision::decide(&temp_on_config, 0, ChainTemperature::Unknown).decision,
             ControlDecision::Nothing
         );
         assert_eq!(
-            ControlDecision::decide(&temp_on_config, 0, dang_temp).0,
+            ControlDecision::decide(&temp_on_config, 0, dang_temp).decision,
             ControlDecision::Shutdown
         );
         assert_variant!(
-            ControlDecision::decide(&temp_on_config, 0, hot_temp).0,
+            ControlDecision::decide(&temp_on_config, 0, hot_temp).decision,
             ControlDecision::Nothing
         );
 
         assert_eq!(
-            ControlDecision::decide(&both_on_config, 0, low_temp).0,
+            ControlDecision::decide(&both_on_config, 0, low_temp).decision,
             ControlDecision::Shutdown
         );
         assert_eq!(
-            ControlDecision::decide(&both_on_config, 2, dang_temp).0,
+            ControlDecision::decide(&both_on_config, 2, dang_temp).decision,
             ControlDecision::Shutdown
         );
         assert_eq!(
-            ControlDecision::decide(&both_on_config, 2, ChainTemperature::Failed).0,
+            ControlDecision::decide(&both_on_config, 2, ChainTemperature::Failed).decision,
             ControlDecision::Shutdown
         );
         assert_eq!(
-            ControlDecision::decide(&both_on_config, 2, ChainTemperature::Unknown).0,
+            ControlDecision::decide(&both_on_config, 2, ChainTemperature::Unknown).decision,
             ControlDecision::UseFixedSpeed(fan::Speed::FULL_SPEED)
         );
         assert_eq!(
-            ControlDecision::decide(&both_on_config, 2, hot_temp).0,
+            ControlDecision::decide(&both_on_config, 2, hot_temp).decision,
             ControlDecision::UseFixedSpeed(fan_speed)
         );
         assert_eq!(
-            ControlDecision::decide(&both_on_config, 2, low_temp).0,
+            ControlDecision::decide(&both_on_config, 2, low_temp).decision,
             ControlDecision::UseFixedSpeed(fan_speed)
         );
 
         assert_eq!(
-            ControlDecision::decide(&both_on_pid_config, 0, low_temp).0,
+            ControlDecision::decide(&both_on_pid_config, 0, low_temp).decision,
             ControlDecision::Shutdown
         );
         assert_eq!(
-            ControlDecision::decide(&both_on_pid_config, 2, dang_temp).0,
+            ControlDecision::decide(&both_on_pid_config, 2, dang_temp).decision,
             ControlDecision::Shutdown
         );
         assert_eq!(
-            ControlDecision::decide(&both_on_pid_config, 2, ChainTemperature::Failed).0,
+            ControlDecision::decide(&both_on_pid_config, 2, ChainTemperature::Failed).decision,
             ControlDecision::Shutdown
         );
         assert_eq!(
-            ControlDecision::decide(&both_on_pid_config, 2, ChainTemperature::Unknown).0,
+            ControlDecision::decide(&both_on_pid_config, 2, ChainTemperature::Unknown).decision,
             ControlDecision::UseFixedSpeed(fan::Speed::FULL_SPEED)
         );
         assert_eq!(
-            ControlDecision::decide(&both_on_pid_config, 2, hot_temp).0,
+            ControlDecision::decide(&both_on_pid_config, 2, hot_temp).decision,
             ControlDecision::UseFixedSpeed(fan::Speed::FULL_SPEED)
         );
         assert_eq!(
-            ControlDecision::decide(&both_on_pid_config, 2, low_temp).0,
+            ControlDecision::decide(&both_on_pid_config, 2, low_temp).decision,
             ControlDecision::UsePid {
                 target_temp: 75.0,
                 input_temp: 50.0
