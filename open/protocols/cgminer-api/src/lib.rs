@@ -98,8 +98,10 @@ impl Encoder for Codec {
     fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
         self.encode_buf.clear();
         json::to_writer(&mut self.encode_buf, &item)?;
-        dst.reserve(self.encode_buf.len());
+        dst.reserve(self.encode_buf.len() + 1);
         dst.put_slice(&self.encode_buf);
+        // original CGMiner API returns null terminated string as a JSON response
+        dst.put_u8(0);
         Ok(())
     }
 }
