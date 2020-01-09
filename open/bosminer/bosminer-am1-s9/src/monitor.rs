@@ -430,30 +430,53 @@ pub struct Monitor {
     fan_control: fan::Control,
     /// PID that controls fan with hashchain temperature as input
     pid: fan::pid::TempControl,
-    /// Way to shutdown the miner
+    /// Flag whether miner is in failure state - temperature critical, hashboards not responding,
+    /// fans gone missing...
+    failure_state: bool,
+    /// Context to shutdown when miner enters critical state
     miner_shutdown: Arc<halt::Sender>,
 }
 
 impl Monitor {
-    pub async fn new(config: Config, miner_shutdown: Arc<halt::Sender>) -> Arc<Mutex<Self>> {
-        let monitor = Arc::new(Mutex::new(Self {
+    pub fn new(config: Config, miner_shutdown: Arc<halt::Sender>) -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(Self {
             chains: Vec::new(),
             config,
             fan_control: fan::Control::new().expect("failed initializing fan controller"),
             pid: fan::pid::TempControl::new(),
             miner_shutdown,
-        }));
+            failure_state: false,
+        }))
+    }
 
-        tokio::spawn(Self::tick_task(monitor.clone()));
+    /// Handler for application shutdown - just stop the fans
+    async fn termination_handler(monitor: Arc<Mutex<Self>>) {
+        let monitor = monitor.lock().await;
+        // Decide whether to leave fans on (depending on whether we are in failure state or not)
+        if monitor.failure_state {
+            monitor.set_fan_speed(fan::Speed::FULL_SPEED);
+        } else {
+            monitor.set_fan_speed(fan::Speed::STOPPED);
+        }
+    }
 
-        // return self
-        monitor
+    pub async fn start(monitor: Arc<Mutex<Self>>, halt_receiver: halt::Receiver) {
+        halt_receiver
+            .register_client("monitor termination".into())
+            .await
+            .spawn_halt_handler(Self::termination_handler(monitor.clone()));
+
+        halt_receiver
+            .register_client("monitor".into())
+            .await
+            .spawn(Self::tick_task(monitor.clone()));
     }
 
     /// Shutdown miner
     /// TODO: do a more graceful shutdown
-    async fn shutdown(&self, reason: String) {
+    async fn shutdown(&mut self, reason: String) {
         error!("Monitor task declared miner shutdown: {}", reason);
+        self.failure_state = true;
         self.miner_shutdown.clone().send_halt().await;
     }
 
@@ -487,7 +510,11 @@ impl Monitor {
                 if let ChainState::Broken(reason) = chain.state {
                     // TODO: here comes "Shutdown"
                     let reason = format!("Chain {} is broken: {}", chain.hashboard_idx, reason);
+                    // drop `chain` here to drop iterator which holds immutable reference
+                    // to `monitor`
+                    drop(chain);
                     monitor.shutdown(reason).await;
+                    return;
                 }
                 info!("chain {}: {:?}", chain.hashboard_idx, chain.state);
                 cumulative_temperature.add_chain_temp(chain.state.get_temperature());

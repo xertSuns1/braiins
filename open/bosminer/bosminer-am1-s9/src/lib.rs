@@ -1291,6 +1291,12 @@ impl Backend {
         Ok(detected)
     }
 
+    /// Miner termination handler called when app is shutdown.
+    /// Just propagate the shutdown to all hashchain managers
+    async fn termination_handler(halt_sender: Arc<halt::Sender>) {
+        halt_sender.send_halt().await;
+    }
+
     /// Start miner
     /// TODO: maybe think about having a `Result` error value here?
     async fn start_miner(
@@ -1298,11 +1304,23 @@ impl Backend {
         enabled_chains: Vec<usize>,
         work_hub: work::SolverBuilder<Backend>,
         backend_config: config::Backend,
-    ) -> Arc<halt::Sender> {
+        app_halt_receiver: halt::Receiver,
+        app_halt_sender: Arc<halt::Sender>,
+    ) {
+        // Create new termination context and link it to the main (app) termination context
         let (halt_sender, halt_receiver) = halt::make_pair(HALT_TIMEOUT);
+        app_halt_receiver
+            .register_client("miner termination".into())
+            .await
+            .spawn_halt_handler(Self::termination_handler(halt_sender.clone()));
+
+        // Start monitor in main (app) termination context
+        // Let it shutdown the main context as well
         let monitor_config = backend_config.resolve_monitor_config();
         info!("Resolved monitor backend_config: {:?}", monitor_config);
-        let monitor = monitor::Monitor::new(monitor_config, halt_sender.clone()).await;
+        let monitor = monitor::Monitor::new(monitor_config, app_halt_sender);
+        monitor::Monitor::start(monitor.clone(), app_halt_receiver.clone()).await;
+
         let voltage_ctrl_backend = Arc::new(power::I2cBackend::new(0));
         let mut managers = Vec::new();
         info!(
@@ -1375,8 +1393,6 @@ impl Backend {
                     .expect("failed to start hashchain manager");
             });
         }
-
-        halt_sender
     }
 }
 
@@ -1397,23 +1413,26 @@ impl hal::Backend for Backend {
         work_hub: work::SolverBuilder<Self>,
     ) -> bosminer::Result<hal::FrontendConfig> {
         let gpio_mgr = gpio::ControlPinManager::new();
-        let halt_sender = Self::start_miner(
+        let (app_halt_sender, app_halt_receiver) = halt::make_pair(HALT_TIMEOUT);
+        Self::start_miner(
             &gpio_mgr,
             Self::detect_hashboards(&gpio_mgr).expect("failed detecting hashboards"),
             work_hub,
             backend_config,
+            app_halt_receiver,
+            app_halt_sender.clone(),
         )
         .await;
 
         // On miner exit, halt the whole program
-        halt_sender
+        app_halt_sender
             .add_exit_hook(async {
                 println!("Exiting.");
                 std::process::exit(0);
             })
             .await;
         // Hook Ctrl-C
-        halt_sender.hook_ctrlc();
+        app_halt_sender.hook_ctrlc();
 
         Ok(hal::FrontendConfig {
             cgminer_custom_commands: cgminer::create_custom_commands(),
