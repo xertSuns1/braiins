@@ -62,6 +62,7 @@ use failure::ResultExt;
 
 use futures::channel::mpsc;
 use futures::lock::Mutex;
+use futures::stream::StreamExt;
 use ii_async_compat::futures;
 
 use bm1387::{ChipAddress, MidstateCount};
@@ -75,6 +76,7 @@ use embedded_hal::digital::v2::OutputPin;
 use ii_bitcoin::MeetsTarget;
 
 use ii_async_compat::tokio;
+use tokio::sync::watch;
 use tokio::time::delay_for;
 
 /// Timing constants
@@ -1099,11 +1101,15 @@ impl fmt::Display for HashChainNode {
 }
 
 /// Hashchain manager that can start and stop instances of hashchain
+/// TODO: split this structure into outer and inner part so that we can
+/// deal with locking issues on the inside.
 pub struct HashChainManager {
     /// dynamic runtime - `is_some` only when miner is running
     runtime: Option<HashChainRuntime>,
     pub params: HashChainParams,
     node: Arc<HashChainNode>,
+    /// TODO: wrap this type in a structure (in Monitor)
+    status_receiver: watch::Receiver<Option<monitor::Status>>,
 }
 
 impl HashChainManager {
@@ -1228,6 +1234,65 @@ impl HashChainManager {
                 .expect("failed to stop chain");
         }
     }
+
+    /// Check from `Monitor` status message if miner is hot enough
+    /// Also: this will break if there are no temperature sensors
+    fn preheat_ok(status: monitor::Status) -> bool {
+        const PREHEAT_TEMP_EPSILON: f32 = 2.0;
+        let target_temp;
+        // check if we are in PID mode, otherwise return `true`
+        match status.config.fan_config {
+            // Can't preheat if we are not controlling fans
+            None => return true,
+            Some(fan_config) => match fan_config.mode {
+                monitor::FanControlMode::TargetTemperature(t) => target_temp = t,
+                _ => return true,
+            },
+        }
+        info!(
+            "Preheat: waiting for target temperature: {}, current temperature: {:?}",
+            target_temp, status.input_temperature
+        );
+        // we are in PID mode, check if temperature is OK
+        match status.input_temperature {
+            monitor::ChainTemperature::Ok(t) => {
+                if t >= target_temp || target_temp - t < PREHEAT_TEMP_EPSILON {
+                    info!("Preheat: temperature {} is hot enough", t);
+                    return true;
+                }
+            }
+            _ => (),
+        }
+        return false;
+    }
+
+    /// Wait for hashboard to reach PID-defined temperature (or higher)
+    /// If monitor isn't in PID mode then this is effectively no-op.
+    /// Wait at most predefined number of seconds to avoid any kind of dead-locks.
+    ///
+    /// Note: we have to lock it on the inside, because otherwise we would hold lock on hashchain
+    /// manager and prevent shutdown from happening.
+    pub async fn wait_for_preheat(hash_chain_manager: Arc<Mutex<Self>>) {
+        const MAX_PREHEAT_DELAY: u64 = 180;
+
+        let mut status_receiver = hash_chain_manager.lock().await.status_receiver.clone();
+        // wait for status from monitor
+        let started = Instant::now();
+        // TODO: wrap `status_receiver` into some kind of API
+        while let Some(status) = status_receiver.next().await {
+            // take just non-empty status messages
+            if let Some(status) = status {
+                if Self::preheat_ok(status) {
+                    break;
+                }
+            }
+            // in case we are waiting for too long, just skip preheat
+            if Instant::now().duration_since(started).as_secs() >= MAX_PREHEAT_DELAY {
+                info!("Preheat: waiting too long to heat-up, skipping preheat");
+                return;
+            }
+        }
+    }
 }
 
 /// Represents raw solution from the Antminer S9
@@ -1320,6 +1385,8 @@ impl Backend {
         info!("Resolved monitor backend_config: {:?}", monitor_config);
         let monitor = monitor::Monitor::new(monitor_config, app_halt_sender);
         monitor::Monitor::start(monitor.clone(), app_halt_receiver.clone()).await;
+        // Make a monitor status receiver
+        let status_receiver = monitor.lock().await.status_receiver.clone();
 
         let voltage_ctrl_backend = Arc::new(power::I2cBackend::new(0));
         let mut managers = Vec::new();
@@ -1367,9 +1434,11 @@ impl Backend {
                     voltage: chain_config.voltage,
                 },
                 node: hash_chain_node,
+                status_receiver: status_receiver.clone(),
             };
             managers.push(hash_chain_manager);
         }
+
         // start everything
         for (_id, hash_chain_manager) in managers.drain(..).enumerate() {
             let halt_receiver = halt_receiver.clone();

@@ -424,6 +424,7 @@ impl TemperatureAccumulator {
 /// Status of `Monitor` for others to observe
 #[derive(Debug, Clone)]
 pub struct Status {
+    pub config: Config,
     pub fan_feedback: fan::Feedback,
     pub fan_speed: Option<fan::Speed>,
     pub input_temperature: ChainTemperature,
@@ -449,7 +450,7 @@ pub struct Monitor {
     miner_shutdown: Arc<halt::Sender>,
     /// Broadcast channel to send/receive monitor status
     status_sender: watch::Sender<Option<Status>>,
-    status_receiver: watch::Receiver<Option<Status>>,
+    pub status_receiver: watch::Receiver<Option<Status>>,
 }
 
 impl Monitor {
@@ -590,6 +591,7 @@ impl Monitor {
                 fan_speed: monitor.current_fan_speed,
                 input_temperature: cumulative_temperature.temp,
                 decision_explained,
+                config: monitor.config.clone(),
             };
             monitor
                 .status_sender
