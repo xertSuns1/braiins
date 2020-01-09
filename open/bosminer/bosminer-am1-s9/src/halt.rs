@@ -199,18 +199,18 @@ impl Sender {
 
     /// Issue halt
     async fn send_halt_internal(self: Arc<Self>) -> error::Result<()> {
-        let mut done_wait_list = Vec::new();
+        // take the list of clients
+        let mut clients: Vec<_> = self.clients.lock().await.drain(..).collect();
 
-        // notify all clients
-        for client in self.clients.lock().await.drain(..) {
-            // `None` means client already ended
-            if let Some(done_wait) = client.send_halt() {
-                done_wait_list.push((client, done_wait));
-            }
-        }
-
-        // wait for them to reply
-        for (client, mut done_wait) in done_wait_list.drain(..) {
+        // notify clients one-by-one
+        for client in clients.drain(..) {
+            // try to halt them
+            let mut done_wait = match client.send_halt() {
+                // client has already ended
+                None => continue,
+                // extract handle, wait on it later
+                Some(handle) => handle,
+            };
             match done_wait.done_rx.next().timeout(self.halt_timeout).await {
                 Ok(confirm) => match confirm {
                     Some(_) => (),
