@@ -386,38 +386,44 @@ impl ControlDecision {
 /// This structure abstracts the process of "making one aggregate temperature out of
 /// all hashchain temperatures".
 /// The resulting temperature is used as an input variable for PID control.
-#[derive(Debug)]
-struct TemperatureAccumulator {
-    pub temp: ChainTemperature,
+#[derive(Debug, Clone)]
+pub struct TemperatureAccumulator {
+    pub chain_temperatures: Vec<ChainTemperature>,
 }
 
 impl TemperatureAccumulator {
     /// Start in unknown state
     fn new() -> Self {
         Self {
-            temp: ChainTemperature::Unknown,
+            chain_temperatures: vec![],
         }
+    }
+
+    fn add_chain_temp(&mut self, chain_temp: ChainTemperature) {
+        self.chain_temperatures.push(chain_temp);
     }
 
     /// Function to calculate aggregated temperature.
     /// This one calculates maximum temperatures over all temperatures measured while
     /// prefering failures to measurement.
-    fn add_chain_temp(&mut self, chain_temp: ChainTemperature) {
-        self.temp = match chain_temp {
-            // Failure trumphs everything
-            ChainTemperature::Failed => chain_temp,
-            // Unknown doesn't add any information - no change
-            ChainTemperature::Unknown => self.temp,
-            ChainTemperature::Ok(t1) => {
-                match self.temp {
-                    // Failure trumphs everything
-                    ChainTemperature::Failed => self.temp,
-                    // Take maximum of temperatures
-                    ChainTemperature::Ok(t2) => ChainTemperature::Ok(t1.max(t2)),
-                    ChainTemperature::Unknown => ChainTemperature::Ok(t1),
-                }
+    fn calc_result(&self) -> ChainTemperature {
+        let mut temps = vec![];
+        for &temp in self.chain_temperatures.iter() {
+            match temp {
+                // Failure thrumps everything
+                ChainTemperature::Failed => return temp,
+                // Unknown temperature doesn't add any information
+                ChainTemperature::Unknown => (),
+                // Collect measurements
+                ChainTemperature::Ok(t) => temps.push(t),
             }
-        };
+        }
+        // If we collected any temperatures, take maximum of them, otherwise return unknown
+        if temps.len() > 0 {
+            ChainTemperature::Ok(temps.drain(..).fold(0.0, |a, b| a.max(b)))
+        } else {
+            ChainTemperature::Unknown
+        }
     }
 }
 
@@ -428,6 +434,7 @@ pub struct Status {
     pub fan_feedback: fan::Feedback,
     pub fan_speed: Option<fan::Speed>,
     pub input_temperature: ChainTemperature,
+    pub temperature_accumulator: TemperatureAccumulator,
     pub decision_explained: ControlDecisionExplained,
 }
 
@@ -526,7 +533,7 @@ impl Monitor {
         loop {
             // decide hashchain state and collect temperatures
             let mut monitor = monitor.lock().await;
-            let mut cumulative_temperature = TemperatureAccumulator::new();
+            let mut temperature_accumulator = TemperatureAccumulator::new();
             let mut miner_warming_up = false;
             for chain in monitor.chains.iter() {
                 let mut chain = chain.lock().await;
@@ -542,24 +549,22 @@ impl Monitor {
                     return;
                 }
                 info!("chain {}: {:?}", chain.hashboard_idx, chain.state);
-                cumulative_temperature.add_chain_temp(chain.state.get_temperature());
+                temperature_accumulator.add_chain_temp(chain.state.get_temperature());
                 miner_warming_up |= chain.state.is_warming_up(Instant::now());
             }
+            let input_temperature = temperature_accumulator.calc_result();
 
             // Read fans
             let fan_feedback = monitor.fan_control.read_feedback();
             let num_fans_running = fan_feedback.num_fans_running();
             info!(
                 "Monitor: fan={:?} num_fans={} acc.temp.={:?}",
-                fan_feedback, num_fans_running, cumulative_temperature.temp,
+                fan_feedback, num_fans_running, input_temperature,
             );
 
             // all right, temperature has been aggregated, decide what to do
-            let decision_explained = ControlDecision::decide(
-                &monitor.config,
-                num_fans_running,
-                cumulative_temperature.temp,
-            );
+            let decision_explained =
+                ControlDecision::decide(&monitor.config, num_fans_running, input_temperature);
             info!("Monitor: {:?}", decision_explained);
             match decision_explained.decision {
                 ControlDecision::Shutdown => {
@@ -592,7 +597,8 @@ impl Monitor {
             let monitor_status = Status {
                 fan_feedback,
                 fan_speed: monitor.current_fan_speed,
-                input_temperature: cumulative_temperature.temp,
+                input_temperature,
+                temperature_accumulator,
                 decision_explained,
                 config: monitor.config.clone(),
             };
@@ -815,9 +821,10 @@ mod test {
     }
 
     fn test_acc(temp1: ChainTemperature, temp2: ChainTemperature) -> ChainTemperature {
-        let mut state = TemperatureAccumulator { temp: temp1 };
-        state.add_chain_temp(temp2);
-        state.temp
+        let mut tacc = TemperatureAccumulator::new();
+        tacc.add_chain_temp(temp1);
+        tacc.add_chain_temp(temp2);
+        tacc.calc_result()
     }
 
     /// Test temperature accumulator
