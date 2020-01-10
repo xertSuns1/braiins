@@ -840,7 +840,7 @@ impl HashChain {
         // construct I2C bus via command interface
         let i2c_bus = bm1387::i2c::Bus::new_and_init(command_context, TEMP_CHIP)
             .await
-            .expect("bus construction failed");
+            .with_context(|_| ErrorKind::Sensors("bus construction failed".into()))?;
 
         // try to probe sensor
         let sensor = sensor::probe_i2c_sensors(i2c_bus)
