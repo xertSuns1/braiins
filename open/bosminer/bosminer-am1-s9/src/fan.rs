@@ -42,6 +42,10 @@ impl Speed {
 
         Speed(speed)
     }
+
+    pub fn to_pwm(&self) -> usize {
+        self.0
+    }
 }
 
 /// Speed of fans read from feedback pins
