@@ -518,16 +518,6 @@ impl Monitor {
         self.current_fan_speed = Some(fan_speed);
     }
 
-    pub async fn get_chain_temperatures(monitor: Arc<Mutex<Self>>) -> Vec<ChainTemperature> {
-        let mut temperatures = Vec::new();
-        let monitor = monitor.lock().await;
-        for chain in monitor.chains.iter() {
-            let chain = chain.lock().await;
-            temperatures.push(chain.state.get_temperature());
-        }
-        temperatures
-    }
-
     /// Task performing temp control
     async fn tick_task(monitor: Arc<Mutex<Self>>) {
         loop {
