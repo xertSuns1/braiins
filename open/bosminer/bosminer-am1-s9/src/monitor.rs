@@ -432,6 +432,9 @@ pub struct Status {
 }
 
 /// Monitor - it holds states of all Chains and everything related to fan control
+/// TODO: move items that require locking to MonitorInner and refactor to use the Arc<Self> pattern
+///  the code is already bloated with locks and e.g. the status_receiver interface requires
+///  explicit/unnecessary locking
 pub struct Monitor {
     /// Each chain is registered here
     chains: Vec<Arc<Mutex<Chain>>>,

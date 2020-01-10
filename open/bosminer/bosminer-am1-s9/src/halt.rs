@@ -153,6 +153,8 @@ fn make_notify_pair(name: String) -> (NotifySender, NotifyReceiver) {
 
 /// Clonable receiver that can register clients for halt notification
 /// It's kept separate from `Sender` to split responsibilities.
+/// TODO: Receiver seems to have no responsibility except for client registration, consider
+///  moving it to Sender...
 #[derive(Clone)]
 pub struct Receiver {
     sender: Arc<Sender>,
