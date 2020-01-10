@@ -23,6 +23,8 @@
 use ii_async_compat::tokio;
 
 #[tokio::test]
+#[ignore]
 async fn block_mining() {
+    // FIXME: the test is not deterministic with multiple hash chains (remove `ignore` after fix)
     bosminer::test_utils::block_mining::run::<bosminer_am1_s9::Backend>(Default::default()).await;
 }
