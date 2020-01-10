@@ -199,7 +199,11 @@ impl Sender {
         self.exit_hooks.lock().await.push(Box::pin(f));
     }
 
-    /// Issue halt
+    /// Issue halt for all registered client tasks.
+    /// Note, that we have to halt tasks one by one instead of halting them at once. If set of
+    /// tasks was halted (we send them channel to reply back) and one of them would be dropped
+    /// before it had a chance to run (ie. as a result of another task that is being terminated
+    /// dropping it in termination handler) it wouldn't respond with "termination successful".
     async fn send_halt_internal(self: Arc<Self>) -> error::Result<()> {
         // take the list of clients
         let mut clients: Vec<_> = self.clients.lock().await.drain(..).collect();
