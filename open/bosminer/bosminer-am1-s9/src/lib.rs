@@ -502,12 +502,6 @@ impl HashChain {
         info!("Hashboard IP core initialized");
         self.voltage_ctrl.clone().init(halt_receiver).await?;
 
-        // This is dumb. We need to do this because we do not use freshly initialized
-        // `command_context` in between successive retries.
-        // If we don't do this, it will complain that it received wrong number of responses for
-        // the initial "GetAddressReg" command.
-        self.command_context.set_chip_count(None).await;
-
         // Try to enumerate chips until we get full number of them or we run out of attempts.
         // Some hashboard refuse to enumerate properly if they are "hot" -- they either return
         // garbage for `chip_revision` or they don't respond at all.
@@ -515,6 +509,12 @@ impl HashChain {
         loop {
             info!("Initializing hash chain {}", self.hashboard_idx);
             self.ip_core_init().await?;
+
+            // This is dumb. We need to do this because we do not use freshly initialized
+            // `command_context` in between successive retries.
+            // If we don't do this, it will complain that it received wrong number of responses for
+            // the initial "GetAddressReg" command.
+            self.command_context.set_chip_count(None).await;
 
             if let Err(e) = self
                 .reset_and_enumerate_and_init(tries_left == 0, initial_frequency)
