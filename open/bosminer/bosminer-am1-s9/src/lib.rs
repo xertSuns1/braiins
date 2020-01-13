@@ -313,6 +313,9 @@ pub struct HashChain {
     /// Do not send open-core work if this is true (some tests that test chip initialization may
     /// want to do this).
     disable_init_work: bool,
+    /// channels through which temperature status is sent
+    temperature_sender: Mutex<Option<watch::Sender<Option<sensor::Temperature>>>>,
+    temperature_receiver: watch::Receiver<Option<sensor::Temperature>>,
 }
 
 impl HashChain {
@@ -344,6 +347,9 @@ impl HashChain {
             ))?
         }
 
+        // create temperature sending channel
+        let (temperature_sender, temperature_receiver) = watch::channel(None);
+
         Ok(Self {
             chip_count: 0,
             midstate_count,
@@ -358,6 +364,8 @@ impl HashChain {
             work_tx_io: Mutex::new(Some(work_tx_io)),
             monitor_tx,
             disable_init_work: false,
+            temperature_sender: Mutex::new(Some(temperature_sender)),
+            temperature_receiver,
         })
     }
 
@@ -865,15 +873,20 @@ impl HashChain {
 
     /// Monitor watchdog task.
     /// This task sends periodically ping to monitor task. It also tries to read temperature.
-    async fn monitor_watchdog_temp_task(
-        self: Arc<Self>,
-        temperature: Arc<Mutex<Option<sensor::Temperature>>>,
-    ) {
+    async fn monitor_watchdog_temp_task(self: Arc<Self>) {
         // fetch hashboard idx
         info!(
             "Monitor watchdog temperature task started for hashchain {}",
             self.hashboard_idx
         );
+
+        // take out temperature sender channel
+        let temperature_sender = self
+            .temperature_sender
+            .lock()
+            .await
+            .take()
+            .expect("BUG: temperature sender missing");
 
         // Wait some time before trying to initialize temperature controller
         // (Otherwise RX queue might be clogged with initial work and we will not get any replies)
@@ -922,9 +935,12 @@ impl HashChain {
                 sensor::INVALID_TEMPERATURE_READING
             };
 
-            // Store for other tasks to use
-            temperature.lock().await.replace(temp.clone());
+            // Broadcast
+            temperature_sender
+                .broadcast(Some(temp.clone()))
+                .expect("temp broadcast failed");
 
+            // Send heartbeat to monitor
             self.monitor_tx
                 .unbounded_send(monitor::Message::Running(temp))
                 .expect("send failed");
@@ -967,7 +983,6 @@ impl HashChain {
         solution_sender: work::SolutionSender,
         halt_receiver: halt::Receiver,
         counter: Arc<Mutex<HashChainCounter>>,
-        temperature: Arc<Mutex<Option<sensor::Temperature>>>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
     ) {
         // spawn tx task
@@ -1006,10 +1021,7 @@ impl HashChain {
         halt_receiver
             .register_client("temperature monitor".into())
             .await
-            .spawn(Self::monitor_watchdog_temp_task(
-                self.clone(),
-                temperature.clone(),
-            ));
+            .spawn(Self::monitor_watchdog_temp_task(self.clone()));
     }
 }
 
@@ -1064,8 +1076,13 @@ pub struct HashChainRuntime {
     halt_receiver: halt::Receiver,
     #[allow(dead_code)]
     hash_chain: Arc<HashChain>,
-    temperature: Arc<Mutex<Option<sensor::Temperature>>>,
     counter: Arc<Mutex<HashChainCounter>>,
+}
+
+impl HashChainRuntime {
+    pub fn current_temperature(&self) -> Option<sensor::Temperature> {
+        self.hash_chain.temperature_receiver.borrow().clone()
+    }
 }
 
 #[derive(WorkSolverNode)]
@@ -1147,8 +1164,6 @@ impl HashChainManager {
 
         // make counter with real number of cores
         let counter = Arc::new(Mutex::new(HashChainCounter::new(hash_chain.chip_count)));
-        // temperature storage to share with other tasks
-        let temperature = Arc::new(Mutex::new(None));
 
         // spawn worker tasks for hash chain and start mining
         let hash_chain = Arc::new(hash_chain);
@@ -1159,7 +1174,6 @@ impl HashChainManager {
                 self.node.solution_sender.clone(),
                 halt_receiver.clone(),
                 counter.clone(),
-                temperature.clone(),
                 work_registry,
             )
             .await;
@@ -1170,7 +1184,6 @@ impl HashChainManager {
             halt_receiver: halt_receiver.clone(),
             hash_chain,
             counter,
-            temperature,
         });
 
         Ok(())
