@@ -866,15 +866,13 @@ impl HashChain {
     /// Monitor watchdog task.
     /// This task sends periodically ping to monitor task. It also tries to read temperature.
     async fn monitor_watchdog_temp_task(
+        self: Arc<Self>,
         temperature: Arc<Mutex<Option<sensor::Temperature>>>,
-        command_context: command::Context,
-        monitor_tx: mpsc::UnboundedSender<monitor::Message>,
     ) {
         // fetch hashboard idx
-        let hashboard_idx = command_context.get_hashboard_idx().await;
         info!(
             "Monitor watchdog temperature task started for hashchain {}",
-            hashboard_idx
+            self.hashboard_idx
         );
 
         // Wait some time before trying to initialize temperature controller
@@ -886,9 +884,9 @@ impl HashChain {
 
         // Try to probe sensor
         // This may fail - in which case we put `None` into `sensor`
-        let mut sensor = match Self::try_to_initialize_sensor(command_context)
+        let mut sensor = match Self::try_to_initialize_sensor(self.command_context.clone())
             .await
-            .with_context(|_| ErrorKind::Hashboard(hashboard_idx, "sensor error".into()))
+            .with_context(|_| ErrorKind::Hashboard(self.hashboard_idx, "sensor error".into()))
             .map_err(|e| e.into())
         {
             error::Result::Err(e) => {
@@ -906,7 +904,7 @@ impl HashChain {
                     .read_temperature()
                     .await
                     .with_context(|_| {
-                        ErrorKind::Hashboard(hashboard_idx, "temperature read fail".into())
+                        ErrorKind::Hashboard(self.hashboard_idx, "temperature read fail".into())
                     })
                     .map_err(|e| e.into())
                 {
@@ -927,7 +925,7 @@ impl HashChain {
             // Store for other tasks to use
             temperature.lock().await.replace(temp.clone());
 
-            monitor_tx
+            self.monitor_tx
                 .unbounded_send(monitor::Message::Running(temp))
                 .expect("send failed");
 
@@ -939,12 +937,13 @@ impl HashChain {
     /// Hashrate monitor task
     /// Fetch perodically information about hashrate
     #[allow(dead_code)]
-    async fn hashrate_monitor_task(command_context: command::Context) {
+    async fn hashrate_monitor_task(self: Arc<Self>) {
         info!("Hashrate monitor task started");
         loop {
             delay_for(Duration::from_secs(5)).await;
 
-            let responses = command_context
+            let responses = self
+                .command_context
                 .read_register::<bm1387::HashrateReg>(ChipAddress::All)
                 .await
                 .expect("reading hashrate_reg failed");
@@ -971,8 +970,6 @@ impl HashChain {
         temperature: Arc<Mutex<Option<sensor::Temperature>>>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
     ) {
-        let command_context = self.command_context.clone();
-
         // spawn tx task
         let tx_fifo = self.take_work_tx_io().await;
         halt_receiver
@@ -1002,7 +999,7 @@ impl HashChain {
         halt_receiver
             .register_client("hashrate monitor".into())
             .await
-            .spawn(Self::hashrate_monitor_task(command_context.clone()));
+            .spawn(Self::hashrate_monitor_task(self.clone()));
         */
 
         // spawn temperature monitor
@@ -1010,9 +1007,8 @@ impl HashChain {
             .register_client("temperature monitor".into())
             .await
             .spawn(Self::monitor_watchdog_temp_task(
+                self.clone(),
                 temperature.clone(),
-                command_context.clone(),
-                self.monitor_tx.clone(),
             ));
     }
 }
