@@ -1383,10 +1383,12 @@ impl Backend {
         // Let it shutdown the main context as well
         let monitor_config = backend_config.resolve_monitor_config();
         info!("Resolved monitor backend_config: {:?}", monitor_config);
-        let monitor = monitor::Monitor::new(monitor_config, app_halt_sender);
-        monitor::Monitor::start(monitor.clone(), app_halt_receiver.clone()).await;
-        // Make a monitor status receiver
-        let status_receiver = monitor.lock().await.status_receiver.clone();
+        let monitor = monitor::Monitor::new_and_start(
+            monitor_config,
+            app_halt_sender,
+            app_halt_receiver.clone(),
+        )
+        .await;
 
         let voltage_ctrl_backend = Arc::new(power::I2cBackend::new(0));
         let mut managers = Vec::new();
@@ -1398,8 +1400,7 @@ impl Backend {
         // build all hash chain managers and register ourselves with frontend
         for hashboard_idx in enabled_chains {
             // register monitor for this haschain
-            let monitor_tx =
-                monitor::Monitor::register_hashchain(monitor.clone(), hashboard_idx).await;
+            let monitor_tx = monitor.register_hashchain(hashboard_idx).await;
             // make pins
             let chain_config = backend_config.resolve_chain_config(hashboard_idx);
 
@@ -1434,7 +1435,7 @@ impl Backend {
                     voltage: chain_config.voltage,
                 },
                 node: hash_chain_node,
-                status_receiver: status_receiver.clone(),
+                status_receiver: monitor.status_receiver.clone(),
             };
             managers.push(hash_chain_manager);
         }

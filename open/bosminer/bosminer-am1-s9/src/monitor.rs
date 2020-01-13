@@ -392,7 +392,6 @@ pub struct TemperatureAccumulator {
 }
 
 impl TemperatureAccumulator {
-    /// Start in unknown state
     fn new() -> Self {
         Self {
             chain_temperatures: vec![],
@@ -439,14 +438,11 @@ pub struct Status {
 }
 
 /// Monitor - it holds states of all Chains and everything related to fan control
-/// TODO: move items that require locking to MonitorInner and refactor to use the Arc<Self> pattern
-///  the code is already bloated with locks and e.g. the status_receiver interface requires
-///  explicit/unnecessary locking
-pub struct Monitor {
+pub struct MonitorInner {
     /// Each chain is registered here
     chains: Vec<Arc<Mutex<Chain>>>,
     /// temp/fan control configuration
-    pub config: Config,
+    config: Config,
     /// Fan controller - can set RPM or read feedback
     fan_control: fan::Control,
     /// Last fan speed that was set
@@ -456,42 +452,49 @@ pub struct Monitor {
     /// Flag whether miner is in failure state - temperature critical, hashboards not responding,
     /// fans gone missing...
     failure_state: bool,
-    /// Context to shutdown when miner enters critical state
-    miner_shutdown: Arc<halt::Sender>,
+}
+
+/// Wrapper around `MonitorInner` with immutable fields
+pub struct Monitor {
     /// Broadcast channel to send/receive monitor status
     status_sender: watch::Sender<Option<Status>>,
     pub status_receiver: watch::Receiver<Option<Status>>,
+
+    /// Context to shutdown when miner enters critical state
+    miner_shutdown: Arc<halt::Sender>,
+
+    /// Inner context
+    inner: Mutex<MonitorInner>,
 }
 
 impl Monitor {
-    pub fn new(config: Config, miner_shutdown: Arc<halt::Sender>) -> Arc<Mutex<Self>> {
+    /// Construct a new monitor and start it
+    ///
+    /// * `miner_shutdown` - halt sender to shutdown the whole miner in case of a failure
+    /// * `halt_receiver` - termination context in which to start the monitor
+    pub async fn new_and_start(
+        config: Config,
+        miner_shutdown: Arc<halt::Sender>,
+        halt_receiver: halt::Receiver,
+    ) -> Arc<Self> {
         let (status_sender, status_receiver) = watch::channel(None);
 
-        Arc::new(Mutex::new(Self {
+        let inner = MonitorInner {
             chains: Vec::new(),
             config,
             fan_control: fan::Control::new().expect("failed initializing fan controller"),
             pid: fan::pid::TempControl::new(),
-            miner_shutdown,
             failure_state: false,
             current_fan_speed: None,
+        };
+
+        let monitor = Arc::new(Monitor {
+            miner_shutdown,
             status_sender,
             status_receiver,
-        }))
-    }
+            inner: Mutex::new(inner),
+        });
 
-    /// Handler for application shutdown - just stop the fans
-    async fn termination_handler(monitor: Arc<Mutex<Self>>) {
-        let mut monitor = monitor.lock().await;
-        // Decide whether to leave fans on (depending on whether we are in failure state or not)
-        if monitor.failure_state {
-            monitor.set_fan_speed(fan::Speed::FULL_SPEED);
-        } else {
-            monitor.set_fan_speed(fan::Speed::STOPPED);
-        }
-    }
-
-    pub async fn start(monitor: Arc<Mutex<Self>>, halt_receiver: halt::Receiver) {
         halt_receiver
             .register_client("monitor termination".into())
             .await
@@ -501,104 +504,122 @@ impl Monitor {
             .register_client("monitor".into())
             .await
             .spawn(Self::tick_task(monitor.clone()));
+
+        monitor
+    }
+
+    /// Handler that is run when monitor is signalized with shutdown.
+    /// Just stops the fans (depending on whether it's in failure state).
+    async fn termination_handler(self: Arc<Self>) {
+        let mut inner = self.inner.lock().await;
+        // Decide whether to leave fans on (depending on whether we are in failure state or not)
+        if inner.failure_state {
+            self.set_fan_speed(&mut inner, fan::Speed::FULL_SPEED);
+        } else {
+            self.set_fan_speed(&mut inner, fan::Speed::STOPPED);
+        }
     }
 
     /// Shutdown miner
-    /// TODO: do a more graceful shutdown
-    async fn shutdown(&mut self, reason: String) {
+    async fn shutdown(&self, inner: &mut MonitorInner, reason: String) {
         error!("Monitor task declared miner shutdown: {}", reason);
-        self.failure_state = true;
+        inner.failure_state = true;
         self.miner_shutdown.clone().send_halt().await;
     }
 
     /// Set fan speed
-    fn set_fan_speed(&mut self, fan_speed: fan::Speed) {
+    fn set_fan_speed(&self, inner: &mut MonitorInner, fan_speed: fan::Speed) {
         info!("Monitor: setting fan to {:?}", fan_speed);
-        self.fan_control.set_speed(fan_speed);
-        self.current_fan_speed = Some(fan_speed);
+        inner.fan_control.set_speed(fan_speed);
+        inner.current_fan_speed = Some(fan_speed);
+    }
+
+    /// One tick of temperature/fan controller
+    ///
+    /// TODO: Run this tick every time new temperature is submitted to lower temp controller
+    ///   latency.
+    async fn do_tick(&self) {
+        // decide hashchain state and collect temperatures
+        let mut inner = self.inner.lock().await;
+        let mut temperature_accumulator = TemperatureAccumulator::new();
+        let mut miner_warming_up = false;
+        for chain in inner.chains.iter() {
+            let mut chain = chain.lock().await;
+            chain.state.tick(Instant::now());
+
+            if let ChainState::Broken(reason) = chain.state {
+                // TODO: here comes "Shutdown"
+                let reason = format!("Chain {} is broken: {}", chain.hashboard_idx, reason);
+                // drop `chain` here to drop iterator which holds immutable reference
+                // to `monitor`
+                drop(chain);
+                self.shutdown(&mut inner, reason).await;
+                return;
+            }
+            info!("chain {}: {:?}", chain.hashboard_idx, chain.state);
+            temperature_accumulator.add_chain_temp(chain.state.get_temperature());
+            miner_warming_up |= chain.state.is_warming_up(Instant::now());
+        }
+        let input_temperature = temperature_accumulator.calc_result();
+
+        // Read fans
+        let fan_feedback = inner.fan_control.read_feedback();
+        let num_fans_running = fan_feedback.num_fans_running();
+        info!(
+            "Monitor: fan={:?} num_fans={} acc.temp.={:?}",
+            fan_feedback, num_fans_running, input_temperature,
+        );
+
+        // all right, temperature has been aggregated, decide what to do
+        let decision_explained =
+            ControlDecision::decide(&inner.config, num_fans_running, input_temperature);
+        info!("Monitor: {:?}", decision_explained);
+        match decision_explained.decision {
+            ControlDecision::Shutdown => {
+                self.shutdown(&mut inner, decision_explained.reason.into())
+                    .await;
+            }
+            ControlDecision::UseFixedSpeed(fan_speed) => {
+                self.set_fan_speed(&mut inner, fan_speed);
+            }
+            ControlDecision::UsePid {
+                target_temp,
+                input_temp,
+            } => {
+                if miner_warming_up {
+                    inner.pid.set_warm_up_limits();
+                } else {
+                    inner.pid.set_normal_limits();
+                }
+                inner.pid.set_target(target_temp.into());
+                let speed = inner.pid.update(input_temp.into());
+                info!(
+                    "Monitor: input={} target={} output={:?}",
+                    input_temp, target_temp, speed
+                );
+                self.set_fan_speed(&mut inner, speed);
+            }
+            ControlDecision::Nothing => {}
+        }
+
+        // Broadcast `Status`
+        let monitor_status = Status {
+            fan_feedback,
+            fan_speed: inner.current_fan_speed,
+            input_temperature,
+            temperature_accumulator,
+            decision_explained,
+            config: inner.config.clone(),
+        };
+        self.status_sender
+            .broadcast(Some(monitor_status))
+            .expect("broadcast failed");
     }
 
     /// Task performing temp control
-    async fn tick_task(monitor: Arc<Mutex<Self>>) {
+    async fn tick_task(self: Arc<Self>) {
         loop {
-            // decide hashchain state and collect temperatures
-            let mut monitor = monitor.lock().await;
-            let mut temperature_accumulator = TemperatureAccumulator::new();
-            let mut miner_warming_up = false;
-            for chain in monitor.chains.iter() {
-                let mut chain = chain.lock().await;
-                chain.state.tick(Instant::now());
-
-                if let ChainState::Broken(reason) = chain.state {
-                    // TODO: here comes "Shutdown"
-                    let reason = format!("Chain {} is broken: {}", chain.hashboard_idx, reason);
-                    // drop `chain` here to drop iterator which holds immutable reference
-                    // to `monitor`
-                    drop(chain);
-                    monitor.shutdown(reason).await;
-                    return;
-                }
-                info!("chain {}: {:?}", chain.hashboard_idx, chain.state);
-                temperature_accumulator.add_chain_temp(chain.state.get_temperature());
-                miner_warming_up |= chain.state.is_warming_up(Instant::now());
-            }
-            let input_temperature = temperature_accumulator.calc_result();
-
-            // Read fans
-            let fan_feedback = monitor.fan_control.read_feedback();
-            let num_fans_running = fan_feedback.num_fans_running();
-            info!(
-                "Monitor: fan={:?} num_fans={} acc.temp.={:?}",
-                fan_feedback, num_fans_running, input_temperature,
-            );
-
-            // all right, temperature has been aggregated, decide what to do
-            let decision_explained =
-                ControlDecision::decide(&monitor.config, num_fans_running, input_temperature);
-            info!("Monitor: {:?}", decision_explained);
-            match decision_explained.decision {
-                ControlDecision::Shutdown => {
-                    monitor.shutdown(decision_explained.reason.into()).await;
-                }
-                ControlDecision::UseFixedSpeed(fan_speed) => {
-                    monitor.set_fan_speed(fan_speed);
-                }
-                ControlDecision::UsePid {
-                    target_temp,
-                    input_temp,
-                } => {
-                    if miner_warming_up {
-                        monitor.pid.set_warm_up_limits();
-                    } else {
-                        monitor.pid.set_normal_limits();
-                    }
-                    monitor.pid.set_target(target_temp.into());
-                    let speed = monitor.pid.update(input_temp.into());
-                    info!(
-                        "Monitor: input={} target={} output={:?}",
-                        input_temp, target_temp, speed
-                    );
-                    monitor.set_fan_speed(speed);
-                }
-                ControlDecision::Nothing => {}
-            }
-
-            // Broadcast `Status`
-            let monitor_status = Status {
-                fan_feedback,
-                fan_speed: monitor.current_fan_speed,
-                input_temperature,
-                temperature_accumulator,
-                decision_explained,
-                config: monitor.config.clone(),
-            };
-            monitor
-                .status_sender
-                .broadcast(Some(monitor_status))
-                .expect("broadcast failed");
-
-            // unlock monitor
-            drop(monitor);
+            self.do_tick().await;
             // TODO: find some of kind "run every x secs" function
             delay_for(TICK_LENGTH).await;
         }
@@ -614,18 +635,23 @@ impl Monitor {
 
     /// Registers hashchain within monitor
     /// The `hashboard_idx` parameter is for debugging purposes
-    pub async fn register_hashchain(
-        monitor: Arc<Mutex<Self>>,
-        hashboard_idx: usize,
-    ) -> mpsc::UnboundedSender<Message> {
+    pub async fn register_hashchain(&self, hashboard_idx: usize) -> mpsc::UnboundedSender<Message> {
         let (tx, rx) = mpsc::unbounded();
         let chain = Arc::new(Mutex::new(Chain::new(hashboard_idx)));
         {
-            let mut monitor = monitor.lock().await;
-            monitor.chains.push(chain.clone());
+            let mut inner = self.inner.lock().await;
+            inner.chains.push(chain.clone());
             tokio::spawn(Self::recv_task(chain, rx));
         }
         tx
+    }
+
+    pub async fn with_configuration<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut Config) -> R,
+    {
+        let mut inner = self.inner.lock().await;
+        f(&mut inner.config)
     }
 }
 
