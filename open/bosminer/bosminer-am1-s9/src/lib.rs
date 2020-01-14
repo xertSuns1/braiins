@@ -444,8 +444,9 @@ impl HashChain {
         Ok(())
     }
 
-    /// Reset hashboard and try to enumerate the chips
-    /// If not enough chips were found and this is not the `last_try`, treat it as error.
+    /// Reset hashboard and try to enumerate the chips.
+    /// If not enough chips were found and `accept_less_chips` is not specified,
+    /// treat it as error.
     async fn reset_and_enumerate_and_init(
         &mut self,
         accept_less_chips: bool,
