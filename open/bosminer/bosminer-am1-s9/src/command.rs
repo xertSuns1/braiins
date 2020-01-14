@@ -232,8 +232,8 @@ impl InnerContext {
 
     /// Set number of chips on chain (and implicitly enable check for
     /// number of replies on broadcast messages)
-    fn set_chip_count(&mut self, chip_count: Option<usize>) {
-        self.chip_count = chip_count;
+    fn set_chip_count(&mut self, chip_count: usize) {
+        self.chip_count = Some(chip_count);
     }
 
     pub fn new(command_io: io::CommandRxTx) -> Self {
@@ -276,7 +276,7 @@ impl Context {
         inner.send_raw_command(cmd, wait).await
     }
 
-    pub async fn set_chip_count(&self, chip_count: Option<usize>) {
+    pub async fn set_chip_count(&self, chip_count: usize) {
         let mut inner = self.inner.lock().await;
         inner.set_chip_count(chip_count);
     }

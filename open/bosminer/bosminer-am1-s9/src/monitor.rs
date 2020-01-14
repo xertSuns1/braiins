@@ -143,7 +143,7 @@ impl ChainState {
                 _ => self.bad_transition(),
             },
             Message::Off => match *self {
-                ChainState::Running { .. } => *self = ChainState::Off,
+                ChainState::On(_) | ChainState::Running { .. } => *self = ChainState::Off,
                 _ => self.bad_transition(),
             },
         }
@@ -746,7 +746,7 @@ mod test {
         );
         assert_variant!(
             send(ChainState::On(now), later, Message::Off),
-            ChainState::Broken(_)
+            ChainState::Off
         );
 
         assert_variant!(

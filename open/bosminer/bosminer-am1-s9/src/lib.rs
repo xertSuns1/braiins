@@ -448,7 +448,7 @@ impl HashChain {
     /// If not enough chips were found and this is not the `last_try`, treat it as error.
     async fn reset_and_enumerate_and_init(
         &mut self,
-        last_try: bool,
+        accept_less_chips: bool,
         initial_frequency: &FrequencySettings,
     ) -> error::Result<()> {
         // Reset hashboard, toggle voltage
@@ -467,12 +467,11 @@ impl HashChain {
 
         // Figure out if we found enough chips
         info!("Discovered {} chips", self.chip_count);
-        self.command_context
-            .set_chip_count(Some(self.chip_count))
-            .await;
+        self.command_context.set_chip_count(self.chip_count).await;
 
-        // Not full number of chips? Let's try again if we have tries left
-        if self.chip_count < EXPECTED_CHIPS_ON_CHAIN && !last_try {
+        // If we don't have full number of chips and we do not want incomplete chain, then raise
+        // an error
+        if self.chip_count < EXPECTED_CHIPS_ON_CHAIN && !accept_less_chips {
             Err(ErrorKind::ChipEnumeration(
                 "Not enough chips on chain".into(),
             ))?;
@@ -502,55 +501,17 @@ impl HashChain {
         halt_receiver: halt::Receiver,
         initial_frequency: &FrequencySettings,
         initial_voltage: power::Voltage,
+        accept_less_chips: bool,
     ) -> error::Result<Arc<Mutex<registry::WorkRegistry>>> {
-        info!("Registering ourselves with monitor");
-        self.monitor_tx
-            .unbounded_send(monitor::Message::On)
-            .expect("send failed");
         info!("Hashboard IP core initialized");
         self.voltage_ctrl.clone().init(halt_receiver).await?;
 
-        // Try to enumerate chips until we get full number of them or we run out of attempts.
-        // Some hashboard refuse to enumerate properly if they are "hot" -- they either return
-        // garbage for `chip_revision` or they don't respond at all.
-        let mut tries_left: usize = ENUM_RETRY_COUNT;
-        loop {
-            info!("Initializing hash chain {}", self.hashboard_idx);
-            self.ip_core_init().await?;
+        info!("Initializing hash chain {}", self.hashboard_idx);
+        self.ip_core_init().await?;
 
-            // This is dumb. We need to do this because we do not use freshly initialized
-            // `command_context` in between successive retries.
-            // If we don't do this, it will complain that it received wrong number of responses for
-            // the initial "GetAddressReg" command.
-            self.command_context.set_chip_count(None).await;
-
-            if let Err(e) = self
-                .reset_and_enumerate_and_init(tries_left == 0, initial_frequency)
-                .await
-            {
-                warn!("Chip enumeration failed: {}", e);
-                match e.kind() {
-                    error::ErrorKind::ChipEnumeration(_) | error::ErrorKind::Hashchip(_) => {
-                        // This is enumeration-related reason, try to retry
-                        if tries_left == 0 {
-                            error!("No tries left");
-                            return Err(e);
-                        }
-                    }
-                    _ => {
-                        // Some other error, we are doomed
-                        return Err(e);
-                    }
-                }
-            } else {
-                // Success!
-                break;
-            }
-
-            info!("Retrying enumeration...");
-            tries_left -= 1;
-            delay_for(ENUM_RETRY_DELAY).await;
-        }
+        // Enumerate chips
+        self.reset_and_enumerate_and_init(accept_less_chips, initial_frequency)
+            .await?;
 
         // Build shared work registry
         // TX fifo determines the size of work registry
@@ -1127,12 +1088,11 @@ pub struct HashChainManager {
 
 impl HashChainManager {
     /// Initialize and start mining on hashchain
-    async fn start(&mut self) -> error::Result<()> {
-        // check if we are running
-        if self.runtime.is_some() {
-            panic!("trying to start running chain");
-        }
-
+    async fn start_one_try(
+        &self,
+        halt_receiver: halt::Receiver,
+        accept_less_chips: bool,
+    ) -> error::Result<(Arc<HashChain>, Arc<Mutex<HashChainCounter>>)> {
         // make us a hash chain
         let mut hash_chain = HashChain::new(
             self.node.reset_pin.clone(),
@@ -1145,9 +1105,6 @@ impl HashChainManager {
         )
         .expect("hashchain instantiation failed");
 
-        // construct a way to signal hashchain halt
-        let (halt_sender, halt_receiver) = halt::make_pair(HALT_TIMEOUT);
-
         // initialize it
         // halt is required to stop voltage heart-beat task
         let work_registry = hash_chain
@@ -1155,12 +1112,9 @@ impl HashChainManager {
                 halt_receiver.clone(),
                 &self.params.frequency,
                 self.params.voltage,
+                accept_less_chips,
             )
-            .await
-            .with_context(|_| {
-                ErrorKind::Hashboard(self.node.hashboard_idx, "hashchain initialization".into())
-            })
-            .expect("hashchain initialization failed");
+            .await?;
 
         // make counter with real number of cores
         let counter = Arc::new(Mutex::new(HashChainCounter::new(hash_chain.chip_count)));
@@ -1178,15 +1132,74 @@ impl HashChainManager {
             )
             .await;
 
-        // remember we are running
-        self.runtime = Some(HashChainRuntime {
-            halt_sender: halt_sender.clone(),
-            halt_receiver: halt_receiver.clone(),
-            hash_chain,
-            counter,
-        });
+        Ok((hash_chain, counter))
+    }
 
-        Ok(())
+    async fn start(&mut self) -> error::Result<()> {
+        // check if we are running
+        if self.runtime.is_some() {
+            panic!("trying to start running chain");
+        }
+
+        // if miner initialization fails, retry
+        let mut tries_left = ENUM_RETRY_COUNT;
+
+        loop {
+            // construct a way to signal hashchain halt
+            let (halt_sender, halt_receiver) = halt::make_pair(HALT_TIMEOUT);
+
+            info!(
+                "Registering hashboard {} with monitor",
+                self.node.hashboard_idx
+            );
+            self.node
+                .monitor_tx
+                .unbounded_send(monitor::Message::On)
+                .expect("BUG: send failed");
+
+            // start this hashchain
+            match self
+                .start_one_try(halt_receiver.clone(), tries_left == 0)
+                .await
+            {
+                // start successful
+                Ok((hash_chain, counter)) => {
+                    // remember we are running
+                    self.runtime = Some(HashChainRuntime {
+                        halt_sender: halt_sender,
+                        halt_receiver: halt_receiver,
+                        counter,
+                        hash_chain,
+                    });
+                    // we've been started
+                    return Ok(());
+                }
+                // start failed
+                Err(e) => {
+                    // kill voltage controller et. al of the failed instance
+                    halt_sender.clone().send_halt().await;
+                    // deregister us
+                    self.node
+                        .monitor_tx
+                        .unbounded_send(monitor::Message::Off)
+                        .expect("BUG: send failed");
+
+                    error!("Chain {} start failed: {}", self.node.hashboard_idx, e);
+
+                    // retry if possible
+                    if tries_left == 0 {
+                        error!("No tries left");
+                        return Err(e)?;
+                    } else {
+                        tries_left -= 1;
+                        // TODO: wait with locks unlocked()! Otherwise no-one can halt the miner
+                        // This is not possible with current lock design, but fix this ASAP!
+                        delay_for(ENUM_RETRY_DELAY).await;
+                        info!("Retrying chain {} start...", self.node.hashboard_idx);
+                    }
+                }
+            }
+        }
     }
 
     /// Stop running hashchain
