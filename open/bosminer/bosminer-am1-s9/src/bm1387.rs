@@ -624,7 +624,6 @@ pub static PRECOMPUTED_PLL: Lazy<Vec<PllFrequency>> =
     Lazy::new(|| PllFrequency::precompute_pll_table(crate::CHIP_OSC_CLK_HZ));
 
 // compute distance between two usizes
-// TODO: use something from std lib
 fn distance(x: usize, y: usize) -> usize {
     if x >= y {
         x - y
