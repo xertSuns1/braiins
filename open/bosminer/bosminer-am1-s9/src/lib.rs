@@ -1038,6 +1038,7 @@ pub struct HashChainRuntime {
     halt_receiver: halt::Receiver,
     #[allow(dead_code)]
     hash_chain: Arc<HashChain>,
+    #[allow(dead_code)]
     counter: Arc<Mutex<HashChainCounter>>,
 }
 
