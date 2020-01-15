@@ -843,6 +843,7 @@ impl HashChain {
     /// Monitor watchdog task.
     /// This task sends periodically ping to monitor task. It also tries to read temperature.
     async fn monitor_watchdog_temp_task(
+        temperature: Arc<Mutex<Option<sensor::Temperature>>>,
         command_context: command::Context,
         monitor_tx: mpsc::UnboundedSender<monitor::Message>,
     ) {
@@ -900,6 +901,9 @@ impl HashChain {
                 sensor::INVALID_TEMPERATURE_READING
             };
 
+            // Store for other tasks to use
+            temperature.lock().await.replace(temp.clone());
+
             monitor_tx
                 .unbounded_send(monitor::Message::Running(temp))
                 .expect("send failed");
@@ -941,6 +945,7 @@ impl HashChain {
         solution_sender: work::SolutionSender,
         halt_receiver: halt::Receiver,
         counter: Arc<Mutex<HashChainCounter>>,
+        temperature: Arc<Mutex<Option<sensor::Temperature>>>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
     ) {
         let command_context = self.command_context.clone();
@@ -982,6 +987,7 @@ impl HashChain {
             .register_client("temperature monitor".into())
             .await
             .spawn(Self::monitor_watchdog_temp_task(
+                temperature.clone(),
                 command_context.clone(),
                 self.monitor_tx.clone(),
             ));
@@ -1039,7 +1045,7 @@ pub struct HashChainRuntime {
     halt_receiver: halt::Receiver,
     #[allow(dead_code)]
     hash_chain: Arc<HashChain>,
-    #[allow(dead_code)]
+    temperature: Arc<Mutex<Option<sensor::Temperature>>>,
     counter: Arc<Mutex<HashChainCounter>>,
 }
 
@@ -1115,6 +1121,8 @@ impl HashChainManager {
 
         // make counter with real number of cores
         let counter = Arc::new(Mutex::new(HashChainCounter::new(hash_chain.chip_count)));
+        // temperature storage to share with other tasks
+        let temperature = Arc::new(Mutex::new(None));
 
         // spawn worker tasks for hash chain and start mining
         let hash_chain = Arc::new(hash_chain);
@@ -1125,6 +1133,7 @@ impl HashChainManager {
                 self.node.solution_sender.clone(),
                 halt_receiver.clone(),
                 counter.clone(),
+                temperature.clone(),
                 work_registry,
             )
             .await;
@@ -1135,6 +1144,7 @@ impl HashChainManager {
             halt_receiver: halt_receiver.clone(),
             hash_chain,
             counter,
+            temperature,
         });
 
         Ok(())
