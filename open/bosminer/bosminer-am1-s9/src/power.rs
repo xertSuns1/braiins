@@ -94,6 +94,7 @@ pub const PIC_PROGRAM_PATH: &'static str = "/etc/bosminer/hash_s8_app.txt";
 pub struct Voltage(f32);
 
 impl Voltage {
+    /// TODO: consider whether this should return an error if the specified voltage is out of range
     pub const fn from_volts(voltage: f32) -> Self {
         Self(voltage)
     }
@@ -107,13 +108,21 @@ impl Voltage {
     /// bmminer source: getPICvoltageFromValue, getVolValueFromPICvoltage
     const VOLT_CONV_COEF_1: f32 = 1608.420446;
     const VOLT_CONV_COEF_2: f32 = 170.423497;
+    pub const MIN_VOLTS: f32 = (Self::VOLT_CONV_COEF_1 - 255.0) / Self::VOLT_CONV_COEF_2;
+    pub const MAX_VOLTS: f32 = Self::VOLT_CONV_COEF_1 / Self::VOLT_CONV_COEF_2;
 
     pub fn as_pic_value(&self) -> error::Result<u8> {
         let pic_val = (Self::VOLT_CONV_COEF_1 - Self::VOLT_CONV_COEF_2 * self.0).round();
         if pic_val >= 0.0 && pic_val <= 255.0 {
             Ok(pic_val as u8)
         } else {
-            Err(ErrorKind::Power("requested voltage out of range".to_string()).into())
+            Err(ErrorKind::Power(format!(
+                "requested voltage {} out of range allowed range <{};{}>",
+                self.0,
+                Self::MIN_VOLTS,
+                Self::MAX_VOLTS
+            ))
+            .into())
         }
     }
 
