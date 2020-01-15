@@ -642,14 +642,14 @@ pub struct PllFrequency {
 
 impl PllFrequency {
     /// Minimum and maximum supported frequency
-    const MIN_FREQ: usize = 100_000_000;
-    const MAX_FREQ: usize = 1_200_000_000;
-    const BIN_SIZE: usize = 1_000_000;
+    const MIN_FREQ_HZ: usize = 100_000_000;
+    const MAX_FREQ_HZ: usize = 1_200_000_000;
+    const BIN_SIZE_HZ: usize = 1_000_000;
 
     /// Precompute divider table (which sorted list of frequencies and corresponding dividers)
     fn precompute_pll_table(xtal_freq: usize) -> Vec<Self> {
-        let min_mhz = Self::MIN_FREQ / Self::BIN_SIZE;
-        let max_mhz = Self::MAX_FREQ / Self::BIN_SIZE;
+        let min_mhz = Self::MIN_FREQ_HZ / Self::BIN_SIZE_HZ;
+        let max_mhz = Self::MAX_FREQ_HZ / Self::BIN_SIZE_HZ;
         // One bin for each MHz in the range [0; MAX_MHZ].
         // Each bin contains either nothing or the best approximation found so far.
         let mut freq_bins: Vec<Option<Self>> = vec![None; max_mhz + 1];
@@ -669,13 +669,13 @@ impl PllFrequency {
                         // Calculate frequency set by this divider
                         let frequency = reg.calc(xtal_freq);
                         // Round to nearest MHz to get bin number
-                        let bin_no = (frequency + 500_000) / Self::BIN_SIZE;
+                        let bin_no = (frequency + 500_000) / Self::BIN_SIZE_HZ;
                         if bin_no < min_mhz || bin_no > max_mhz {
                             // Frequency out of range
                             continue;
                         }
                         let bin = &mut freq_bins[bin_no];
-                        let bin_freq = bin_no * Self::BIN_SIZE;
+                        let bin_freq = bin_no * Self::BIN_SIZE_HZ;
 
                         // Check if we can improve divider we already have
                         if let Some(PllFrequency {
