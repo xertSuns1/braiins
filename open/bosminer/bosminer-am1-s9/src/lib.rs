@@ -1023,9 +1023,11 @@ impl HashChainManager {
                 .unbounded_send(monitor::Message::On)
                 .expect("BUG: send failed");
 
-            // start this hashchain
+            // Start this hashchain
+            // If we've already exhausted half of our tries, then stop worrying about having
+            // less chips than expected (63).
             match self
-                .start_one_try(halt_receiver.clone(), tries_left == 0)
+                .start_one_try(halt_receiver.clone(), tries_left <= ENUM_RETRY_COUNT / 2)
                 .await
             {
                 // start successful
