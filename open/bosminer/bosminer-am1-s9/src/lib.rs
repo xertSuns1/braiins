@@ -869,26 +869,32 @@ impl fmt::Display for HashChain {
     }
 }
 
+type Frequency = usize;
+
 #[derive(Clone)]
 pub struct FrequencySettings {
-    pub chip: Vec<usize>,
+    pub chip: Vec<Frequency>,
 }
 
 impl FrequencySettings {
     /// Build frequency settings with all chips having the same frequency
-    fn from_frequency(frequency: usize) -> Self {
+    pub fn from_frequency(frequency: usize) -> Self {
         Self {
             chip: vec![frequency; MAX_CHIPS_ON_CHAIN],
         }
     }
 
+    pub fn total(&self) -> u64 {
+        self.chip.iter().fold(0, |total_f, &f| total_f + f as u64)
+    }
+
     #[allow(dead_code)]
-    fn min(&self) -> usize {
+    pub fn min(&self) -> usize {
         *self.chip.iter().min().expect("BUG: no chips on chain")
     }
 
     #[allow(dead_code)]
-    fn max(&self) -> usize {
+    pub fn max(&self) -> usize {
         *self.chip.iter().max().expect("BUG: no chips on chain")
     }
 
@@ -896,6 +902,28 @@ impl FrequencySettings {
         assert!(self.chip.len() > 0, "BUG: no chips on chain");
         let sum: u64 = self.chip.iter().map(|frequency| *frequency as u64).sum();
         (sum / self.chip.len() as u64) as usize
+    }
+
+    fn pretty_frequency(freq: usize) -> String {
+        format!("{:.01} MHz", (freq as f32) / 1_000_000.0)
+    }
+}
+
+impl fmt::Display for FrequencySettings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let min = self.min();
+        let max = self.max();
+        if min == max {
+            write!(f, "{} (all chips)", Self::pretty_frequency(min))
+        } else {
+            write!(
+                f,
+                "{} (min {}, max {})",
+                Self::pretty_frequency((self.total() / (self.chip.len() as u64)) as Frequency),
+                Self::pretty_frequency(min),
+                Self::pretty_frequency(max)
+            )
+        }
     }
 }
 
