@@ -147,6 +147,12 @@ impl Voltage {
     }
 }
 
+impl std::fmt::Display for Voltage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.02} V", self.as_volts())
+    }
+}
+
 /// Type that represents an I2C voltage controller communication backend
 /// S9 devices have a single I2C master that manages the voltage controllers on all hashboards.
 /// Therefore, this will be a single communication instance.
