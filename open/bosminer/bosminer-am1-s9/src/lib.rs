@@ -21,7 +21,7 @@
 // contact us at opensource@braiins.com.
 
 mod async_i2c;
-mod bm1387;
+pub mod bm1387;
 mod cgminer;
 pub mod command;
 pub mod config;
@@ -112,124 +112,6 @@ lazy_static! {
     /// What is our target?
     static ref ASIC_TARGET: ii_bitcoin::Target =
         ii_bitcoin::Target::from_pool_difficulty(config::ASIC_DIFFICULTY);
-}
-
-/// Core address space size (it should be 114, but the addresses are non-consecutive)
-const CORE_ADR_SPACE_SIZE: usize = 128;
-
-/// Per-core counters for valid nonces/errors
-#[derive(Clone, Copy)]
-pub struct CoreCounter {
-    valid: usize,
-    errors: usize,
-}
-
-impl CoreCounter {
-    pub fn reset(&mut self) {
-        self.valid = 0;
-        self.errors = 0;
-    }
-
-    pub fn new() -> Self {
-        Self {
-            valid: 0,
-            errors: 0,
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct ChipCounter {
-    core: [CoreCounter; CORE_ADR_SPACE_SIZE],
-    valid: usize,
-    errors: usize,
-    started: Instant,
-}
-
-impl ChipCounter {
-    pub fn reset(&mut self) {
-        self.valid = 0;
-        self.errors = 0;
-        for core in self.core.iter_mut() {
-            core.reset();
-        }
-        self.started = Instant::now();
-    }
-
-    pub fn core_bitmask(&self) -> u128 {
-        let mut mask: u128 = 0;
-        for (id, core) in self.core.iter().enumerate() {
-            if core.valid > 0 {
-                mask |= 1u128 << id;
-            }
-        }
-        mask
-    }
-
-    pub fn dead_cores(&self) -> usize {
-        let mask = self.core_bitmask();
-        let mask = ((mask << 1) | (mask >> 1) | mask) & 0x1ffffffffffffff01ffffffffffffff;
-        114 - mask.count_ones() as usize
-    }
-
-    pub fn new() -> Self {
-        Self {
-            valid: 0,
-            errors: 0,
-            core: [CoreCounter::new(); CORE_ADR_SPACE_SIZE],
-            started: Instant::now(),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct HashChainCounter {
-    chip: Vec<ChipCounter>,
-    valid: usize,
-    errors: usize,
-    started: Instant,
-}
-
-impl HashChainCounter {
-    pub fn reset(&mut self) {
-        self.valid = 0;
-        self.errors = 0;
-        for chip in self.chip.iter_mut() {
-            chip.reset();
-        }
-        self.started = Instant::now();
-    }
-
-    pub fn add_valid(&mut self, addr: bm1387::CoreAddress) {
-        if addr.chip >= self.chip.len() {
-            // nonce from non-existent chip
-            // TODO: what to do?
-            return;
-        }
-        self.valid += 1;
-        self.chip[addr.chip].valid += 1;
-        self.chip[addr.chip].core[addr.core].valid += 1;
-    }
-
-    pub fn add_error(&mut self, addr: bm1387::CoreAddress) {
-        if addr.chip >= self.chip.len() {
-            // nonce from non-existent chip
-            // TODO: what to do?
-            return;
-        }
-        self.errors += 1;
-        self.chip[addr.chip].errors += 1;
-        self.chip[addr.chip].core[addr.core].errors += 1;
-    }
-
-    pub fn new(chip_count: usize) -> Self {
-        Self {
-            valid: 0,
-            errors: 0,
-            started: Instant::now(),
-            chip: vec![ChipCounter::new(); chip_count],
-        }
-    }
 }
 
 /// Type representing plug pin
@@ -754,7 +636,6 @@ impl HashChain {
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         mut rx_fifo: io::WorkRx,
         solution_sender: work::SolutionSender,
-        counter: Arc<Mutex<HashChainCounter>>,
     ) {
         // solution receiving/filtering part
         loop {
@@ -771,7 +652,6 @@ impl HashChain {
                     if work_item.initial_work {
                         continue;
                     }
-                    let core_addr = bm1387::CoreAddress::new(solution.nonce);
                     let status = work_item.insert_solution(solution);
 
                     // work item detected a new unique solution, we will push it for further processing
@@ -780,18 +660,10 @@ impl HashChain {
                             let hash = unique_solution.hash();
                             if !hash.meets(&ASIC_TARGET) {
                                 trace!("Solution from hashchain not hitting ASIC target");
-                                counter.lock().await.add_error(core_addr);
                             } else {
-                                counter.lock().await.add_valid(core_addr);
                             }
                             solution_sender.send(unique_solution);
                         }
-                    }
-                    if status.duplicate {
-                        counter.lock().await.add_error(core_addr);
-                    }
-                    if status.mismatched_nonce {
-                        counter.lock().await.add_error(core_addr);
                     }
                 }
                 None => {
@@ -944,7 +816,6 @@ impl HashChain {
         work_generator: work::Generator,
         solution_sender: work::SolutionSender,
         halt_receiver: halt::Receiver,
-        counter: Arc<Mutex<HashChainCounter>>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
     ) {
         // spawn tx task
@@ -967,7 +838,6 @@ impl HashChain {
                 work_registry.clone(),
                 rx_fifo,
                 solution_sender,
-                counter,
             ));
 
         // spawn hashrate monitor
@@ -1038,8 +908,6 @@ pub struct HashChainRuntime {
     halt_receiver: halt::Receiver,
     #[allow(dead_code)]
     hash_chain: Arc<HashChain>,
-    #[allow(dead_code)]
-    counter: Arc<Mutex<HashChainCounter>>,
 }
 
 impl HashChainRuntime {
@@ -1094,7 +962,7 @@ impl HashChainManager {
         &self,
         halt_receiver: halt::Receiver,
         accept_less_chips: bool,
-    ) -> error::Result<(Arc<HashChain>, Arc<Mutex<HashChainCounter>>)> {
+    ) -> error::Result<Arc<HashChain>> {
         // make us a hash chain
         let mut hash_chain = HashChain::new(
             self.node.reset_pin.clone(),
@@ -1118,9 +986,6 @@ impl HashChainManager {
             )
             .await?;
 
-        // make counter with real number of cores
-        let counter = Arc::new(Mutex::new(HashChainCounter::new(hash_chain.chip_count)));
-
         // spawn worker tasks for hash chain and start mining
         let hash_chain = Arc::new(hash_chain);
         hash_chain
@@ -1129,12 +994,11 @@ impl HashChainManager {
                 self.node.work_generator.clone(),
                 self.node.solution_sender.clone(),
                 halt_receiver.clone(),
-                counter.clone(),
                 work_registry,
             )
             .await;
 
-        Ok((hash_chain, counter))
+        Ok(hash_chain)
     }
 
     async fn start(&mut self) -> error::Result<()> {
@@ -1165,12 +1029,11 @@ impl HashChainManager {
                 .await
             {
                 // start successful
-                Ok((hash_chain, counter)) => {
+                Ok(hash_chain) => {
                     // remember we are running
                     self.runtime = Some(HashChainRuntime {
                         halt_sender: halt_sender,
                         halt_receiver: halt_receiver,
-                        counter,
                         hash_chain,
                     });
                     // we've been started
