@@ -1256,7 +1256,7 @@ impl Backend {
         backend_config: config::Backend,
         app_halt_receiver: halt::Receiver,
         app_halt_sender: Arc<halt::Sender>,
-    ) {
+    ) -> (Vec<Arc<Mutex<HashChainManager>>>, Arc<monitor::Monitor>) {
         // Create new termination context and link it to the main (app) termination context
         let (halt_sender, halt_receiver) = halt::make_pair(HALT_TIMEOUT);
         app_halt_receiver
@@ -1322,15 +1322,14 @@ impl Backend {
                 node: hash_chain_node,
                 status_receiver: monitor.status_receiver.clone(),
             };
-            managers.push(hash_chain_manager);
+            managers.push(Arc::new(Mutex::new(hash_chain_manager)));
         }
 
         // start everything
-        for (_id, hash_chain_manager) in managers.drain(..).enumerate() {
+        for (_id, hash_chain_manager) in managers.iter().enumerate() {
             let halt_receiver = halt_receiver.clone();
+            let hash_chain_manager = hash_chain_manager.clone();
             tokio::spawn(async move {
-                let hash_chain_manager = Arc::new(Mutex::new(hash_chain_manager));
-
                 // Register handler stop hashchain when miner is stopped
                 halt_receiver
                     .register_client("hashchain".into())
@@ -1348,6 +1347,7 @@ impl Backend {
                     .expect("failed to start hashchain manager");
             });
         }
+        (managers, monitor)
     }
 }
 
@@ -1369,7 +1369,7 @@ impl hal::Backend for Backend {
     ) -> bosminer::Result<hal::FrontendConfig> {
         let gpio_mgr = gpio::ControlPinManager::new();
         let (app_halt_sender, app_halt_receiver) = halt::make_pair(HALT_TIMEOUT);
-        Self::start_miner(
+        let (managers, monitor) = Self::start_miner(
             &gpio_mgr,
             Self::detect_hashboards(&gpio_mgr).expect("failed detecting hashboards"),
             work_hub,
@@ -1390,7 +1390,7 @@ impl hal::Backend for Backend {
         app_halt_sender.hook_ctrlc();
 
         Ok(hal::FrontendConfig {
-            cgminer_custom_commands: cgminer::create_custom_commands(),
+            cgminer_custom_commands: cgminer::create_custom_commands(managers, monitor),
         })
     }
 

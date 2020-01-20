@@ -27,6 +27,38 @@ use serde::Serialize;
 
 use std::sync::Arc;
 
+use crate::monitor;
+use crate::sensor;
+
+use futures::lock::Mutex;
+use ii_async_compat::futures;
+
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+#[repr(u32)]
+pub enum StatusCode {
+    NotReady = 1,
+}
+
+impl From<StatusCode> for u32 {
+    fn from(code: StatusCode) -> Self {
+        code as u32
+    }
+}
+
+pub enum ErrorCode {
+    NotReady,
+}
+
+impl From<ErrorCode> for response::Error {
+    fn from(code: ErrorCode) -> Self {
+        let (code, msg) = match code {
+            ErrorCode::NotReady => (StatusCode::NotReady, "Not ready".to_string()),
+        };
+
+        Self::from_custom_error(code, msg)
+    }
+}
+
 #[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct DevDetailInfo {
     #[serde(rename = "Voltage")]
@@ -47,69 +79,125 @@ pub struct TempInfo {
     pub chip: f64,
 }
 
-pub struct Handler;
+pub struct Handler {
+    managers: Vec<Arc<Mutex<crate::HashChainManager>>>,
+    monitor: Arc<monitor::Monitor>,
+}
 
 impl Handler {
-    pub fn new() -> Self {
-        Self
+    pub fn new(
+        managers: Vec<Arc<Mutex<crate::HashChainManager>>>,
+        monitor: Arc<monitor::Monitor>,
+    ) -> Self {
+        Self { managers, monitor }
+    }
+
+    fn get_monitor_status(&self) -> command::Result<monitor::Status> {
+        match self.monitor.status_receiver.borrow().clone() {
+            Some(status) => Ok(status),
+            None => Err(ErrorCode::NotReady.into()),
+        }
     }
 
     async fn handle_dev_details(&self) -> command::Result<response::DevDetails<DevDetailInfo>> {
-        Ok(response::DevDetails {
-            list: vec![response::DevDetail {
-                idx: 0,
+        let mut list = vec![];
+        for manager in self.managers.iter() {
+            let manager = manager.lock().await;
+            let runtime = manager.runtime.as_ref();
+            let chip_count = match runtime {
+                Some(runtime) => runtime.hash_chain.chip_count,
+                None => 0,
+            };
+            list.push(response::DevDetail {
+                idx: list.len() as i32,
                 name: "".to_string(),
-                id: 0,
+                id: manager.node.hashboard_idx as i32,
                 driver: "".to_string(),
                 kernel: "".to_string(),
                 model: "".to_string(),
                 device_path: "".to_string(),
                 info: DevDetailInfo {
-                    voltage: 0.0,
-                    frequency: 0,
-                    chips: 0,
-                    cores: 0,
+                    voltage: manager.params.voltage.as_volts() as f64,
+                    frequency: manager.params.frequency.max() as u32,
+                    chips: chip_count as u32,
+                    cores: (chip_count * crate::bm1387::NUM_CORES_ON_CHIP) as u32,
                 },
-            }],
-        })
+            });
+        }
+
+        Ok(response::DevDetails { list })
     }
 
     async fn handle_temp_ctrl(&self) -> command::Result<response::ext::TempCtrl> {
+        let config = self.get_monitor_status()?.config;
+        let (hot, dangerous) = match config.temp_config {
+            Some(config) => (config.hot_temp, config.dangerous_temp),
+            None => (0.0, 0.0),
+        };
+        let (mode, target_temp, target_fan, _min_fans) = match config.fan_config {
+            Some(config) => match config.mode {
+                monitor::FanControlMode::FixedSpeed(speed) => {
+                    ("fixed fan speed", 0.0, speed.to_pwm(), config.min_fans)
+                }
+                monitor::FanControlMode::TargetTemperature(temp) => {
+                    ("target temperature", temp, 0, config.min_fans)
+                }
+            },
+            None => ("disabled", 0.0, 0, 0),
+        };
         Ok(response::ext::TempCtrl {
-            mode: "".to_string(),
-            target: 0.0,
-            hot: 0.0,
-            dangerous: 0.0,
+            mode: mode.to_string(),
+            target: (target_temp as f64) + (target_fan as f64),
+            hot: hot as f64,
+            dangerous: dangerous as f64,
         })
     }
 
     async fn handle_temps(&self) -> command::Result<response::ext::Temps<TempInfo>> {
-        Ok(response::ext::Temps {
-            list: vec![response::ext::Temp {
-                idx: 0,
-                id: 0,
-                info: TempInfo {
-                    board: 0.0,
-                    chip: 0.0,
-                },
-            }],
-        })
+        let mut list = vec![];
+        for manager in self.managers.iter() {
+            let manager = manager.lock().await;
+            if let Some(runtime) = manager.runtime.as_ref() {
+                if let Some(sensor::Temperature { local, remote }) = runtime.current_temperature() {
+                    list.push(response::ext::Temp {
+                        idx: list.len() as i32,
+                        id: manager.node.hashboard_idx as i32,
+                        info: TempInfo {
+                            board: Option::from(local).unwrap_or(0.0) as f64,
+                            chip: Option::from(remote).unwrap_or(0.0) as f64,
+                        },
+                    });
+                }
+            }
+        }
+        Ok(response::ext::Temps { list: list })
     }
 
     async fn handle_fans(&self) -> command::Result<response::ext::Fans> {
+        let status = self.get_monitor_status()?;
+        let speed = status.fan_speed.map(|speed| speed.to_pwm()).unwrap_or(0);
         Ok(response::ext::Fans {
-            list: vec![response::ext::Fan {
-                idx: 0,
-                id: 0,
-                speed: 0,
-                rpm: 0,
-            }],
+            list: status
+                .fan_feedback
+                .rpm
+                .iter()
+                .enumerate()
+                .map(|(id, rpm)| response::ext::Fan {
+                    idx: id as i32,
+                    id: id as i32,
+                    speed: speed as u32,
+                    rpm: *rpm as u32,
+                })
+                .collect(),
         })
     }
 }
 
-pub fn create_custom_commands() -> Option<command::Map> {
-    let handler = Arc::new(Handler::new());
+pub fn create_custom_commands(
+    managers: Vec<Arc<Mutex<crate::HashChainManager>>>,
+    monitor: Arc<monitor::Monitor>,
+) -> Option<command::Map> {
+    let handler = Arc::new(Handler::new(managers, monitor));
 
     let custom_commands = commands![
         (DEVDETAILS: ParameterLess -> handler.handle_dev_details),
