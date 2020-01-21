@@ -30,9 +30,6 @@ use std::sync::Arc;
 use crate::monitor;
 use crate::sensor;
 
-use futures::lock::Mutex;
-use ii_async_compat::futures;
-
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
 #[repr(u32)]
 pub enum StatusCode {
@@ -81,14 +78,14 @@ pub struct TempInfo {
 
 pub struct Handler {
     model: String,
-    managers: Vec<Arc<Mutex<crate::HashChainManager>>>,
+    managers: Vec<Arc<crate::Manager>>,
     monitor: Arc<monitor::Monitor>,
 }
 
 impl Handler {
     pub fn new(
         model: String,
-        managers: Vec<Arc<Mutex<crate::HashChainManager>>>,
+        managers: Vec<Arc<crate::Manager>>,
         monitor: Arc<monitor::Monitor>,
     ) -> Self {
         Self {
@@ -108,23 +105,22 @@ impl Handler {
     async fn handle_dev_details(&self) -> command::Result<response::DevDetails<DevDetailInfo>> {
         let mut list = vec![];
         for manager in self.managers.iter() {
-            let manager = manager.lock().await;
-            let runtime = manager.runtime.as_ref();
-            let chip_count = match runtime {
-                Some(runtime) => runtime.hash_chain.chip_count,
+            let inner = manager.inner.lock().await;
+            let chip_count = match inner.hash_chain.as_ref() {
+                Some(hash_chain) => hash_chain.chip_count,
                 None => 0,
             };
             list.push(response::DevDetail {
                 idx: list.len() as i32,
-                name: manager.node.to_string(),
-                id: manager.node.hashboard_idx as i32,
+                name: manager.to_string(),
+                id: manager.hashboard_idx as i32,
                 driver: "".to_string(),
                 kernel: "".to_string(),
                 model: self.model.clone(),
                 device_path: "".to_string(),
                 info: DevDetailInfo {
-                    voltage: manager.params.voltage.as_volts() as f64,
-                    frequency: manager.params.frequency.avg() as u32,
+                    voltage: inner.params.voltage.as_volts() as f64,
+                    frequency: inner.params.frequency.avg() as u32,
                     chips: chip_count as u32,
                     cores: (chip_count * crate::bm1387::NUM_CORES_ON_CHIP) as u32,
                 },
@@ -165,14 +161,14 @@ impl Handler {
     async fn handle_temps(&self) -> command::Result<response::ext::Temps<TempInfo>> {
         let mut list = vec![];
         for manager in self.managers.iter() {
-            let manager = manager.lock().await;
-            if let Some(runtime) = manager.runtime.as_ref() {
+            let inner = manager.inner.lock().await;
+            if let Some(hash_chain) = inner.hash_chain.as_ref() {
                 if let Some(sensor::Temperature { local, remote }) =
-                    runtime.hash_chain.current_temperature()
+                    hash_chain.current_temperature()
                 {
                     list.push(response::ext::Temp {
                         idx: list.len() as i32,
-                        id: manager.node.hashboard_idx as i32,
+                        id: manager.hashboard_idx as i32,
                         info: TempInfo {
                             board: Option::from(local).unwrap_or(0.0) as f64,
                             chip: Option::from(remote).unwrap_or(0.0) as f64,
@@ -206,7 +202,7 @@ impl Handler {
 
 pub fn create_custom_commands(
     backend: Arc<crate::Backend>,
-    managers: Vec<Arc<Mutex<crate::HashChainManager>>>,
+    managers: Vec<Arc<crate::Manager>>,
     monitor: Arc<monitor::Monitor>,
 ) -> Option<command::Map> {
     let handler = Arc::new(Handler::new(backend.to_string(), managers, monitor));

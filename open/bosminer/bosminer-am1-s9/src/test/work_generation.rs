@@ -25,7 +25,6 @@ use ii_logging::macros::*;
 use super::*;
 use crate::bm1387::MidstateCount;
 use crate::fan;
-use crate::halt;
 use crate::{FrequencySettings, HashChain, Solution};
 
 use bosminer::work;
@@ -127,10 +126,7 @@ async fn send_and_receive_test_workloads<'a>(
     );
 }
 
-async fn start_hchain(
-    halt_rx: halt::Receiver,
-    monitor_tx: mpsc::UnboundedSender<monitor::Message>,
-) -> HashChain {
+async fn start_hchain(monitor_tx: mpsc::UnboundedSender<monitor::Message>) -> HashChain {
     let hashboard_idx = config::S9_HASHBOARD_INDEX;
     let gpio_mgr = gpio::ControlPinManager::new();
     let voltage_ctrl_backend = Arc::new(power::I2cBackend::new(0));
@@ -155,7 +151,6 @@ async fn start_hchain(
 
     hash_chain
         .init(
-            halt_rx,
             &FrequencySettings::from_frequency(
                 (config::DEFAULT_FREQUENCY_MHZ * 1_000_000.0) as usize,
             ),
@@ -182,15 +177,12 @@ async fn test_work_generation() {
     let (work_sender, work_receiver) = mpsc::unbounded();
     let (monitor_sender, _monitor_receiver) = mpsc::unbounded();
 
-    // Create halt transport
-    let (halt_tx, halt_rx) = halt::make_pair(Duration::from_secs(5));
-
     // Guard lives until the end of the block
     let _work_sender_guard = work_sender.clone();
     let _solution_sender_guard = solution_sender.clone();
 
     // Start HW
-    let hash_chain = Arc::new(start_hchain(halt_rx, monitor_sender).await);
+    let hash_chain = Arc::new(start_hchain(monitor_sender).await);
 
     // start HW receiver
     tokio::spawn(receiver_task(hash_chain.clone(), solution_sender));
@@ -217,5 +209,5 @@ async fn test_work_generation() {
     .await;
 
     // stop everything
-    halt_tx.send_halt().await;
+    hash_chain.halt_sender.clone().send_halt().await;
 }

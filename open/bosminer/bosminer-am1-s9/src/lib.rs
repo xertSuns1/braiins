@@ -52,7 +52,7 @@ use bosminer::work;
 use bosminer_macros::WorkSolverNode;
 
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
 use lazy_static::lazy_static;
@@ -172,6 +172,8 @@ impl ResetPin {
 /// Main responsibilities:
 /// - memory mapping of the FPGA control interface
 /// - mining work submission and solution processing
+///
+/// TODO: disable voltage controller via async `Drop` trait (which doesn't exist yet)
 pub struct HashChain {
     /// Number of chips that have been detected
     chip_count: usize,
@@ -195,6 +197,11 @@ pub struct HashChain {
     /// channels through which temperature status is sent
     temperature_sender: Mutex<Option<watch::Sender<Option<sensor::Temperature>>>>,
     temperature_receiver: watch::Receiver<Option<sensor::Temperature>>,
+    /// halter to stop this hashchain
+    halt_sender: Arc<halt::Sender>,
+    /// we need to keep the halt receiver around, otherwise the "stop-notify" channel closes when chain ends
+    #[allow(dead_code)]
+    halt_receiver: halt::Receiver,
 }
 
 impl HashChain {
@@ -229,6 +236,9 @@ impl HashChain {
         // create temperature sending channel
         let (temperature_sender, temperature_receiver) = watch::channel(None);
 
+        // create halt notification channel
+        let (halt_sender, halt_receiver) = halt::make_pair(HALT_TIMEOUT);
+
         Ok(Self {
             chip_count: 0,
             midstate_count,
@@ -244,6 +254,8 @@ impl HashChain {
             disable_init_work: false,
             temperature_sender: Mutex::new(Some(temperature_sender)),
             temperature_receiver,
+            halt_sender,
+            halt_receiver,
         })
     }
 
@@ -381,13 +393,15 @@ impl HashChain {
     /// * if less than 63 chips is found, retry the enumeration
     async fn init(
         &mut self,
-        halt_receiver: halt::Receiver,
         initial_frequency: &FrequencySettings,
         initial_voltage: power::Voltage,
         accept_less_chips: bool,
     ) -> error::Result<Arc<Mutex<registry::WorkRegistry>>> {
         info!("Hashboard IP core initialized");
-        self.voltage_ctrl.clone().init(halt_receiver).await?;
+        self.voltage_ctrl
+            .clone()
+            .init(self.halt_receiver.clone())
+            .await?;
 
         info!("Initializing hash chain {}", self.hashboard_idx);
         self.ip_core_init().await?;
@@ -815,12 +829,11 @@ impl HashChain {
         self: Arc<Self>,
         work_generator: work::Generator,
         solution_sender: work::SolutionSender,
-        halt_receiver: halt::Receiver,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
     ) {
         // spawn tx task
         let tx_fifo = self.take_work_tx_io().await;
-        halt_receiver
+        self.halt_receiver
             .register_client("work-tx".into())
             .await
             .spawn(Self::work_tx_task(
@@ -831,7 +844,7 @@ impl HashChain {
 
         // spawn rx task
         let rx_fifo = self.take_work_rx_io().await;
-        halt_receiver
+        self.halt_receiver
             .register_client("work-rx".into())
             .await
             .spawn(Self::solution_rx_task(
@@ -843,14 +856,14 @@ impl HashChain {
         // spawn hashrate monitor
         // Disabled until we found a use for this
         /*
-        halt_receiver
+        self.halt_receiver
             .register_client("hashrate monitor".into())
             .await
             .spawn(Self::hashrate_monitor_task(self.clone()));
         */
 
         // spawn temperature monitor
-        halt_receiver
+        self.halt_receiver
             .register_client("temperature monitor".into())
             .await
             .spawn(Self::monitor_watchdog_temp_task(self.clone()));
@@ -934,228 +947,128 @@ pub struct HashChainParams {
     voltage: power::Voltage,
 }
 
-/// Hashchain and related runtime data
-pub struct HashChainRuntime {
-    halt_sender: Arc<halt::Sender>,
-    // we need to keep the halt receiver around, otherwise the "stop-notify" channel closes when chain ends
-    #[allow(dead_code)]
-    halt_receiver: halt::Receiver,
-    #[allow(dead_code)]
-    hash_chain: Arc<HashChain>,
+#[derive(Debug)]
+pub struct StoppedChain {
+    pub manager: Arc<Manager>,
 }
 
-#[derive(WorkSolverNode)]
-struct HashChainNode {
-    #[member_work_solver_stats]
-    work_solver_stats: stats::BasicWorkSolver,
-    hashboard_idx: usize,
-    work_generator: work::Generator,
-    solution_sender: work::SolutionSender,
-    plug_pin: PlugPin,
-    reset_pin: ResetPin,
-    voltage_ctrl_backend: Arc<power::I2cBackend>,
-    midstate_count: MidstateCount,
-    asic_difficulty: usize,
-    /// channel to report to the monitor
-    monitor_tx: mpsc::UnboundedSender<monitor::Message>,
-}
-
-impl node::WorkSolver for HashChainNode {
-    fn get_id(&self) -> Option<usize> {
-        Some(self.hashboard_idx)
+impl Drop for StoppedChain {
+    fn drop(&mut self) {
+        // remove ownership in case we are dropped
+        self.manager
+            .owned_by
+            .lock()
+            .expect("BUG: lock failed")
+            .take();
     }
 }
 
-impl fmt::Debug for HashChainNode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Hash Chain {}", self.hashboard_idx)
-    }
-}
-
-impl fmt::Display for HashChainNode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Hash Chain {}", self.hashboard_idx)
-    }
-}
-
-/// Hashchain manager that can start and stop instances of hashchain
-/// TODO: split this structure into outer and inner part so that we can
-/// deal with locking issues on the inside.
-pub struct HashChainManager {
-    /// dynamic runtime - `is_some` only when miner is running
-    runtime: Option<HashChainRuntime>,
-    pub params: HashChainParams,
-    node: Arc<HashChainNode>,
-    /// TODO: wrap this type in a structure (in Monitor)
-    status_receiver: watch::Receiver<Option<monitor::Status>>,
-}
-
-impl HashChainManager {
-    /// Initialize and start mining on hashchain
-    async fn start_one_try(
-        &self,
-        halt_receiver: halt::Receiver,
-        accept_less_chips: bool,
-    ) -> error::Result<Arc<HashChain>> {
-        // make us a hash chain
-        let mut hash_chain = HashChain::new(
-            self.node.reset_pin.clone(),
-            self.node.plug_pin.clone(),
-            self.node.voltage_ctrl_backend.clone(),
-            self.node.hashboard_idx,
-            self.node.midstate_count,
-            self.node.asic_difficulty,
-            self.node.monitor_tx.clone(),
-        )
-        .expect("hashchain instantiation failed");
-
-        // initialize it
-        // halt is required to stop voltage heart-beat task
-        let work_registry = hash_chain
-            .init(
-                halt_receiver.clone(),
-                &self.params.frequency,
-                self.params.voltage,
-                accept_less_chips,
-            )
-            .await?;
-
-        // spawn worker tasks for hash chain and start mining
-        let hash_chain = Arc::new(hash_chain);
-        hash_chain
-            .clone()
-            .start(
-                self.node.work_generator.clone(),
-                self.node.solution_sender.clone(),
-                halt_receiver.clone(),
-                work_registry,
-            )
-            .await;
-
-        Ok(hash_chain)
-    }
-
-    async fn start(&mut self) -> error::Result<()> {
-        // check if we are running
-        if self.runtime.is_some() {
-            panic!("trying to start running chain");
-        }
-
+impl StoppedChain {
+    async fn start(self) -> Result<RunningChain, (Self, error::Error)> {
         // if miner initialization fails, retry
         let mut tries_left = ENUM_RETRY_COUNT;
 
         loop {
-            // construct a way to signal hashchain halt
-            let (halt_sender, halt_receiver) = halt::make_pair(HALT_TIMEOUT);
-
             info!(
                 "Registering hashboard {} with monitor",
-                self.node.hashboard_idx
+                self.manager.hashboard_idx
             );
-            self.node
-                .monitor_tx
-                .unbounded_send(monitor::Message::On)
-                .expect("BUG: send failed");
 
             // Start this hashchain
             // If we've already exhausted half of our tries, then stop worrying about having
             // less chips than expected (63).
             match self
-                .start_one_try(halt_receiver.clone(), tries_left <= ENUM_RETRY_COUNT / 2)
+                .manager
+                .attempt_start_chain(tries_left <= ENUM_RETRY_COUNT / 2)
                 .await
             {
                 // start successful
-                Ok(hash_chain) => {
-                    // remember we are running
-                    self.runtime = Some(HashChainRuntime {
-                        halt_sender: halt_sender,
-                        halt_receiver: halt_receiver,
-                        hash_chain,
+                Ok(_) => {
+                    // we've started the hashchain
+                    // create a `Running` tape and be gone
+                    return Ok(RunningChain {
+                        manager: self.manager.clone(),
                     });
-                    // we've been started
-                    return Ok(());
                 }
                 // start failed
                 Err(e) => {
-                    // kill voltage controller et. al of the failed instance
-                    halt_sender.clone().send_halt().await;
-                    // deregister us
-                    self.node
-                        .monitor_tx
-                        .unbounded_send(monitor::Message::Off)
-                        .expect("BUG: send failed");
-
-                    error!("Chain {} start failed: {}", self.node.hashboard_idx, e);
+                    error!("Chain {} start failed: {}", self.manager.hashboard_idx, e);
 
                     // retry if possible
                     if tries_left == 0 {
                         error!("No tries left");
-                        return Err(e)?;
+                        return Err((self, e.into()));
                     } else {
                         tries_left -= 1;
                         // TODO: wait with locks unlocked()! Otherwise no-one can halt the miner
                         // This is not possible with current lock design, but fix this ASAP!
                         delay_for(ENUM_RETRY_DELAY).await;
-                        info!("Retrying chain {} start...", self.node.hashboard_idx);
+                        info!("Retrying chain {} start...", self.manager.hashboard_idx);
                     }
                 }
             }
         }
     }
 
-    /// Stop running hashchain
-    async fn stop(&mut self) -> error::Result<()> {
-        // check if we are running
-        let runtime = match self.runtime.as_ref() {
-            Some(runtime) => runtime,
-            None => panic!("trying to stop non-running chain"),
-        };
-        // stop everything
-        runtime.halt_sender.clone().send_halt().await;
-
-        // tell monitor we are done
-        self.node
-            .monitor_tx
-            .unbounded_send(monitor::Message::Off)
-            .expect("send failed");
-
-        // drop hashchain we keep around
-        self.runtime = None;
-
-        Ok(())
-    }
-
-    /// Return whether is hashchain running
-    fn chain_is_running(&mut self) -> bool {
-        self.runtime.is_some()
-    }
-
-    /// Set parameters of hashchain (both running and stopped)
     #[allow(dead_code)]
-    async fn set_params(&mut self, params: &HashChainParams) -> error::Result<()> {
-        self.params = params.clone();
+    async fn set_params(&self, params: &HashChainParams) {
+        self.manager.inner.lock().await.params = params.clone();
+    }
+}
 
-        if let Some(runtime) = self.runtime.as_ref() {
-            // We are running, change parameters on a live hashchain instance as well
-            runtime
-                .hash_chain
-                .voltage_ctrl
-                .set_voltage(self.params.voltage)
-                .await?;
-            runtime.hash_chain.set_pll(&self.params.frequency).await?;
+#[derive(Debug)]
+pub struct RunningChain {
+    pub manager: Arc<Manager>,
+}
+
+impl Drop for RunningChain {
+    fn drop(&mut self) {
+        // remove ownership in case we are dropped
+        self.manager
+            .owned_by
+            .lock()
+            .expect("BUG: lock failed")
+            .take();
+    }
+}
+
+impl RunningChain {
+    #[allow(dead_code)]
+    async fn stop(self) -> StoppedChain {
+        self.manager.stop_chain(false).await;
+
+        StoppedChain {
+            manager: self.manager.clone(),
         }
+    }
+
+    #[allow(dead_code)]
+    async fn set_params(&self, params: &HashChainParams) -> error::Result<()> {
+        let mut inner = self.manager.inner.lock().await;
+
+        inner.params = params.clone();
+        let hash_chain = inner
+            .hash_chain
+            .as_ref()
+            .expect("BUG: hashchain is not running");
+        hash_chain
+            .voltage_ctrl
+            .set_voltage(inner.params.voltage)
+            .await?;
+        hash_chain.set_pll(&inner.params.frequency).await?;
 
         Ok(())
     }
 
-    async fn termination_handler(hash_chain_manager: Arc<Mutex<Self>>) {
-        let mut hash_chain_manager = hash_chain_manager.lock().await;
-        if hash_chain_manager.chain_is_running() {
-            hash_chain_manager
-                .stop()
-                .await
-                .expect("failed to stop chain");
-        }
+    pub async fn current_temperature(&self) -> Option<sensor::Temperature> {
+        self.manager
+            .inner
+            .lock()
+            .await
+            .hash_chain
+            .as_ref()
+            .expect("not running")
+            .current_temperature()
     }
 
     /// Check from `Monitor` status message if miner is hot enough
@@ -1195,10 +1108,10 @@ impl HashChainManager {
     ///
     /// Note: we have to lock it on the inside, because otherwise we would hold lock on hashchain
     /// manager and prevent shutdown from happening.
-    pub async fn wait_for_preheat(hash_chain_manager: Arc<Mutex<Self>>) {
+    pub async fn wait_for_preheat(&self) {
         const MAX_PREHEAT_DELAY: u64 = 180;
 
-        let mut status_receiver = hash_chain_manager.lock().await.status_receiver.clone();
+        let mut status_receiver = self.manager.status_receiver.clone();
         // wait for status from monitor
         let started = Instant::now();
         // TODO: wrap `status_receiver` into some kind of API
@@ -1215,6 +1128,185 @@ impl HashChainManager {
                 return;
             }
         }
+    }
+}
+
+pub enum ChainStatus {
+    Running(RunningChain),
+    Stopped(StoppedChain),
+}
+
+impl ChainStatus {
+    fn expect_stopped(self) -> StoppedChain {
+        match self {
+            Self::Stopped(s) => s,
+            _ => panic!("BUG: expected stopped chain"),
+        }
+    }
+}
+
+pub struct ManagerInner {
+    hash_chain: Option<Arc<HashChain>>,
+    params: HashChainParams,
+}
+
+/// Hashchain manager that can start and stop instances of hashchain
+/// TODO: split this structure into outer and inner part so that we can
+/// deal with locking issues on the inside.
+#[derive(WorkSolverNode)]
+pub struct Manager {
+    #[member_work_solver_stats]
+    work_solver_stats: stats::BasicWorkSolver,
+    hashboard_idx: usize,
+    work_generator: work::Generator,
+    solution_sender: work::SolutionSender,
+    plug_pin: PlugPin,
+    reset_pin: ResetPin,
+    voltage_ctrl_backend: Arc<power::I2cBackend>,
+    midstate_count: MidstateCount,
+    asic_difficulty: usize,
+    /// channel to report to the monitor
+    monitor_tx: mpsc::UnboundedSender<monitor::Message>,
+    /// TODO: wrap this type in a structure (in Monitor)
+    status_receiver: watch::Receiver<Option<monitor::Status>>,
+    owned_by: StdMutex<Option<&'static str>>,
+    inner: Mutex<ManagerInner>,
+}
+
+impl Manager {
+    /// Acquire stopped or running chain
+    pub async fn acquire(
+        self: Arc<Self>,
+        owner_name: &'static str,
+    ) -> Result<ChainStatus, &'static str> {
+        // acquire ownership of the hashchain
+        {
+            let mut owned_by = self.owned_by.lock().expect("BUG: failed to lock mutex");
+            if let Some(already_owned_by) = *owned_by {
+                return Err(already_owned_by);
+            }
+            owned_by.replace(owner_name);
+        }
+        // Create a `Chain` instance. If it's dropped, the ownership reverts back to `Manager`
+        let inner = self.inner.lock().await;
+        Ok(if inner.hash_chain.is_some() {
+            ChainStatus::Running(RunningChain {
+                manager: self.clone(),
+            })
+        } else {
+            ChainStatus::Stopped(StoppedChain {
+                manager: self.clone(),
+            })
+        })
+    }
+
+    /// Initialize and start mining on hashchain
+    /// TODO: this function is private and should be called only from `Stopped`
+    async fn attempt_start_chain(&self, accept_less_chips: bool) -> error::Result<()> {
+        // lock inner to guarantee atomicity of hashchain start
+        let mut inner = self.inner.lock().await;
+
+        // register us with monitor
+        self.monitor_tx
+            .unbounded_send(monitor::Message::On)
+            .expect("BUG: send failed");
+
+        // check that we hadn't started some other (?) way
+        // TODO: maybe we should throw an error instead
+        assert!(inner.hash_chain.is_none());
+
+        // make us a hash chain
+        let mut hash_chain = HashChain::new(
+            self.reset_pin.clone(),
+            self.plug_pin.clone(),
+            self.voltage_ctrl_backend.clone(),
+            self.hashboard_idx,
+            self.midstate_count,
+            self.asic_difficulty,
+            self.monitor_tx.clone(),
+        )
+        .expect("BUG: hashchain instantiation failed");
+
+        // initialize it
+        let work_registry = match hash_chain
+            .init(
+                &inner.params.frequency,
+                inner.params.voltage,
+                accept_less_chips,
+            )
+            .await
+        {
+            Err(e) => {
+                // halt is required to stop voltage heart-beat task
+                hash_chain.halt_sender.clone().send_halt().await;
+                // deregister us
+                self.monitor_tx
+                    .unbounded_send(monitor::Message::Off)
+                    .expect("BUG: send failed");
+
+                return Err(e)?;
+            }
+            Ok(a) => a,
+        };
+
+        // spawn worker tasks for hash chain and start mining
+        let hash_chain = Arc::new(hash_chain);
+        hash_chain
+            .clone()
+            .start(
+                self.work_generator.clone(),
+                self.solution_sender.clone(),
+                work_registry,
+            )
+            .await;
+
+        // remember we started
+        inner.hash_chain.replace(hash_chain);
+
+        Ok(())
+    }
+
+    /// TODO: this function is private and should be called only from `RunningChain`
+    async fn stop_chain(&self, its_ok_if_its_missing: bool) {
+        // lock inner to guarantee atomicity of hashchain stop
+        let mut inner = self.inner.lock().await;
+
+        // TODO: maybe we should throw an error instead
+        let hash_chain = inner.hash_chain.take();
+        if hash_chain.is_none() && its_ok_if_its_missing {
+            return;
+        }
+        let hash_chain = hash_chain.expect("BUG: hashchain is missing");
+
+        // stop everything
+        hash_chain.halt_sender.clone().send_halt().await;
+
+        // tell monitor we are done
+        self.monitor_tx
+            .unbounded_send(monitor::Message::Off)
+            .expect("BUG: send failed");
+    }
+
+    async fn termination_handler(self: Arc<Self>) {
+        self.stop_chain(true).await;
+    }
+}
+
+impl node::WorkSolver for Manager {
+    fn get_id(&self) -> Option<usize> {
+        Some(self.hashboard_idx)
+    }
+}
+
+impl fmt::Debug for Manager {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Hash Chain {}", self.hashboard_idx)
+    }
+}
+
+impl fmt::Display for Manager {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Hash Chain {}", self.hashboard_idx)
     }
 }
 
@@ -1294,7 +1386,7 @@ impl Backend {
         backend_config: config::Backend,
         app_halt_receiver: halt::Receiver,
         app_halt_sender: Arc<halt::Sender>,
-    ) -> (Vec<Arc<Mutex<HashChainManager>>>, Arc<monitor::Monitor>) {
+    ) -> (Vec<Arc<Manager>>, Arc<monitor::Monitor>) {
         // Create new termination context and link it to the main (app) termination context
         let (halt_sender, halt_receiver) = halt::make_pair(HALT_TIMEOUT);
         app_halt_receiver
@@ -1308,7 +1400,7 @@ impl Backend {
         info!("Resolved monitor backend_config: {:?}", monitor_config);
         let monitor = monitor::Monitor::new_and_start(
             monitor_config,
-            app_halt_sender,
+            app_halt_sender.clone(),
             app_halt_receiver.clone(),
         )
         .await;
@@ -1327,10 +1419,12 @@ impl Backend {
             // make pins
             let chain_config = backend_config.resolve_chain_config(hashboard_idx);
 
+            let status_receiver = monitor.status_receiver.clone();
+
             // build hashchain_node for statistics and static parameters
-            let hash_chain_node = work_hub
+            let manager = work_hub
                 .create_work_solver(|work_generator, solution_sender| {
-                    HashChainNode {
+                    Manager {
                         // TODO: create a new substructure of the miner that will hold all gpio and
                         // "physical-insertion" detection data. This structure will be persistent in
                         // between restarts and will enable early notification that there is no hashboard
@@ -1347,42 +1441,41 @@ impl Backend {
                         solution_sender,
                         work_generator,
                         monitor_tx,
+                        status_receiver,
+                        owned_by: StdMutex::new(None),
+                        inner: Mutex::new(ManagerInner {
+                            hash_chain: None,
+                            params: HashChainParams {
+                                frequency: chain_config.frequency.clone(),
+                                voltage: chain_config.voltage,
+                            },
+                        }),
                     }
                 })
                 .await;
-
-            let hash_chain_manager = HashChainManager {
-                runtime: None,
-                params: HashChainParams {
-                    frequency: chain_config.frequency.clone(),
-                    voltage: chain_config.voltage,
-                },
-                node: hash_chain_node,
-                status_receiver: monitor.status_receiver.clone(),
-            };
-            managers.push(Arc::new(Mutex::new(hash_chain_manager)));
+            managers.push(manager);
         }
 
         // start everything
-        for (_id, hash_chain_manager) in managers.iter().enumerate() {
+        for manager in managers.iter() {
             let halt_receiver = halt_receiver.clone();
-            let hash_chain_manager = hash_chain_manager.clone();
+            let manager = manager.clone();
+
             tokio::spawn(async move {
                 // Register handler stop hashchain when miner is stopped
                 halt_receiver
                     .register_client("hashchain".into())
                     .await
-                    .spawn_halt_handler(HashChainManager::termination_handler(
-                        hash_chain_manager.clone(),
-                    ));
+                    .spawn_halt_handler(Manager::termination_handler(manager.clone()));
 
-                // afterwards, start hashchain
-                hash_chain_manager
-                    .lock()
+                manager
+                    .acquire("main")
                     .await
+                    .expect("BUG: failed to acquire hashchain")
+                    .expect_stopped()
                     .start()
                     .await
-                    .expect("failed to start hashchain manager");
+                    .expect("BUG: failed to start hashchain");
             });
         }
         (managers, monitor)
