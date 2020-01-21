@@ -53,7 +53,7 @@ use bosminer_macros::WorkSolverNode;
 
 use std::fmt;
 use std::sync::Arc;
-use std::time::{self, Duration, Instant};
+use std::time::{Duration, Instant};
 
 use lazy_static::lazy_static;
 
@@ -183,9 +183,6 @@ pub struct HashChain {
     voltage_ctrl: Arc<power::Control>,
     /// Pin for resetting the hashboard
     reset_pin: ResetPin,
-    /// When the heartbeat was last sent
-    #[allow(dead_code)]
-    last_heartbeat_sent: Option<time::Instant>,
     hashboard_idx: usize,
     pub command_context: command::Context,
     pub common_io: io::Common,
@@ -239,7 +236,6 @@ impl HashChain {
             voltage_ctrl: Arc::new(power::Control::new(voltage_ctrl_backend, hashboard_idx)),
             reset_pin,
             hashboard_idx,
-            last_heartbeat_sent: None,
             common_io,
             command_context: command::Context::new(command_io),
             work_rx_io: Mutex::new(Some(work_rx_io)),
