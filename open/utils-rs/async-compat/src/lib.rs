@@ -86,3 +86,16 @@ pub trait FutureExt: Future {
 }
 
 impl<F: Future> FutureExt for F {}
+
+/// Wrapper for `select!` macro from `futures`.
+/// The reason for this is that the macro needs to be told
+/// to look for futures at `::ii_async_compat::futures` rather than `::furures`.
+#[macro_export]
+macro_rules! select {
+    ($($tokens:tt)*) => {
+        futures::inner_macro::select! {
+            futures_crate_path(::ii_async_compat::futures)
+            $( $tokens )*
+        }
+    }
+}
