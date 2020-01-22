@@ -77,6 +77,37 @@ async fn main() {
                 .help("Set chip voltage (in volts)")
                 .required(false)
                 .takes_value(true),
+        )
+        .subcommand(
+            clap::SubCommand::with_name("config")
+                .about("Configuration backend API")
+                .version("beta")
+                .arg(
+                    clap::Arg::with_name("metadata")
+                        .long("metadata")
+                        .help("Handle 'metadata' request and write result to stdout")
+                        .required(false)
+                        .takes_value(false),
+                )
+                .arg(
+                    clap::Arg::with_name("data")
+                        .long("data")
+                        .help("Handle 'data' request and write result to stdout")
+                        .required(false)
+                        .takes_value(false),
+                )
+                .arg(
+                    clap::Arg::with_name("save")
+                        .long("save")
+                        .help("Handle 'save' request from stdin and write result to stdout")
+                        .required(false)
+                        .takes_value(false),
+                )
+                .group(
+                    clap::ArgGroup::with_name("command")
+                        .args(&["metadata", "data", "save"])
+                        .required(true),
+                ),
         );
 
     let matches = app.get_matches();
@@ -87,6 +118,19 @@ async fn main() {
         .value_of("config")
         .unwrap_or(config::DEFAULT_CONFIG_PATH);
     let mut backend_config = config::Backend::parse(config_path);
+
+    // Handle special 'config' sub-command available for configuration backend API
+    if let Some(matches) = matches.subcommand_matches("config") {
+        let config_handler = config::api::Handler::new(config_path);
+        if matches.is_present("metadata") {
+            config_handler.handle_metadata();
+        } else if matches.is_present("data") {
+            config_handler.handle_data();
+        } else if matches.is_present("save") {
+            config_handler.handle_save();
+        }
+        return;
+    }
 
     // Add pools from command line
     if let Some(url) = matches.value_of("pool") {

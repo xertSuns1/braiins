@@ -22,6 +22,8 @@
 
 //! This module handles S9 configuration and configuration file parsing
 
+pub mod api;
+
 use crate::bm1387::MidstateCount;
 use crate::fan;
 use crate::monitor;
