@@ -157,7 +157,7 @@ async fn start_hchain(
         .init(
             halt_rx,
             &FrequencySettings::from_frequency(config::DEFAULT_PLL_FREQUENCY),
-            crate::power::OPEN_CORE_VOLTAGE,
+            *crate::power::OPEN_CORE_VOLTAGE,
             true,
         )
         .await

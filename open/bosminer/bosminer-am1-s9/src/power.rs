@@ -38,8 +38,11 @@ use ii_async_compat::futures;
 use ii_async_compat::tokio;
 use tokio::time::delay_for;
 
+use once_cell::sync::Lazy;
+
 /// Default initial voltage
-pub const OPEN_CORE_VOLTAGE: Voltage = Voltage::from_volts(9.4);
+pub static OPEN_CORE_VOLTAGE: Lazy<Voltage> =
+    Lazy::new(|| Voltage::from_volts(9.4).expect("BUG: opencore voltage is invalid"));
 
 /// Voltage controller requires periodic heart beat messages to be sent
 const VOLTAGE_CTRL_HEART_BEAT_PERIOD: Duration = Duration::from_millis(1000);
@@ -91,43 +94,56 @@ pub const PIC_PROGRAM_PATH: &'static str = "/etc/bosminer/hash_s8_app.txt";
 
 /// Bundle voltage value with methods to convert it to/from various representations
 #[derive(Clone, Copy, PartialEq)]
-pub struct Voltage(f32);
+pub struct Voltage(u8);
 
 impl Voltage {
-    /// TODO: consider whether this should return an error if the specified voltage is out of range
-    pub const fn from_volts(voltage: f32) -> Self {
-        Self(voltage)
-    }
-
-    #[inline]
-    pub fn as_volts(&self) -> f32 {
-        self.0
-    }
-
     /// These PIC conversion functions and coefficients are taken from
     /// bmminer source: getPICvoltageFromValue, getVolValueFromPICvoltage
     const VOLT_CONV_COEF_1: f32 = 1608.420446;
     const VOLT_CONV_COEF_2: f32 = 170.423497;
-    pub const MIN_VOLTS: f32 = (Self::VOLT_CONV_COEF_1 - 255.0) / Self::VOLT_CONV_COEF_2;
-    pub const MAX_VOLTS: f32 = Self::VOLT_CONV_COEF_1 / Self::VOLT_CONV_COEF_2;
 
-    pub fn as_pic_value(&self) -> error::Result<u8> {
-        let pic_val = (Self::VOLT_CONV_COEF_1 - Self::VOLT_CONV_COEF_2 * self.0).round();
-        if pic_val >= 0.0 && pic_val <= 255.0 {
-            Ok(pic_val as u8)
+    fn pic_to_volts(pic_val: f32) -> f32 {
+        (Self::VOLT_CONV_COEF_1 - pic_val) / Self::VOLT_CONV_COEF_2
+    }
+
+    /// This function returns f32 so that we can do range checking later
+    fn volts_to_pic(voltage: f32) -> f32 {
+        (Self::VOLT_CONV_COEF_1 - Self::VOLT_CONV_COEF_2 * voltage).round()
+    }
+
+    /// Note: the higher the PIC value, the lower the voltage
+    pub const MIN_VOLTAGE: Self = Self(255);
+    pub const MAX_VOLTAGE: Self = Self(0);
+
+    /// Instantiate self from voltage
+    pub fn from_volts(voltage: f32) -> error::Result<Self> {
+        let pic = Self::volts_to_pic(voltage) as isize;
+        if pic >= 0 && pic <= 255 {
+            Ok(Self(pic as u8))
         } else {
             Err(ErrorKind::Power(format!(
                 "requested voltage {} out of range allowed range <{};{}>",
-                self.0,
-                Self::MIN_VOLTS,
-                Self::MAX_VOLTS
-            ))
-            .into())
+                voltage,
+                Self::MIN_VOLTAGE.as_volts(),
+                Self::MAX_VOLTAGE.as_volts(),
+            )))?
         }
     }
 
-    pub fn from_pic_value(pic_val: u8) -> Self {
-        Self((Self::VOLT_CONV_COEF_1 - pic_val as f32) / Self::VOLT_CONV_COEF_2)
+    /// Create voltage from PIC value
+    /// This function cannot return error because the range checking is done by parameter type
+    /// (all u8 are valid voltages).
+    pub fn from_pic_value(pic_value: u8) -> error::Result<Self> {
+        Ok(Self(pic_value))
+    }
+
+    #[inline]
+    pub fn as_volts(&self) -> f32 {
+        Self::pic_to_volts(self.0 as f32)
+    }
+
+    pub fn as_pic_value(&self) -> u8 {
+        self.0
     }
 }
 
@@ -580,7 +596,7 @@ impl Control {
                 voltage.as_volts(),
                 current_voltage.map(|v| v.as_volts())
             );
-            self.write_delay(SET_VOLTAGE, &[voltage.as_pic_value()?], Self::BMMINER_DELAY)
+            self.write_delay(SET_VOLTAGE, &[voltage.as_pic_value()], Self::BMMINER_DELAY)
                 .await?;
             *current_voltage = Some(voltage);
         }
@@ -672,7 +688,7 @@ impl Control {
                 ))?
             }
         }
-        self.set_voltage(OPEN_CORE_VOLTAGE).await?;
+        self.set_voltage(*OPEN_CORE_VOLTAGE).await?;
         self.enable_voltage().await?;
 
         // Voltage controller successfully initialized at this point, we should start sending
@@ -740,38 +756,30 @@ mod test {
 
     #[test]
     fn test_voltage_to_pic() {
-        assert_eq!(Voltage::from_volts(9.4).as_pic_value().unwrap(), 6);
-        assert_eq!(Voltage::from_volts(8.9).as_pic_value().unwrap(), 92);
-        assert_eq!(Voltage::from_volts(8.1).as_pic_value().unwrap(), 228);
-        assert!(Voltage::from_volts(10.0).as_pic_value().is_err());
+        assert_eq!(Voltage::from_volts(9.4).unwrap().as_pic_value(), 6);
+        assert_eq!(Voltage::from_volts(8.9).unwrap().as_pic_value(), 92);
+        assert_eq!(Voltage::from_volts(8.1).unwrap().as_pic_value(), 228);
+        assert!(Voltage::from_volts(10.0).is_err());
     }
 
     #[test]
     fn test_pic_to_voltage() {
         let epsilon = 0.01f32;
-        let difference = Voltage::from_pic_value(6).as_volts() - 9.40;
+        let difference = Voltage::from_pic_value(6).unwrap().as_volts() - 9.40;
         assert!(difference.abs() <= epsilon);
-        let difference = Voltage::from_pic_value(92).as_volts() - 8.9;
+        let difference = Voltage::from_pic_value(92).unwrap().as_volts() - 8.9;
         assert!(difference.abs() <= epsilon);
     }
 
     #[test]
     fn test_pic_boundary() {
         // pic=255
-        assert!(Voltage::from_volts(7.941513170569432)
-            .as_pic_value()
-            .is_ok());
+        assert!(Voltage::from_volts(7.941513170569432).is_ok());
         // pic=256
-        assert!(Voltage::from_volts(7.935645435089271)
-            .as_pic_value()
-            .is_err());
+        assert!(Voltage::from_volts(7.935645435089271).is_err());
         // pic=0
-        assert!(Voltage::from_volts(9.437785718010469)
-            .as_pic_value()
-            .is_ok());
+        assert!(Voltage::from_volts(9.437785718010469).is_ok());
         // pic=-1
-        assert!(Voltage::from_volts(9.443653453490631)
-            .as_pic_value()
-            .is_err());
+        assert!(Voltage::from_volts(9.443653453490631).is_err());
     }
 }

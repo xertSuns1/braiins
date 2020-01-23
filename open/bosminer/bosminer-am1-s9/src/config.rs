@@ -173,7 +173,8 @@ impl Backend {
         ResolvedChainConfig {
             midstate_count: MidstateCount::new(self.midstate_count()),
             frequency: FrequencySettings::from_frequency((frequency * 1_000_000.0) as usize),
-            voltage: power::Voltage::from_volts(voltage),
+            // TODO: handle config errors
+            voltage: power::Voltage::from_volts(voltage).expect("bad voltage requested"),
         }
     }
 
