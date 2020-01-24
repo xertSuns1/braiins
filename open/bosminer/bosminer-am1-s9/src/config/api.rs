@@ -28,7 +28,8 @@ use serde::Serialize;
 use serde_json::{self, json};
 use serde_repr::*;
 
-use std::io;
+use std::io::{self, Write};
+use std::path::Path;
 use std::time::SystemTime;
 
 // TODO: move it to shared crate
@@ -85,6 +86,19 @@ struct DataResponse {
     pub status: Status,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Backend>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+struct SaveSuccess {
+    pub path: String,
+    pub format: Format,
+}
+
+#[derive(Serialize, Clone, Debug)]
+struct SaveResponse {
+    pub status: Status,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<SaveSuccess>,
 }
 
 pub struct Handler<'a> {
@@ -404,5 +418,56 @@ impl<'a> Handler<'a> {
         self.send_response(response);
     }
 
-    pub fn handle_save(self) {}
+    pub fn handle_save(self) {
+        // Initially, deserialize request only to JSON Value to check format version and select
+        // proper structures for deserialization
+        let json_request: serde_json::Value = serde_json::from_reader(io::stdin()).unwrap();
+        let json_format = json_request.get("format").expect("TODO: missing format");
+
+        let config_format: Format =
+            serde_json::from_value(json_format.clone()).expect("TODO: deserialize Format");
+
+        // Check compatibility of configuration format
+        if config_format.model != FORMAT_MODEL {
+            panic!("incompatible format model '{}'", config_format.model);
+        }
+        // TODO: allow backward compatibility
+        if config_format.version != FORMAT_VERSION {
+            panic!("incompatible format version '{}'", config_format.version);
+        }
+
+        let backend_config: Backend =
+            serde_json::from_value(json_request).expect("TODO: deserialize Backend");
+
+        let config_path = Path::new(self.config_path);
+        let config_dir = config_path.parent().expect("TODO: path.parent");
+        assert!(config_dir.exists());
+
+        let mut file =
+            tempfile::NamedTempFile::new_in(config_dir).expect("TODO: NamedTempFile::new");
+
+        file.write_all(
+            toml::to_string_pretty(&backend_config)
+                .expect("TODO: toml::to_string_pretty")
+                .as_bytes(),
+        )
+        .expect("TODO: file.write_all");
+
+        file.persist(config_path).expect("TODO: file.persist");
+
+        let response = SaveResponse {
+            status: Status::new(StatusCode::Success, None),
+            data: Some(SaveSuccess {
+                path: config_path
+                    .canonicalize()
+                    .expect("TODO: path.canonicalize")
+                    .into_os_string()
+                    .into_string()
+                    .expect("TODO: into_os_string"),
+                format: backend_config.format,
+            }),
+        };
+
+        self.send_response(response);
+    }
 }

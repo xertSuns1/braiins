@@ -40,7 +40,7 @@ use bosminer::hal::{self, BackendConfig as _};
 
 use serde::{Deserialize, Serialize};
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 /// Expected configuration version
@@ -143,7 +143,6 @@ impl std::string::ToString for TempControlMode {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
 struct Format {
     version: String,
     model: String,
@@ -209,20 +208,20 @@ pub struct FanControl {
 pub struct Backend {
     format: Format,
     // TODO: merge pools and clients
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hash_chain_global: Option<HashChainGlobal>,
+    #[serde(rename = "hash_chain")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hash_chains: Option<BTreeMap<String, HashChain>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temp_control: Option<TempControl>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fan_control: Option<FanControl>,
     #[serde(rename = "pool")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pools: Option<Vec<bosminer_config::PoolConfig>>,
     #[serde(skip)]
     pub clients: Vec<bosminer_config::client::Descriptor>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hash_chain_global: Option<HashChainGlobal>,
-    #[serde(rename = "hash_chain")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    hash_chains: Option<HashMap<String, HashChain>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temp_control: Option<TempControl>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    fan_control: Option<FanControl>,
 }
 
 impl Backend {
