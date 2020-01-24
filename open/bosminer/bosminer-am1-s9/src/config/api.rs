@@ -64,10 +64,10 @@ struct Status {
 }
 
 impl Status {
-    fn new(code: StatusCode, message: Option<String>) -> Self {
+    fn new<T: Into<Option<String>>>(code: StatusCode, message: T) -> Self {
         Self {
             code,
-            message,
+            message: message.into(),
             generator: format!("bosminer {}", bosminer::version::STRING.clone()),
             timestamp: UnixTime::now(),
         }
@@ -80,13 +80,27 @@ struct MetadataResponse {
     pub data: serde_json::Value,
 }
 
+#[derive(Serialize, Clone, Debug)]
+struct DataResponse {
+    pub status: Status,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Backend>,
+}
+
 pub struct Handler<'a> {
-    _config_path: &'a str,
+    config_path: &'a str,
 }
 
 impl<'a> Handler<'a> {
-    pub fn new(_config_path: &'a str) -> Self {
-        Self { _config_path }
+    pub fn new(config_path: &'a str) -> Self {
+        Self { config_path }
+    }
+
+    fn send_response<T>(self, response: T)
+    where
+        T: Serialize,
+    {
+        serde_json::to_writer(io::stdout(), &response).expect("BUG: cannot serialize response");
     }
 
     pub fn handle_metadata(self) {
@@ -371,10 +385,24 @@ impl<'a> Handler<'a> {
             data: metadata,
         };
 
-        serde_json::to_writer(io::stdout(), &response).expect("BUG: cannot serialize metadata");
+        self.send_response(response);
     }
 
-    pub fn handle_data(self) {}
+    pub fn handle_data(self) {
+        let response = match Backend::parse(self.config_path) {
+            // TODO: Improve error handling
+            Err(e) => DataResponse {
+                status: Status::new(StatusCode::InvalidFormat, format!("{}", e)),
+                data: None,
+            },
+            Ok(backend_config) => DataResponse {
+                status: Status::new(StatusCode::Success, None),
+                data: Some(backend_config),
+            },
+        };
+
+        self.send_response(response);
+    }
 
     pub fn handle_save(self) {}
 }

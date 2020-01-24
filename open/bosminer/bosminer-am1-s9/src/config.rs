@@ -405,18 +405,17 @@ impl Backend {
 
         // Parse pools
         // Don't worry if is this section missing, maybe there are some pools on command line
-        let pools = backend_config.pools.take().unwrap_or_else(|| Vec::new());
-
-        // parse user input to fail fast when it is incorrect
-        let clients = pools
-            .into_iter()
-            .map(|pool| {
-                bosminer_config::client::parse(pool.url.clone(), pool.user.clone())
-                    .expect("Server parameters")
-            })
-            .collect();
-
-        backend_config.clients = clients;
+        if let Some(pools) = backend_config.pools.as_ref() {
+            // parse user input to fail fast when it is incorrect
+            backend_config.clients = pools
+                .into_iter()
+                .map(|pool| {
+                    // TODO: do not panic!
+                    bosminer_config::client::parse(pool.url.clone(), pool.user.clone())
+                        .expect("Server parameters")
+                })
+                .collect();
+        }
 
         Ok(backend_config)
     }

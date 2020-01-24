@@ -117,14 +117,6 @@ async fn main() {
     let config_path = matches
         .value_of("config")
         .unwrap_or(config::DEFAULT_CONFIG_PATH);
-    let mut backend_config = match config::Backend::parse(config_path) {
-        Err(e) => {
-            error!("Cannot load configuration file \"{}\"", config_path);
-            error!("Reason: {}", e);
-            return;
-        }
-        Ok(v) => v,
-    };
 
     // Handle special 'config' sub-command available for configuration backend API
     if let Some(matches) = matches.subcommand_matches("config") {
@@ -138,6 +130,15 @@ async fn main() {
         }
         return;
     }
+
+    let mut backend_config = match config::Backend::parse(config_path) {
+        Err(e) => {
+            error!("Cannot load configuration file \"{}\"", config_path);
+            error!("Reason: {}", e);
+            return;
+        }
+        Ok(v) => v,
+    };
 
     // Add pools from command line
     if let Some(url) = matches.value_of("pool") {
