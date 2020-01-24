@@ -22,6 +22,8 @@
 
 //! This module handles configuration commands needed for configuration backend API
 
+use super::*;
+
 use serde::Serialize;
 use serde_json::{self, json};
 use serde_repr::*;
@@ -184,7 +186,7 @@ impl<'a> Handler<'a> {
                             {
                                 "type": "bool",
                                 "label": "AsicBoost",
-                                "default": true
+                                "default": DEFAULT_ASIC_BOOST
                             }
                         ],
                         [
@@ -193,10 +195,10 @@ impl<'a> Handler<'a> {
                                 "type": "number",
                                 "label": "Frequency",
                                 "unit": "MHz",
-                                "min": 200,
-                                "max": 900,
+                                "min": FREQUENCY_MIN,
+                                "max": FREQUENCY_MAX,
                                 "float": true,
-                                "default": 650
+                                "default": DEFAULT_FREQUENCY
                             }
                         ],
                         [
@@ -205,10 +207,10 @@ impl<'a> Handler<'a> {
                                 "type": "number",
                                 "label": "Voltage",
                                 "unit": "V",
-                                "min": 7.95,
-                                "max": 9.4,
+                                "min": VOLTAGE_MIN,
+                                "max": VOLTAGE_MAX,
                                 "float": true,
-                                "default": 8.9
+                                "default": DEFAULT_VOLTAGE
                             }
                         ]
                     ]
@@ -220,8 +222,8 @@ impl<'a> Handler<'a> {
                     "type": "dict",
                     "label": "Override Global Hash Chain Settings",
                     "key": {
-                        "min": 1,
-                        "max": 10
+                        "min": HASH_CHAIN_INDEX_MIN,
+                        "max": HASH_CHAIN_INDEX_MAX
                     },
                     "value": {
                         "type": "object",
@@ -232,8 +234,8 @@ impl<'a> Handler<'a> {
                                     "type": "number",
                                     "label": "Frequency",
                                     "unit": "MHz",
-                                    "min": 200,
-                                    "max": 900,
+                                    "min": FREQUENCY_MIN,
+                                    "max": FREQUENCY_MAX,
                                     "float": true,
                                     "default": ["$get", "hash_chain_global", "frequency"],
                                     "span": 6
@@ -245,8 +247,8 @@ impl<'a> Handler<'a> {
                                     "type": "number",
                                     "label": "Voltage",
                                     "unit": "V",
-                                    "min": 7.95,
-                                    "max": 9.4,
+                                    "min": VOLTAGE_MIN,
+                                    "max": VOLTAGE_MAX,
                                     "float": true,
                                     "default": ["$get", "hash_chain_global", "voltage"],
                                     "span": 6
@@ -269,21 +271,21 @@ impl<'a> Handler<'a> {
                                 "label": "Mode",
                                 "values": [
                                     {
-                                        "key": "auto",
+                                        "key": TempControlMode::Auto.to_string(),
                                         "label": "Automatic"
                                     },
                                     {
-                                        "key": "manual",
+                                        "key": TempControlMode::Manual.to_string(),
                                         "label": "Manual",
                                         "alert": "Warning ..."
                                     },
                                     {
-                                        "key": "disable",
+                                        "key": TempControlMode::Disabled.to_string(),
                                         "label": "Disabled",
                                         "alert": "Warning ..."
                                     }
                                 ],
-                                "default": "auto"
+                                "default": TempControlMode::Auto.to_string()
                             }
                         ],
                         [
@@ -292,10 +294,10 @@ impl<'a> Handler<'a> {
                                 "type": "number",
                                 "label": "Target Temperature",
                                 "unit": "°C",
-                                "min": 0,
-                                "max": 200,
+                                "min": TEMPERATURE_MIN,
+                                "max": TEMPERATURE_MAX,
                                 "float": true,
-                                "default": 75.0,
+                                "default": DEFAULT_TARGET_TEMP,
                                 "readonly": ["$neq", ["$get", "temp_control", "mode"], "auto"],
                                 "span": 4
                             }
@@ -306,10 +308,10 @@ impl<'a> Handler<'a> {
                                 "type": "number",
                                 "label": "Hot Temperature",
                                 "unit": "°C",
-                                "min": 0,
-                                "max": 200,
+                                "min": TEMPERATURE_MIN,
+                                "max": TEMPERATURE_MAX,
                                 "float": true,
-                                "default": 95.0,
+                                "default": DEFAULT_HOT_TEMP,
                                 "readonly": ["$eq", ["$get", "temp_control", "mode"], "disable"],
                                 "span": 4
                             }
@@ -320,10 +322,10 @@ impl<'a> Handler<'a> {
                                 "type": "number",
                                 "label": "Dangerous Temperature",
                                 "unit": "°C",
-                                "min": 0,
-                                "max": 200,
+                                "min": TEMPERATURE_MIN,
+                                "max": TEMPERATURE_MAX,
                                 "float": true,
-                                "default": 105.0,
+                                "default": DEFAULT_DANGEROUS_TEMP,
                                 "readonly": ["$eq", ["$get", "temp_control", "mode"], "disable"],
                                 "span": 4
                             }
@@ -343,9 +345,9 @@ impl<'a> Handler<'a> {
                                 "type": "number",
                                 "label": "Speed",
                                 "unit": "%",
-                                "min": 0,
-                                "max": 100,
-                                "default": 100,
+                                "min": FAN_SPEED_MIN,
+                                "max": FAN_SPEED_MAX,
+                                "default": DEFAULT_FAN_SPEED,
                                 "readonly": ["$eq", ["$get", "temp_control", "mode"], "auto"]
                             }
                         ],
@@ -354,9 +356,9 @@ impl<'a> Handler<'a> {
                             {
                                 "type": "number",
                                 "label": "Minimum Running Fans",
-                                "min": 0,
-                                "max": 4,
-                                "default": 1
+                                "min": FANS_MIN,
+                                "max": FANS_MAX,
+                                "default": DEFAULT_MIN_FANS
                             }
                         ]
                     ]

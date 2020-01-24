@@ -89,6 +89,26 @@ pub const S9_HASHBOARD_INDEX: usize = 8;
 pub const HASH_CHAIN_INDEX_MIN: usize = 1;
 pub const HASH_CHAIN_INDEX_MAX: usize = 9;
 
+/// Range of PLL frequency for clocking the chips in MHz
+pub const FREQUENCY_MIN: f32 = 200.0;
+pub const FREQUENCY_MAX: f32 = 900.0;
+
+/// Range of hash chain voltage
+pub const VOLTAGE_MIN: f32 = 7.95;
+pub const VOLTAGE_MAX: f32 = 9.4;
+
+/// Range of monitored temperature
+pub const TEMPERATURE_MIN: f32 = 0.0;
+pub const TEMPERATURE_MAX: f32 = 200.0;
+
+/// Range of monitored temperature
+pub const FAN_SPEED_MIN: usize = 0;
+pub const FAN_SPEED_MAX: usize = 100;
+
+/// Range of possible fans
+pub const FANS_MIN: usize = 0;
+pub const FANS_MAX: usize = 4;
+
 /// Default ASIC difficulty
 pub const ASIC_DIFFICULTY: usize = 64;
 
@@ -109,7 +129,17 @@ pub struct ResolvedChainConfig {
 pub enum TempControlMode {
     Auto,
     Manual,
-    Disable,
+    Disabled,
+}
+
+impl std::string::ToString for TempControlMode {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Auto => "auto".to_string(),
+            Self::Manual => "manual".to_string(),
+            Self::Disabled => "disabled".to_string(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -260,7 +290,7 @@ impl Backend {
                     hot_temp: *hot_temp,
                 });
             }
-            TempControlMode::Disable => {
+            TempControlMode::Disabled => {
                 temp_config = None;
                 // do sanity checks
                 if hot_temp.is_some() {
@@ -293,7 +323,7 @@ impl Backend {
                     );
                 }
             }
-            TempControlMode::Manual | TempControlMode::Disable => {
+            TempControlMode::Manual | TempControlMode::Disabled => {
                 fan_config = if fan_speed.eq_some(&0) && min_fans.eq_some(&0) {
                     // completely disable fan controller when all settings are set to 0
                     None
