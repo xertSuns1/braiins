@@ -22,41 +22,72 @@
 
 //! This module handles S9 configuration and configuration file parsing
 
+use ii_logging::macros::*;
+
 pub mod api;
+mod support;
 
 use crate::bm1387::MidstateCount;
+use crate::error;
 use crate::fan;
 use crate::monitor;
 use crate::power;
 use crate::FrequencySettings;
 
+use support::OptionDefault;
+
 use bosminer::hal::{self, BackendConfig as _};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+
 use std::collections::HashMap;
 use std::time::Duration;
 
 /// Expected configuration version
-const CONFIG_VERSION: &'static str = "alpha";
+const FORMAT_VERSION: &'static str = "beta";
+
+/// Expected configuration model
+const FORMAT_MODEL: &'static str = "Antminer S9";
 
 /// Override the default drain channel size as miner tends to burst messages into the logger
 pub const ASYNC_LOGGER_DRAIN_CHANNEL_SIZE: usize = 4096;
 
 /// Location of default config
 /// TODO: Maybe don't add `.toml` prefix so we could use even JSON
-pub const DEFAULT_CONFIG_PATH: &'static str = "/etc/bosminer/bosminer.toml";
+pub const DEFAULT_CONFIG_PATH: &'static str = "/etc/bosminer.toml";
+
+/// Default number of midstates when AsicBoost is enabled
+pub const ASIC_BOOST_MIDSTATE_COUNT: usize = 4;
 
 /// Default number of midstates
-pub const DEFAULT_MIDSTATE_COUNT: usize = 4;
+pub const DEFAULT_ASIC_BOOST: bool = true;
 
-/// Default PLL frequency for clocking the chips
-pub const DEFAULT_PLL_FREQUENCY: usize = 650_000_000;
+/// Default PLL frequency for clocking the chips in MHz
+pub const DEFAULT_FREQUENCY: f32 = 650.0;
 
 /// Default voltage
 pub const DEFAULT_VOLTAGE: f32 = 8.8;
 
+/// Default temperature control mode
+pub const DEFAULT_TEMP_CONTROL_MODE: TempControlMode = TempControlMode::Auto;
+
+/// Default temperatures for temperature control
+pub const DEFAULT_TARGET_TEMP: f32 = 75.0;
+pub const DEFAULT_HOT_TEMP: f32 = 95.0;
+pub const DEFAULT_DANGEROUS_TEMP: f32 = 105.0;
+
+/// Default fan speed for manual target speed
+pub const DEFAULT_FAN_SPEED: usize = 100;
+
+/// Default minimal running fans for monitoring
+pub const DEFAULT_MIN_FANS: usize = 1;
+
 /// Index of hashboard that is to be instantiated
 pub const S9_HASHBOARD_INDEX: usize = 8;
+
+/// Range of hash chain index
+pub const HASH_CHAIN_INDEX_MIN: usize = 1;
+pub const HASH_CHAIN_INDEX_MAX: usize = 9;
 
 /// Default ASIC difficulty
 pub const ASIC_DIFFICULTY: usize = 64;
@@ -67,167 +98,263 @@ pub const DEFAULT_HASHRATE_INTERVAL: Duration = Duration::from_secs(60);
 /// Maximum time it takes to compute one job under normal circumstances
 pub const JOB_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[derive(Debug, Deserialize, Clone)]
-#[serde(deny_unknown_fields)]
-struct TempConfig {
-    dangerous_temp: f32,
-    hot_temp: f32,
-}
-
-impl Default for TempConfig {
-    fn default() -> Self {
-        Self {
-            dangerous_temp: 105.0,
-            hot_temp: 95.0,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(deny_unknown_fields)]
-struct FanConfig {
-    temperature: Option<f32>,
-    speed: Option<usize>,
-    min_fans: usize,
-}
-
-impl Default for FanConfig {
-    fn default() -> Self {
-        Self {
-            temperature: Some(75.0),
-            speed: None,
-            min_fans: 1,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(deny_unknown_fields)]
-struct ChainConfig {
-    frequency: Option<f32>,
-    voltage: Option<f32>,
-}
-
-impl Default for ChainConfig {
-    fn default() -> Self {
-        Self {
-            frequency: Some(650.0),
-            voltage: Some(9.0),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(deny_unknown_fields)]
-pub struct Backend {
-    config_version: String,
-    #[serde(rename = "pool")]
-    pub pools: Option<Vec<bosminer_config::PoolConfig>>,
-    #[serde(skip)]
-    pub clients: Vec<bosminer_config::client::Descriptor>,
-    pub frequency: f32,
-    pub voltage: f32,
-    pub asic_boost: bool,
-    temperature: Option<TempConfig>,
-    fans: Option<FanConfig>,
-    chain: Option<HashMap<String, ChainConfig>>,
-}
-
-impl Default for Backend {
-    fn default() -> Self {
-        Self {
-            config_version: Default::default(),
-            pools: None,
-            clients: vec![],
-            frequency: 650.0,
-            voltage: 9.0,
-            asic_boost: true,
-            temperature: Some(Default::default()),
-            fans: Some(Default::default()),
-            chain: None,
-        }
-    }
-}
-
 pub struct ResolvedChainConfig {
     pub midstate_count: MidstateCount,
     pub frequency: FrequencySettings,
     pub voltage: power::Voltage,
 }
 
-impl Backend {
-    pub fn resolve_chain_config(&self, hashboard_idx: usize) -> ResolvedChainConfig {
-        // take top-level configuration or default value
-        let mut frequency = self.frequency;
-        let mut voltage = self.voltage;
+#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum TempControlMode {
+    Auto,
+    Manual,
+    Disable,
+}
 
-        // if there's a per-chain override then apply it
-        if let Some(chain) = self
-            .chain
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+struct Format {
+    version: String,
+    model: String,
+    generator: Option<String>,
+    timestamp: Option<u32>,
+}
+
+impl Default for Format {
+    fn default() -> Self {
+        Self {
+            version: FORMAT_VERSION.to_string(),
+            model: FORMAT_MODEL.to_string(),
+            generator: None,
+            timestamp: None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct HashChainGlobal {
+    pub asic_boost: Option<bool>,
+    #[serde(flatten)]
+    pub overridable: Option<HashChain>,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct HashChain {
+    pub frequency: Option<f32>,
+    pub voltage: Option<f32>,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TempControl {
+    mode: Option<TempControlMode>,
+    target_temp: Option<f32>,
+    hot_temp: Option<f32>,
+    dangerous_temp: Option<f32>,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct FanControl {
+    speed: Option<usize>,
+    min_fans: Option<usize>,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Backend {
+    format: Format,
+    // TODO: merge pools and clients
+    #[serde(rename = "pool")]
+    pub pools: Option<Vec<bosminer_config::PoolConfig>>,
+    #[serde(skip)]
+    pub clients: Vec<bosminer_config::client::Descriptor>,
+    pub hash_chain_global: Option<HashChainGlobal>,
+    #[serde(rename = "hash_chain")]
+    hash_chains: Option<HashMap<String, HashChain>>,
+    temp_control: Option<TempControl>,
+    fan_control: Option<FanControl>,
+}
+
+impl Backend {
+    pub fn resolve_chain_config(&self, hash_chain_idx: usize) -> ResolvedChainConfig {
+        // Take global hash chain configuration or default value
+        let overridable = self
+            .hash_chain_global
             .as_ref()
-            .and_then(|m| m.get(&hashboard_idx.to_string()))
+            .and_then(|v| v.overridable.as_ref());
+        let mut frequency = OptionDefault::new(
+            overridable.as_ref().and_then(|v| v.frequency),
+            DEFAULT_FREQUENCY,
+        );
+        let mut voltage = OptionDefault::new(
+            overridable.as_ref().and_then(|v| v.voltage),
+            DEFAULT_VOLTAGE,
+        );
+
+        // If there's a per-chain override then apply it
+        if let Some(hash_chain) = self
+            .hash_chains
+            .as_ref()
+            .and_then(|m| m.get(&hash_chain_idx.to_string()))
         {
-            frequency = chain.frequency.unwrap_or(frequency);
-            voltage = chain.voltage.unwrap_or(voltage);
+            frequency = hash_chain
+                .frequency
+                .map(|v| OptionDefault::Some(v))
+                .unwrap_or(frequency);
+            voltage = hash_chain
+                .voltage
+                .map(|v| OptionDefault::Some(v))
+                .unwrap_or(voltage);
         }
 
-        // computed s9-specific values
+        // Computed s9-specific values
         ResolvedChainConfig {
             midstate_count: MidstateCount::new(self.midstate_count()),
-            frequency: FrequencySettings::from_frequency((frequency * 1_000_000.0) as usize),
+            frequency: FrequencySettings::from_frequency((*frequency * 1_000_000.0) as usize),
             // TODO: handle config errors
-            voltage: power::Voltage::from_volts(voltage).expect("bad voltage requested"),
+            voltage: power::Voltage::from_volts(*voltage).expect("bad voltage requested"),
         }
     }
 
     pub fn resolve_monitor_config(&self) -> monitor::Config {
-        let monitor_temp_config = if let Some(temp_config) = self.temperature.as_ref() {
-            Some(monitor::TempControlConfig {
-                dangerous_temp: temp_config.dangerous_temp,
-                hot_temp: temp_config.hot_temp,
-            })
-        } else {
-            None
-        };
-        let monitor_fan_config = if let Some(fan_config) = self.fans.as_ref() {
-            let mode = if let Some(target_temp) = fan_config.temperature {
-                if fan_config.speed.is_some() {
-                    panic!("fan control: cannot specify both target temperature and target speed");
-                }
-                if monitor_temp_config.is_none() {
-                    panic!(
-                        "fan control: cannot specify target temperature with temp control disabled"
+        // Get temperature control settings
+        let mode = OptionDefault::new(
+            self.temp_control.as_ref().and_then(|v| v.mode),
+            DEFAULT_TEMP_CONTROL_MODE,
+        );
+        let target_temp = OptionDefault::new(
+            self.temp_control.as_ref().and_then(|v| v.target_temp),
+            DEFAULT_TARGET_TEMP,
+        );
+        let hot_temp = OptionDefault::new(
+            self.temp_control.as_ref().and_then(|v| v.hot_temp),
+            DEFAULT_HOT_TEMP,
+        );
+        let dangerous_temp = OptionDefault::new(
+            self.temp_control.as_ref().and_then(|v| v.dangerous_temp),
+            DEFAULT_DANGEROUS_TEMP,
+        );
+
+        // Get fan control settings
+        let fan_speed = OptionDefault::new(
+            self.fan_control.as_ref().and_then(|v| v.speed),
+            DEFAULT_FAN_SPEED,
+        );
+        let min_fans = OptionDefault::new(
+            self.fan_control.as_ref().and_then(|v| v.min_fans),
+            DEFAULT_MIN_FANS,
+        );
+
+        let temp_config;
+        let fan_config;
+
+        // Configure temperature controller
+        match *mode {
+            TempControlMode::Auto | TempControlMode::Manual => {
+                temp_config = Some(monitor::TempControlConfig {
+                    dangerous_temp: *dangerous_temp,
+                    hot_temp: *hot_temp,
+                });
+            }
+            TempControlMode::Disable => {
+                temp_config = None;
+                // do sanity checks
+                if hot_temp.is_some() {
+                    warn!(
+                        "Unused 'hot_temp' ({}) because 'disable' mode is set",
+                        *hot_temp
                     );
                 }
-                monitor::FanControlMode::TargetTemperature(target_temp)
-            } else {
-                if let Some(speed) = fan_config.speed {
-                    monitor::FanControlMode::FixedSpeed(fan::Speed::new(speed))
-                } else {
-                    panic!("fan control: you have to specify either \"speed\" or \"temperature\"");
+                if dangerous_temp.is_some() {
+                    warn!(
+                        "Unused 'dangerous_temp' ({}) because 'disable' mode is set",
+                        *hot_temp
+                    );
                 }
-            };
-            Some(monitor::FanControlConfig {
-                mode,
-                min_fans: fan_config.min_fans,
-            })
-        } else {
-            None
+            }
+        };
+
+        // Configure fan controller
+        match *mode {
+            TempControlMode::Auto => {
+                fan_config = Some(monitor::FanControlConfig {
+                    mode: monitor::FanControlMode::TargetTemperature(*target_temp),
+                    min_fans: *min_fans,
+                });
+                // do sanity checks
+                if fan_speed.is_some() {
+                    warn!(
+                        "Unused fan 'speed' ({}) because 'auto' mode is set",
+                        *fan_speed
+                    );
+                }
+            }
+            TempControlMode::Manual | TempControlMode::Disable => {
+                fan_config = if fan_speed.eq_some(&0) && min_fans.eq_some(&0) {
+                    // completely disable fan controller when all settings are set to 0
+                    None
+                } else {
+                    Some(monitor::FanControlConfig {
+                        mode: monitor::FanControlMode::FixedSpeed(fan::Speed::new(*fan_speed)),
+                        min_fans: *min_fans,
+                    })
+                };
+                // do sanity checks
+                if target_temp.is_some() {
+                    warn!(
+                        "Unused 'target_temp' ({}) because 'auto' mode is not set",
+                        *fan_speed
+                    );
+                }
+            }
         };
 
         monitor::Config {
-            temp_config: monitor_temp_config,
-            fan_config: monitor_fan_config,
+            temp_config,
+            fan_config,
         }
     }
 
-    pub fn parse(config_path: &str) -> Self {
+    pub fn parse(config_path: &str) -> error::Result<Self> {
         // Parse config file - either user specified or the default one
-        let mut backend_config: Self = bosminer_config::parse(config_path);
+        let mut backend_config: Self = bosminer_config::parse(config_path)?;
 
-        // Check config is of the correct version
-        if backend_config.config_version != CONFIG_VERSION {
-            panic!("config_version should be {}", CONFIG_VERSION);
+        // Check compatibility of configuration format
+        if backend_config.format.model != FORMAT_MODEL {
+            Err(format!(
+                "incompatible format model '{}'",
+                backend_config.format.model
+            ))?;
+        }
+        // TODO: allow backward compatibility
+        if backend_config.format.version != FORMAT_VERSION {
+            Err(format!(
+                "incompatible format version '{}'",
+                backend_config.format.version
+            ))?;
+        }
+
+        // Check if all hash chain keys have meaningful name
+        if let Some(hash_chains) = &backend_config.hash_chains {
+            for idx in hash_chains.keys() {
+                let _ = idx
+                    .parse::<usize>()
+                    .map_err(|_| format!("hash chain index '{}' is not number", idx))
+                    .and_then(|idx| {
+                        if (HASH_CHAIN_INDEX_MIN..=HASH_CHAIN_INDEX_MAX).contains(&idx) {
+                            Ok(idx)
+                        } else {
+                            Err(format!(
+                                "hash chain index '{}' is out of range '{}..{}'",
+                                idx, HASH_CHAIN_INDEX_MIN, HASH_CHAIN_INDEX_MAX
+                            ))
+                        }
+                    })?;
+            }
         }
 
         // Parse pools
@@ -245,15 +372,20 @@ impl Backend {
 
         backend_config.clients = clients;
 
-        backend_config
+        Ok(backend_config)
     }
 }
 
 impl hal::BackendConfig for Backend {
     #[inline]
     fn midstate_count(&self) -> usize {
-        if self.asic_boost {
-            DEFAULT_MIDSTATE_COUNT
+        if self
+            .hash_chain_global
+            .as_ref()
+            .and_then(|v| v.asic_boost)
+            .unwrap_or(DEFAULT_ASIC_BOOST)
+        {
+            ASIC_BOOST_MIDSTATE_COUNT
         } else {
             1
         }

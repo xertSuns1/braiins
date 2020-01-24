@@ -156,7 +156,7 @@ async fn start_hchain(
     hash_chain
         .init(
             halt_rx,
-            &FrequencySettings::from_frequency(config::DEFAULT_PLL_FREQUENCY),
+            &FrequencySettings::from_frequency((config::DEFAULT_FREQUENCY * 1_000_000.0) as usize),
             *crate::power::OPEN_CORE_VOLTAGE,
             true,
         )

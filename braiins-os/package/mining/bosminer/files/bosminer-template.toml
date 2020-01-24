@@ -1,0 +1,87 @@
+# bOSminer configuration file
+
+# Mandatory fields for specification of configuration format 'version' and
+# compatible hardware 'model'
+[format]
+version = 'beta'
+model = 'Antminer S9'
+generator = 'template'
+
+# Optional configuration for overriding all hash-chains default settings.
+# These settings can be overridden for each hash-chain with an option:
+# [hash_chain.idx] where 'idx' represents numerical index of the hash-chain.
+[hash_chain_global]
+# Enable or disable AsicBoost support (default=true)
+#asic_boost = true
+# Set default chip frequency in MHz for all hash-chains (default=650.0)
+#frequency = 650.0
+# Set default voltage in V for all hash-chains (default=8.8)
+#voltage = 8.8
+
+# Override global settings for hash-chain '6'
+[hash_chain.6]
+# Override global chip frequency in MHz for hash-chain '6'
+# (default='hash_chain_global.frequency')
+#frequency = 650.0
+# Override global voltage in V for hash-chain '6'
+# (default='hash_chain_global.voltage')
+#voltage = 8.8
+
+# Override global settings for hash-chain '7'
+[hash_chain.7]
+# Override global chip frequency in MHz for hash-chain '7'
+# (default='hash_chain_global.frequency')
+#frequency = 650.0
+# Override global voltage in V for hash-chain '7'
+# (default='hash_chain_global.voltage')
+#voltage = 8.8
+
+# Override global settings for hash-chain '8'
+[hash_chain.8]
+# Override global chip frequency in MHz for hash-chain '8'
+# (default='hash_chain_global.frequency')
+#frequency = 650.0
+# Override global voltage in V for hash-chain '8'
+# (default='hash_chain_global.voltage')
+#voltage = 8.8
+
+# Optional configuration for overriding temperature control default settings
+[temp_control]
+# Set temperature control mode (default='auto')
+# * auto     - the control unit uses fans to keep the device temperature below
+#              the target temperature
+# * manual   - the control unit monitors only hot and dangerous temperatures,
+#              but the fans are controlled by the user through 'fan_control'
+# * disabled - WARNING: this may damage the device because no control is done!
+#mode = 'auto'
+# Set target temperature in Celsius (default=75.0)
+# This option is ONLY used when 'temp_control.mode' is set to 'auto'!
+#target_temp = 75.0
+# Set hot temperature in Celsius (default=95.0)
+# When this temperature is reached, the fan speed is set to 100%.
+#hot_temp = 95.0
+# Set dangerous temperature in Celsius (default=105.0)
+# When this temperature is reached, the mining is turned off!
+# WARNING: setting this value too high can damage the device!
+#dangerous_temp = 105.0
+
+# Optional configuration for overriding fan control default settings.
+# To completely disable fan control, set 'speed' and 'min_fans' to 0.
+[fan_control]
+# Set fixed fan speed in % (default=70)
+# This option is NOT used when 'temp_control.mode' is set to 'auto'!
+#speed = 70
+# Set minimum number of fans required for bOSminer to run (default=1)
+#min_fans = 1
+
+# Specify default list of pools which are used for connection to remote servers
+# after successful run of bOSminer.
+# The order of the pools specifies a priority for failover algorithm.
+# This section can be repeated.
+#[[pool]]
+# Mandatory option for server URL specified in format <HOSTNAME:PORT>
+#url = "v2.stratum.slushpool.com:3336"
+# Mandatory option for username specified in format <USERNAME.WORKERNAME>
+#user = "!non-existent-user!"
+# Optional password settings
+#password = 'secret'

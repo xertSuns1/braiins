@@ -192,7 +192,7 @@ impl<'a> Handler<'a> {
                             {
                                 "type": "number",
                                 "label": "Frequency",
-                                "unit": "Mhz",
+                                "unit": "MHz",
                                 "min": 200,
                                 "max": 900,
                                 "float": true,
@@ -220,8 +220,8 @@ impl<'a> Handler<'a> {
                     "type": "dict",
                     "label": "Override Global Hash Chain Settings",
                     "key": {
-                        "min": 6,
-                        "max": 12
+                        "min": 1,
+                        "max": 10
                     },
                     "value": {
                         "type": "object",
@@ -231,7 +231,7 @@ impl<'a> Handler<'a> {
                                 {
                                     "type": "number",
                                     "label": "Frequency",
-                                    "unit": "Mhz",
+                                    "unit": "MHz",
                                     "min": 200,
                                     "max": 900,
                                     "float": true,
@@ -276,6 +276,11 @@ impl<'a> Handler<'a> {
                                         "key": "manual",
                                         "label": "Manual",
                                         "alert": "Warning ..."
+                                    },
+                                    {
+                                        "key": "disable",
+                                        "label": "Disabled",
+                                        "alert": "Warning ..."
                                     }
                                 ],
                                 "default": "auto"
@@ -291,7 +296,7 @@ impl<'a> Handler<'a> {
                                 "max": 200,
                                 "float": true,
                                 "default": 75.0,
-                                "readonly": ["$eq", ["$get", "temp_control", "mode"], "auto"],
+                                "readonly": ["$neq", ["$get", "temp_control", "mode"], "auto"],
                                 "span": 4
                             }
                         ],
@@ -305,7 +310,7 @@ impl<'a> Handler<'a> {
                                 "max": 200,
                                 "float": true,
                                 "default": 95.0,
-                                "readonly": ["$eq", ["$get", "temp_control", "mode"], "auto"],
+                                "readonly": ["$eq", ["$get", "temp_control", "mode"], "disable"],
                                 "span": 4
                             }
                         ],
@@ -319,7 +324,7 @@ impl<'a> Handler<'a> {
                                 "max": 200,
                                 "float": true,
                                 "default": 105.0,
-                                "readonly": ["$eq", ["$get", "temp_control", "mode"], "auto"],
+                                "readonly": ["$eq", ["$get", "temp_control", "mode"], "disable"],
                                 "span": 4
                             }
                         ]
@@ -340,7 +345,8 @@ impl<'a> Handler<'a> {
                                 "unit": "%",
                                 "min": 0,
                                 "max": 100,
-                                "default": 100
+                                "default": 100,
+                                "readonly": ["$eq", ["$get", "temp_control", "mode"], "auto"]
                             }
                         ],
                         [

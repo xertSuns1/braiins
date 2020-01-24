@@ -65,6 +65,10 @@ define Package/bosminer/config
 	source "$(SOURCE)/Config.in"
 endef
 
+define Package/cgminer/conffiles
+/etc/bosminer.toml
+endef
+
 define Build/Compile
 	( cd $(PKG_BUILD_DIR)/$(BOSMINER_NAME); CROSS_COMPILE=$(TARGET_CROSS) \
 	  cargo build --release --target $(CARGO_TARGET))
@@ -74,9 +78,10 @@ endef
 define Package/bosminer/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(CARGO_OUTPUT_DIR)/$(BOSMINER_NAME) $(1)/usr/bin/$(PKG_NAME)
-	$(INSTALL_DIR) $(1)/etc/bosminer
-	$(INSTALL_BIN) ./files/bosminer.toml $(1)/etc/bosminer/bosminer.toml
-	$(INSTALL_BIN) ./files/hash_s8_app.txt $(1)/etc/bosminer/hash_s8_app.txt
+	$(INSTALL_DIR) $(1)/etc
+	$(CP) ./files/bosminer-template.toml $(1)/etc/
+	$(INSTALL_DIR) $(1)/etc/antminer
+	$(CP) ./files/hash_s8_app.txt $(1)/etc/antminer/hash_s8_app.txt
 endef
 
 $(eval $(call BuildPackage,bosminer))

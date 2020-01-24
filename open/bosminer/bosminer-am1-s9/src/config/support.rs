@@ -20,33 +20,46 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-pub mod client;
-pub mod error;
+use std::ops::Deref;
 
-// reexport common crates
-pub use clap;
-pub use config;
-
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct PoolConfig {
-    pub url: String,
-    pub user: String,
-    pub password: Option<String>,
+pub enum OptionDefault<T> {
+    Some(T),
+    Default(T),
 }
 
-/// Parse a configuration file from `config_path`.
-pub fn parse<'a, T>(config_path: &str) -> Result<T, String>
-where
-    T: Deserialize<'a>,
-{
-    let mut settings = config::Config::default();
-    settings
-        .merge(config::File::with_name(config_path))
-        .map_err(|e| format!("{}", e))?;
+impl<T> OptionDefault<T> {
+    pub fn new(value: Option<T>, default: T) -> Self {
+        match value {
+            Some(val) => OptionDefault::Some(val),
+            None => OptionDefault::Default(default),
+        }
+    }
 
-    // Parse it into structure
-    settings.try_into::<T>().map_err(|e| format!("{}", e))
+    pub fn is_some(&self) -> bool {
+        match *self {
+            OptionDefault::Some(_) => true,
+            OptionDefault::Default(_) => false,
+        }
+    }
+
+    pub fn eq_some(&self, b: &T) -> bool
+    where
+        T: std::cmp::PartialEq,
+    {
+        match self {
+            OptionDefault::Some(a) => a == b,
+            OptionDefault::Default(_) => false,
+        }
+    }
+}
+
+impl<T> Deref for OptionDefault<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            OptionDefault::Some(val) => val,
+            OptionDefault::Default(val) => val,
+        }
+    }
 }

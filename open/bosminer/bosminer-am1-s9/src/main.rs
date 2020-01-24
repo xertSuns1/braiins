@@ -117,7 +117,14 @@ async fn main() {
     let config_path = matches
         .value_of("config")
         .unwrap_or(config::DEFAULT_CONFIG_PATH);
-    let mut backend_config = config::Backend::parse(config_path);
+    let mut backend_config = match config::Backend::parse(config_path) {
+        Err(e) => {
+            error!("Cannot load configuration file \"{}\"", config_path);
+            error!("Reason: {}", e);
+            return;
+        }
+        Ok(v) => v,
+    };
 
     // Handle special 'config' sub-command available for configuration backend API
     if let Some(matches) = matches.subcommand_matches("config") {
@@ -163,13 +170,31 @@ async fn main() {
 
     // Set just 1 midstate if user requested disabling asicboost
     if matches.is_present("disable-asic-boost") {
-        backend_config.asic_boost = false;
+        backend_config
+            .hash_chain_global
+            .get_or_insert_with(|| Default::default())
+            .asic_boost
+            .replace(false);
     }
     if let Some(value) = matches.value_of("frequency") {
-        backend_config.frequency = value.parse::<f32>().expect("not a float number");
+        let frequency = value.parse::<f32>().expect("not a float number");
+        backend_config
+            .hash_chain_global
+            .get_or_insert_with(|| Default::default())
+            .overridable
+            .get_or_insert_with(|| Default::default())
+            .frequency
+            .replace(frequency);
     }
     if let Some(value) = matches.value_of("voltage") {
-        backend_config.voltage = value.parse::<f32>().expect("not a float number");
+        let voltage = value.parse::<f32>().expect("not a float number");
+        backend_config
+            .hash_chain_global
+            .get_or_insert_with(|| Default::default())
+            .overridable
+            .get_or_insert_with(|| Default::default())
+            .voltage
+            .replace(voltage);
     }
 
     ii_async_compat::setup_panic_handling();
