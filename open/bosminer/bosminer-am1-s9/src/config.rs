@@ -147,7 +147,9 @@ impl std::string::ToString for TempControlMode {
 struct Format {
     version: String,
     model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     generator: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     timestamp: Option<u32>,
 }
 
@@ -165,6 +167,7 @@ impl Default for Format {
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct HashChainGlobal {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub asic_boost: Option<bool>,
     #[serde(flatten)]
     pub overridable: Option<HashChain>,
@@ -173,23 +176,31 @@ pub struct HashChainGlobal {
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct HashChain {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub frequency: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub voltage: Option<f32>,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct TempControl {
+    #[serde(skip_serializing_if = "Option::is_none")]
     mode: Option<TempControlMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     target_temp: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     hot_temp: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     dangerous_temp: Option<f32>,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct FanControl {
+    #[serde(skip_serializing_if = "Option::is_none")]
     speed: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     min_fans: Option<usize>,
 }
 
@@ -199,13 +210,18 @@ pub struct Backend {
     format: Format,
     // TODO: merge pools and clients
     #[serde(rename = "pool")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pools: Option<Vec<bosminer_config::PoolConfig>>,
     #[serde(skip)]
     pub clients: Vec<bosminer_config::client::Descriptor>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub hash_chain_global: Option<HashChainGlobal>,
     #[serde(rename = "hash_chain")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     hash_chains: Option<HashMap<String, HashChain>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     temp_control: Option<TempControl>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     fan_control: Option<FanControl>,
 }
 
