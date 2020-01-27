@@ -136,26 +136,29 @@ impl Handler {
 
     async fn handle_temp_ctrl(&self) -> command::Result<response::ext::TempCtrl> {
         let config = self.get_monitor_status()?.config;
-        let (hot, dangerous) = match config.temp_config {
-            Some(config) => (config.hot_temp, config.dangerous_temp),
-            None => (0.0, 0.0),
-        };
-        let (mode, target_temp, target_fan, _min_fans) = match config.fan_config {
-            Some(config) => match config.mode {
-                monitor::FanControlMode::FixedSpeed(speed) => {
-                    ("fixed fan speed", 0.0, speed.to_pwm(), config.min_fans)
-                }
-                monitor::FanControlMode::TargetTemperature(temp) => {
-                    ("target temperature", temp, 0, config.min_fans)
-                }
-            },
-            None => ("disabled", 0.0, 0, 0),
-        };
+
+        let mut mode = response::ext::TempCtrlMode::Disabled;
+        let mut target = None;
+        let mut hot = None;
+        let mut dangerous = None;
+
+        if let Some(temp_config) = config.temp_config {
+            mode = response::ext::TempCtrlMode::Manual;
+            hot.replace(temp_config.hot_temp);
+            dangerous.replace(temp_config.dangerous_temp);
+        }
+        if let Some(fan_config) = config.fan_config {
+            if let monitor::FanControlMode::TargetTemperature(target_temp) = fan_config.mode {
+                mode = response::ext::TempCtrlMode::Automatic;
+                target.replace(target_temp);
+            }
+        }
+
         Ok(response::ext::TempCtrl {
-            mode: mode.to_string(),
-            target: (target_temp as f64) + (target_fan as f64),
-            hot: hot as f64,
-            dangerous: dangerous as f64,
+            mode,
+            target,
+            hot,
+            dangerous,
         })
     }
 

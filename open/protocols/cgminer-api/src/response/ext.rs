@@ -24,21 +24,32 @@
 
 use super::*;
 
+#[derive(Serialize, PartialEq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub enum TempCtrlMode {
+    Automatic,
+    Manual,
+    Disabled,
+}
+
 /// Basic temperature control settings
 #[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct TempCtrl {
     #[serde(rename = "Mode")]
-    pub mode: String, // TODO: use enum
+    pub mode: TempCtrlMode,
     /// Temperature setpoint
     #[serde(rename = "Target")]
-    pub target: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<f32>,
     /// Hot temperature threshold is typically intended to warn the user
     #[serde(rename = "Hot")]
-    pub hot: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hot: Option<f32>,
     /// Dangerous temperature is recommended to result in shutdown to prevent hardware damage
     /// from overheating
     #[serde(rename = "Dangerous")]
-    pub dangerous: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dangerous: Option<f32>,
 }
 
 impl From<TempCtrl> for Dispatch {
