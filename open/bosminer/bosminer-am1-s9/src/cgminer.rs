@@ -80,16 +80,22 @@ pub struct TempInfo {
 }
 
 pub struct Handler {
+    model: String,
     managers: Vec<Arc<Mutex<crate::HashChainManager>>>,
     monitor: Arc<monitor::Monitor>,
 }
 
 impl Handler {
     pub fn new(
+        model: String,
         managers: Vec<Arc<Mutex<crate::HashChainManager>>>,
         monitor: Arc<monitor::Monitor>,
     ) -> Self {
-        Self { managers, monitor }
+        Self {
+            model,
+            managers,
+            monitor,
+        }
     }
 
     fn get_monitor_status(&self) -> command::Result<monitor::Status> {
@@ -110,11 +116,11 @@ impl Handler {
             };
             list.push(response::DevDetail {
                 idx: list.len() as i32,
-                name: "".to_string(),
+                name: manager.node.to_string(),
                 id: manager.node.hashboard_idx as i32,
                 driver: "".to_string(),
                 kernel: "".to_string(),
-                model: "".to_string(),
+                model: self.model.clone(),
                 device_path: "".to_string(),
                 info: DevDetailInfo {
                     voltage: manager.params.voltage.as_volts() as f64,
@@ -194,10 +200,11 @@ impl Handler {
 }
 
 pub fn create_custom_commands(
+    backend: Arc<crate::Backend>,
     managers: Vec<Arc<Mutex<crate::HashChainManager>>>,
     monitor: Arc<monitor::Monitor>,
 ) -> Option<command::Map> {
-    let handler = Arc::new(Handler::new(managers, monitor));
+    let handler = Arc::new(Handler::new(backend.to_string(), managers, monitor));
 
     let custom_commands = commands![
         (DEVDETAILS: ParameterLess -> handler.handle_dev_details),

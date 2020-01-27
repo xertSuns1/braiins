@@ -930,13 +930,13 @@ struct HashChainNode {
 
 impl fmt::Debug for HashChainNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Antminer S9 - Hashboard {}", self.hashboard_idx)
+        write!(f, "Hash Chain {}", self.hashboard_idx)
     }
 }
 
 impl fmt::Display for HashChainNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Antminer S9 - Hashboard {}", self.hashboard_idx)
+        write!(f, "Hash Chain {}", self.hashboard_idx)
     }
 }
 
@@ -1367,6 +1367,7 @@ impl hal::Backend for Backend {
         backend_config: config::Backend,
         work_hub: work::SolverBuilder<Self>,
     ) -> bosminer::Result<hal::FrontendConfig> {
+        let backend = work_hub.to_node().clone();
         let gpio_mgr = gpio::ControlPinManager::new();
         let (app_halt_sender, app_halt_receiver) = halt::make_pair(HALT_TIMEOUT);
         let (managers, monitor) = Self::start_miner(
@@ -1390,7 +1391,7 @@ impl hal::Backend for Backend {
         app_halt_sender.hook_ctrlc();
 
         Ok(hal::FrontendConfig {
-            cgminer_custom_commands: cgminer::create_custom_commands(managers, monitor),
+            cgminer_custom_commands: cgminer::create_custom_commands(backend, managers, monitor),
         })
     }
 
