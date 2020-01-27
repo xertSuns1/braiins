@@ -602,6 +602,10 @@ impl Control {
         self.write(ENABLE_VOLTAGE, &[false as u8]).await
     }
 
+    pub async fn get_current_voltage(&self) -> Option<Voltage> {
+        *self.current_voltage.lock().await
+    }
+
     pub async fn set_voltage(&self, voltage: Voltage) -> error::Result<()> {
         let mut current_voltage = self.current_voltage.lock().await;
         if *current_voltage != Some(voltage) {

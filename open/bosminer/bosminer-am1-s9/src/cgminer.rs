@@ -106,10 +106,15 @@ impl Handler {
         let mut list = vec![];
         for manager in self.managers.iter() {
             let inner = manager.inner.lock().await;
-            let chip_count = match inner.hash_chain.as_ref() {
-                Some(hash_chain) => hash_chain.chip_count,
-                None => 0,
-            };
+            let mut chip_count = 0;
+            let mut voltage = 0.0;
+            let mut frequency = 0;
+            if let Some(hash_chain) = inner.hash_chain.as_ref() {
+                chip_count = hash_chain.chip_count;
+                let params = hash_chain.get_params().await;
+                voltage = params.voltage.as_volts() as f64;
+                frequency = params.frequency.avg() as u32;
+            }
             list.push(response::DevDetail {
                 idx: list.len() as i32,
                 name: manager.to_string(),
@@ -119,8 +124,8 @@ impl Handler {
                 model: self.model.clone(),
                 device_path: "".to_string(),
                 info: DevDetailInfo {
-                    voltage: inner.params.voltage.as_volts() as f64,
-                    frequency: inner.params.frequency.avg() as u32,
+                    voltage,
+                    frequency,
                     chips: chip_count as u32,
                     cores: (chip_count * crate::bm1387::NUM_CORES_ON_CHIP) as u32,
                 },

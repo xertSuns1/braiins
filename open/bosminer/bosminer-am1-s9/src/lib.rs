@@ -202,6 +202,8 @@ pub struct HashChain {
     /// we need to keep the halt receiver around, otherwise the "stop-notify" channel closes when chain ends
     #[allow(dead_code)]
     halt_receiver: halt::Receiver,
+    /// Current hashchain settings
+    frequency: Mutex<FrequencySettings>,
 }
 
 impl HashChain {
@@ -256,6 +258,7 @@ impl HashChain {
             temperature_receiver,
             halt_sender,
             halt_receiver,
+            frequency: Mutex::new(FrequencySettings::from_frequency(0)),
         })
     }
 
@@ -527,7 +530,13 @@ impl HashChain {
 
         // Update chips one-by-one
         for i in 0..self.chip_count {
-            self.set_chip_pll(i, frequency.chip[i]).await?;
+            let mut cur_frequency = self.frequency.lock().await;
+            if cur_frequency.chip[i] != frequency.chip[i] {
+                cur_frequency.chip[i] = frequency.chip[i];
+                // Drop lock while calling `set_chip_pll()`
+                drop(cur_frequency);
+                self.set_chip_pll(i, frequency.chip[i]).await?;
+            }
         }
         // Update worktime
         self.set_work_time(frequency.max()).await;
@@ -868,6 +877,17 @@ impl HashChain {
             .await
             .spawn(Self::monitor_watchdog_temp_task(self.clone()));
     }
+
+    pub async fn get_params(&self) -> HashChainParams {
+        HashChainParams {
+            frequency: self.frequency.lock().await.clone(),
+            voltage: self
+                .voltage_ctrl
+                .get_current_voltage()
+                .await
+                .expect("BUG: no voltage on hashchain"),
+        }
+    }
 }
 
 impl fmt::Debug for HashChain {
@@ -964,7 +984,10 @@ impl Drop for StoppedChain {
 }
 
 impl StoppedChain {
-    async fn start(self) -> Result<RunningChain, (Self, error::Error)> {
+    async fn start(
+        self,
+        initial_params: &HashChainParams,
+    ) -> Result<RunningChain, (Self, error::Error)> {
         // if miner initialization fails, retry
         let mut tries_left = ENUM_RETRY_COUNT;
 
@@ -979,7 +1002,7 @@ impl StoppedChain {
             // less chips than expected (63).
             match self
                 .manager
-                .attempt_start_chain(tries_left <= ENUM_RETRY_COUNT / 2)
+                .attempt_start_chain(tries_left <= ENUM_RETRY_COUNT / 2, initial_params)
                 .await
             {
                 // start successful
@@ -1008,11 +1031,6 @@ impl StoppedChain {
                 }
             }
         }
-    }
-
-    #[allow(dead_code)]
-    async fn set_params(&self, params: &HashChainParams) {
-        self.manager.inner.lock().await.params = params.clone();
     }
 }
 
@@ -1044,18 +1062,14 @@ impl RunningChain {
 
     #[allow(dead_code)]
     async fn set_params(&self, params: &HashChainParams) -> error::Result<()> {
-        let mut inner = self.manager.inner.lock().await;
-
-        inner.params = params.clone();
+        let inner = self.manager.inner.lock().await;
         let hash_chain = inner
             .hash_chain
             .as_ref()
             .expect("BUG: hashchain is not running");
-        hash_chain
-            .voltage_ctrl
-            .set_voltage(inner.params.voltage)
-            .await?;
-        hash_chain.set_pll(&inner.params.frequency).await?;
+
+        hash_chain.voltage_ctrl.set_voltage(params.voltage).await?;
+        hash_chain.set_pll(&params.frequency).await?;
 
         Ok(())
     }
@@ -1147,7 +1161,6 @@ impl ChainStatus {
 
 pub struct ManagerInner {
     hash_chain: Option<Arc<HashChain>>,
-    params: HashChainParams,
 }
 
 /// Hashchain manager that can start and stop instances of hashchain
@@ -1170,6 +1183,7 @@ pub struct Manager {
     /// TODO: wrap this type in a structure (in Monitor)
     status_receiver: watch::Receiver<Option<monitor::Status>>,
     owned_by: StdMutex<Option<&'static str>>,
+    initial_params: HashChainParams,
     inner: Mutex<ManagerInner>,
 }
 
@@ -1202,7 +1216,11 @@ impl Manager {
 
     /// Initialize and start mining on hashchain
     /// TODO: this function is private and should be called only from `Stopped`
-    async fn attempt_start_chain(&self, accept_less_chips: bool) -> error::Result<()> {
+    async fn attempt_start_chain(
+        &self,
+        accept_less_chips: bool,
+        initial_params: &HashChainParams,
+    ) -> error::Result<()> {
         // lock inner to guarantee atomicity of hashchain start
         let mut inner = self.inner.lock().await;
 
@@ -1230,8 +1248,8 @@ impl Manager {
         // initialize it
         let work_registry = match hash_chain
             .init(
-                &inner.params.frequency,
-                inner.params.voltage,
+                &initial_params.frequency,
+                initial_params.voltage,
                 accept_less_chips,
             )
             .await
@@ -1443,13 +1461,11 @@ impl Backend {
                         monitor_tx,
                         status_receiver,
                         owned_by: StdMutex::new(None),
-                        inner: Mutex::new(ManagerInner {
-                            hash_chain: None,
-                            params: HashChainParams {
-                                frequency: chain_config.frequency.clone(),
-                                voltage: chain_config.voltage,
-                            },
-                        }),
+                        initial_params: HashChainParams {
+                            frequency: chain_config.frequency.clone(),
+                            voltage: chain_config.voltage,
+                        },
+                        inner: Mutex::new(ManagerInner { hash_chain: None }),
                     }
                 })
                 .await;
@@ -1468,12 +1484,13 @@ impl Backend {
                     .await
                     .spawn_halt_handler(Manager::termination_handler(manager.clone()));
 
+                let params = manager.initial_params.clone();
                 manager
                     .acquire("main")
                     .await
                     .expect("BUG: failed to acquire hashchain")
                     .expect_stopped()
-                    .start()
+                    .start(&params)
                     .await
                     .expect("BUG: failed to start hashchain");
             });
