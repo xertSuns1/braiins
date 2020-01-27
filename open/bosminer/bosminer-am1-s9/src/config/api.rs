@@ -24,7 +24,7 @@
 
 use super::*;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{self, json};
 use serde_repr::*;
 
@@ -42,6 +42,10 @@ impl UnixTime {
             .map(|duration| duration.as_secs() as u32)
             .unwrap_or(0)
     }
+}
+
+fn generator_string() -> String {
+    format!("bosminer {}", bosminer::version::STRING.clone())
 }
 
 #[derive(Serialize_repr, Eq, PartialEq, Copy, Clone, Debug)]
@@ -69,7 +73,7 @@ impl Status {
         Self {
             code,
             message: message.into(),
-            generator: format!("bosminer {}", bosminer::version::STRING.clone()),
+            generator: generator_string(),
             timestamp: UnixTime::now(),
         }
     }
@@ -86,6 +90,12 @@ struct DataResponse {
     pub status: Status,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Backend>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+struct SaveRequest {
+    pub data: serde_json::Value,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -419,25 +429,25 @@ impl<'a> Handler<'a> {
     }
 
     pub fn handle_save(self) {
-        // Initially, deserialize request only to JSON Value to check format version and select
-        // proper structures for deserialization
-        let json_request: serde_json::Value = serde_json::from_reader(io::stdin()).unwrap();
-        let json_format = json_request.get("format").expect("TODO: missing format");
+        let mut request: SaveRequest =
+            serde_json::from_reader(io::stdin()).expect("TODO: deserialize SaveRequest");
 
-        let config_format: Format =
-            serde_json::from_value(json_format.clone()).expect("TODO: deserialize Format");
+        let config_format = Format {
+            generator: generator_string().into(),
+            timestamp: UnixTime::now().into(),
+            ..Default::default()
+        };
 
-        // Check compatibility of configuration format
-        if config_format.model != FORMAT_MODEL {
-            panic!("incompatible format model '{}'", config_format.model);
-        }
-        // TODO: allow backward compatibility
-        if config_format.version != FORMAT_VERSION {
-            panic!("incompatible format version '{}'", config_format.version);
-        }
+        let json_format =
+            serde_json::to_value(config_format).expect("BUG: cannot serialize Format");
+        request
+            .data
+            .as_object_mut()
+            .expect("TODO: invalid data type")
+            .insert("format".to_string(), json_format);
 
         let backend_config: Backend =
-            serde_json::from_value(json_request).expect("TODO: deserialize Backend");
+            serde_json::from_value(request.data).expect("TODO: deserialize Backend");
 
         let config_path = Path::new(self.config_path);
         let config_dir = config_path.parent().expect("TODO: path.parent");
