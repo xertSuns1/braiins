@@ -103,6 +103,8 @@ impl TestWorkSolver {
     }
 }
 
+impl node::WorkSolver for TestWorkSolver {}
+
 impl fmt::Display for TestWorkSolver {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Test work solver")

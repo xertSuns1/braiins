@@ -91,7 +91,12 @@ where
 
 /// Common interface for nodes with ability to solve generated work and providing common interface
 /// for mining control
-pub trait WorkSolver: Info + WorkSolverStats {}
+pub trait WorkSolver: Info + WorkSolverStats {
+    /// Optionally return work solver unique id (e.g. hash chain index)
+    fn get_id(&self) -> Option<usize> {
+        None
+    }
+}
 
 pub trait WorkSolverStats: Stats {
     /// Return object with work solver specific statistics
@@ -119,7 +124,11 @@ impl<T: ?Sized + Stats> Stats for Arc<T> {
     }
 }
 
-impl<T: ?Sized + WorkSolver> WorkSolver for Arc<T> {}
+impl<T: ?Sized + WorkSolver> WorkSolver for Arc<T> {
+    fn get_id(&self) -> Option<usize> {
+        self.as_ref().get_id()
+    }
+}
 
 impl<T: ?Sized + WorkSolverStats> WorkSolverStats for Arc<T> {
     fn work_solver_stats(&self) -> &dyn stats::WorkSolver {

@@ -928,6 +928,12 @@ struct HashChainNode {
     monitor_tx: mpsc::UnboundedSender<monitor::Message>,
 }
 
+impl node::WorkSolver for HashChainNode {
+    fn get_id(&self) -> Option<usize> {
+        Some(self.hashboard_idx)
+    }
+}
+
 impl fmt::Debug for HashChainNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Hash Chain {}", self.hashboard_idx)
@@ -1402,6 +1408,8 @@ impl hal::Backend for Backend {
         panic!("BUG: called `init_work_solver`");
     }
 }
+
+impl node::WorkSolver for Backend {}
 
 impl fmt::Display for Backend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

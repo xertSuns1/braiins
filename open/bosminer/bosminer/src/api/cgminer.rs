@@ -24,7 +24,7 @@
 //! statistics from it.
 
 use crate::hub;
-use crate::node::{self, Stats as _, WorkSolverStats as _};
+use crate::node::{self, Stats as _, WorkSolver, WorkSolverStats as _};
 use crate::stats::{self, UnixTime as _};
 use crate::version;
 
@@ -205,8 +205,7 @@ impl Handler {
             idx: idx as i32,
             // TODO: get actual ASIC name from work solver
             name: "".to_string(),
-            // TODO: get idx from work solver (it can represent real index of hash chain)
-            id: idx as i32,
+            id: work_solver.get_id().unwrap_or(idx) as i32,
             // TODO: get actual state from work solver
             enabled: response::Bool::Y,
             // TODO: get actual status from work solver

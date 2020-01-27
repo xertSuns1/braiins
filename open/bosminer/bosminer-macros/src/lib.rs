@@ -115,8 +115,6 @@ fn impl_derive_work_solver_node(
     let work_solver_stats = find_member(&fields, "member_work_solver_stats");
 
     stream.extend(quote! {
-        impl#generics node::WorkSolver for #name#generics {}
-
         impl#generics node::WorkSolverStats for #name#generics {
             #[inline]
             fn work_solver_stats(&self) -> &stats::WorkSolver {
