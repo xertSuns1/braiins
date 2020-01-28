@@ -63,18 +63,18 @@ pub const ASIC_BOOST_MIDSTATE_COUNT: usize = 4;
 pub const DEFAULT_ASIC_BOOST: bool = true;
 
 /// Default PLL frequency for clocking the chips in MHz
-pub const DEFAULT_FREQUENCY: f32 = 650.0;
+pub const DEFAULT_FREQUENCY: f64 = 650.0;
 
 /// Default voltage
-pub const DEFAULT_VOLTAGE: f32 = 8.8;
+pub const DEFAULT_VOLTAGE: f64 = 8.8;
 
 /// Default temperature control mode
 pub const DEFAULT_TEMP_CONTROL_MODE: TempControlMode = TempControlMode::Auto;
 
 /// Default temperatures for temperature control
-pub const DEFAULT_TARGET_TEMP: f32 = 75.0;
-pub const DEFAULT_HOT_TEMP: f32 = 95.0;
-pub const DEFAULT_DANGEROUS_TEMP: f32 = 105.0;
+pub const DEFAULT_TARGET_TEMP: f64 = 75.0;
+pub const DEFAULT_HOT_TEMP: f64 = 95.0;
+pub const DEFAULT_DANGEROUS_TEMP: f64 = 105.0;
 
 /// Default fan speed for manual target speed
 pub const DEFAULT_FAN_SPEED: usize = 100;
@@ -90,16 +90,16 @@ pub const HASH_CHAIN_INDEX_MIN: usize = 1;
 pub const HASH_CHAIN_INDEX_MAX: usize = 9;
 
 /// Range of PLL frequency for clocking the chips in MHz
-pub const FREQUENCY_MIN: f32 = 200.0;
-pub const FREQUENCY_MAX: f32 = 900.0;
+pub const FREQUENCY_MIN: f64 = 200.0;
+pub const FREQUENCY_MAX: f64 = 900.0;
 
 /// Range of hash chain voltage
-pub const VOLTAGE_MIN: f32 = 7.95;
-pub const VOLTAGE_MAX: f32 = 9.4;
+pub const VOLTAGE_MIN: f64 = 7.95;
+pub const VOLTAGE_MAX: f64 = 9.4;
 
 /// Range of monitored temperature
-pub const TEMPERATURE_MIN: f32 = 0.0;
-pub const TEMPERATURE_MAX: f32 = 200.0;
+pub const TEMPERATURE_MIN: f64 = 0.0;
+pub const TEMPERATURE_MAX: f64 = 200.0;
 
 /// Range of monitored temperature
 pub const FAN_SPEED_MIN: usize = 0;
@@ -176,9 +176,9 @@ pub struct HashChainGlobal {
 #[serde(deny_unknown_fields)]
 pub struct HashChain {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub frequency: Option<f32>,
+    pub frequency: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub voltage: Option<f32>,
+    pub voltage: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
@@ -187,11 +187,11 @@ pub struct TempControl {
     #[serde(skip_serializing_if = "Option::is_none")]
     mode: Option<TempControlMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    target_temp: Option<f32>,
+    target_temp: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    hot_temp: Option<f32>,
+    hot_temp: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    dangerous_temp: Option<f32>,
+    dangerous_temp: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
@@ -261,7 +261,7 @@ impl Backend {
             midstate_count: MidstateCount::new(self.midstate_count()),
             frequency: FrequencySettings::from_frequency((*frequency * 1_000_000.0) as usize),
             // TODO: handle config errors
-            voltage: power::Voltage::from_volts(*voltage).expect("bad voltage requested"),
+            voltage: power::Voltage::from_volts(*voltage as f32).expect("bad voltage requested"),
         }
     }
 
@@ -301,8 +301,8 @@ impl Backend {
         match *mode {
             TempControlMode::Auto | TempControlMode::Manual => {
                 temp_config = Some(monitor::TempControlConfig {
-                    dangerous_temp: *dangerous_temp,
-                    hot_temp: *hot_temp,
+                    dangerous_temp: *dangerous_temp as f32,
+                    hot_temp: *hot_temp as f32,
                 });
             }
             TempControlMode::Disabled => {
@@ -327,7 +327,7 @@ impl Backend {
         match *mode {
             TempControlMode::Auto => {
                 fan_config = Some(monitor::FanControlConfig {
-                    mode: monitor::FanControlMode::TargetTemperature(*target_temp),
+                    mode: monitor::FanControlMode::TargetTemperature(*target_temp as f32),
                     min_fans: *min_fans,
                 });
                 // do sanity checks

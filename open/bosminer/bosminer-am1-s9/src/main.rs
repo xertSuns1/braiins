@@ -178,7 +178,7 @@ async fn main() {
             .replace(false);
     }
     if let Some(value) = matches.value_of("frequency") {
-        let frequency = value.parse::<f32>().expect("not a float number");
+        let frequency = value.parse::<f64>().expect("not a float number");
         backend_config
             .hash_chain_global
             .get_or_insert_with(|| Default::default())
@@ -188,7 +188,7 @@ async fn main() {
             .replace(frequency);
     }
     if let Some(value) = matches.value_of("voltage") {
-        let voltage = value.parse::<f32>().expect("not a float number");
+        let voltage = value.parse::<f64>().expect("not a float number");
         backend_config
             .hash_chain_global
             .get_or_insert_with(|| Default::default())
