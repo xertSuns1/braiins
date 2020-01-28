@@ -880,12 +880,18 @@ impl FrequencySettings {
 
     #[allow(dead_code)]
     fn min(&self) -> usize {
-        *self.chip.iter().min().expect("no chips on chain")
+        *self.chip.iter().min().expect("BUG: no chips on chain")
     }
 
     #[allow(dead_code)]
     fn max(&self) -> usize {
-        *self.chip.iter().max().expect("no chips on chain")
+        *self.chip.iter().max().expect("BUG: no chips on chain")
+    }
+
+    fn avg(&self) -> usize {
+        assert!(self.chip.len() > 0, "BUG: no chips on chain");
+        let sum: u64 = self.chip.iter().map(|frequency| *frequency as u64).sum();
+        (sum / self.chip.len() as u64) as usize
     }
 }
 

@@ -64,7 +64,7 @@ pub struct DevDetailInfo {
     #[serde(rename = "Voltage")]
     pub voltage: f64,
     #[serde(rename = "Frequency")]
-    pub frequency: f64,
+    pub frequency: u32,
     #[serde(rename = "Chips")]
     pub chips: u32,
     #[serde(rename = "Cores")]
@@ -124,7 +124,7 @@ impl Handler {
                 device_path: "".to_string(),
                 info: DevDetailInfo {
                     voltage: manager.params.voltage.as_volts() as f64,
-                    frequency: manager.params.frequency.max() as f64 / 1_000_000.0,
+                    frequency: manager.params.frequency.avg() as u32,
                     chips: chip_count as u32,
                     cores: (chip_count * crate::bm1387::NUM_CORES_ON_CHIP) as u32,
                 },
