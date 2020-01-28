@@ -55,10 +55,12 @@ pub struct TempCtrl {
 impl From<TempCtrl> for Dispatch {
     fn from(temp_ctrl: TempCtrl) -> Self {
         Dispatch::from_success(
-            vec![temp_ctrl],
-            "TEMPCTRL",
             StatusCode::TempCtrl.into(),
             "Temperature control".to_string(),
+            Some(Body {
+                name: "TEMPCTRL",
+                list: vec![temp_ctrl],
+            }),
         )
     }
 }
@@ -84,10 +86,12 @@ where
     fn from(temps: Temps<T>) -> Self {
         let temp_count = temps.list.len();
         Dispatch::from_success(
-            temps.list,
-            "TEMPS",
             StatusCode::Temps.into(),
             format!("{} Temp(s)", temp_count),
+            Some(Body {
+                name: "TEMPS",
+                list: temps.list,
+            }),
         )
     }
 }
@@ -112,10 +116,12 @@ impl From<Fans> for Dispatch {
     fn from(fans: Fans) -> Self {
         let fan_count = fans.list.len();
         Dispatch::from_success(
-            fans.list,
-            "FANS",
             StatusCode::Fans.into(),
             format!("{} Fan(s)", fan_count),
+            Some(Body {
+                name: "FANS",
+                list: fans.list,
+            }),
         )
     }
 }

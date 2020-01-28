@@ -353,10 +353,12 @@ impl From<Pools> for Dispatch {
     fn from(pools: Pools) -> Self {
         let pool_count = pools.list.len();
         Dispatch::from_success(
-            pools.list,
-            "POOLS",
             StatusCode::Pool.into(),
             format!("{} Pool(s)", pool_count),
+            Some(Body {
+                name: "POOLS",
+                list: pools.list,
+            }),
         )
     }
 }
@@ -426,10 +428,12 @@ impl From<Asc> for Dispatch {
     fn from(asc: Asc) -> Self {
         let idx = asc.idx;
         Dispatch::from_success(
-            vec![asc],
-            "ASC",
             StatusCode::Asc.into(),
             format!("ASC{}", idx),
+            Some(Body {
+                name: "ASC",
+                list: vec![asc],
+            }),
         )
     }
 }
@@ -443,10 +447,12 @@ impl From<Devs> for Dispatch {
     fn from(devs: Devs) -> Self {
         let asc_count = devs.list.len();
         Dispatch::from_success(
-            devs.list,
-            "DEVS",
             StatusCode::Devs.into(),
             format!("{} ASC(s)", asc_count),
+            Some(Body {
+                name: "DEVS",
+                list: devs.list,
+            }),
         )
     }
 }
@@ -519,10 +525,12 @@ pub struct Summary {
 impl From<Summary> for Dispatch {
     fn from(summary: Summary) -> Self {
         Dispatch::from_success(
-            vec![summary],
-            "SUMMARY",
             StatusCode::Summary.into(),
             "Summary".to_string(),
+            Some(Body {
+                name: "SUMMARY",
+                list: vec![summary],
+            }),
         )
     }
 }
@@ -550,10 +558,12 @@ impl Serialize for Version {
 impl From<Version> for Dispatch {
     fn from(version: Version) -> Self {
         Dispatch::from_success(
-            vec![version],
-            "VERSION",
             StatusCode::Version.into(),
             format!("{} versions", crate::SIGNATURE_TAG),
+            Some(Body {
+                name: "VERSION",
+                list: vec![version],
+            }),
         )
     }
 }
@@ -581,10 +591,12 @@ pub struct Config {
 impl From<Config> for Dispatch {
     fn from(config: Config) -> Self {
         Dispatch::from_success(
-            vec![config],
-            "CONFIG",
             StatusCode::MineConfig.into(),
             format!("{} config", crate::SIGNATURE_TAG),
+            Some(Body {
+                name: "CONFIG",
+                list: vec![config],
+            }),
         )
     }
 }
@@ -620,10 +632,12 @@ where
 {
     fn from(dev_details: DevDetails<T>) -> Self {
         Dispatch::from_success(
-            dev_details.list,
-            "DEVDETAILS",
             StatusCode::DevDetails.into(),
             "Device Details".to_string(),
+            Some(Body {
+                name: "DEVDETAILS",
+                list: dev_details.list,
+            }),
         )
     }
 }
@@ -730,10 +744,12 @@ impl Stats {
 impl From<Stats> for Dispatch {
     fn from(stats: Stats) -> Self {
         Dispatch::from_success(
-            stats.into_list(),
-            "STATS",
             StatusCode::Stats.into(),
             format!("{} stats", crate::SIGNATURE_TAG),
+            Some(Body {
+                name: "STATS",
+                list: stats.into_list(),
+            }),
         )
     }
 }
@@ -749,10 +765,12 @@ pub(crate) struct Check {
 impl From<Check> for Dispatch {
     fn from(check: Check) -> Self {
         Dispatch::from_success(
-            vec![check],
-            "CHECK",
             StatusCode::Check.into(),
             "Check command".to_string(),
+            Some(Body {
+                name: "CHECK",
+                list: vec![check],
+            }),
         )
     }
 }
@@ -774,10 +792,12 @@ pub struct Coin {
 impl From<Coin> for Dispatch {
     fn from(coin: Coin) -> Self {
         Dispatch::from_success(
-            vec![coin],
-            "COIN",
             StatusCode::Coin.into(),
             format!("{} coin", crate::SIGNATURE_TAG),
+            Some(Body {
+                name: "COIN",
+                list: vec![coin],
+            }),
         )
     }
 }
@@ -791,10 +811,12 @@ pub struct AscCount {
 impl From<AscCount> for Dispatch {
     fn from(asc_count: AscCount) -> Self {
         Dispatch::from_success(
-            vec![asc_count],
-            "ASCS",
             StatusCode::AscCount.into(),
             "ASC count".to_string(),
+            Some(Body {
+                name: "ASCS",
+                list: vec![asc_count],
+            }),
         )
     }
 }
@@ -829,8 +851,20 @@ pub struct Lcd {
 
 impl From<Lcd> for Dispatch {
     fn from(lcd: Lcd) -> Self {
-        Dispatch::from_success(vec![lcd], "LCD", StatusCode::Lcd.into(), "LCD".to_string())
+        Dispatch::from_success(
+            StatusCode::Lcd.into(),
+            "LCD".to_string(),
+            Some(Body {
+                name: "LCD",
+                list: vec![lcd],
+            }),
+        )
     }
+}
+
+pub struct Body<S: Serialize> {
+    pub name: &'static str,
+    pub list: Vec<S>,
 }
 
 /// Generic container for any response, ensures conforming serialization
@@ -844,32 +878,31 @@ pub struct Dispatch {
 
 impl Dispatch {
     fn from_success<S: Serialize>(
-        responses: Vec<S>,
-        name: &'static str,
         code: StatusCodeType,
         msg: String,
+        body: Option<Body<S>>,
     ) -> Self {
-        let responses = json::to_value(responses).expect("Response serialization failed");
+        let body = body.map(|body| {
+            (
+                body.name,
+                json::to_value(body.list).expect("BUG: response serialization failed"),
+            )
+        });
 
         Self {
             status: Status::S,
             code,
             msg,
-            body: Some((name, responses)),
+            body,
         }
     }
 
-    pub fn from_custom_success<S, T>(
-        responses: Vec<S>,
-        name: &'static str,
-        code: T,
-        msg: String,
-    ) -> Self
+    pub fn from_custom_success<S, T>(code: T, msg: String, body: Option<Body<S>>) -> Self
     where
         S: Serialize,
         T: Into<u32>,
     {
-        Self::from_success(responses, name, StatusCodeType::Custom(code.into()), msg)
+        Self::from_success(StatusCodeType::Custom(code.into()), msg, body)
     }
 
     fn create_status_info(

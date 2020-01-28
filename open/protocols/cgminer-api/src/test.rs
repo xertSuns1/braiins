@@ -80,10 +80,12 @@ pub struct CustomCommandOne {
 impl From<CustomCommandOne> for response::Dispatch {
     fn from(custom_command: CustomCommandOne) -> Self {
         response::Dispatch::from_custom_success(
-            vec![custom_command],
-            "CUSTOM_COMMAND_ONE",
             CustomStatusCode::CustomCommandOne,
             format!("{} custom command {}", crate::SIGNATURE_TAG, 1),
+            Some(response::Body {
+                name: "CUSTOM_COMMAND_ONE",
+                list: vec![custom_command],
+            }),
         )
     }
 }
@@ -97,14 +99,16 @@ pub struct CustomCommandTwo {
 impl From<CustomCommandTwo> for response::Dispatch {
     fn from(custom_command: CustomCommandTwo) -> Self {
         response::Dispatch::from_custom_success(
-            vec![custom_command],
-            "CUSTOM_COMMAND_TWO",
             CustomStatusCode::CustomCommandTwo,
             format!(
                 "{} custom command {} with parameter",
                 crate::SIGNATURE_TAG,
                 2
             ),
+            Some(response::Body {
+                name: "CUSTOM_COMMAND_TWO",
+                list: vec![custom_command],
+            }),
         )
     }
 }
