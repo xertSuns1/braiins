@@ -42,6 +42,8 @@ const EDEVS: &str = "edevs";
 const SUMMARY: &str = "summary";
 const VERSION: &str = "version";
 const CONFIG: &str = "config";
+const ADD_POOL: &str = "addpool";
+const REMOVE_POOL: &str = "removepool";
 const STATS: &str = "stats";
 const ESTATS: &str = "estats";
 const CHECK: &str = "check";
@@ -71,6 +73,11 @@ pub trait Handler: Send + Sync {
     async fn handle_edevs(&self) -> Result<response::Devs>;
     async fn handle_summary(&self) -> Result<response::Summary>;
     async fn handle_config(&self) -> Result<response::Config>;
+    async fn handle_add_pool(&self, parameter: Option<&json::Value>) -> Result<response::AddPool>;
+    async fn handle_remove_pool(
+        &self,
+        parameter: Option<&json::Value>,
+    ) -> Result<response::RemovePool>;
     async fn handle_stats(&self) -> Result<response::Stats>;
     async fn handle_estats(&self) -> Result<response::Stats>;
     async fn handle_coin(&self) -> Result<response::Coin>;
@@ -219,6 +226,10 @@ where
     {
         let handler = Arc::new(handler);
 
+        let check_add_pool: ParameterCheckHandler =
+            Box::new(|command, parameter| Self::check_add_pool(command, parameter));
+        let check_remove_pool: ParameterCheckHandler =
+            Box::new(|command, parameter| Self::check_remove_pool(command, parameter));
         let check_asc: ParameterCheckHandler =
             Box::new(|command, parameter| Self::check_asc(command, parameter));
 
@@ -229,6 +240,8 @@ where
             (EDEVS: ParameterLess -> handler.handle_edevs),
             (SUMMARY: ParameterLess -> handler.handle_summary),
             (CONFIG: ParameterLess -> handler.handle_config),
+            (ADD_POOL: Parameter(check_add_pool) -> handler.handle_add_pool),
+            (REMOVE_POOL: Parameter(check_remove_pool) -> handler.handle_remove_pool),
             (STATS: ParameterLess -> handler.handle_stats),
             (ESTATS: ParameterLess -> handler.handle_estats),
             (COIN: ParameterLess -> handler.handle_coin),
@@ -251,6 +264,30 @@ where
             miner_version,
             description,
             _marker: marker::PhantomData,
+        }
+    }
+
+    fn check_add_pool(_command: &str, parameter: &Option<&json::Value>) -> Result<()> {
+        const ARG_COUNT: usize = 3;
+        match parameter {
+            Some(json::Value::String(value)) => {
+                if value.splitn(ARG_COUNT, ',').count() == ARG_COUNT {
+                    Ok(())
+                } else {
+                    Err(response::ErrorCode::InvalidAddPoolDetails(value.clone()).into())
+                }
+            }
+            Some(json::Value::Number(value)) => {
+                Err(response::ErrorCode::InvalidAddPoolDetails(value.to_string()).into())
+            }
+            _ => Err(response::ErrorCode::MissingAddPoolDetails.into()),
+        }
+    }
+
+    fn check_remove_pool(_command: &str, parameter: &Option<&json::Value>) -> Result<()> {
+        match parameter {
+            Some(value) if value.is_i32() => Ok(()),
+            _ => Err(response::ErrorCode::MissingPoolParameter.into()),
         }
     }
 

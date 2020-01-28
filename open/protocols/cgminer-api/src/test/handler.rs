@@ -160,6 +160,26 @@ impl command::Handler for BasicTest {
         })
     }
 
+    async fn handle_add_pool(
+        &self,
+        _parameter: Option<&json::Value>,
+    ) -> command::Result<response::AddPool> {
+        Ok(response::AddPool {
+            idx: 0,
+            url: "".to_string(),
+        })
+    }
+
+    async fn handle_remove_pool(
+        &self,
+        _parameter: Option<&json::Value>,
+    ) -> command::Result<response::RemovePool> {
+        Ok(response::RemovePool {
+            idx: 0,
+            url: "".to_string(),
+        })
+    }
+
     async fn handle_stats(&self) -> command::Result<response::Stats> {
         Ok(response::Stats {
             asc_stats: vec![response::AscStats {

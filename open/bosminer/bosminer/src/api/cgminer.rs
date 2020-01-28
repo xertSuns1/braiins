@@ -473,6 +473,28 @@ impl command::Handler for Handler {
         })
     }
 
+    async fn handle_add_pool(
+        &self,
+        _parameter: Option<&json::Value>,
+    ) -> command::Result<response::AddPool> {
+        // TODO: implement pool addition
+        Ok(response::AddPool {
+            idx: 0,
+            url: "".to_string(),
+        })
+    }
+
+    async fn handle_remove_pool(
+        &self,
+        _parameter: Option<&json::Value>,
+    ) -> command::Result<response::RemovePool> {
+        // TODO: implement pool removal
+        Ok(response::RemovePool {
+            idx: 0,
+            url: "".to_string(),
+        })
+    }
+
     async fn handle_stats(&self) -> command::Result<response::Stats> {
         let asc_stats = self.collect_asc_stats(0).await;
         let pool_stats = self.collect_pool_stats(asc_stats.len()).await;

@@ -112,6 +112,8 @@ pub enum StatusCode {
     Summary = 11,
     Version = 22,
     MineConfig = 33,
+    AddPool = 55,
+    RemovePool = 68,
     DevDetails = 69,
     Stats = 70,
     Check = 72,
@@ -130,7 +132,10 @@ pub enum StatusCode {
     MissingAscParameter = 15,
     InvalidJSON = 23,
     MissingCommand = 24,
+    MissingPoolParameter = 25,
     AccessDeniedCmd = 45,
+    MissingAddPoolDetails = 52,
+    InvalidAddPoolDetails = 53,
     MissingCheckCmd = 71,
     InvalidAscId = 107,
 
@@ -170,7 +175,10 @@ pub enum ErrorCode {
     MissingAscParameter,
     InvalidJSON,
     MissingCommand,
+    MissingPoolParameter,
     AccessDeniedCmd(String),
+    MissingAddPoolDetails,
+    InvalidAddPoolDetails(String),
     MissingCheckCmd,
     InvalidAscId(i32, i32),
 }
@@ -219,9 +227,21 @@ impl From<ErrorCode> for Error {
                 StatusCode::MissingCommand,
                 "Missing JSON 'command'".to_string(),
             ),
+            ErrorCode::MissingPoolParameter => (
+                StatusCode::MissingPoolParameter,
+                "Missing pool id parameter".to_string(),
+            ),
             ErrorCode::AccessDeniedCmd(name) => (
                 StatusCode::AccessDeniedCmd,
                 format!("Access denied to '{}' command", name),
+            ),
+            ErrorCode::MissingAddPoolDetails => (
+                StatusCode::MissingAddPoolDetails,
+                "Missing addpool details".to_string(),
+            ),
+            ErrorCode::InvalidAddPoolDetails(parameter) => (
+                StatusCode::InvalidAddPoolDetails,
+                format!("Invalid addpool details '{}'", parameter),
             ),
             ErrorCode::MissingCheckCmd => {
                 (StatusCode::MissingCheckCmd, "Missing check cmd".to_string())
@@ -597,6 +617,36 @@ impl From<Config> for Dispatch {
                 name: "CONFIG",
                 list: vec![config],
             }),
+        )
+    }
+}
+
+pub struct AddPool {
+    pub idx: usize,
+    pub url: String,
+}
+
+impl From<AddPool> for Dispatch {
+    fn from(add_pool: AddPool) -> Self {
+        Dispatch::from_success::<()>(
+            StatusCode::AddPool.into(),
+            format!("Added pool {}: '{}'", add_pool.idx, add_pool.url),
+            None,
+        )
+    }
+}
+
+pub struct RemovePool {
+    pub idx: usize,
+    pub url: String,
+}
+
+impl From<RemovePool> for Dispatch {
+    fn from(remove_pool: RemovePool) -> Self {
+        Dispatch::from_success::<()>(
+            StatusCode::RemovePool.into(),
+            format!("Removed pool {}: '{}'", remove_pool.idx, remove_pool.url),
+            None,
         )
     }
 }
