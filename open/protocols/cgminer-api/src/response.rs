@@ -111,6 +111,7 @@ pub enum StatusCode {
     Devs = 9,
     Summary = 11,
     Version = 22,
+    SwitchPool = 27,
     MineConfig = 33,
     AddPool = 55,
     RemovePool = 68,
@@ -584,6 +585,24 @@ impl From<Version> for Dispatch {
                 name: "VERSION",
                 list: vec![version],
             }),
+        )
+    }
+}
+
+pub struct SwitchPool {
+    pub idx: usize,
+    pub url: String,
+}
+
+impl From<SwitchPool> for Dispatch {
+    fn from(switch_pool: SwitchPool) -> Self {
+        Dispatch::from_success::<()>(
+            StatusCode::SwitchPool.into(),
+            format!(
+                "Switching to pool {}: '{}'",
+                switch_pool.idx, switch_pool.url
+            ),
+            None,
         )
     }
 }

@@ -41,6 +41,7 @@ const DEVS: &str = "devs";
 const EDEVS: &str = "edevs";
 const SUMMARY: &str = "summary";
 const VERSION: &str = "version";
+const SWITCH_POOL: &str = "switchpool";
 const CONFIG: &str = "config";
 const ADD_POOL: &str = "addpool";
 const REMOVE_POOL: &str = "removepool";
@@ -72,6 +73,10 @@ pub trait Handler: Send + Sync {
     async fn handle_devs(&self) -> Result<response::Devs>;
     async fn handle_edevs(&self) -> Result<response::Devs>;
     async fn handle_summary(&self) -> Result<response::Summary>;
+    async fn handle_switch_pool(
+        &self,
+        parameter: Option<&json::Value>,
+    ) -> Result<response::SwitchPool>;
     async fn handle_config(&self) -> Result<response::Config>;
     async fn handle_add_pool(&self, parameter: Option<&json::Value>) -> Result<response::AddPool>;
     async fn handle_remove_pool(
@@ -226,10 +231,12 @@ where
     {
         let handler = Arc::new(handler);
 
+        let check_switch_pool: ParameterCheckHandler =
+            Box::new(|command, parameter| Self::check_pool_id(command, parameter));
         let check_add_pool: ParameterCheckHandler =
             Box::new(|command, parameter| Self::check_add_pool(command, parameter));
         let check_remove_pool: ParameterCheckHandler =
-            Box::new(|command, parameter| Self::check_remove_pool(command, parameter));
+            Box::new(|command, parameter| Self::check_pool_id(command, parameter));
         let check_asc: ParameterCheckHandler =
             Box::new(|command, parameter| Self::check_asc(command, parameter));
 
@@ -239,6 +246,7 @@ where
             (DEVS: ParameterLess -> handler.handle_devs),
             (EDEVS: ParameterLess -> handler.handle_edevs),
             (SUMMARY: ParameterLess -> handler.handle_summary),
+            (SWITCH_POOL: Parameter(check_switch_pool) -> handler.handle_switch_pool),
             (CONFIG: ParameterLess -> handler.handle_config),
             (ADD_POOL: Parameter(check_add_pool) -> handler.handle_add_pool),
             (REMOVE_POOL: Parameter(check_remove_pool) -> handler.handle_remove_pool),
@@ -284,7 +292,7 @@ where
         }
     }
 
-    fn check_remove_pool(_command: &str, parameter: &Option<&json::Value>) -> Result<()> {
+    fn check_pool_id(_command: &str, parameter: &Option<&json::Value>) -> Result<()> {
         match parameter {
             Some(value) if value.is_i32() => Ok(()),
             _ => Err(response::ErrorCode::MissingPoolParameter.into()),

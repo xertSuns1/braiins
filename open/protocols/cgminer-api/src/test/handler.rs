@@ -147,6 +147,16 @@ impl command::Handler for BasicTest {
         })
     }
 
+    async fn handle_switch_pool(
+        &self,
+        _parameter: Option<&json::Value>,
+    ) -> command::Result<response::SwitchPool> {
+        Ok(response::SwitchPool {
+            idx: 0,
+            url: "".to_string(),
+        })
+    }
+
     async fn handle_config(&self) -> command::Result<response::Config> {
         Ok(response::Config {
             asc_count: 0,
