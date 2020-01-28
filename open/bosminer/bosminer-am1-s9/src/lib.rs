@@ -500,23 +500,22 @@ impl HashChain {
     /// Loads PLL register with a starting value
     ///
     /// WARNING: you have to take care of `set_work_time` yourself
-    async fn set_chip_pll(&self, chip_id: usize, freq: usize) -> error::Result<()> {
-        assert!(chip_id < self.chip_count);
-
+    async fn set_chip_pll(&self, chip_addr: ChipAddress, freq: usize) -> error::Result<()> {
         // convert frequency to PLL setting register
         let pll = bm1387::PllFrequency::lookup_freq(freq)?;
 
         info!(
-            "chain {}: setting frequency {} MHz on chip {} (error {} MHz)",
+            "chain {}: setting frequency {} MHz on {:?} (error {} MHz)",
             self.hashboard_idx,
             freq / 1_000_000,
-            chip_id,
-            ((freq as i64) - (pll.frequency as i64)).abs(),
+            chip_addr,
+            ((freq as f64) - (pll.frequency as f64)).abs() / 1_000_000.0,
         );
 
-        // NOTE: when PLL register is read back, it is or-ed with 0x8000_0000, not sure why
+        // NOTE: When PLL register is read back, it is or-ed with 0x8000_0000, not sure why.
+        //  Avoid reading it back to prevent disappointment.
         self.command_context
-            .write_register(ChipAddress::One(chip_id), &pll.reg)
+            .write_register(chip_addr, &pll.reg)
             .await?;
 
         Ok(())
@@ -529,18 +528,29 @@ impl HashChain {
         // TODO: find a better way - how to communicate with frequency setter how many chips we have?
         assert!(frequency.chip.len() >= self.chip_count);
 
-        // Update chips one-by-one
-        for i in 0..self.chip_count {
-            let mut cur_frequency = self.frequency.lock().await;
-            if cur_frequency.chip[i] != frequency.chip[i] {
-                cur_frequency.chip[i] = frequency.chip[i];
-                // Drop lock while calling `set_chip_pll()`
-                drop(cur_frequency);
-                self.set_chip_pll(i, frequency.chip[i]).await?;
+        // Check if the frequencies are identical
+        if frequency.min() == frequency.max() {
+            // Update them in one go
+            self.set_chip_pll(ChipAddress::All, frequency.chip[0])
+                .await?;
+        } else {
+            // Update chips one-by-one
+            for i in 0..self.chip_count {
+                let new_freq = self.frequency.lock().await.chip[i];
+                if new_freq != frequency.chip[i] {
+                    self.set_chip_pll(ChipAddress::One(i), new_freq).await?;
+                }
             }
         }
+
         // Update worktime
         self.set_work_time(frequency.max()).await;
+
+        // Remember what frequencies are set
+        let mut cur_frequency = self.frequency.lock().await;
+        for i in 0..self.chip_count {
+            cur_frequency.chip[i] = frequency.chip[i];
+        }
 
         Ok(())
     }
