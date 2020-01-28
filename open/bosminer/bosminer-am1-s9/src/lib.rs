@@ -366,6 +366,7 @@ impl HashChain {
         // Figure out if we found enough chips
         info!("Discovered {} chips", self.chip_count);
         self.command_context.set_chip_count(self.chip_count).await;
+        self.frequency.lock().await.set_chip_count(self.chip_count);
 
         // If we don't have full number of chips and we do not want incomplete chain, then raise
         // an error
@@ -915,6 +916,11 @@ impl FrequencySettings {
         Self {
             chip: vec![frequency; MAX_CHIPS_ON_CHAIN],
         }
+    }
+
+    pub fn set_chip_count(&mut self, chip_count: usize) {
+        assert!(self.chip.len() >= chip_count);
+        self.chip.resize(chip_count, 0);
     }
 
     pub fn total(&self) -> u64 {
