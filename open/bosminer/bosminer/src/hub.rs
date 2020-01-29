@@ -31,7 +31,6 @@ use crate::error;
 use crate::hal;
 use crate::job;
 use crate::node;
-use crate::scheduler;
 use crate::work;
 
 use futures::channel::mpsc;
@@ -54,14 +53,14 @@ impl work::ExhaustedHandler for EventHandler {
 
 /// Responsible for delivering work solution to the client from which the work has been generated
 struct SolutionRouter {
-    job_executor: Arc<scheduler::JobExecutor>,
+    job_executor: Arc<client::JobExecutor>,
     client_registry: Arc<Mutex<client::Registry>>,
     solution_receiver: mpsc::UnboundedReceiver<work::Solution>,
 }
 
 impl SolutionRouter {
     fn new(
-        job_executor: Arc<scheduler::JobExecutor>,
+        job_executor: Arc<client::JobExecutor>,
         client_registry: Arc<Mutex<client::Registry>>,
         solution_receiver: mpsc::UnboundedReceiver<work::Solution>,
     ) -> Self {
@@ -104,7 +103,7 @@ impl SolutionRouter {
 
 pub struct Core {
     pub frontend: Arc<crate::Frontend>,
-    job_executor: Arc<scheduler::JobExecutor>,
+    job_executor: Arc<client::JobExecutor>,
     engine_receiver: work::EngineReceiver,
     solution_sender: mpsc::UnboundedSender<work::Solution>,
     solution_router: Mutex<Option<SolutionRouter>>,
@@ -122,7 +121,7 @@ impl Core {
         let (solution_sender, solution_receiver) = mpsc::unbounded();
 
         let client_registry = Arc::new(Mutex::new(client::Registry::new()));
-        let job_executor = Arc::new(scheduler::JobExecutor::new(
+        let job_executor = Arc::new(client::JobExecutor::new(
             midstate_count,
             frontend.clone(),
             engine_sender,

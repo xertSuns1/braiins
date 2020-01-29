@@ -23,12 +23,17 @@
 //! This module contains common functionality related to mining protocol client and allows
 //! executing a specific type of mining protocol client instance.
 
+mod scheduler;
+
+// Sub-modules with client implementation
 pub mod stratum_v2;
 
 use crate::hub;
 use crate::node;
-use crate::scheduler;
 use crate::work;
+
+// Scheduler re-exports
+pub use scheduler::JobExecutor;
 
 use bosminer_config::client::{Descriptor, Protocol};
 

@@ -30,7 +30,6 @@ pub mod hal;
 pub mod hub;
 pub mod job;
 pub mod node;
-pub mod scheduler;
 pub mod stats;
 pub mod version;
 pub mod work;
