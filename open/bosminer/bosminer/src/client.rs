@@ -45,9 +45,9 @@ use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Handle {
-    pub node: Arc<dyn node::Client>,
-    pub engine_sender: Arc<work::EngineSender>,
-    pub solution_sender: mpsc::UnboundedSender<work::Solution>,
+    handle: Arc<scheduler::Handle>,
+    generated_work: scheduler::LocalGeneratedWork,
+    percentage_share: f64,
 }
 
 impl Handle {
@@ -55,41 +55,42 @@ impl Handle {
         client: T,
         engine_sender: Arc<work::EngineSender>,
         solution_sender: mpsc::UnboundedSender<work::Solution>,
+        percentage_share: f64,
     ) -> Self
     where
         T: node::Client + 'static,
     {
         Self {
-            node: Arc::new(client),
-            engine_sender,
-            solution_sender,
+            handle: Arc::new(scheduler::Handle::new::<T>(
+                client,
+                engine_sender,
+                solution_sender,
+            )),
+            generated_work: scheduler::LocalGeneratedWork::new(),
+            percentage_share,
         }
     }
 
-    /// Tests if solution should be delivered to this client
-    /// NOTE: This comparison uses trait method `node::Info::get_unique_ptr` to unify dynamic
-    /// objects to point to the same pointer otherwise direct comparison of self with other is never
-    /// satisfied even if the dynamic objects are same.
-    pub fn matching_solution(&self, solution: &work::Solution) -> bool {
-        Arc::ptr_eq(
-            &self.node.clone().get_unique_ptr(),
-            &solution.origin().get_unique_ptr(),
-        )
+    fn update_generated_work(&mut self) -> u64 {
+        let global_generated_work = *self
+            .handle
+            .node
+            .client_stats()
+            .generated_work()
+            .take_snapshot();
+        self.generated_work.update(global_generated_work)
     }
 }
 
 impl PartialEq for Handle {
     fn eq(&self, other: &Handle) -> bool {
-        Arc::ptr_eq(
-            &self.node.clone().get_unique_ptr(),
-            &other.node.clone().get_unique_ptr(),
-        )
+        &self.handle == &other.handle
     }
 }
 
 /// Keeps track of all active clients
 pub struct Registry {
-    list: Vec<scheduler::ClientHandle>,
+    list: Vec<Handle>,
 }
 
 impl Registry {
@@ -101,11 +102,11 @@ impl Registry {
         self.list.len()
     }
 
-    fn iter(&self) -> slice::Iter<scheduler::ClientHandle> {
+    fn iter(&self) -> slice::Iter<Handle> {
         self.list.iter()
     }
 
-    fn iter_mut(&mut self) -> slice::IterMut<scheduler::ClientHandle> {
+    fn iter_mut(&mut self) -> slice::IterMut<Handle> {
         self.list.iter_mut()
     }
 
@@ -115,7 +116,7 @@ impl Registry {
             .collect()
     }
 
-    fn register_client(&mut self, client: scheduler::ClientHandle) -> &scheduler::ClientHandle {
+    fn register_client(&mut self, client: Handle) -> &Handle {
         assert!(
             self.list.iter().find(|old| *old == &client).is_none(),
             "BUG: client already present in the registry"

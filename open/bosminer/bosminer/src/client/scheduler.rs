@@ -34,54 +34,53 @@ use std::sync::Arc;
 use std::time;
 
 #[derive(Debug)]
-pub struct ClientHandle {
-    pub handle: Arc<client::Handle>,
-    generated_work: LocalGeneratedWork,
-    percentage_share: f64,
+pub struct Handle {
+    pub node: Arc<dyn node::Client>,
+    engine_sender: Arc<work::EngineSender>,
+    solution_sender: mpsc::UnboundedSender<work::Solution>,
 }
 
-impl ClientHandle {
+impl Handle {
     pub fn new<T>(
         client: T,
         engine_sender: Arc<work::EngineSender>,
         solution_sender: mpsc::UnboundedSender<work::Solution>,
-        percentage_share: f64,
     ) -> Self
     where
         T: node::Client + 'static,
     {
         Self {
-            handle: Arc::new(client::Handle::new::<T>(
-                client,
-                engine_sender,
-                solution_sender,
-            )),
-            generated_work: LocalGeneratedWork::new(),
-            percentage_share,
+            node: Arc::new(client),
+            engine_sender,
+            solution_sender,
         }
     }
 
-    pub fn update_generated_work(&mut self) -> u64 {
-        let global_generated_work = *self
-            .handle
-            .node
-            .client_stats()
-            .generated_work()
-            .take_snapshot();
-        self.generated_work.update(global_generated_work)
+    /// Tests if solution should be delivered to this client
+    /// NOTE: This comparison uses trait method `node::Info::get_unique_ptr` to unify dynamic
+    /// objects to point to the same pointer otherwise direct comparison of self with other is never
+    /// satisfied even if the dynamic objects are same.
+    pub fn matching_solution(&self, solution: &work::Solution) -> bool {
+        Arc::ptr_eq(
+            &self.node.clone().get_unique_ptr(),
+            &solution.origin().get_unique_ptr(),
+        )
     }
 }
 
-impl PartialEq for ClientHandle {
-    fn eq(&self, other: &ClientHandle) -> bool {
-        &self.handle == &other.handle
+impl PartialEq for Handle {
+    fn eq(&self, other: &Handle) -> bool {
+        Arc::ptr_eq(
+            &self.node.clone().get_unique_ptr(),
+            &other.node.clone().get_unique_ptr(),
+        )
     }
 }
 
 /// Used for measuring generated work from global counter and allows the scheduler to arbitrarily
 /// reset this counter
 #[derive(Debug)]
-struct LocalGeneratedWork {
+pub struct LocalGeneratedWork {
     global_counter: u64,
     local_counter: u64,
 }
@@ -116,7 +115,7 @@ impl LocalGeneratedWork {
 struct JobDispatcher {
     midstate_count: usize,
     engine_sender: Option<work::EngineSender>,
-    active_client: Option<Arc<client::Handle>>,
+    active_client: Option<Arc<Handle>>,
     client_registry: Arc<Mutex<client::Registry>>,
 }
 
@@ -125,7 +124,7 @@ impl JobDispatcher {
         &self,
         engine_sender: work::EngineSender,
         create: F,
-    ) -> Arc<client::Handle>
+    ) -> Arc<Handle>
     where
         T: node::Client + 'static,
         F: FnOnce(job::Solver) -> T,
@@ -153,7 +152,7 @@ impl JobDispatcher {
             solution_receiver,
         );
 
-        let client_handle = ClientHandle::new(
+        let client_handle = client::Handle::new(
             create(job_solver),
             engine_sender,
             solution_sender,
@@ -184,7 +183,7 @@ impl JobDispatcher {
         client
     }
 
-    fn switch_client(&mut self, next_client: Arc<client::Handle>) {
+    fn switch_client(&mut self, next_client: Arc<Handle>) {
         let active_client = self
             .active_client
             .as_mut()
@@ -197,7 +196,7 @@ impl JobDispatcher {
         }
     }
 
-    async fn select_client(&self, generated_work_delta: u64) -> Option<Arc<client::Handle>> {
+    async fn select_client(&self, generated_work_delta: u64) -> Option<Arc<Handle>> {
         let mut client_registry = self.client_registry.lock().await;
 
         let mut total_generated_work = 0;
@@ -265,12 +264,12 @@ impl JobExecutor {
         self.dispatcher.lock().await
     }
 
-    async fn active_client(&self) -> Option<Arc<client::Handle>> {
+    async fn active_client(&self) -> Option<Arc<Handle>> {
         self.lock_dispatcher().await.active_client.clone()
     }
 
     /// Find client which given solution is associated with
-    async fn find_client(&self, solution: &work::Solution) -> Option<Arc<client::Handle>> {
+    async fn find_client(&self, solution: &work::Solution) -> Option<Arc<Handle>> {
         self.client_registry
             .lock()
             .await
