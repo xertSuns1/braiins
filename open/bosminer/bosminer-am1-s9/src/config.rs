@@ -68,18 +68,18 @@ pub const ASIC_BOOST_MIDSTATE_COUNT: usize = 4;
 pub const DEFAULT_ASIC_BOOST: bool = true;
 
 /// Default PLL frequency for clocking the chips in MHz
-pub const DEFAULT_FREQUENCY: f64 = 650.0;
+pub const DEFAULT_FREQUENCY_MHZ: f64 = 650.0;
 
 /// Default voltage
-pub const DEFAULT_VOLTAGE: f64 = 8.8;
+pub const DEFAULT_VOLTAGE_V: f64 = 8.8;
 
 /// Default temperature control mode
 pub const DEFAULT_TEMP_CONTROL_MODE: TempControlMode = TempControlMode::Auto;
 
 /// Default temperatures for temperature control
-pub const DEFAULT_TARGET_TEMP: f64 = 75.0;
-pub const DEFAULT_HOT_TEMP: f64 = 95.0;
-pub const DEFAULT_DANGEROUS_TEMP: f64 = 105.0;
+pub const DEFAULT_TARGET_TEMP_C: f64 = 75.0;
+pub const DEFAULT_HOT_TEMP_C: f64 = 95.0;
+pub const DEFAULT_DANGEROUS_TEMP_C: f64 = 105.0;
 
 /// Default fan speed for manual target speed
 pub const DEFAULT_FAN_SPEED: usize = 100;
@@ -95,16 +95,16 @@ pub const HASH_CHAIN_INDEX_MIN: usize = 1;
 pub const HASH_CHAIN_INDEX_MAX: usize = 9;
 
 /// Range of PLL frequency for clocking the chips in MHz
-pub const FREQUENCY_MIN: f64 = 200.0;
-pub const FREQUENCY_MAX: f64 = 900.0;
+pub const FREQUENCY_MHZ_MIN: f64 = 200.0;
+pub const FREQUENCY_MHZ_MAX: f64 = 900.0;
 
 /// Range of hash chain voltage
-pub const VOLTAGE_MIN: f64 = 7.95;
-pub const VOLTAGE_MAX: f64 = 9.4;
+pub const VOLTAGE_V_MIN: f64 = 7.95;
+pub const VOLTAGE_V_MAX: f64 = 9.4;
 
 /// Range of monitored temperature
-pub const TEMPERATURE_MIN: f64 = 0.0;
-pub const TEMPERATURE_MAX: f64 = 200.0;
+pub const TEMPERATURE_C_MIN: f64 = 0.0;
+pub const TEMPERATURE_C_MAX: f64 = 200.0;
 
 /// Range of monitored temperature
 pub const FAN_SPEED_MIN: usize = 0;
@@ -240,11 +240,11 @@ impl Backend {
             .and_then(|v| v.overridable.as_ref());
         let mut frequency = OptionDefault::new(
             overridable.as_ref().and_then(|v| v.frequency),
-            DEFAULT_FREQUENCY,
+            DEFAULT_FREQUENCY_MHZ,
         );
         let mut voltage = OptionDefault::new(
             overridable.as_ref().and_then(|v| v.voltage),
-            DEFAULT_VOLTAGE,
+            DEFAULT_VOLTAGE_V,
         );
 
         // If there's a per-chain override then apply it
@@ -280,15 +280,15 @@ impl Backend {
         );
         let target_temp = OptionDefault::new(
             self.temp_control.as_ref().and_then(|v| v.target_temp),
-            DEFAULT_TARGET_TEMP,
+            DEFAULT_TARGET_TEMP_C,
         );
         let hot_temp = OptionDefault::new(
             self.temp_control.as_ref().and_then(|v| v.hot_temp),
-            DEFAULT_HOT_TEMP,
+            DEFAULT_HOT_TEMP_C,
         );
         let dangerous_temp = OptionDefault::new(
             self.temp_control.as_ref().and_then(|v| v.dangerous_temp),
-            DEFAULT_DANGEROUS_TEMP,
+            DEFAULT_DANGEROUS_TEMP_C,
         );
 
         // Get fan control settings

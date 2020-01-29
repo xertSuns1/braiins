@@ -233,10 +233,10 @@ impl<'a> Handler<'a> {
                                 "type": "number",
                                 "label": "Frequency",
                                 "unit": "MHz",
-                                "min": FREQUENCY_MIN,
-                                "max": FREQUENCY_MAX,
+                                "min": FREQUENCY_MHZ_MIN,
+                                "max": FREQUENCY_MHZ_MAX,
                                 "float": true,
-                                "default": DEFAULT_FREQUENCY
+                                "default": DEFAULT_FREQUENCY_MHZ
                             }
                         ],
                         [
@@ -245,10 +245,10 @@ impl<'a> Handler<'a> {
                                 "type": "number",
                                 "label": "Voltage",
                                 "unit": "V",
-                                "min": VOLTAGE_MIN,
-                                "max": VOLTAGE_MAX,
+                                "min": VOLTAGE_V_MIN,
+                                "max": VOLTAGE_V_MAX,
                                 "float": true,
-                                "default": DEFAULT_VOLTAGE
+                                "default": DEFAULT_VOLTAGE_V
                             }
                         ]
                     ]
@@ -272,8 +272,8 @@ impl<'a> Handler<'a> {
                                     "type": "number",
                                     "label": "Frequency",
                                     "unit": "MHz",
-                                    "min": FREQUENCY_MIN,
-                                    "max": FREQUENCY_MAX,
+                                    "min": FREQUENCY_MHZ_MIN,
+                                    "max": FREQUENCY_MHZ_MAX,
                                     "float": true,
                                     "default": ["$get", "hash_chain_global", "frequency"],
                                     "span": 6
@@ -285,8 +285,8 @@ impl<'a> Handler<'a> {
                                     "type": "number",
                                     "label": "Voltage",
                                     "unit": "V",
-                                    "min": VOLTAGE_MIN,
-                                    "max": VOLTAGE_MAX,
+                                    "min": VOLTAGE_V_MIN,
+                                    "max": VOLTAGE_V_MAX,
                                     "float": true,
                                     "default": ["$get", "hash_chain_global", "voltage"],
                                     "span": 6
@@ -332,10 +332,10 @@ impl<'a> Handler<'a> {
                                 "type": "number",
                                 "label": "Target Temperature",
                                 "unit": "°C",
-                                "min": TEMPERATURE_MIN,
-                                "max": TEMPERATURE_MAX,
+                                "min": TEMPERATURE_C_MIN,
+                                "max": TEMPERATURE_C_MAX,
                                 "float": true,
-                                "default": DEFAULT_TARGET_TEMP,
+                                "default": DEFAULT_TARGET_TEMP_C,
                                 "readonly": ["$neq", ["$get", "temp_control", "mode"], "auto"],
                                 "span": 4
                             }
@@ -346,10 +346,10 @@ impl<'a> Handler<'a> {
                                 "type": "number",
                                 "label": "Hot Temperature",
                                 "unit": "°C",
-                                "min": TEMPERATURE_MIN,
-                                "max": TEMPERATURE_MAX,
+                                "min": TEMPERATURE_C_MIN,
+                                "max": TEMPERATURE_C_MAX,
                                 "float": true,
-                                "default": DEFAULT_HOT_TEMP,
+                                "default": DEFAULT_HOT_TEMP_C,
                                 "readonly": ["$eq", ["$get", "temp_control", "mode"], "disable"],
                                 "span": 4
                             }
@@ -360,10 +360,10 @@ impl<'a> Handler<'a> {
                                 "type": "number",
                                 "label": "Dangerous Temperature",
                                 "unit": "°C",
-                                "min": TEMPERATURE_MIN,
-                                "max": TEMPERATURE_MAX,
+                                "min": TEMPERATURE_C_MIN,
+                                "max": TEMPERATURE_C_MAX,
                                 "float": true,
-                                "default": DEFAULT_DANGEROUS_TEMP,
+                                "default": DEFAULT_DANGEROUS_TEMP_C,
                                 "readonly": ["$eq", ["$get", "temp_control", "mode"], "disable"],
                                 "span": 4
                             }
