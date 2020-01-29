@@ -582,10 +582,6 @@ impl StratumClient {
 
 #[async_trait]
 impl node::Client for StratumClient {
-    fn descriptor(&self) -> Option<&client::Descriptor> {
-        Some(&self.descriptor)
-    }
-
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
         self.last_job
             .lock()

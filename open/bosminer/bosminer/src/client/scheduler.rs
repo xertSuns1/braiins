@@ -25,6 +25,8 @@ use crate::job;
 use crate::node;
 use crate::work;
 
+use bosminer_config::client::Descriptor;
+
 use futures::channel::mpsc;
 use futures::lock::{Mutex, MutexGuard};
 use ii_async_compat::{futures, tokio};
@@ -123,6 +125,7 @@ impl JobDispatcher {
     async fn create_and_register_client<F, T>(
         &self,
         engine_sender: work::EngineSender,
+        descriptor: Descriptor,
         create: F,
     ) -> Arc<Handle>
     where
@@ -153,6 +156,7 @@ impl JobDispatcher {
         );
 
         let client_handle = client::Handle::new(
+            descriptor,
             create(job_solver),
             engine_sender,
             solution_sender,
@@ -165,7 +169,11 @@ impl JobDispatcher {
             .clone()
     }
 
-    pub async fn add_client<F, T>(&mut self, create: F) -> Arc<dyn node::Client>
+    pub async fn add_client<F, T>(
+        &mut self,
+        descriptor: Descriptor,
+        create: F,
+    ) -> Arc<dyn node::Client>
     where
         T: node::Client + 'static,
         F: FnOnce(job::Solver) -> T,
@@ -175,7 +183,8 @@ impl JobDispatcher {
             .take()
             .unwrap_or_else(|| work::EngineSender::new(None));
 
-        let client_handle = Self::create_and_register_client(self, engine_sender, create).await;
+        let client_handle =
+            Self::create_and_register_client(self, engine_sender, descriptor, create).await;
 
         let client = client_handle.node.clone();
         // when there is no active client then set current one
@@ -294,12 +303,15 @@ impl JobExecutor {
         client.map(|client| client.solution_sender.clone())
     }
 
-    pub async fn add_client<F, T>(&self, create: F) -> Arc<dyn node::Client>
+    pub async fn add_client<F, T>(&self, descriptor: Descriptor, create: F) -> Arc<dyn node::Client>
     where
         T: node::Client + 'static,
         F: FnOnce(job::Solver) -> T,
     {
-        self.lock_dispatcher().await.add_client(create).await
+        self.lock_dispatcher()
+            .await
+            .add_client(descriptor, create)
+            .await
     }
 
     pub async fn run(self: Arc<Self>) {

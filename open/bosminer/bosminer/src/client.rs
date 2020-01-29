@@ -47,6 +47,8 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct Handle {
+    // Basic information about client used for connection to remote server
+    pub descriptor: Descriptor,
     scheduler_handle: Arc<scheduler::Handle>,
     generated_work: scheduler::LocalGeneratedWork,
     percentage_share: f64,
@@ -54,6 +56,7 @@ pub struct Handle {
 
 impl Handle {
     pub fn new<T>(
+        descriptor: Descriptor,
         client: T,
         engine_sender: Arc<work::EngineSender>,
         solution_sender: mpsc::UnboundedSender<work::Solution>,
@@ -63,6 +66,7 @@ impl Handle {
         T: node::Client + 'static,
     {
         Self {
+            descriptor,
             scheduler_handle: Arc::new(scheduler::Handle::new::<T>(
                 client,
                 engine_sender,
@@ -86,13 +90,6 @@ impl Handle {
             .generated_work()
             .take_snapshot();
         self.generated_work.update(global_generated_work)
-    }
-
-    /// Return basic information about client used for connection to remote server
-    #[inline]
-    pub fn descriptor(&self) -> Option<&Descriptor> {
-        // TODO: remove descriptor method from node::Client trait
-        self.get_node().descriptor()
     }
 
     #[inline]
@@ -155,7 +152,7 @@ impl Registry {
 /// Register client that implements a protocol set in `descriptor`
 pub async fn register(core: &Arc<hub::Core>, descriptor: Descriptor) -> Arc<dyn node::Client> {
     // NOTE: the match statement needs to be updated in case of multiple protocol support
-    core.add_client(|job_solver| match descriptor.protocol {
+    core.add_client(descriptor.clone(), |job_solver| match descriptor.protocol {
         Protocol::StratumV2 => stratum_v2::StratumClient::new(descriptor, job_solver),
     })
     .await

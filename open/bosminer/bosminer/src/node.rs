@@ -23,8 +23,6 @@
 use crate::job;
 use crate::stats;
 
-use bosminer_config::client;
-
 use std::any::Any;
 use std::fmt::{Debug, Display};
 use std::sync::Arc;
@@ -51,11 +49,6 @@ pub trait Stats: Send + Sync {
 /// to remote pool)
 #[async_trait]
 pub trait Client: Info + ClientStats {
-    /// Return basic information about client used for connection to remote server
-    fn descriptor(&self) -> Option<&client::Descriptor> {
-        None
-    }
-
     /// Return latest received job
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>>;
     /// Try to enable client (default state of client node should be disabled)

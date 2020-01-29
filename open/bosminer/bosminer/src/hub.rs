@@ -33,6 +33,8 @@ use crate::job;
 use crate::node;
 use crate::work;
 
+use bosminer_config::client::Descriptor;
+
 use futures::channel::mpsc;
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
@@ -155,12 +157,12 @@ impl Core {
     /// Adds a client that is dynamically created using its `create` method. The reason for
     /// late building of the client is that the closure requires a job solver that is dynamically
     /// created
-    pub async fn add_client<F, T>(&self, create: F) -> Arc<dyn node::Client>
+    pub async fn add_client<F, T>(&self, descriptor: Descriptor, create: F) -> Arc<dyn node::Client>
     where
         T: node::Client + 'static,
         F: FnOnce(job::Solver) -> T,
     {
-        self.job_executor.add_client(create).await
+        self.job_executor.add_client(descriptor, create).await
     }
 
     #[inline]
