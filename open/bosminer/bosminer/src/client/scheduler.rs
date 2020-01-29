@@ -81,7 +81,7 @@ impl PartialEq for ClientHandle {
 /// Used for measuring generated work from global counter and allows the scheduler to arbitrarily
 /// reset this counter
 #[derive(Debug)]
-pub struct LocalGeneratedWork {
+struct LocalGeneratedWork {
     global_counter: u64,
     local_counter: u64,
 }
@@ -236,6 +236,7 @@ impl JobDispatcher {
 /// Responsible for dispatching new clients and planning generated jobs to be solved
 pub struct JobExecutor {
     frontend: Arc<crate::Frontend>,
+    client_registry: Arc<Mutex<client::Registry>>,
     dispatcher: Mutex<JobDispatcher>,
 }
 
@@ -250,6 +251,7 @@ impl JobExecutor {
     ) -> Self {
         Self {
             frontend,
+            client_registry: client_registry.clone(),
             dispatcher: Mutex::new(JobDispatcher {
                 midstate_count,
                 engine_sender: Some(engine_sender),
@@ -263,8 +265,34 @@ impl JobExecutor {
         self.dispatcher.lock().await
     }
 
-    pub async fn active_client(&self) -> Option<Arc<client::Handle>> {
+    async fn active_client(&self) -> Option<Arc<client::Handle>> {
         self.lock_dispatcher().await.active_client.clone()
+    }
+
+    /// Find client which given solution is associated with
+    async fn find_client(&self, solution: &work::Solution) -> Option<Arc<client::Handle>> {
+        self.client_registry
+            .lock()
+            .await
+            .iter()
+            .find(|client| client.handle.matching_solution(solution))
+            .map(|client| client.handle.clone())
+    }
+
+    pub async fn get_solution_sender(
+        &self,
+        solution: &work::Solution,
+    ) -> Option<mpsc::UnboundedSender<work::Solution>> {
+        let active_client = self.active_client().await;
+
+        // solution receiver is probably active client which is work generated from
+        let mut client = active_client.filter(|client| client.matching_solution(solution));
+        // search client registry when active client is not matching destination sender
+        if client.is_none() {
+            client = self.find_client(&solution).await
+        }
+        // return associated solution sender when matching client is found
+        client.map(|client| client.solution_sender.clone())
     }
 
     pub async fn add_client<F, T>(&self, create: F) -> Arc<dyn node::Client>

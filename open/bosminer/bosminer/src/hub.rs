@@ -54,43 +54,24 @@ impl work::ExhaustedHandler for EventHandler {
 /// Responsible for delivering work solution to the client from which the work has been generated
 struct SolutionRouter {
     job_executor: Arc<client::JobExecutor>,
-    client_registry: Arc<Mutex<client::Registry>>,
     solution_receiver: mpsc::UnboundedReceiver<work::Solution>,
 }
 
 impl SolutionRouter {
     fn new(
         job_executor: Arc<client::JobExecutor>,
-        client_registry: Arc<Mutex<client::Registry>>,
         solution_receiver: mpsc::UnboundedReceiver<work::Solution>,
     ) -> Self {
         Self {
             job_executor,
-            client_registry,
             solution_receiver,
         }
-    }
-
-    async fn get_solution_sender(
-        &self,
-        solution: &work::Solution,
-    ) -> Option<mpsc::UnboundedSender<work::Solution>> {
-        let active_client = self.job_executor.active_client().await;
-
-        // solution receiver is probably active client which is work generated from
-        let mut client = active_client.filter(|client| client.matching_solution(solution));
-        // search client registry when active client is not matching destination sender
-        if client.is_none() {
-            client = self.client_registry.lock().await.find_client(&solution)
-        }
-        // return associated solution sender when matching client is found
-        client.map(|client| client.solution_sender.clone())
     }
 
     async fn run(mut self) {
         while let Some(solution) = self.solution_receiver.next().await {
             // NOTE: all solutions targeting to removed clients are discarded
-            if let Some(solution_sender) = self.get_solution_sender(&solution).await {
+            if let Some(solution_sender) = self.job_executor.get_solution_sender(&solution).await {
                 solution_sender
                     .unbounded_send(solution)
                     .expect("solution queue send failed");
@@ -133,11 +114,7 @@ impl Core {
             job_executor: job_executor.clone(),
             engine_receiver,
             solution_sender,
-            solution_router: Mutex::new(Some(SolutionRouter::new(
-                job_executor,
-                client_registry.clone(),
-                solution_receiver,
-            ))),
+            solution_router: Mutex::new(Some(SolutionRouter::new(job_executor, solution_receiver))),
             backend_registry: Arc::new(backend::Registry::new()),
             client_registry,
         }
@@ -213,12 +190,7 @@ impl Core {
 
     #[inline]
     pub async fn get_clients(&self) -> Vec<Arc<dyn node::Client>> {
-        self.client_registry
-            .lock()
-            .await
-            .iter()
-            .map(|client| client.handle.node.clone())
-            .collect()
+        self.client_registry.lock().await.get_clients()
     }
 
     pub async fn run(self: Arc<Self>) {

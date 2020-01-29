@@ -101,23 +101,21 @@ impl Registry {
         self.list.len()
     }
 
-    pub fn iter(&self) -> slice::Iter<scheduler::ClientHandle> {
+    fn iter(&self) -> slice::Iter<scheduler::ClientHandle> {
         self.list.iter()
     }
 
-    pub fn iter_mut(&mut self) -> slice::IterMut<scheduler::ClientHandle> {
+    fn iter_mut(&mut self) -> slice::IterMut<scheduler::ClientHandle> {
         self.list.iter_mut()
     }
 
-    /// Find client which given solution is associated with
-    pub fn find_client(&self, solution: &work::Solution) -> Option<Arc<Handle>> {
-        self.list
-            .iter()
-            .find(|client| client.handle.matching_solution(solution))
-            .map(|client| client.handle.clone())
+    pub fn get_clients(&self) -> Vec<Arc<dyn node::Client>> {
+        self.iter()
+            .map(|client| client.handle.node.clone())
+            .collect()
     }
 
-    pub fn register_client(&mut self, client: scheduler::ClientHandle) -> &scheduler::ClientHandle {
+    fn register_client(&mut self, client: scheduler::ClientHandle) -> &scheduler::ClientHandle {
         assert!(
             self.list.iter().find(|old| *old == &client).is_none(),
             "BUG: client already present in the registry"
