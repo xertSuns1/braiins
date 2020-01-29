@@ -22,6 +22,8 @@
 
 use std::ops::Deref;
 
+/// This enum allows distinguishing between a configuration set by the user (e.g. in a
+/// config file) and its default value. It describes the source of the value.
 pub enum OptionDefault<T> {
     Some(T),
     Default(T),

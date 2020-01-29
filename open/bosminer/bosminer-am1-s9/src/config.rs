@@ -210,6 +210,8 @@ pub struct Backend {
     // TODO: merge pools and clients
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hash_chain_global: Option<HashChainGlobal>,
+    /// We use `BTreeMap` to have alphabetically sorted hash chain indices in persistent
+    /// configuration file (TOML)
     #[serde(rename = "hash_chain")]
     #[serde(skip_serializing_if = "Option::is_none")]
     hash_chains: Option<BTreeMap<String, HashChain>>,
