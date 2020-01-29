@@ -21,6 +21,11 @@
 // contact us at opensource@braiins.com.
 
 //! This module handles S9 configuration and configuration file parsing
+//! TODO: This comment applies to all f64 items, we should switch internal representation to
+//! basic units and also consider using a 3rd crate that is aware of physical units:
+//!  - freq in `u64` Hz
+//!  - voltage in `usize` mV
+//!  - temperature to `usize` °C or m°C
 
 use ii_logging::macros::*;
 
