@@ -417,8 +417,11 @@ impl Backend {
                 .into_iter()
                 .map(|pool| {
                     // TODO: do not panic!
-                    bosminer_config::client::parse(pool.url.clone(), pool.user.clone())
-                        .expect("Server parameters")
+                    bosminer_config::client::Descriptor::parse(
+                        pool.url.as_str(),
+                        pool.user.as_str(),
+                    )
+                    .expect("Server parameters")
                 })
                 .collect();
         }

@@ -146,8 +146,8 @@ async fn main() {
             .value_of("user")
             .expect("BUG: missing 'user' argument");
 
-        let client_descriptor = bosminer_config::client::parse(url.to_string(), user.to_string())
-            .expect("Server parameters");
+        let client_descriptor =
+            bosminer_config::client::Descriptor::parse(url, user).expect("Server parameters");
 
         if !backend_config.clients.is_empty() {
             warn!("Overriding pool settings located at '{}'", config_path);

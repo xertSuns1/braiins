@@ -38,6 +38,7 @@ use ii_async_compat::prelude::*;
 
 use std::collections::VecDeque;
 use std::fmt;
+use std::net::ToSocketAddrs;
 use std::sync::Arc;
 
 use ii_stratum::v2::framing::codec::Framing;
@@ -56,6 +57,29 @@ use std::collections::HashMap;
 
 // TODO: move it to the stratum crate
 const VERSION_MASK: u32 = 0x1fffe000;
+
+#[derive(Debug)]
+pub struct Descriptor {
+    pub user: String,
+    pub host: String,
+    pub port: u16,
+}
+
+impl Descriptor {
+    fn get_url(&self) -> String {
+        format!("{}:{}", self.host, self.port)
+    }
+}
+
+impl From<client::Descriptor> for Descriptor {
+    fn from(descriptor: client::Descriptor) -> Self {
+        Self {
+            user: descriptor.user(),
+            host: descriptor.host(),
+            port: descriptor.port(),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct StratumJob {
@@ -419,8 +443,8 @@ impl StratumConnectionHandler {
             max_version: 2,
             min_version: 2,
             flags: 0,
-            endpoint_host: Str0_255::from_string(self.client.descriptor.url.clone()),
-            endpoint_port: self.client.descriptor.socket_addr.port() as u16,
+            endpoint_host: Str0_255::from_string(self.client.descriptor.host.clone()),
+            endpoint_port: self.client.descriptor.port,
             device: DeviceInfo {
                 vendor: "Braiins".try_into()?,
                 hw_rev: "1".try_into()?,
@@ -465,7 +489,16 @@ impl StratumConnectionHandler {
     }
 
     async fn connect(mut self) -> Result<(Connection<Framing>, ii_bitcoin::Target), ()> {
-        let mut connection = Connection::<Framing>::connect(&self.client.descriptor.socket_addr)
+        let socket_addr = self
+            .client
+            .descriptor
+            .get_url()
+            .to_socket_addrs()
+            .expect("BUG: invalid server address")
+            .next()
+            .expect("BUG: cannot resolve any IP address");
+
+        let mut connection = Connection::<Framing>::connect(&socket_addr)
             .await
             .expect("Cannot connect to stratum server");
         self.setup_mining_connection(&mut connection)
@@ -517,7 +550,7 @@ impl Handler for StratumConnectionHandler {
 
 #[derive(Debug, ClientNode)]
 pub struct StratumClient {
-    descriptor: client::Descriptor,
+    descriptor: Descriptor,
     #[member_client_stats]
     client_stats: stats::BasicClient,
     last_job: Mutex<Option<Arc<StratumJob>>>,
@@ -527,7 +560,7 @@ pub struct StratumClient {
 }
 
 impl StratumClient {
-    pub fn new(descriptor: client::Descriptor, job_solver: job::Solver) -> Self {
+    pub fn new(descriptor: Descriptor, job_solver: job::Solver) -> Self {
         let (job_sender, job_solution) = job_solver.split();
         Self {
             descriptor,
@@ -599,8 +632,10 @@ impl fmt::Display for StratumClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{}@{} ({})",
-            self.descriptor.url, self.descriptor.user, self.descriptor.protocol
+            "{}://{}@{}",
+            client::SCHEME_STRATUM_V2,
+            self.descriptor.host,
+            self.descriptor.user
         )
     }
 }

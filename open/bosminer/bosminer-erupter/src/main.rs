@@ -59,8 +59,8 @@ async fn main() {
         .value_of("user")
         .expect("BUG: missing 'user' attribute");
 
-    let client_descriptor = bosminer_config::client::parse(url.to_string(), user.to_string())
-        .expect("Server parameters");
+    let client_descriptor =
+        bosminer_config::client::Descriptor::parse(url, user).expect("Server parameters");
 
     let backend_config = config::Backend {
         client: Some(client_descriptor),

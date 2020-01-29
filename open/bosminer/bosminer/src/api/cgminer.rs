@@ -114,7 +114,7 @@ impl Handler {
 
         response::Pool {
             idx: idx as i32,
-            url: client.descriptor.url.clone(),
+            url: client.descriptor.get_url(true, true, false),
             // TODO: get actual status from client
             status: response::PoolStatus::Alive,
             // TODO: get actual value from client
@@ -134,7 +134,7 @@ impl Handler {
             get_failures: 0,
             // TODO: account remote failures
             remote_failures: 0,
-            user: client.descriptor.user.clone(),
+            user: client.descriptor.user(),
             last_share_time,
             diff1_shares: valid_backend_diff.solutions,
             proxy_type: "".to_string(),
@@ -147,8 +147,7 @@ impl Handler {
             has_stratum: true,
             // TODO: get actual value from client
             stratum_active: true,
-            // TODO: stratum_url shows url without stratum prefix
-            stratum_url: client.descriptor.url.clone(),
+            stratum_url: client.descriptor.get_url(false, true, false),
             stratum_difficulty: last_diff,
             // TODO: get actual value from client (Asic Boost)
             has_vmask: true,
