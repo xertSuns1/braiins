@@ -161,7 +161,7 @@ impl JobDispatcher {
 
         client_registry
             .register_client(client_handle)
-            .handle
+            .scheduler_handle
             .clone()
     }
 
@@ -212,10 +212,10 @@ impl JobDispatcher {
                 / (total_generated_work + generated_work_delta) as f64;
             let next_error = (client.percentage_share - next_client_percentage_share).abs();
             match next_client {
-                None => next_client = Some((client.handle.clone(), next_error)),
+                None => next_client = Some((client.scheduler_handle.clone(), next_error)),
                 Some((_, min_error)) => {
                     if min_error >= next_error {
-                        next_client = Some((client.handle.clone(), next_error));
+                        next_client = Some((client.scheduler_handle.clone(), next_error));
                     }
                 }
             }
@@ -274,8 +274,8 @@ impl JobExecutor {
             .lock()
             .await
             .iter()
-            .find(|client| client.handle.matching_solution(solution))
-            .map(|client| client.handle.clone())
+            .find(|client| client.scheduler_handle.matching_solution(solution))
+            .map(|client| client.scheduler_handle.clone())
     }
 
     pub async fn get_solution_sender(

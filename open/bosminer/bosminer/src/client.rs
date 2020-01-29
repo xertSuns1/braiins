@@ -47,7 +47,7 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct Handle {
-    handle: Arc<scheduler::Handle>,
+    scheduler_handle: Arc<scheduler::Handle>,
     generated_work: scheduler::LocalGeneratedWork,
     percentage_share: f64,
 }
@@ -63,7 +63,7 @@ impl Handle {
         T: node::Client + 'static,
     {
         Self {
-            handle: Arc::new(scheduler::Handle::new::<T>(
+            scheduler_handle: Arc::new(scheduler::Handle::new::<T>(
                 client,
                 engine_sender,
                 solution_sender,
@@ -75,12 +75,12 @@ impl Handle {
 
     #[inline]
     fn get_node(&self) -> &Arc<dyn node::Client> {
-        &self.handle.node
+        &self.scheduler_handle.node
     }
 
     fn update_generated_work(&mut self) -> u64 {
         let global_generated_work = *self
-            .handle
+            .scheduler_handle
             .node
             .client_stats()
             .generated_work()
@@ -108,7 +108,7 @@ impl Handle {
 
 impl PartialEq for Handle {
     fn eq(&self, other: &Handle) -> bool {
-        &self.handle == &other.handle
+        &self.scheduler_handle == &other.scheduler_handle
     }
 }
 
