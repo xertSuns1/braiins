@@ -23,6 +23,7 @@
 //! This module implements CGMiner compatible API server to control bOSminer and to extract
 //! statistics from it.
 
+use crate::client;
 use crate::hub;
 use crate::node::{self, Stats as _, WorkSolver, WorkSolverStats as _};
 use crate::stats::{self, UnixTime as _};
@@ -59,23 +60,23 @@ impl Handler {
 
     async fn collect_data<C, F, T, U, V>(&self, container: C, base_idx: usize, f: F) -> Vec<T>
     where
-        C: Future<Output = Vec<Arc<U>>>,
-        F: Fn(usize, Arc<U>) -> V,
-        U: ?Sized,
+        C: Future<Output = Vec<U>>,
+        F: Fn(usize, U) -> V,
+        U: Sized,
         V: Future<Output = T>,
     {
         let mut list = vec![];
-        for (idx, item) in container.await.iter().enumerate() {
-            list.push(f(base_idx + idx, item.clone()).await);
+        for (idx, item) in container.await.drain(..).enumerate() {
+            list.push(f(base_idx + idx, item).await);
         }
         list
     }
 
-    async fn get_pool_status(idx: usize, client: &Arc<dyn node::Client>) -> response::Pool {
+    async fn get_pool_status(idx: usize, client: client::Handle) -> response::Pool {
         let descriptor = client.descriptor().expect("BUG: missing client descriptor");
         let last_job = client.get_last_job().await;
 
-        let client_stats = client.client_stats();
+        let client_stats = client.stats();
         let valid_jobs = client_stats.valid_jobs().take_snapshot();
         let invalid_jobs = client_stats.invalid_jobs().take_snapshot();
         let generated_work = client_stats.generated_work().take_snapshot();
@@ -167,12 +168,12 @@ impl Handler {
 
     async fn collect_pool_statuses(&self) -> Vec<response::Pool> {
         self.collect_data(self.core.get_clients(), 0, |idx, client| {
-            async move { Self::get_pool_status(idx, &client).await }
+            async move { Self::get_pool_status(idx, client).await }
         })
         .await
     }
 
-    async fn get_asc_status(idx: usize, work_solver: &Arc<dyn node::WorkSolver>) -> response::Asc {
+    async fn get_asc_status(idx: usize, work_solver: Arc<dyn node::WorkSolver>) -> response::Asc {
         let mining_stats = work_solver.mining_stats();
         let work_solver_stats = work_solver.work_solver_stats();
         let last_work_time = work_solver_stats.last_work_time().take_snapshot().await;
@@ -249,12 +250,12 @@ impl Handler {
 
     async fn collect_asc_statuses(&self) -> Vec<response::Asc> {
         self.collect_data(self.core.get_work_solvers(), 0, |idx, work_solver| {
-            async move { Self::get_asc_status(idx, &work_solver).await }
+            async move { Self::get_asc_status(idx, work_solver).await }
         })
         .await
     }
 
-    async fn get_pool_stats(idx: usize, _client: &Arc<dyn node::Client>) -> response::PoolStats {
+    async fn get_pool_stats(idx: usize, _client: client::Handle) -> response::PoolStats {
         response::PoolStats {
             header: response::StatsHeader {
                 idx: idx as i32,
@@ -291,14 +292,14 @@ impl Handler {
 
     async fn collect_pool_stats(&self, base_idx: usize) -> Vec<response::PoolStats> {
         self.collect_data(self.core.get_clients(), base_idx, |idx, client| {
-            async move { Self::get_pool_stats(idx, &client).await }
+            async move { Self::get_pool_stats(idx, client).await }
         })
         .await
     }
 
     async fn get_asc_stats(
         idx: usize,
-        _work_solver: &Arc<dyn node::WorkSolver>,
+        _work_solver: Arc<dyn node::WorkSolver>,
     ) -> response::AscStats {
         response::AscStats {
             header: response::StatsHeader {
@@ -317,7 +318,7 @@ impl Handler {
         self.collect_data(
             self.core.get_work_solvers(),
             base_idx,
-            |idx, work_solver| async move { Self::get_asc_stats(idx, &work_solver).await },
+            |idx, work_solver| async move { Self::get_asc_stats(idx, work_solver).await },
         )
         .await
     }
@@ -381,7 +382,7 @@ impl command::Handler for Handler {
         let mut pools_stale_shares = 0.0;
 
         for client in self.core.get_clients().await {
-            let client_stats = client.client_stats();
+            let client_stats = client.stats();
 
             let valid_jobs = client_stats.valid_jobs().take_snapshot();
             let accepted = client_stats.accepted().take_snapshot().await;
@@ -551,7 +552,7 @@ impl command::Handler for Handler {
         let work_solver = work_solvers.get(idx as usize).cloned();
 
         match work_solver {
-            Some(work_solver) => Ok(Self::get_asc_status(idx as usize, &work_solver).await),
+            Some(work_solver) => Ok(Self::get_asc_status(idx as usize, work_solver).await),
             None => {
                 Err(response::ErrorCode::InvalidAscId(idx, work_solvers.len() as i32 - 1).into())
             }

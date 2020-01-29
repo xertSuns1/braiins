@@ -189,8 +189,8 @@ impl Core {
     }
 
     #[inline]
-    pub async fn get_clients(&self) -> Vec<Arc<dyn node::Client>> {
-        self.client_registry.lock().await.get_clients()
+    pub async fn get_clients(&self) -> Vec<client::Handle> {
+        self.client_registry.lock().await.get_clients().to_vec()
     }
 
     pub async fn run(self: Arc<Self>) {

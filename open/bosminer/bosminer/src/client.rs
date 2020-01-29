@@ -29,7 +29,9 @@ mod scheduler;
 pub mod stratum_v2;
 
 use crate::hub;
+use crate::job;
 use crate::node;
+use crate::stats;
 use crate::work;
 
 // Scheduler re-exports
@@ -43,7 +45,7 @@ use ii_async_compat::futures;
 use std::slice;
 use std::sync::Arc;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Handle {
     handle: Arc<scheduler::Handle>,
     generated_work: scheduler::LocalGeneratedWork,
@@ -71,6 +73,11 @@ impl Handle {
         }
     }
 
+    #[inline]
+    fn get_node(&self) -> &Arc<dyn node::Client> {
+        &self.handle.node
+    }
+
     fn update_generated_work(&mut self) -> u64 {
         let global_generated_work = *self
             .handle
@@ -79,6 +86,23 @@ impl Handle {
             .generated_work()
             .take_snapshot();
         self.generated_work.update(global_generated_work)
+    }
+
+    /// Return basic information about client used for connection to remote server
+    #[inline]
+    pub fn descriptor(&self) -> Option<&Descriptor> {
+        // TODO: remove descriptor method from node::Client trait
+        self.get_node().descriptor()
+    }
+
+    #[inline]
+    pub(crate) fn stats(&self) -> &dyn stats::Client {
+        self.get_node().client_stats()
+    }
+
+    #[inline]
+    pub(crate) async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
+        self.get_node().get_last_job().await
     }
 }
 
@@ -98,22 +122,24 @@ impl Registry {
         Self { list: vec![] }
     }
 
+    #[inline]
     pub fn count(&self) -> usize {
         self.list.len()
     }
 
+    #[inline]
     fn iter(&self) -> slice::Iter<Handle> {
         self.list.iter()
     }
 
+    #[inline]
     fn iter_mut(&mut self) -> slice::IterMut<Handle> {
         self.list.iter_mut()
     }
 
-    pub fn get_clients(&self) -> Vec<Arc<dyn node::Client>> {
-        self.iter()
-            .map(|client| client.handle.node.clone())
-            .collect()
+    #[inline]
+    pub fn get_clients(&self) -> &Vec<Handle> {
+        &self.list
     }
 
     fn register_client(&mut self, client: Handle) -> &Handle {

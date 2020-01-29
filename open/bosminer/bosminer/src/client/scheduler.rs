@@ -79,7 +79,7 @@ impl PartialEq for Handle {
 
 /// Used for measuring generated work from global counter and allows the scheduler to arbitrarily
 /// reset this counter
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LocalGeneratedWork {
     global_counter: u64,
     local_counter: u64,
