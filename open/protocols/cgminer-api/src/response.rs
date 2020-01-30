@@ -134,6 +134,7 @@ pub enum StatusCode {
     InvalidJSON = 23,
     MissingCommand = 24,
     MissingPoolParameter = 25,
+    InvalidPoolId = 26,
     AccessDeniedCmd = 45,
     MissingAddPoolDetails = 52,
     InvalidAddPoolDetails = 53,
@@ -177,6 +178,7 @@ pub enum ErrorCode {
     InvalidJSON,
     MissingCommand,
     MissingPoolParameter,
+    InvalidPoolId(i32, i32),
     AccessDeniedCmd(String),
     MissingAddPoolDetails,
     InvalidAddPoolDetails(String),
@@ -231,6 +233,13 @@ impl From<ErrorCode> for Error {
             ErrorCode::MissingPoolParameter => (
                 StatusCode::MissingPoolParameter,
                 "Missing pool id parameter".to_string(),
+            ),
+            ErrorCode::InvalidPoolId(idx_requested, idx_last) => (
+                StatusCode::InvalidAscId,
+                format!(
+                    "Invalid pool id {} - range is 0 - {}",
+                    idx_requested, idx_last
+                ),
             ),
             ErrorCode::AccessDeniedCmd(name) => (
                 StatusCode::AccessDeniedCmd,

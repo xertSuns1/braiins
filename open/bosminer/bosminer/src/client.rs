@@ -28,6 +28,7 @@ mod scheduler;
 // Sub-modules with client implementation
 pub mod stratum_v2;
 
+use crate::error;
 use crate::hub;
 use crate::job;
 use crate::node;
@@ -141,6 +142,14 @@ impl Registry {
             .collect()
     }
 
+    #[inline]
+    pub fn get_client(&self, index: usize) -> Result<Arc<Handle>, error::Client> {
+        self.list
+            .get(index)
+            .ok_or(error::Client::OutOfRange(index, self.list.len()))
+            .map(|scheduler_handle| scheduler_handle.client_handle.clone())
+    }
+
     fn register_client(
         &mut self,
         scheduler_handle: scheduler::Handle,
@@ -157,6 +166,20 @@ impl Registry {
             self.list.last().expect("BUG: client list is empty"),
             self.list.len() - 1,
         )
+    }
+
+    fn swap_clients(
+        &mut self,
+        a: usize,
+        b: usize,
+    ) -> Result<(Arc<Handle>, Arc<Handle>), error::Client> {
+        assert_ne!(a, b, "BUG: swapping clients with the same index");
+        let client_handle_a = self.get_client(a)?;
+        let client_handle_b = self.get_client(b)?;
+
+        self.list.swap(a, b);
+
+        Ok((client_handle_a, client_handle_b))
     }
 }
 

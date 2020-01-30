@@ -21,6 +21,7 @@
 // contact us at opensource@braiins.com.
 
 use crate::client;
+use crate::error;
 use crate::job;
 use crate::node;
 use crate::work;
@@ -319,6 +320,15 @@ impl JobExecutor {
             .await
             .add_client(descriptor, create)
             .await
+    }
+
+    pub async fn swap_clients(
+        &self,
+        a: usize,
+        b: usize,
+    ) -> Result<(Arc<client::Handle>, Arc<client::Handle>), error::Client> {
+        self.client_registry.lock().await.swap_clients(a, b)
+        // TODO: force scheduler
     }
 
     pub async fn run(self: Arc<Self>) {

@@ -24,6 +24,7 @@
 //! statistics from it.
 
 use crate::client;
+use crate::error;
 use crate::hub;
 use crate::node::{self, Stats as _, WorkSolver, WorkSolverStats as _};
 use crate::stats::{self, UnixTime as _};
@@ -532,13 +533,28 @@ impl command::Handler for Handler {
 
     async fn handle_switch_pool(
         &self,
-        _parameter: Option<&json::Value>,
+        parameter: Option<&json::Value>,
     ) -> command::Result<response::SwitchPool> {
-        // TODO: implement pool switching
-        Ok(response::SwitchPool {
-            idx: 0,
-            url: "".to_string(),
-        })
+        let idx = parameter
+            .expect("BUG: missing SWITCHPOOL parameter")
+            .to_i32()
+            .expect("BUG: invalid SWITCHPOOL parameter type");
+
+        self.core
+            .swap_clients(idx as usize, 0)
+            .await
+            .map(|(client_handle, _)| {
+                client_handle.enable();
+                response::SwitchPool {
+                    idx: idx as usize,
+                    url: client_handle.descriptor.get_url(true, true, false),
+                }
+            })
+            .map_err(|e| match e {
+                error::Client::OutOfRange(idx, limit) => {
+                    response::ErrorCode::InvalidPoolId(idx as i32, limit as i32 - 1).into()
+                }
+            })
     }
 
     async fn handle_stats(&self) -> command::Result<response::Stats> {

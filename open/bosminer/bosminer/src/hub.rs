@@ -170,6 +170,23 @@ impl Core {
     }
 
     #[inline]
+    pub async fn swap_clients(
+        &self,
+        a: usize,
+        b: usize,
+    ) -> Result<(Arc<client::Handle>, Arc<client::Handle>), error::Client> {
+        if a != b {
+            self.job_executor.swap_clients(a, b).await
+        } else {
+            self.client_registry
+                .lock()
+                .await
+                .get_client(a)
+                .map(|client| (client.clone(), client))
+        }
+    }
+
+    #[inline]
     pub async fn get_root_hub(&self) -> Option<Arc<dyn node::WorkSolver>> {
         self.backend_registry.lock_root_hub().await.clone()
     }
