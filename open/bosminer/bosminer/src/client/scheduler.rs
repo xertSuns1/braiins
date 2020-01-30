@@ -131,7 +131,7 @@ impl JobDispatcher {
         engine_sender: work::EngineSender,
         descriptor: Descriptor,
         create: F,
-    ) -> Arc<client::Handle>
+    ) -> (Arc<client::Handle>, usize)
     where
         T: node::Client + 'static,
         F: FnOnce(job::Solver) -> T,
@@ -167,17 +167,15 @@ impl JobDispatcher {
             percentage_share,
         );
 
-        client_registry
-            .register_client(scheduler_handle)
-            .client_handle
-            .clone()
+        let (scheduler_handle, client_idx) = client_registry.register_client(scheduler_handle);
+        (scheduler_handle.client_handle.clone(), client_idx)
     }
 
     pub async fn add_client<F, T>(
         &mut self,
         descriptor: Descriptor,
         create: F,
-    ) -> Arc<client::Handle>
+    ) -> (Arc<client::Handle>, usize)
     where
         T: node::Client + 'static,
         F: FnOnce(job::Solver) -> T,
@@ -187,13 +185,13 @@ impl JobDispatcher {
             .take()
             .unwrap_or_else(|| work::EngineSender::new(None));
 
-        let client_handle =
+        let (client_handle, client_idx) =
             Self::create_and_register_client(self, engine_sender, descriptor, create).await;
 
         // when there is no active client then set current one
         self.active_client
             .get_or_insert_with(|| client_handle.clone());
-        client_handle
+        (client_handle, client_idx)
     }
 
     fn switch_client(&mut self, next_client: Arc<client::Handle>) {
@@ -308,7 +306,11 @@ impl JobExecutor {
         client.map(|client| client.solution_sender.clone())
     }
 
-    pub async fn add_client<F, T>(&self, descriptor: Descriptor, create: F) -> Arc<client::Handle>
+    pub async fn add_client<F, T>(
+        &self,
+        descriptor: Descriptor,
+        create: F,
+    ) -> (Arc<client::Handle>, usize)
     where
         T: node::Client + 'static,
         F: FnOnce(job::Solver) -> T,

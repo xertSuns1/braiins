@@ -157,7 +157,11 @@ impl Core {
     /// Adds a client that is dynamically created using its `create` method. The reason for
     /// late building of the client is that the closure requires a job solver that is dynamically
     /// created
-    pub async fn add_client<F, T>(&self, descriptor: Descriptor, create: F) -> Arc<client::Handle>
+    pub async fn add_client<F, T>(
+        &self,
+        descriptor: Descriptor,
+        create: F,
+    ) -> (Arc<client::Handle>, usize)
     where
         T: node::Client + 'static,
         F: FnOnce(job::Solver) -> T,

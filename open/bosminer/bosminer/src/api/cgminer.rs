@@ -510,12 +510,11 @@ impl command::Handler for Handler {
             .get_client_descriptor(parameter)
             .map_err(|_| response::ErrorCode::InvalidAddPoolDetails(parameter.to_string()))?;
 
-        let client_handle = client::register(&self.core, client_descriptor).await;
+        let (client_handle, client_idx) = client::register(&self.core, client_descriptor).await;
         client_handle.enable();
 
-        // TODO: get correct client index
         Ok(response::AddPool {
-            idx: 0,
+            idx: client_idx,
             url: client_handle.descriptor.get_url(true, true, false),
         })
     }

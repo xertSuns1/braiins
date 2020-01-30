@@ -141,7 +141,10 @@ impl Registry {
             .collect()
     }
 
-    fn register_client(&mut self, scheduler_handle: scheduler::Handle) -> &scheduler::Handle {
+    fn register_client(
+        &mut self,
+        scheduler_handle: scheduler::Handle,
+    ) -> (&scheduler::Handle, usize) {
         assert!(
             self.list
                 .iter()
@@ -150,12 +153,15 @@ impl Registry {
             "BUG: client already present in the registry"
         );
         self.list.push(scheduler_handle);
-        self.list.last().expect("BUG: client list is empty")
+        (
+            self.list.last().expect("BUG: client list is empty"),
+            self.list.len() - 1,
+        )
     }
 }
 
 /// Register client that implements a protocol set in `descriptor`
-pub async fn register(core: &Arc<hub::Core>, descriptor: Descriptor) -> Arc<Handle> {
+pub async fn register(core: &Arc<hub::Core>, descriptor: Descriptor) -> (Arc<Handle>, usize) {
     // NOTE: the match statement needs to be updated in case of multiple protocol support
     core.add_client(descriptor.clone(), |job_solver| match descriptor.protocol {
         Protocol::StratumV2 => stratum_v2::StratumClient::new(descriptor.into(), job_solver),
