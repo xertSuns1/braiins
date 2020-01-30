@@ -32,6 +32,8 @@ use crate::version;
 use ii_cgminer_api::support::ValueExt as _;
 use ii_cgminer_api::{command, json, response};
 
+use bosminer_config::client::Descriptor;
+
 use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -134,7 +136,7 @@ impl Handler {
             get_failures: 0,
             // TODO: account remote failures
             remote_failures: 0,
-            user: client.descriptor.user(),
+            user: client.descriptor.user.clone(),
             last_share_time,
             diff1_shares: valid_backend_diff.solutions,
             proxy_type: "".to_string(),
@@ -320,6 +322,29 @@ impl Handler {
         )
         .await
     }
+
+    fn get_client_descriptor(&self, parameter: &str) -> Result<Descriptor, ()> {
+        let parameters: Vec<_> = parameter
+            .split(ii_cgminer_api::PARAMETER_DELIMITER)
+            .collect();
+
+        assert_eq!(
+            parameters.len(),
+            3,
+            "BUG: invalid number of ADDPOOL parameters"
+        );
+
+        let url = parameters[0];
+        let user = parameters[1];
+        let password = parameters[2];
+
+        // URL and user name is required
+        if url.is_empty() || user.is_empty() {
+            return Err(());
+        }
+
+        Descriptor::parse(url, format!("{}:{}", user, password).as_str()).map_err(|_| ())
+    }
 }
 
 #[async_trait::async_trait]
@@ -474,9 +499,18 @@ impl command::Handler for Handler {
 
     async fn handle_add_pool(
         &self,
-        _parameter: Option<&json::Value>,
+        parameter: Option<&json::Value>,
     ) -> command::Result<response::AddPool> {
+        let parameter = parameter
+            .expect("BUG: missing ADDPOOL parameter")
+            .as_str()
+            .expect("BUG: invalid ADDPOOL parameter type");
+
         // TODO: implement pool addition
+        let _client_descriptor = self
+            .get_client_descriptor(parameter)
+            .map_err(|_| response::ErrorCode::InvalidAddPoolDetails(parameter.to_string()))?;
+
         Ok(response::AddPool {
             idx: 0,
             url: "".to_string(),

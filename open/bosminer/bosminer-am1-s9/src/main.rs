@@ -160,7 +160,7 @@ async fn main() {
     if backend_config.clients.len() == 0 {
         error!("No pools specified!");
         info!("Use cli arguments:");
-        info!("    bosminer --pool <HOSTNAME:PORT> --user <USERNAME.WORKERNAME>");
+        info!("    bosminer --pool <HOSTNAME:PORT> --user <USERNAME.WORKERNAME[:PASSWORD]>");
         info!(
             "Or specify pool(s) in configuration file '{}':",
             config_path

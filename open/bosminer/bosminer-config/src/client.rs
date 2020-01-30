@@ -29,6 +29,7 @@ use std::fmt;
 use failure::ResultExt;
 
 pub const SCHEME_STRATUM_V2: &str = "stratum2+tcp";
+pub const USER_INFO_DELIMITER: char = ':';
 
 #[derive(Copy, Clone, Debug)]
 pub enum Protocol {
@@ -62,33 +63,14 @@ impl fmt::Display for Protocol {
 /// Contains basic information about client used for obtaining jobs for solving.
 #[derive(Clone, Debug)]
 pub struct Descriptor {
-    protocol: Protocol,
-    user: String,
-    host: String,
-    port: u16,
+    pub protocol: Protocol,
+    pub user: String,
+    pub password: Option<String>,
+    pub host: String,
+    pub port: u16,
 }
 
 impl Descriptor {
-    #[inline]
-    pub fn protocol(&self) -> Protocol {
-        self.protocol
-    }
-
-    #[inline]
-    pub fn host(&self) -> String {
-        self.host.clone()
-    }
-
-    #[inline]
-    pub fn user(&self) -> String {
-        self.user.clone()
-    }
-
-    #[inline]
-    pub fn port(&self) -> u16 {
-        self.port
-    }
-
     pub fn get_url(&self, protocol: bool, port: bool, user: bool) -> String {
         let mut result = if protocol {
             self.protocol.scheme().to_string() + "://"
@@ -112,9 +94,9 @@ impl Descriptor {
     }
 
     /// Create client `Descriptor` from information provided by user.
-    pub fn parse(url: &str, user: &str) -> error::Result<Self> {
-        if user.is_empty() {
-            Err(error::ErrorKind::Client("empty user".to_string()))?
+    pub fn parse(url: &str, user_info: &str) -> error::Result<Self> {
+        if user_info.is_empty() {
+            Err(error::ErrorKind::Client("empty user info".to_string()))?
         }
         let url = Url::parse(url).context(error::ErrorKind::Client("invalid URL".to_string()))?;
 
@@ -127,9 +109,20 @@ impl Descriptor {
             .port()
             .ok_or(error::ErrorKind::Client("missing port".to_string()))?;
 
+        // Parse user and password from user info (user[:password])
+        let user_info: Vec<_> = user_info.rsplitn(2, USER_INFO_DELIMITER).collect();
+        let mut user_info = user_info.iter().rev();
+
+        let user = user_info.next().expect("BUG: missing user").to_string();
+        let password = user_info
+            .next()
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_string());
+
         Ok(Descriptor {
             protocol,
-            user: user.to_string(),
+            user,
+            password,
             host,
             port,
         })

@@ -53,6 +53,9 @@ pub const SIGNATURE: &str = "CGMiner";
 /// Format tag for response messages replaced in dispatcher with real signature
 pub const SIGNATURE_TAG: &str = "{SIGNATURE}";
 
+/// Default signature of CGMiner API
+pub const PARAMETER_DELIMITER: char = ',';
+
 /// Codec for the CGMiner API.
 /// The `Codec` decodes `Command`s and encodes `ResponseSet`s.
 #[derive(Default, Debug)]

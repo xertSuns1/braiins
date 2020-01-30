@@ -152,10 +152,8 @@ impl Registry {
 /// Register client that implements a protocol set in `descriptor`
 pub async fn register(core: &Arc<hub::Core>, descriptor: Descriptor) -> Arc<dyn node::Client> {
     // NOTE: the match statement needs to be updated in case of multiple protocol support
-    core.add_client(descriptor.clone(), |job_solver| {
-        match descriptor.protocol() {
-            Protocol::StratumV2 => stratum_v2::StratumClient::new(descriptor.into(), job_solver),
-        }
+    core.add_client(descriptor.clone(), |job_solver| match descriptor.protocol {
+        Protocol::StratumV2 => stratum_v2::StratumClient::new(descriptor.into(), job_solver),
     })
     .await
 }

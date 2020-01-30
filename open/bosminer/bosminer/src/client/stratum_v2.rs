@@ -74,9 +74,9 @@ impl Descriptor {
 impl From<client::Descriptor> for Descriptor {
     fn from(descriptor: client::Descriptor) -> Self {
         Self {
-            user: descriptor.user(),
-            host: descriptor.host(),
-            port: descriptor.port(),
+            user: descriptor.user,
+            host: descriptor.host,
+            port: descriptor.port,
         }
     }
 }

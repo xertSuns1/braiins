@@ -42,7 +42,7 @@ async fn main() {
             clap::Arg::with_name("user")
                 .short("u")
                 .long("user")
-                .value_name("USERNAME.WORKERNAME")
+                .value_name("USERNAME.WORKERNAME[:PASSWORD]")
                 .help("Specify user and worker name")
                 .required(true)
                 .takes_value(true),

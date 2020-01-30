@@ -279,7 +279,7 @@ where
         const ARG_COUNT: usize = 3;
         match parameter {
             Some(json::Value::String(value)) => {
-                if value.splitn(ARG_COUNT, ',').count() == ARG_COUNT {
+                if value.splitn(ARG_COUNT, super::PARAMETER_DELIMITER).count() == ARG_COUNT {
                     Ok(())
                 } else {
                     Err(response::ErrorCode::InvalidAddPoolDetails(value.clone()).into())
