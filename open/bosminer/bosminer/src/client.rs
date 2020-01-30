@@ -45,79 +45,73 @@ use ii_async_compat::futures;
 use std::slice;
 use std::sync::Arc;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Handle {
     // Basic information about client used for connection to remote server
     pub descriptor: Descriptor,
-    scheduler_handle: Arc<scheduler::Handle>,
-    generated_work: scheduler::LocalGeneratedWork,
-    percentage_share: f64,
+    node: Arc<dyn node::Client>,
+    engine_sender: Arc<work::EngineSender>,
+    solution_sender: mpsc::UnboundedSender<work::Solution>,
 }
 
 impl Handle {
-    pub fn new<T>(
+    fn new<T>(
         descriptor: Descriptor,
         client: T,
         engine_sender: Arc<work::EngineSender>,
         solution_sender: mpsc::UnboundedSender<work::Solution>,
-        percentage_share: f64,
     ) -> Self
     where
         T: node::Client + 'static,
     {
         Self {
             descriptor,
-            scheduler_handle: Arc::new(scheduler::Handle::new::<T>(
-                client,
-                engine_sender,
-                solution_sender,
-            )),
-            generated_work: scheduler::LocalGeneratedWork::new(),
-            percentage_share,
+            node: Arc::new(client),
+            engine_sender,
+            solution_sender,
         }
     }
 
-    #[inline]
-    fn get_node(&self) -> &Arc<dyn node::Client> {
-        &self.scheduler_handle.node
-    }
-
-    fn update_generated_work(&mut self) -> u64 {
-        let global_generated_work = *self
-            .scheduler_handle
-            .node
-            .client_stats()
-            .generated_work()
-            .take_snapshot();
-        self.generated_work.update(global_generated_work)
+    /// Tests if solution should be delivered to this client
+    /// NOTE: This comparison uses trait method `node::Info::get_unique_ptr` to unify dynamic
+    /// objects to point to the same pointer otherwise direct comparison of self with other is never
+    /// satisfied even if the dynamic objects are same.
+    pub fn matching_solution(&self, solution: &work::Solution) -> bool {
+        Arc::ptr_eq(
+            &self.node.clone().get_unique_ptr(),
+            &solution.origin().get_unique_ptr(),
+        )
     }
 
     #[inline]
     pub(crate) fn enable(&self) {
-        self.get_node().clone().enable();
+        self.node.clone().enable();
         // TODO: force scheduler
     }
 
     #[inline]
     pub(crate) fn stats(&self) -> &dyn stats::Client {
-        self.get_node().client_stats()
+        self.node.client_stats()
     }
 
     #[inline]
     pub(crate) async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
-        self.get_node().get_last_job().await
+        self.node.get_last_job().await
     }
 }
 
 impl PartialEq for Handle {
     fn eq(&self, other: &Handle) -> bool {
-        &self.scheduler_handle == &other.scheduler_handle
+        Arc::ptr_eq(
+            &self.node.clone().get_unique_ptr(),
+            &other.node.clone().get_unique_ptr(),
+        )
     }
 }
 
 /// Keeps track of all active clients
 pub struct Registry {
-    list: Vec<Handle>,
+    list: Vec<scheduler::Handle>,
 }
 
 impl Registry {
@@ -131,32 +125,37 @@ impl Registry {
     }
 
     #[inline]
-    fn iter(&self) -> slice::Iter<Handle> {
+    fn iter(&self) -> slice::Iter<scheduler::Handle> {
         self.list.iter()
     }
 
     #[inline]
-    fn iter_mut(&mut self) -> slice::IterMut<Handle> {
+    fn iter_mut(&mut self) -> slice::IterMut<scheduler::Handle> {
         self.list.iter_mut()
     }
 
-    #[inline]
-    pub fn get_clients(&self) -> &Vec<Handle> {
-        &self.list
+    pub fn get_clients(&self) -> Vec<Arc<Handle>> {
+        self.list
+            .iter()
+            .map(|scheduler_handle| scheduler_handle.client_handle.clone())
+            .collect()
     }
 
-    fn register_client(&mut self, client: Handle) -> &Handle {
+    fn register_client(&mut self, scheduler_handle: scheduler::Handle) -> &scheduler::Handle {
         assert!(
-            self.list.iter().find(|old| *old == &client).is_none(),
+            self.list
+                .iter()
+                .find(|old| *old == &scheduler_handle)
+                .is_none(),
             "BUG: client already present in the registry"
         );
-        self.list.push(client);
+        self.list.push(scheduler_handle);
         self.list.last().expect("BUG: client list is empty")
     }
 }
 
 /// Register client that implements a protocol set in `descriptor`
-pub async fn register(core: &Arc<hub::Core>, descriptor: Descriptor) -> Handle {
+pub async fn register(core: &Arc<hub::Core>, descriptor: Descriptor) -> Arc<Handle> {
     // NOTE: the match statement needs to be updated in case of multiple protocol support
     core.add_client(descriptor.clone(), |job_solver| match descriptor.protocol {
         Protocol::StratumV2 => stratum_v2::StratumClient::new(descriptor.into(), job_solver),

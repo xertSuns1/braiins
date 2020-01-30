@@ -157,7 +157,7 @@ impl Core {
     /// Adds a client that is dynamically created using its `create` method. The reason for
     /// late building of the client is that the closure requires a job solver that is dynamically
     /// created
-    pub async fn add_client<F, T>(&self, descriptor: Descriptor, create: F) -> client::Handle
+    pub async fn add_client<F, T>(&self, descriptor: Descriptor, create: F) -> Arc<client::Handle>
     where
         T: node::Client + 'static,
         F: FnOnce(job::Solver) -> T,
@@ -191,8 +191,8 @@ impl Core {
     }
 
     #[inline]
-    pub async fn get_clients(&self) -> Vec<client::Handle> {
-        self.client_registry.lock().await.get_clients().to_vec()
+    pub async fn get_clients(&self) -> Vec<Arc<client::Handle>> {
+        self.client_registry.lock().await.get_clients()
     }
 
     pub async fn run(self: Arc<Self>) {

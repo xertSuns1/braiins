@@ -74,7 +74,7 @@ impl Handler {
         list
     }
 
-    async fn get_pool_status(idx: usize, client: client::Handle) -> response::Pool {
+    async fn get_pool_status(idx: usize, client: Arc<client::Handle>) -> response::Pool {
         let last_job = client.get_last_job().await;
 
         let client_stats = client.stats();
@@ -255,7 +255,7 @@ impl Handler {
         .await
     }
 
-    async fn get_pool_stats(idx: usize, _client: client::Handle) -> response::PoolStats {
+    async fn get_pool_stats(idx: usize, _client: Arc<client::Handle>) -> response::PoolStats {
         response::PoolStats {
             header: response::StatsHeader {
                 idx: idx as i32,
