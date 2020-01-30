@@ -19,6 +19,7 @@
 // under a proprietary license. For more information on the terms and conditions
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
+#![recursion_limit = "256"]
 
 mod async_i2c;
 pub mod bm1387;
@@ -1027,6 +1028,7 @@ impl StoppedChain {
                     // create a `Running` tape and be gone
                     return Ok(RunningChain {
                         manager: self.manager.clone(),
+                        start_id: self.manager.inner.lock().await.start_count,
                     });
                 }
                 // start failed
@@ -1053,6 +1055,7 @@ impl StoppedChain {
 #[derive(Debug)]
 pub struct RunningChain {
     pub manager: Arc<Manager>,
+    pub start_id: usize,
 }
 
 impl Drop for RunningChain {
@@ -1177,6 +1180,8 @@ impl ChainStatus {
 
 pub struct ManagerInner {
     hash_chain: Option<Arc<HashChain>>,
+    /// Each (attempted) hashchain start increments this counter by 1
+    start_count: usize,
 }
 
 /// Hashchain manager that can start and stop instances of hashchain
@@ -1222,6 +1227,7 @@ impl Manager {
         Ok(if inner.hash_chain.is_some() {
             ChainStatus::Running(RunningChain {
                 manager: self.clone(),
+                start_id: inner.start_count,
             })
         } else {
             ChainStatus::Stopped(StoppedChain {
@@ -1248,6 +1254,9 @@ impl Manager {
         // check that we hadn't started some other (?) way
         // TODO: maybe we should throw an error instead
         assert!(inner.hash_chain.is_none());
+
+        // Increment start counter
+        inner.start_count += 1;
 
         // make us a hash chain
         let mut hash_chain = HashChain::new(
@@ -1481,7 +1490,10 @@ impl Backend {
                             frequency: chain_config.frequency.clone(),
                             voltage: chain_config.voltage,
                         },
-                        inner: Mutex::new(ManagerInner { hash_chain: None }),
+                        inner: Mutex::new(ManagerInner {
+                            hash_chain: None,
+                            start_count: 0,
+                        }),
                     }
                 })
                 .await;
