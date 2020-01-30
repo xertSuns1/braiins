@@ -506,14 +506,17 @@ impl command::Handler for Handler {
             .as_str()
             .expect("BUG: invalid ADDPOOL parameter type");
 
-        // TODO: implement pool addition
-        let _client_descriptor = self
+        let client_descriptor = self
             .get_client_descriptor(parameter)
             .map_err(|_| response::ErrorCode::InvalidAddPoolDetails(parameter.to_string()))?;
 
+        let client_handle = client::register(&self.core, client_descriptor).await;
+        client_handle.enable();
+
+        // TODO: get correct client index
         Ok(response::AddPool {
             idx: 0,
-            url: "".to_string(),
+            url: client_handle.descriptor.get_url(true, true, false),
         })
     }
 

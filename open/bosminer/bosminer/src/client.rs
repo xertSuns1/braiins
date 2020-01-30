@@ -93,6 +93,12 @@ impl Handle {
     }
 
     #[inline]
+    pub(crate) fn enable(&self) {
+        self.get_node().clone().enable();
+        // TODO: force scheduler
+    }
+
+    #[inline]
     pub(crate) fn stats(&self) -> &dyn stats::Client {
         self.get_node().client_stats()
     }
@@ -150,7 +156,7 @@ impl Registry {
 }
 
 /// Register client that implements a protocol set in `descriptor`
-pub async fn register(core: &Arc<hub::Core>, descriptor: Descriptor) -> Arc<dyn node::Client> {
+pub async fn register(core: &Arc<hub::Core>, descriptor: Descriptor) -> Handle {
     // NOTE: the match statement needs to be updated in case of multiple protocol support
     core.add_client(descriptor.clone(), |job_solver| match descriptor.protocol {
         Protocol::StratumV2 => stratum_v2::StratumClient::new(descriptor.into(), job_solver),
