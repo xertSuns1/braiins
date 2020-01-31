@@ -34,6 +34,7 @@ use bosminer_macros::ClientNode;
 
 use async_trait::async_trait;
 use futures::lock::Mutex;
+use ii_async_compat::join;
 use ii_async_compat::prelude::*;
 
 use std::collections::VecDeque;
@@ -287,13 +288,14 @@ impl StratumEventHandler {
         );
     }
 
-    async fn run(mut self) {
+    async fn run(mut self) -> job::Sender {
         while let Some(frame) = self.connection_rx.next().await {
-            let frame = frame.expect("BUG: handle error when receiving a new frame");
             let msg = build_message_from_frame(frame)
                 .expect("BUG: handle building V2 message from frame failed");
             msg.accept(&mut self).await;
         }
+        // Return back job sender after terminating
+        self.job_sender
     }
 }
 
@@ -414,10 +416,12 @@ impl StratumSolutionHandler {
         // the response is handled in a separate task
     }
 
-    async fn run(mut self) {
+    async fn run(mut self) -> job::SolutionReceiver {
         while let Some(solution) = self.solution_receiver.receive().await {
             self.process_solution(solution).await;
         }
+        // Return back solution receiver after terminating
+        self.solution_receiver
     }
 }
 
@@ -608,14 +612,10 @@ impl StratumClient {
         let job_sender = self.take_job_sender().await;
         let solution_receiver = self.take_solution_receiver().await;
 
-        let event_handler =
-            StratumEventHandler::new(self.clone(), connection_rx, job_sender, init_target).run();
-        let solution_handler =
-            StratumSolutionHandler::new(self, connection_tx, solution_receiver).run();
-
-        // run solution handler in separate task
-        tokio::spawn(solution_handler);
-        event_handler.await;
+        let (_job_sender, _solution_receiver) = join!(
+            StratumEventHandler::new(self.clone(), connection_rx, job_sender, init_target).run(),
+            StratumSolutionHandler::new(self, connection_tx, solution_receiver).run()
+        );
     }
 }
 
