@@ -511,12 +511,12 @@ impl command::Handler for Handler {
             .get_client_descriptor(parameter)
             .map_err(|_| response::ErrorCode::InvalidAddPoolDetails(parameter.to_string()))?;
 
-        let (client_handle, client_idx) = client::register(&self.core, client_descriptor).await;
-        client_handle.enable();
+        let (client, client_idx) = client::register(&self.core, client_descriptor).await;
+        client.enable();
 
         Ok(response::AddPool {
             idx: client_idx,
-            url: client_handle.descriptor.get_url(true, true, false),
+            url: client.descriptor.get_url(true, true, false),
         })
     }
 
@@ -543,11 +543,11 @@ impl command::Handler for Handler {
         self.core
             .swap_clients(idx as usize, 0)
             .await
-            .map(|(client_handle, _)| {
-                client_handle.enable();
+            .map(|(client, _)| {
+                client.enable();
                 response::SwitchPool {
                     idx: idx as usize,
-                    url: client_handle.descriptor.get_url(true, true, false),
+                    url: client.descriptor.get_url(true, true, false),
                 }
             })
             .map_err(|e| match e {
