@@ -629,8 +629,19 @@ impl node::Client for StratumClient {
             .map(|job| job.clone() as Arc<dyn job::Bitcoin>)
     }
 
-    fn enable(self: Arc<Self>) {
+    fn is_enabled(self: Arc<Self>) -> bool {
+        // TODO: implement
+        true
+    }
+
+    fn enable(self: Arc<Self>) -> bool {
         tokio::spawn(self.clone().run());
+        false
+    }
+
+    fn disable(self: Arc<Self>) -> bool {
+        // TODO: implement
+        true
     }
 }
 

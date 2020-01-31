@@ -36,6 +36,7 @@ use futures::lock::Mutex;
 use ii_async_compat::futures;
 
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 
 use async_trait::async_trait;
@@ -64,12 +65,14 @@ impl fmt::Display for TestNode {
 pub struct TestClient {
     #[member_client_stats]
     client_stats: stats::BasicClient,
+    enabled: AtomicBool,
 }
 
 impl TestClient {
     pub fn new() -> Self {
         Self {
             client_stats: Default::default(),
+            enabled: AtomicBool::new(false),
         }
     }
 }
@@ -80,7 +83,17 @@ impl node::Client for TestClient {
         None
     }
 
-    fn enable(self: Arc<Self>) {}
+    fn is_enabled(self: Arc<Self>) -> bool {
+        self.enabled.load(Ordering::Relaxed)
+    }
+
+    fn enable(self: Arc<Self>) -> bool {
+        self.enabled.swap(true, Ordering::Relaxed)
+    }
+
+    fn disable(self: Arc<Self>) -> bool {
+        self.enabled.swap(false, Ordering::Relaxed)
+    }
 }
 
 impl fmt::Display for TestClient {

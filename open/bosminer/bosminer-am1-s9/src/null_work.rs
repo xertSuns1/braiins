@@ -74,13 +74,24 @@ impl NullJobClient {
     }
 }
 
+// TODO: Remove dependency on this trait in backend
 #[async_trait]
 impl node::Client for NullJobClient {
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
         None
     }
 
-    fn enable(self: Arc<Self>) {}
+    fn is_enabled(self: Arc<Self>) -> bool {
+        false
+    }
+
+    fn enable(self: Arc<Self>) -> bool {
+        false
+    }
+
+    fn disable(self: Arc<Self>) -> bool {
+        false
+    }
 }
 
 impl fmt::Display for NullJobClient {

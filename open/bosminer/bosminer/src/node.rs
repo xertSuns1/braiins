@@ -51,8 +51,13 @@ pub trait Stats: Send + Sync {
 pub trait Client: Info + ClientStats {
     /// Return latest received job
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>>;
-    /// Try to enable client (default state of client node should be disabled)
-    fn enable(self: Arc<Self>);
+    /// Check if current state of the client is enabled
+    fn is_enabled(self: Arc<Self>) -> bool;
+    /// Try to enable the client and return its previous state (e.g. connection to remote server).
+    /// Default state of the client node should be disabled.
+    fn enable(self: Arc<Self>) -> bool;
+    /// Disable the client and return its previous state
+    fn disable(self: Arc<Self>) -> bool;
 }
 
 pub trait ClientStats: Stats {
