@@ -111,6 +111,19 @@ macro_rules! select {
     }
 }
 
+/// Wrapper for `join!` macro from `futures`.
+/// The reason for this is that the macro needs to be told
+/// to look for futures at `::ii_async_compat::futures` rather than `::furures`.
+#[macro_export]
+macro_rules! join {
+    ($($tokens:tt)*) => {
+        futures::inner_macro::join! {
+            futures_crate_path(::ii_async_compat::futures)
+            $( $tokens )*
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Halt {
     trigger: Trigger,
