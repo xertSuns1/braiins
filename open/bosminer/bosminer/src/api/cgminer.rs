@@ -120,8 +120,8 @@ impl Handler {
             url: client.descriptor.get_url(true, true, false),
             // TODO: get actual status from client
             status: response::PoolStatus::Alive,
-            // TODO: get actual value from client
-            priority: 0,
+            // The pools are sorted by its priority
+            priority: idx as i32,
             // TODO: get actual value from client
             quota: 1,
             // TODO: get actual value from client?
