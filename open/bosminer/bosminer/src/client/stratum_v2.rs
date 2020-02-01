@@ -291,6 +291,9 @@ impl StratumEventHandler {
 
     async fn run(mut self) -> job::Sender {
         while let Some(frame) = self.connection_rx.next().await {
+            if self.client.status.is_shutting_down() {
+                break;
+            }
             let msg = build_message_from_frame(frame)
                 .expect("BUG: handle building V2 message from frame failed");
             msg.accept(&mut self).await;
@@ -420,6 +423,10 @@ impl StratumSolutionHandler {
     async fn run(mut self) -> job::SolutionReceiver {
         while let Some(solution) = self.solution_receiver.receive().await {
             self.process_solution(solution).await;
+            // Test shutting down state after processing solution not to waste the share
+            if self.client.status.is_shutting_down() {
+                break;
+            }
         }
         // Return back solution receiver after terminating
         self.solution_receiver

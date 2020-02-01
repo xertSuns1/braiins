@@ -43,8 +43,13 @@ pub struct StatusMonitor {
 }
 
 impl StatusMonitor {
+    #[inline]
+    pub fn status(&self) -> Status {
+        self.status.load(Ordering::Relaxed)
+    }
+
     pub fn initiate_starting(&self) -> bool {
-        let mut status = self.status.load(Ordering::Relaxed);
+        let mut status = self.status();
 
         loop {
             let previous = status;
@@ -77,8 +82,49 @@ impl StatusMonitor {
         false
     }
 
+    pub fn initiate_stopping(&self) -> bool {
+        let mut status = self.status();
+
+        loop {
+            let previous = status;
+            match status {
+                Status::Created
+                | Status::Stopping
+                | Status::Failing
+                | Status::Stopped
+                | Status::Failed => break,
+                // Client is currently started
+                Status::Starting | Status::Running | Status::Restarting => {
+                    status =
+                        self.status
+                            .compare_and_swap(status, Status::Stopping, Ordering::Relaxed);
+                    if status == previous {
+                        // Stopping has been initiated successfully
+                        return true;
+                    }
+                }
+            };
+            // Try it again because another task change the state
+        }
+
+        // Stopping cannot be done
+        false
+    }
+
+    pub fn is_shutting_down(&self) -> bool {
+        match self.status() {
+            Status::Stopping | Status::Failing => true,
+            Status::Created
+            | Status::Starting
+            | Status::Running
+            | Status::Restarting
+            | Status::Stopped
+            | Status::Failed => false,
+        }
+    }
+
     pub fn can_stop(&self) -> bool {
-        let mut status = self.status.load(Ordering::Relaxed);
+        let mut status = self.status();
 
         loop {
             let previous = status;

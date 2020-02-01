@@ -89,8 +89,15 @@ impl Handle {
 
     async fn start(&self) {
         if self.node.status().initiate_starting() {
-            // The client can be run safely
+            // The client can be started safely
             self.node.clone().start().await;
+        }
+    }
+
+    async fn stop(&self) {
+        if self.node.status().initiate_stopping() {
+            // The client can be stopped safely
+            self.node.clone().stop().await;
         }
     }
 
@@ -106,6 +113,19 @@ impl Handle {
         if !was_enabled {
             // Immediately start the client when it was disabled
             self.start().await;
+        }
+        // TODO: force the scheduler
+        was_enabled
+    }
+
+    // TODO: Remove `#[allow(dead_code)]` after disable API command is implemented
+    /// Disable the client and return its previous state
+    #[allow(dead_code)]
+    pub(crate) async fn disable(&self) -> bool {
+        let was_enabled = self.enabled.swap(false, Ordering::Relaxed);
+        if was_enabled {
+            // Immediately stop the client when it was disabled
+            self.stop().await;
         }
         // TODO: force the scheduler
         was_enabled
