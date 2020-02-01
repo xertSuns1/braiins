@@ -20,6 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use std::sync::atomic::Ordering;
+
 use atomic_enum::atomic_enum;
 
 #[atomic_enum]
@@ -33,4 +35,100 @@ pub enum Status {
     Restarting,
     Stopped,
     Failed,
+}
+
+#[derive(Debug)]
+pub struct StatusMonitor {
+    status: AtomicStatus,
+}
+
+impl StatusMonitor {
+    pub fn initiate_starting(&self) -> bool {
+        let mut status = self.status.load(Ordering::Relaxed);
+
+        loop {
+            let previous = status;
+            match status {
+                Status::Created | Status::Stopped | Status::Failed => {
+                    status =
+                        self.status
+                            .compare_and_swap(status, Status::Starting, Ordering::Relaxed);
+                    if status == previous {
+                        // Starting has been initiated successfully
+                        return true;
+                    }
+                }
+                Status::Stopping | Status::Failing => {
+                    // Try to change state to `Restarting`
+                    status =
+                        self.status
+                            .compare_and_swap(status, Status::Restarting, Ordering::Relaxed);
+                    if status == previous {
+                        break;
+                    }
+                }
+                // Client is currently started
+                Status::Starting | Status::Running | Status::Restarting => break,
+            };
+            // Try it again because another task change the state
+        }
+
+        // Starting cannot be done
+        false
+    }
+
+    pub fn can_stop(&self) -> bool {
+        let mut status = self.status.load(Ordering::Relaxed);
+
+        loop {
+            let previous = status;
+            match status {
+                Status::Created
+                | Status::Starting
+                | Status::Running
+                | Status::Stopped
+                | Status::Failed => panic!("BUG: 'can_stop': unexpected state '{:?}'", status),
+                Status::Stopping => {
+                    // Try to change state to `Stopped`
+                    status =
+                        self.status
+                            .compare_and_swap(status, Status::Stopped, Ordering::Relaxed);
+                    if status == previous {
+                        return true;
+                    }
+                }
+                Status::Failing => {
+                    // Try to change state to `Failed`
+                    status =
+                        self.status
+                            .compare_and_swap(status, Status::Failed, Ordering::Relaxed);
+                    if status == previous {
+                        return true;
+                    }
+                }
+                // Restarting has been initiated
+                Status::Restarting => {
+                    // Try to change state to `Starting`
+                    status =
+                        self.status
+                            .compare_and_swap(status, Status::Starting, Ordering::Relaxed);
+                    if status == previous {
+                        break;
+                    }
+                }
+            };
+            // Try it again because another task change the state
+        }
+
+        // Stop cannot be done
+        false
+    }
+}
+
+impl Default for StatusMonitor {
+    fn default() -> Self {
+        Self {
+            status: AtomicStatus::new(Status::Created),
+        }
+    }
 }

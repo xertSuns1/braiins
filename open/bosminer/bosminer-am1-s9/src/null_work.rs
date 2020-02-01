@@ -63,6 +63,8 @@ impl NullJob {
 
 #[derive(Debug, ClientNode)]
 struct NullJobClient {
+    #[member_status]
+    status: sync::StatusMonitor,
     #[member_client_stats]
     client_stats: stats::BasicClient,
 }
@@ -70,6 +72,7 @@ struct NullJobClient {
 impl NullJobClient {
     pub fn new() -> Self {
         Self {
+            status: Default::default(),
             client_stats: Default::default(),
         }
     }
@@ -78,10 +81,6 @@ impl NullJobClient {
 // TODO: Remove dependency on this trait in backend
 #[async_trait]
 impl node::Client for NullJobClient {
-    async fn status(self: Arc<Self>) -> sync::Status {
-        sync::Status::Created
-    }
-
     async fn start(self: Arc<Self>) {}
 
     async fn stop(self: Arc<Self>) {}

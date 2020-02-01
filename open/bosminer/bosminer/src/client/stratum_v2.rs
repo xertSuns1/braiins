@@ -41,7 +41,6 @@ use ii_async_compat::prelude::*;
 use std::collections::VecDeque;
 use std::fmt;
 use std::net::ToSocketAddrs;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use ii_stratum::v2::framing::Framing;
@@ -563,9 +562,10 @@ impl Handler for StratumConnectionHandler {
 #[derive(Debug, ClientNode)]
 pub struct StratumClient {
     connection_details: ConnectionDetails,
+    #[member_status]
+    status: sync::StatusMonitor,
     #[member_client_stats]
     client_stats: stats::BasicClient,
-    status: sync::AtomicStatus,
     last_job: Mutex<Option<Arc<StratumJob>>>,
     solutions: SolutionQueue,
     job_solver: Mutex<Option<job::Solver>>,
@@ -575,8 +575,8 @@ impl StratumClient {
     pub fn new(connection_details: ConnectionDetails, job_solver: job::Solver) -> Self {
         Self {
             connection_details,
+            status: Default::default(),
             client_stats: Default::default(),
-            status: sync::AtomicStatus::new(sync::Status::Created),
             last_job: Mutex::new(None),
             solutions: Mutex::new(VecDeque::new()),
             job_solver: Mutex::new(Some(job_solver)),
@@ -591,15 +591,8 @@ impl StratumClient {
             .expect("BUG: missing job solver")
     }
 
-    async fn return_job_solver(
-        &self,
-        job_sender: job::Sender,
-        solution_receiver: job::SolutionReceiver,
-    ) {
-        let old = self.job_solver.lock().await.replace(job::Solver {
-            job_sender,
-            solution_receiver,
-        });
+    async fn return_job_solver(&self, solver: job::Solver) {
+        let old = self.job_solver.lock().await.replace(solver);
         assert!(old.is_none(), "BUG: unexpected job solver");
     }
 
@@ -607,14 +600,12 @@ impl StratumClient {
         self.last_job.lock().await.replace(job);
     }
 
-    async fn run(self: Arc<Self>, solver: job::Solver) {
+    async fn run(self: Arc<Self>, solver: job::Solver) -> job::Solver {
         let (connection, init_target) = StratumConnectionHandler::new(self.clone())
             .connect()
             .await
             .expect("Cannot initiate stratum connection");
 
-        // FIXME: It must be set with `compare_and_swap`
-        self.status.store(sync::Status::Running, Ordering::Relaxed);
         let (connection_rx, connection_tx) = connection.split();
 
         let (job_sender, solution_receiver) = join!(
@@ -624,54 +615,30 @@ impl StratumClient {
                 .run()
         );
 
-        self.return_job_solver(job_sender, solution_receiver).await;
-        // TODO: Implement `Restarting` state
-        // TODO: Store `Failed` when some error occurred
-        self.status.store(sync::Status::Stopped, Ordering::Relaxed);
+        job::Solver {
+            job_sender,
+            solution_receiver,
+        }
+    }
+
+    async fn main_task(self: Arc<Self>) {
+        loop {
+            let solver = self.take_job_solver().await;
+            let solver = self.clone().run(solver).await;
+            self.return_job_solver(solver).await;
+            // TODO: Invalidate current job to stop working on it
+            if self.status.can_stop() {
+                break;
+            }
+            // Restarting
+        }
     }
 }
 
 #[async_trait]
 impl node::Client for StratumClient {
-    async fn status(self: Arc<Self>) -> sync::Status {
-        self.status.load(Ordering::Relaxed)
-    }
-
     async fn start(self: Arc<Self>) {
-        let mut status = self.status.load(Ordering::Relaxed);
-
-        loop {
-            let previous = status;
-            match status {
-                sync::Status::Created | sync::Status::Stopped | sync::Status::Failed => {
-                    status = self.status.compare_and_swap(
-                        status,
-                        sync::Status::Starting,
-                        Ordering::Relaxed,
-                    );
-                    if status == previous {
-                        // The client can be safely run
-                        let solver = self.take_job_solver().await;
-                        tokio::spawn(self.clone().run(solver));
-                        break;
-                    }
-                }
-                sync::Status::Stopping | sync::Status::Failing => {
-                    // Try to change state to `Restarting`
-                    status = self.status.compare_and_swap(
-                        status,
-                        sync::Status::Restarting,
-                        Ordering::Relaxed,
-                    );
-                    if status == previous {
-                        break;
-                    }
-                }
-                // Client is currently started
-                sync::Status::Starting | sync::Status::Running | sync::Status::Restarting => break,
-            };
-            // Try it again because another task change the state
-        }
+        tokio::spawn(self.clone().main_task());
     }
 
     async fn stop(self: Arc<Self>) {

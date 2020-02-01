@@ -63,7 +63,7 @@ fn impl_derive_mining_node(
 
 /// Generates implementation of `node::Stats` and `node::ClientStats` traits
 /// for a type marked by this derive.
-#[proc_macro_derive(ClientNode, attributes(member_client_stats))]
+#[proc_macro_derive(ClientNode, attributes(member_status, member_client_stats))]
 pub fn derive_client_node(input: TokenStream) -> TokenStream {
     let derive_name = "ClientNode";
     let ast: DeriveInput = syn::parse(input).unwrap();
@@ -80,10 +80,16 @@ fn impl_derive_client_node(
     let generics = &ast.generics;
 
     let fields = get_fields(&ast, derive_name);
+    let status = find_member(&fields, "member_status");
     let client_stats = find_member(&fields, "member_client_stats");
 
     stream.extend(quote! {
         impl#generics node::ClientStats for #name#generics {
+            #[inline]
+            fn status(&self) -> &sync::StatusMonitor {
+                &self.#status
+            }
+
             #[inline]
             fn client_stats(&self) -> &stats::Client {
                 &self.#client_stats

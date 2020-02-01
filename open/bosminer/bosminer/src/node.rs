@@ -50,8 +50,6 @@ pub trait Stats: Send + Sync {
 /// to remote pool)
 #[async_trait]
 pub trait Client: Info + ClientStats {
-    /// Return current state of the client
-    async fn status(self: Arc<Self>) -> sync::Status;
     /// Try to start the client (e.g. connection to a remote server).
     /// Default state of the client should be `Initialized`.
     async fn start(self: Arc<Self>);
@@ -63,6 +61,8 @@ pub trait Client: Info + ClientStats {
 }
 
 pub trait ClientStats: Stats {
+    /// Return status monitor of the client
+    fn status(&self) -> &sync::StatusMonitor;
     /// Return object with client specific statistics
     fn client_stats(&self) -> &dyn stats::Client;
 }

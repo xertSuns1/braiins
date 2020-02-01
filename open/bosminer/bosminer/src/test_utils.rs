@@ -63,6 +63,8 @@ impl fmt::Display for TestNode {
 
 #[derive(Debug, ClientNode)]
 pub struct TestClient {
+    #[member_status]
+    status: sync::StatusMonitor,
     #[member_client_stats]
     client_stats: stats::BasicClient,
 }
@@ -70,6 +72,7 @@ pub struct TestClient {
 impl TestClient {
     pub fn new() -> Self {
         Self {
+            status: Default::default(),
             client_stats: Default::default(),
         }
     }
@@ -77,10 +80,6 @@ impl TestClient {
 
 #[async_trait]
 impl node::Client for TestClient {
-    async fn status(self: Arc<Self>) -> sync::Status {
-        sync::Status::Created
-    }
-
     async fn start(self: Arc<Self>) {}
 
     async fn stop(self: Arc<Self>) {}

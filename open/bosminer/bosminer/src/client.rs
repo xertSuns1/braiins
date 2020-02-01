@@ -87,6 +87,13 @@ impl Handle {
         )
     }
 
+    async fn start(&self) {
+        if self.node.status().initiate_starting() {
+            // The client can be run safely
+            self.node.clone().start().await;
+        }
+    }
+
     /// Check if current state of the client is enabled
     #[inline]
     pub async fn is_enabled(&self) -> bool {
@@ -98,7 +105,7 @@ impl Handle {
         let was_enabled = self.enabled.swap(true, Ordering::Relaxed);
         if !was_enabled {
             // Immediately start the client when it was disabled
-            self.node.clone().start().await;
+            self.start().await;
         }
         // TODO: force the scheduler
         was_enabled
