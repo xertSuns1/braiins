@@ -50,7 +50,7 @@ use ii_stratum::v2::messages::{
 };
 use ii_stratum::v2::types::DeviceInfo;
 use ii_stratum::v2::types::*;
-use ii_stratum::v2::{Handler, Protocol};
+use ii_stratum::v2::{build_message_from_frame, Handler, Protocol};
 use ii_wire::{Connection, ConnectionRx, ConnectionTx, Message};
 
 use std::collections::HashMap;
@@ -288,8 +288,10 @@ impl StratumEventHandler {
     }
 
     async fn run(mut self) {
-        while let Some(msg) = self.connection_rx.next().await {
-            let msg = msg.unwrap();
+        while let Some(frame) = self.connection_rx.next().await {
+            let frame = frame.expect("BUG: handle error when receiving a new frame");
+            let msg = build_message_from_frame(frame)
+                .expect("BUG: handle building V2 message from frame failed");
             msg.accept(&mut self).await;
         }
     }
@@ -456,12 +458,14 @@ impl StratumConnectionHandler {
             .send_msg(setup_msg)
             .await
             .expect("Cannot send stratum setup mining connection");
-        let response_msg = connection
+        let frame = connection
             .next()
             .await
             .expect("Cannot receive response for stratum setup mining connection")
             .unwrap();
         self.status = Err(());
+        let response_msg = build_message_from_frame(frame)
+            .expect("BUG: handle building setup connection response message");
         response_msg.accept(self).await;
         self.status
     }
@@ -478,12 +482,14 @@ impl StratumConnectionHandler {
             .send_msg(channel_msg)
             .await
             .expect("Cannot send stratum open channel");
-        let response_msg = connection
+        let frame = connection
             .next()
             .await
             .expect("Cannot receive response for stratum open channel")
             .unwrap();
         self.status = Err(());
+        let response_msg = build_message_from_frame(frame)
+            .expect("BUG: handle building open channel response message");
         response_msg.accept(self).await;
         self.status
     }
