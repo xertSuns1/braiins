@@ -22,6 +22,7 @@
 
 use crate::job;
 use crate::stats;
+use crate::sync;
 
 use std::any::Any;
 use std::fmt::{Debug, Display};
@@ -49,15 +50,16 @@ pub trait Stats: Send + Sync {
 /// to remote pool)
 #[async_trait]
 pub trait Client: Info + ClientStats {
+    /// Return current state of the client
+    async fn status(self: Arc<Self>) -> sync::Status;
+    /// Try to start the client (e.g. connection to a remote server).
+    /// Default state of the client should be `Initialized`.
+    async fn start(self: Arc<Self>);
+    /// Stop the running client.
+    /// Change its state to `Stopped` when it was `Starting` or `Running`.
+    async fn stop(self: Arc<Self>);
     /// Return latest received job
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>>;
-    /// Check if current state of the client is enabled
-    fn is_enabled(self: Arc<Self>) -> bool;
-    /// Try to enable the client and return its previous state (e.g. connection to remote server).
-    /// Default state of the client node should be disabled.
-    fn enable(self: Arc<Self>) -> bool;
-    /// Disable the client and return its previous state
-    fn disable(self: Arc<Self>) -> bool;
 }
 
 pub trait ClientStats: Stats {

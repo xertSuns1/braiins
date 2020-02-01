@@ -512,7 +512,7 @@ impl command::Handler for Handler {
             .map_err(|_| response::ErrorCode::InvalidAddPoolDetails(parameter.to_string()))?;
 
         let (client, client_idx) = client::register(&self.core, client_descriptor).await;
-        client.enable();
+        client.enable().await;
 
         Ok(response::AddPool {
             idx: client_idx,
@@ -540,21 +540,21 @@ impl command::Handler for Handler {
             .to_i32()
             .expect("BUG: invalid SWITCHPOOL parameter type");
 
-        self.core
+        let (client, _) = self
+            .core
             .swap_clients(idx as usize, 0)
             .await
-            .map(|(client, _)| {
-                client.enable();
-                response::SwitchPool {
-                    idx: idx as usize,
-                    url: client.descriptor.get_url(true, true, false),
-                }
-            })
             .map_err(|e| match e {
                 error::Client::OutOfRange(idx, limit) => {
-                    response::ErrorCode::InvalidPoolId(idx as i32, limit as i32 - 1).into()
+                    response::ErrorCode::InvalidPoolId(idx as i32, limit as i32 - 1)
                 }
-            })
+            })?;
+
+        client.enable().await;
+        Ok(response::SwitchPool {
+            idx: idx as usize,
+            url: client.descriptor.get_url(true, true, false),
+        })
     }
 
     async fn handle_stats(&self) -> command::Result<response::Stats> {

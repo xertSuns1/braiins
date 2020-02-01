@@ -44,6 +44,7 @@ use futures::channel::mpsc;
 use ii_async_compat::futures;
 
 use std::slice;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -51,6 +52,7 @@ pub struct Handle {
     // Basic information about client used for connection to remote server
     pub descriptor: Descriptor,
     node: Arc<dyn node::Client>,
+    enabled: AtomicBool,
     engine_sender: Arc<work::EngineSender>,
     solution_sender: mpsc::UnboundedSender<work::Solution>,
 }
@@ -68,6 +70,7 @@ impl Handle {
         Self {
             descriptor,
             node: Arc::new(client),
+            enabled: AtomicBool::new(false),
             engine_sender,
             solution_sender,
         }
@@ -84,10 +87,21 @@ impl Handle {
         )
     }
 
+    /// Check if current state of the client is enabled
     #[inline]
-    pub(crate) fn enable(&self) {
-        self.node.clone().enable();
-        // TODO: force scheduler
+    pub async fn is_enabled(&self) -> bool {
+        self.enabled.load(Ordering::Relaxed)
+    }
+
+    /// Enable the client and return its previous state. Default client state should be disabled.
+    pub(crate) async fn enable(&self) -> bool {
+        let was_enabled = self.enabled.swap(true, Ordering::Relaxed);
+        if !was_enabled {
+            // Immediately start the client when it was disabled
+            self.node.clone().start().await;
+        }
+        // TODO: force the scheduler
+        was_enabled
     }
 
     #[inline]

@@ -261,8 +261,7 @@ pub mod test {
     /// in the test
     #[tokio::test]
     async fn test_solvers_connection() {
-        let (job_solver, work_solver_builder) = build_solvers();
-        let (mut job_sender, mut solution_receiver) = job_solver.split();
+        let (mut job_solver, work_solver_builder) = build_solvers();
 
         let mut work_generator = None;
         let mut solution_sender = None;
@@ -283,7 +282,7 @@ pub mod test {
             let job = Arc::new(*block);
 
             // send prepared testing block to job solver
-            job_sender.send(job);
+            job_solver.job_sender.send(job);
             // work generator receives this job and prepares work from it
             let work = work_generator.generate().await.unwrap();
             // initial value for version rolling is 0 so midstate should match with expected one
@@ -291,7 +290,7 @@ pub mod test {
             // test block has automatic conversion into work solution
             solution_sender.send(block.into());
             // this solution should pass through job solver
-            let solution = solution_receiver.receive().await.unwrap();
+            let solution = job_solver.solution_receiver.receive().await.unwrap();
             // check if the solution is equal to expected one
             assert_eq!(block.nonce, solution.nonce());
             let original_job: &test_utils::TestBlock = solution.job();
@@ -301,8 +300,7 @@ pub mod test {
         }
 
         // work generator still works even if all job solvers are dropped
-        drop(job_sender);
-        drop(solution_receiver);
+        drop(job_solver);
         assert!(work_generator.generate().await.is_some());
     }
 }

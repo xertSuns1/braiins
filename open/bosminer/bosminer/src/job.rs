@@ -85,8 +85,8 @@ impl_downcast!(Bitcoin);
 /// Compound object for job submission and solution reception intended to be passed to
 /// protocol handler
 pub struct Solver {
-    job_sender: Sender,
-    solution_receiver: SolutionReceiver,
+    pub job_sender: Sender,
+    pub solution_receiver: SolutionReceiver,
 }
 
 impl Solver {
@@ -99,10 +99,6 @@ impl Solver {
             job_sender: Sender::new(midstate_count, engine_sender),
             solution_receiver: SolutionReceiver::new(solution_receiver),
         }
-    }
-
-    pub fn split(self) -> (Sender, SolutionReceiver) {
-        (self.job_sender, self.solution_receiver)
     }
 }
 

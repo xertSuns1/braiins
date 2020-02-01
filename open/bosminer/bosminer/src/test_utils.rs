@@ -26,6 +26,7 @@ use crate::hal;
 use crate::job::{self, Bitcoin as _};
 use crate::node;
 use crate::stats;
+use crate::sync;
 use crate::work;
 
 pub use ii_bitcoin::{TestBlock, TEST_BLOCKS};
@@ -36,7 +37,6 @@ use futures::lock::Mutex;
 use ii_async_compat::futures;
 
 use std::fmt;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 
 use async_trait::async_trait;
@@ -65,34 +65,28 @@ impl fmt::Display for TestNode {
 pub struct TestClient {
     #[member_client_stats]
     client_stats: stats::BasicClient,
-    enabled: AtomicBool,
 }
 
 impl TestClient {
     pub fn new() -> Self {
         Self {
             client_stats: Default::default(),
-            enabled: AtomicBool::new(false),
         }
     }
 }
 
 #[async_trait]
 impl node::Client for TestClient {
+    async fn status(self: Arc<Self>) -> sync::Status {
+        sync::Status::Created
+    }
+
+    async fn start(self: Arc<Self>) {}
+
+    async fn stop(self: Arc<Self>) {}
+
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
         None
-    }
-
-    fn is_enabled(self: Arc<Self>) -> bool {
-        self.enabled.load(Ordering::Relaxed)
-    }
-
-    fn enable(self: Arc<Self>) -> bool {
-        self.enabled.swap(true, Ordering::Relaxed)
-    }
-
-    fn disable(self: Arc<Self>) -> bool {
-        self.enabled.swap(false, Ordering::Relaxed)
     }
 }
 

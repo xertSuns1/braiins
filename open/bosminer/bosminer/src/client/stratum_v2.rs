@@ -25,6 +25,7 @@ use ii_logging::macros::*;
 use crate::job;
 use crate::node;
 use crate::stats;
+use crate::sync;
 use crate::work;
 
 use ii_bitcoin::HashTrait;
@@ -40,6 +41,7 @@ use ii_async_compat::prelude::*;
 use std::collections::VecDeque;
 use std::fmt;
 use std::net::ToSocketAddrs;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use ii_stratum::v2::framing::Framing;
@@ -563,85 +565,125 @@ pub struct StratumClient {
     connection_details: ConnectionDetails,
     #[member_client_stats]
     client_stats: stats::BasicClient,
+    status: sync::AtomicStatus,
     last_job: Mutex<Option<Arc<StratumJob>>>,
     solutions: SolutionQueue,
-    job_sender: Mutex<Option<job::Sender>>,
-    solution_receiver: Mutex<Option<job::SolutionReceiver>>,
+    job_solver: Mutex<Option<job::Solver>>,
 }
 
 impl StratumClient {
     pub fn new(connection_details: ConnectionDetails, job_solver: job::Solver) -> Self {
-        let (job_sender, job_solution) = job_solver.split();
         Self {
             connection_details,
             client_stats: Default::default(),
+            status: sync::AtomicStatus::new(sync::Status::Created),
             last_job: Mutex::new(None),
             solutions: Mutex::new(VecDeque::new()),
-            job_sender: Mutex::new(Some(job_sender)),
-            solution_receiver: Mutex::new(Some(job_solution)),
+            job_solver: Mutex::new(Some(job_solver)),
         }
     }
 
-    async fn take_job_sender(&self) -> job::Sender {
-        self.job_sender
+    async fn take_job_solver(&self) -> job::Solver {
+        self.job_solver
             .lock()
             .await
             .take()
-            .expect("BUG: missing job sender")
+            .expect("BUG: missing job solver")
     }
 
-    async fn take_solution_receiver(&self) -> job::SolutionReceiver {
-        self.solution_receiver
-            .lock()
-            .await
-            .take()
-            .expect("BUG: missing solution receiver")
+    async fn return_job_solver(
+        &self,
+        job_sender: job::Sender,
+        solution_receiver: job::SolutionReceiver,
+    ) {
+        let old = self.job_solver.lock().await.replace(job::Solver {
+            job_sender,
+            solution_receiver,
+        });
+        assert!(old.is_none(), "BUG: unexpected job solver");
     }
 
     async fn update_last_job(&self, job: Arc<StratumJob>) {
         self.last_job.lock().await.replace(job);
     }
 
-    async fn run(self: Arc<Self>) {
+    async fn run(self: Arc<Self>, solver: job::Solver) {
         let (connection, init_target) = StratumConnectionHandler::new(self.clone())
             .connect()
             .await
             .expect("Cannot initiate stratum connection");
 
+        // FIXME: It must be set with `compare_and_swap`
+        self.status.store(sync::Status::Running, Ordering::Relaxed);
         let (connection_rx, connection_tx) = connection.split();
-        let job_sender = self.take_job_sender().await;
-        let solution_receiver = self.take_solution_receiver().await;
 
-        let (_job_sender, _solution_receiver) = join!(
-            StratumEventHandler::new(self.clone(), connection_rx, job_sender, init_target).run(),
-            StratumSolutionHandler::new(self, connection_tx, solution_receiver).run()
+        let (job_sender, solution_receiver) = join!(
+            StratumEventHandler::new(self.clone(), connection_rx, solver.job_sender, init_target)
+                .run(),
+            StratumSolutionHandler::new(self.clone(), connection_tx, solver.solution_receiver)
+                .run()
         );
+
+        self.return_job_solver(job_sender, solution_receiver).await;
+        // TODO: Implement `Restarting` state
+        // TODO: Store `Failed` when some error occurred
+        self.status.store(sync::Status::Stopped, Ordering::Relaxed);
     }
 }
 
 #[async_trait]
 impl node::Client for StratumClient {
+    async fn status(self: Arc<Self>) -> sync::Status {
+        self.status.load(Ordering::Relaxed)
+    }
+
+    async fn start(self: Arc<Self>) {
+        let mut status = self.status.load(Ordering::Relaxed);
+
+        loop {
+            let previous = status;
+            match status {
+                sync::Status::Created | sync::Status::Stopped | sync::Status::Failed => {
+                    status = self.status.compare_and_swap(
+                        status,
+                        sync::Status::Starting,
+                        Ordering::Relaxed,
+                    );
+                    if status == previous {
+                        // The client can be safely run
+                        let solver = self.take_job_solver().await;
+                        tokio::spawn(self.clone().run(solver));
+                        break;
+                    }
+                }
+                sync::Status::Stopping | sync::Status::Failing => {
+                    // Try to change state to `Restarting`
+                    status = self.status.compare_and_swap(
+                        status,
+                        sync::Status::Restarting,
+                        Ordering::Relaxed,
+                    );
+                    if status == previous {
+                        break;
+                    }
+                }
+                // Client is currently started
+                sync::Status::Starting | sync::Status::Running | sync::Status::Restarting => break,
+            };
+            // Try it again because another task change the state
+        }
+    }
+
+    async fn stop(self: Arc<Self>) {
+        // TODO: send broadcast to disconnect client
+    }
+
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
         self.last_job
             .lock()
             .await
             .as_ref()
             .map(|job| job.clone() as Arc<dyn job::Bitcoin>)
-    }
-
-    fn is_enabled(self: Arc<Self>) -> bool {
-        // TODO: implement
-        true
-    }
-
-    fn enable(self: Arc<Self>) -> bool {
-        tokio::spawn(self.clone().run());
-        false
-    }
-
-    fn disable(self: Arc<Self>) -> bool {
-        // TODO: implement
-        true
     }
 }
 

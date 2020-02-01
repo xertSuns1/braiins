@@ -31,6 +31,7 @@ pub mod hub;
 pub mod job;
 pub mod node;
 pub mod stats;
+pub mod sync;
 pub mod version;
 pub mod work;
 
