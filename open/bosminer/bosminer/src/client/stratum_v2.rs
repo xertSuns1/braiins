@@ -41,7 +41,7 @@ use std::fmt;
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
 
-use ii_stratum::v2::framing::codec::Framing;
+use ii_stratum::v2::framing::Framing;
 use ii_stratum::v2::messages::{
     NewMiningJob, OpenStandardMiningChannel, OpenStandardMiningChannelError,
     OpenStandardMiningChannelSuccess, SetNewPrevHash, SetTarget, SetupConnection,
