@@ -37,6 +37,7 @@ use bosminer_config::client;
 use bosminer_macros::ClientNode;
 
 use async_trait::async_trait;
+use futures::channel::mpsc;
 use futures::lock::Mutex;
 use ii_async_compat::prelude::*;
 use ii_async_compat::select;
@@ -565,6 +566,8 @@ pub struct StratumClient {
     status: sync::StatusMonitor,
     #[member_client_stats]
     client_stats: stats::BasicClient,
+    stop_sender: Mutex<mpsc::Sender<()>>,
+    stop_receiver: Mutex<Option<mpsc::Receiver<()>>>,
     last_job: Mutex<Option<Arc<StratumJob>>>,
     solutions: SolutionQueue,
     job_solver: Mutex<Option<job::Solver>>,
@@ -572,14 +575,30 @@ pub struct StratumClient {
 
 impl StratumClient {
     pub fn new(connection_details: ConnectionDetails, job_solver: job::Solver) -> Self {
+        let (stop_sender, stop_receiver) = mpsc::channel(1);
         Self {
             connection_details,
             status: Default::default(),
             client_stats: Default::default(),
+            stop_sender: Mutex::new(stop_sender),
+            stop_receiver: Mutex::new(Some(stop_receiver)),
             last_job: Mutex::new(None),
             solutions: Mutex::new(VecDeque::new()),
             job_solver: Mutex::new(Some(job_solver)),
         }
+    }
+
+    async fn take_stop_receiver(&self) -> mpsc::Receiver<()> {
+        self.stop_receiver
+            .lock()
+            .await
+            .take()
+            .expect("BUG: missing stop receiver")
+    }
+
+    async fn return_stop_receiver(&self, stop_receiver: mpsc::Receiver<()>) {
+        let old = self.stop_receiver.lock().await.replace(stop_receiver);
+        assert!(old.is_none(), "BUG: unexpected stop receiver");
     }
 
     async fn take_job_solver(&self) -> job::Solver {
@@ -601,6 +620,7 @@ impl StratumClient {
 
     async fn main_loop(
         &self,
+        stop_receiver: &mut mpsc::Receiver<()>,
         connection_rx: ConnectionRx<Framing>,
         event_handler: &mut StratumEventHandler,
         solution_receiver: &mut job::SolutionReceiver,
@@ -613,6 +633,7 @@ impl StratumClient {
                 break;
             }
             select! {
+                _ = stop_receiver.next() => break,
                 frame = connection_rx.next() => {
                     match frame {
                         Some(frame) => {
@@ -642,7 +663,9 @@ impl StratumClient {
         init_target: ii_bitcoin::Target,
     ) {
         let (connection_rx, connection_tx) = connection.split();
+
         let mut solver = self.take_job_solver().await;
+        let mut stop_receiver = self.take_stop_receiver().await;
 
         let mut event_handler =
             StratumEventHandler::new(self.clone(), solver.job_sender, init_target);
@@ -650,6 +673,7 @@ impl StratumClient {
 
         if let Err(_) = self
             .main_loop(
+                &mut stop_receiver,
                 connection_rx,
                 &mut event_handler,
                 &mut solver.solution_receiver,
@@ -663,6 +687,7 @@ impl StratumClient {
         // Invalidate current job to stop working on it
         event_handler.job_sender.invalidate();
 
+        self.return_stop_receiver(stop_receiver).await;
         self.return_job_solver(job::Solver {
             job_sender: event_handler.job_sender,
             solution_receiver: solver.solution_receiver,
@@ -699,7 +724,13 @@ impl node::Client for StratumClient {
     }
 
     async fn stop(self: Arc<Self>) {
-        // TODO: send broadcast to disconnect client
+        if let Err(e) = self.stop_sender.lock().await.try_send(()) {
+            assert!(
+                e.is_full(),
+                "BUG: Unexpected error in stop sender: {}",
+                e.to_string()
+            );
+        }
     }
 
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
