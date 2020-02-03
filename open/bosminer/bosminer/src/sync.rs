@@ -33,8 +33,10 @@ pub enum Status {
     Stopping,
     Failing,
     Restarting,
+    // TODO: Destroying
     Stopped,
     Failed,
+    // TODO: Destroyed
 }
 
 #[derive(Debug)]
@@ -82,6 +84,34 @@ impl StatusMonitor {
         false
     }
 
+    pub fn initiate_running(&self) -> bool {
+        let mut status = self.status();
+
+        loop {
+            let previous = status;
+            match status {
+                Status::Created | Status::Stopped | Status::Failed => {
+                    panic!("BUG: 'report_fail': unexpected state '{:?}'", status)
+                }
+                Status::Starting => {
+                    status =
+                        self.status
+                            .compare_and_swap(status, Status::Running, Ordering::Relaxed);
+                    if status == previous {
+                        // Running has been set successfully
+                        break;
+                    }
+                }
+                Status::Running => break,
+                Status::Stopping | Status::Failing | Status::Restarting => return false,
+                // Try it again because another task change the state
+            }
+        }
+
+        // Running can be done
+        true
+    }
+
     pub fn initiate_stopping(&self) -> bool {
         let mut status = self.status();
 
@@ -109,6 +139,30 @@ impl StatusMonitor {
 
         // Stopping cannot be done
         false
+    }
+
+    pub fn initiate_failing(&self) {
+        let mut status = self.status();
+
+        loop {
+            let previous = status;
+            match status {
+                Status::Created | Status::Stopped | Status::Failed => {
+                    panic!("BUG: 'report_fail': unexpected state '{:?}'", status)
+                }
+                Status::Starting | Status::Running | Status::Stopping => {
+                    status =
+                        self.status
+                            .compare_and_swap(status, Status::Failing, Ordering::Relaxed);
+                    if status == previous {
+                        // Failing has been set successfully
+                        break;
+                    }
+                }
+                Status::Failing | Status::Restarting => break,
+            };
+            // Try it again because another task change the state
+        }
     }
 
     pub fn is_shutting_down(&self) -> bool {

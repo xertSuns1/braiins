@@ -22,11 +22,14 @@
 
 use ii_logging::macros::*;
 
+use crate::error;
 use crate::job;
 use crate::node;
 use crate::stats;
 use crate::sync;
 use crate::work;
+
+use failure::ResultExt;
 
 use ii_bitcoin::HashTrait;
 
@@ -203,7 +206,9 @@ impl StratumEventHandler {
         let job = Arc::new(StratumJob::new(
             self.client.clone(),
             job_msg,
-            self.current_prevhash_msg.as_ref().expect("no prevhash"),
+            self.current_prevhash_msg
+                .as_ref()
+                .expect("TODO: no prevhash"),
             self.current_target,
         ));
         self.client.update_last_job(job.clone()).await;
@@ -289,14 +294,20 @@ impl StratumEventHandler {
         );
     }
 
-    async fn run(mut self) -> job::Sender {
+    async fn main_loop(&mut self) -> error::Result<()> {
         while let Some(frame) = self.connection_rx.next().await {
             if self.client.status.is_shutting_down() {
-                break;
+                return Ok(());
             }
-            let msg = build_message_from_frame(frame)
-                .expect("BUG: handle building V2 message from frame failed");
-            msg.accept(&mut self).await;
+            let msg = build_message_from_frame(frame?);
+            msg?.accept(self).await;
+        }
+        Err("The remote stratum server was disconnected prematurely")?
+    }
+
+    async fn run(mut self) -> job::Sender {
+        if let Err(_) = self.main_loop().await {
+            self.client.status.initiate_failing();
         }
         // Return back job sender after terminating
         self.job_sender
@@ -336,7 +347,7 @@ impl Handler for StratumEventHandler {
         let (_, mut future_job_msg) = self
             .all_jobs
             .remove_entry(&prevhash_msg.job_id)
-            .expect("requested job ID not found");
+            .expect("TODO: requested job ID not found");
 
         // remove all other jobs (they are now invalid)
         self.all_jobs.retain(|_, _| true);
@@ -392,7 +403,7 @@ impl StratumSolutionHandler {
         }
     }
 
-    async fn process_solution(&mut self, solution: work::Solution) {
+    async fn process_solution(&mut self, solution: work::Solution) -> error::Result<()> {
         let job: &StratumJob = solution.job();
 
         let seq_num = self.seq_num;
@@ -416,19 +427,28 @@ impl StratumSolutionHandler {
         self.connection_tx
             .send_msg(share_msg)
             .await
-            .expect("Cannot send submit to stratum server");
+            .context("Cannot send submit to stratum server")?;
         // the response is handled in a separate task
+        Ok(())
     }
 
-    async fn run(mut self) -> job::SolutionReceiver {
+    async fn main_loop(&mut self) -> error::Result<()> {
         while let Some(solution) = self.solution_receiver.receive().await {
-            self.process_solution(solution).await;
+            self.process_solution(solution).await?;
             // Test shutting down state after processing solution not to waste the share
             if self.client.status.is_shutting_down() {
                 break;
             }
         }
+        // TODO: initiate Destroying
+        Ok(())
+    }
+
+    async fn run(mut self) -> job::SolutionReceiver {
         // Return back solution receiver after terminating
+        if let Err(_) = self.main_loop().await {
+            self.client.status.initiate_failing();
+        }
         self.solution_receiver
     }
 }
@@ -436,7 +456,7 @@ impl StratumSolutionHandler {
 struct StratumConnectionHandler {
     client: Arc<StratumClient>,
     init_target: ii_bitcoin::Target,
-    status: Result<(), ()>,
+    status: Option<error::Result<()>>,
 }
 
 impl StratumConnectionHandler {
@@ -444,14 +464,14 @@ impl StratumConnectionHandler {
         Self {
             client,
             init_target: Default::default(),
-            status: Err(()),
+            status: None,
         }
     }
 
     async fn setup_mining_connection(
         &mut self,
         connection: &mut Connection<Framing>,
-    ) -> Result<(), ()> {
+    ) -> error::Result<()> {
         let setup_msg = SetupConnection {
             protocol: 0,
             max_version: 2,
@@ -459,72 +479,90 @@ impl StratumConnectionHandler {
             flags: 0,
             endpoint_host: Str0_255::from_string(self.client.connection_details.host.clone()),
             endpoint_port: self.client.connection_details.port,
+            // TODO: Fill it with correct information
             device: DeviceInfo {
-                vendor: "Braiins".try_into()?,
-                hw_rev: "1".try_into()?,
-                fw_ver: "Braiins OS 2019-06-05".try_into()?,
-                dev_id: "xyz".try_into()?,
+                vendor: "Braiins"
+                    .try_into()
+                    .expect("BUG: cannot convert 'DeviceInfo::vendor'"),
+                hw_rev: "1"
+                    .try_into()
+                    .expect("BUG: cannot convert 'DeviceInfo::hw_rev'"),
+                fw_ver: "Braiins OS 2019-06-05"
+                    .try_into()
+                    .expect("BUG: cannot convert 'DeviceInfo::fw_ver'"),
+                dev_id: "xyz"
+                    .try_into()
+                    .expect("BUG: cannot convert 'DeviceInfo::dev_id'"),
             },
         };
         connection
             .send_msg(setup_msg)
             .await
-            .expect("Cannot send stratum setup mining connection");
+            .context("Cannot send stratum setup mining connection")?;
         let frame = connection
             .next()
             .await
-            .expect("Cannot receive response for stratum setup mining connection")
-            .unwrap();
-        self.status = Err(());
-        let response_msg = build_message_from_frame(frame)
-            .expect("BUG: handle building setup connection response message");
+            .ok_or("The remote stratum server was disconnected prematurely")??;
+        let response_msg = build_message_from_frame(frame)?;
+
+        self.status = None;
         response_msg.accept(self).await;
-        self.status
+        self.status.take().unwrap_or(Err(
+            "Unexpected response for stratum setup mining connection".into(),
+        ))
     }
 
-    async fn open_channel(&mut self, connection: &mut Connection<Framing>) -> Result<(), ()> {
+    async fn open_channel(&mut self, connection: &mut Connection<Framing>) -> error::Result<()> {
         let channel_msg = OpenStandardMiningChannel {
             req_id: 10,
-            user: self.client.connection_details.user.clone().try_into()?,
+            user: self
+                .client
+                .connection_details
+                .user
+                .clone()
+                .try_into()
+                .expect("BUG: cannot convert 'OpenStandardMiningChannel::user'"),
             nominal_hashrate: 1e9,
             // Maximum bitcoin target is 0xffff << 208 (= difficulty 1 share)
             max_target: ii_bitcoin::Target::default().into(),
         };
+
         connection
             .send_msg(channel_msg)
             .await
-            .expect("Cannot send stratum open channel");
+            .context("Cannot send stratum open channel")?;
         let frame = connection
             .next()
             .await
-            .expect("Cannot receive response for stratum open channel")
-            .unwrap();
-        self.status = Err(());
-        let response_msg = build_message_from_frame(frame)
-            .expect("BUG: handle building open channel response message");
+            .ok_or("The remote stratum server was disconnected prematurely")??;
+        let response_msg = build_message_from_frame(frame)?;
+
+        self.status = None;
         response_msg.accept(self).await;
         self.status
+            .take()
+            .unwrap_or(Err("Unexpected response for stratum open channel".into()))
     }
 
-    async fn connect(mut self) -> Result<(Connection<Framing>, ii_bitcoin::Target), ()> {
+    async fn connect(mut self) -> error::Result<(Connection<Framing>, ii_bitcoin::Target)> {
         let socket_addr = self
             .client
             .connection_details
             .get_host_and_port()
             .to_socket_addrs()
-            .expect("BUG: invalid server address")
+            .context("Invalid server address")?
             .next()
-            .expect("BUG: cannot resolve any IP address");
+            .ok_or("Cannot resolve any IP address")?;
 
         let mut connection = Connection::<Framing>::connect(&socket_addr)
             .await
-            .expect("Cannot connect to stratum server");
+            .context("Cannot connect to stratum server")?;
         self.setup_mining_connection(&mut connection)
             .await
-            .expect("Cannot setup stratum mining connection");
+            .context("Cannot setup stratum mining connection")?;
         self.open_channel(&mut connection)
             .await
-            .expect("Cannot open stratum channel");
+            .context("Cannot open stratum channel")?;
 
         Ok((connection, self.init_target))
     }
@@ -537,15 +575,16 @@ impl Handler for StratumConnectionHandler {
         _msg: &Message<Protocol>,
         _success_msg: &SetupConnectionSuccess,
     ) {
-        self.status = Ok(());
+        self.status = Ok(()).into();
     }
 
     async fn visit_setup_connection_error(
         &mut self,
         _msg: &Message<Protocol>,
-        _error_msg: &SetupConnectionError,
+        error_msg: &SetupConnectionError,
     ) {
-        self.status = Err(());
+        self.status =
+            Err(format!("Setup connection error: {}", error_msg.code.to_string()).into()).into();
     }
 
     async fn visit_open_standard_mining_channel_success(
@@ -554,15 +593,16 @@ impl Handler for StratumConnectionHandler {
         success_msg: &OpenStandardMiningChannelSuccess,
     ) {
         self.init_target = success_msg.target.into();
-        self.status = Ok(());
+        self.status = Ok(()).into();
     }
 
     async fn visit_open_standard_mining_channel_error(
         &mut self,
         _msg: &Message<Protocol>,
-        _error_msg: &OpenStandardMiningChannelError,
+        error_msg: &OpenStandardMiningChannelError,
     ) {
-        self.status = Err(());
+        self.status =
+            Err(format!("Open channel error: {}", error_msg.code.to_string()).into()).into();
     }
 }
 
@@ -607,12 +647,12 @@ impl StratumClient {
         self.last_job.lock().await.replace(job);
     }
 
-    async fn run(self: Arc<Self>, solver: job::Solver) -> job::Solver {
-        let (connection, init_target) = StratumConnectionHandler::new(self.clone())
-            .connect()
-            .await
-            .expect("Cannot initiate stratum connection");
-
+    async fn run_job_solver(
+        self: Arc<Self>,
+        connection: Connection<Framing>,
+        init_target: ii_bitcoin::Target,
+        solver: job::Solver,
+    ) -> job::Solver {
         let (connection_rx, connection_tx) = connection.split();
 
         let (job_sender, solution_receiver) = join!(
@@ -626,6 +666,22 @@ impl StratumClient {
             job_sender,
             solution_receiver,
         }
+    }
+
+    async fn run(self: Arc<Self>, mut solver: job::Solver) -> job::Solver {
+        match StratumConnectionHandler::new(self.clone()).connect().await {
+            Ok((connection, init_target)) => {
+                if self.status.initiate_running() {
+                    solver = self
+                        .clone()
+                        .run_job_solver(connection, init_target, solver)
+                        .await;
+                }
+            }
+            Err(_) => self.status.initiate_failing(),
+        }
+
+        solver
     }
 
     async fn main_task(self: Arc<Self>) {
