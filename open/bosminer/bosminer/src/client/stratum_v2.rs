@@ -38,8 +38,8 @@ use bosminer_macros::ClientNode;
 
 use async_trait::async_trait;
 use futures::lock::Mutex;
-use ii_async_compat::join;
 use ii_async_compat::prelude::*;
+use ii_async_compat::select;
 
 use std::collections::VecDeque;
 use std::fmt;
@@ -174,7 +174,6 @@ type SolutionQueue = Mutex<VecDeque<(work::Solution, u32)>>;
 /// messages from remote server.
 struct StratumEventHandler {
     client: Arc<StratumClient>,
-    connection_rx: ConnectionRx<Framing>,
     job_sender: job::Sender,
     all_jobs: HashMap<u32, NewMiningJob>,
     current_prevhash_msg: Option<SetNewPrevHash>,
@@ -185,13 +184,11 @@ struct StratumEventHandler {
 impl StratumEventHandler {
     pub fn new(
         client: Arc<StratumClient>,
-        connection_rx: ConnectionRx<Framing>,
         job_sender: job::Sender,
         current_target: ii_bitcoin::Target,
     ) -> Self {
         Self {
             client,
-            connection_rx,
             job_sender,
             all_jobs: Default::default(),
             current_prevhash_msg: None,
@@ -293,25 +290,6 @@ impl StratumEventHandler {
             error_msg.seq_num
         );
     }
-
-    async fn main_loop(&mut self) -> error::Result<()> {
-        while let Some(frame) = self.connection_rx.next().await {
-            if self.client.status.is_shutting_down() {
-                return Ok(());
-            }
-            let msg = build_message_from_frame(frame?);
-            msg?.accept(self).await;
-        }
-        Err("The remote stratum server was disconnected prematurely")?
-    }
-
-    async fn run(mut self) -> job::Sender {
-        if let Err(_) = self.main_loop().await {
-            self.client.status.initiate_failing();
-        }
-        // Return back job sender after terminating
-        self.job_sender
-    }
 }
 
 #[async_trait]
@@ -385,20 +363,14 @@ impl Handler for StratumEventHandler {
 struct StratumSolutionHandler {
     client: Arc<StratumClient>,
     connection_tx: ConnectionTx<Framing>,
-    solution_receiver: job::SolutionReceiver,
     seq_num: u32,
 }
 
 impl StratumSolutionHandler {
-    fn new(
-        client: Arc<StratumClient>,
-        connection_tx: ConnectionTx<Framing>,
-        solution_receiver: job::SolutionReceiver,
-    ) -> Self {
+    fn new(client: Arc<StratumClient>, connection_tx: ConnectionTx<Framing>) -> Self {
         Self {
             client,
             connection_tx,
-            solution_receiver,
             seq_num: 0,
         }
     }
@@ -430,26 +402,6 @@ impl StratumSolutionHandler {
             .context("Cannot send submit to stratum server")?;
         // the response is handled in a separate task
         Ok(())
-    }
-
-    async fn main_loop(&mut self) -> error::Result<()> {
-        while let Some(solution) = self.solution_receiver.receive().await {
-            self.process_solution(solution).await?;
-            // Test shutting down state after processing solution not to waste the share
-            if self.client.status.is_shutting_down() {
-                break;
-            }
-        }
-        // TODO: initiate Destroying
-        Ok(())
-    }
-
-    async fn run(mut self) -> job::SolutionReceiver {
-        // Return back solution receiver after terminating
-        if let Err(_) = self.main_loop().await {
-            self.client.status.initiate_failing();
-        }
-        self.solution_receiver
     }
 }
 
@@ -647,6 +599,43 @@ impl StratumClient {
         self.last_job.lock().await.replace(job);
     }
 
+    async fn main_loop(
+        &self,
+        connection_rx: ConnectionRx<Framing>,
+        event_handler: &mut StratumEventHandler,
+        solution_receiver: &mut job::SolutionReceiver,
+        mut solution_handler: StratumSolutionHandler,
+    ) -> error::Result<()> {
+        let mut connection_rx = connection_rx.fuse();
+
+        loop {
+            if self.status.is_shutting_down() {
+                break;
+            }
+            select! {
+                frame = connection_rx.next() => {
+                    match frame {
+                        Some(frame) => {
+                            let event_msg = build_message_from_frame(frame?)?;
+                            event_msg.accept(event_handler).await;
+                        }
+                        None => Err("The remote stratum server was disconnected prematurely")?,
+                    }
+                },
+                solution = solution_receiver.receive().fuse() => {
+                    match solution {
+                        Some(solution) => solution_handler.process_solution(solution).await?,
+                        None => {
+                            // TODO: initiate Destroying and remove error
+                            Err("Standard application shutdown")?;
+                        }
+                    }
+                },
+            }
+        }
+        Ok(())
+    }
+
     async fn run_job_solver(
         self: Arc<Self>,
         connection: Connection<Framing>,
@@ -655,15 +644,26 @@ impl StratumClient {
     ) -> job::Solver {
         let (connection_rx, connection_tx) = connection.split();
 
-        let (job_sender, solution_receiver) = join!(
-            StratumEventHandler::new(self.clone(), connection_rx, solver.job_sender, init_target)
-                .run(),
-            StratumSolutionHandler::new(self.clone(), connection_tx, solver.solution_receiver)
-                .run()
-        );
+        let job_sender = solver.job_sender;
+        let mut solution_receiver = solver.solution_receiver;
+
+        let mut event_handler = StratumEventHandler::new(self.clone(), job_sender, init_target);
+        let solution_handler = StratumSolutionHandler::new(self.clone(), connection_tx);
+
+        if let Err(_) = self
+            .main_loop(
+                connection_rx,
+                &mut event_handler,
+                &mut solution_receiver,
+                solution_handler,
+            )
+            .await
+        {
+            self.status.initiate_failing();
+        }
 
         job::Solver {
-            job_sender,
+            job_sender: event_handler.job_sender,
             solution_receiver,
         }
     }
