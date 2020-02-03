@@ -143,10 +143,16 @@ impl Sender {
         let engine = Arc::new(work::engine::VersionRolling::new(job, self.midstate_count));
         self.engine_sender.broadcast(engine);
     }
+
+    pub fn invalidate(&mut self) {
+        self.engine_sender
+            .broadcast(Arc::new(work::engine::ExhaustedWork));
+    }
 }
 
 /// Receives `work::Solution` via a channel and filters only solutions that meet the client/pool
 /// specified target
+#[derive(Debug)]
 pub struct SolutionReceiver {
     solution_channel: mpsc::UnboundedReceiver<work::Solution>,
 }

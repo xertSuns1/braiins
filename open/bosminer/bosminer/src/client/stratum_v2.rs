@@ -640,21 +640,19 @@ impl StratumClient {
         self: Arc<Self>,
         connection: Connection<Framing>,
         init_target: ii_bitcoin::Target,
-        solver: job::Solver,
-    ) -> job::Solver {
+    ) {
         let (connection_rx, connection_tx) = connection.split();
+        let mut solver = self.take_job_solver().await;
 
-        let job_sender = solver.job_sender;
-        let mut solution_receiver = solver.solution_receiver;
-
-        let mut event_handler = StratumEventHandler::new(self.clone(), job_sender, init_target);
+        let mut event_handler =
+            StratumEventHandler::new(self.clone(), solver.job_sender, init_target);
         let solution_handler = StratumSolutionHandler::new(self.clone(), connection_tx);
 
         if let Err(_) = self
             .main_loop(
                 connection_rx,
                 &mut event_handler,
-                &mut solution_receiver,
+                &mut solver.solution_receiver,
                 solution_handler,
             )
             .await
@@ -662,34 +660,30 @@ impl StratumClient {
             self.status.initiate_failing();
         }
 
-        job::Solver {
+        // Invalidate current job to stop working on it
+        event_handler.job_sender.invalidate();
+
+        self.return_job_solver(job::Solver {
             job_sender: event_handler.job_sender,
-            solution_receiver,
-        }
+            solution_receiver: solver.solution_receiver,
+        })
+        .await;
     }
 
-    async fn run(self: Arc<Self>, mut solver: job::Solver) -> job::Solver {
+    async fn run(self: Arc<Self>) {
         match StratumConnectionHandler::new(self.clone()).connect().await {
             Ok((connection, init_target)) => {
                 if self.status.initiate_running() {
-                    solver = self
-                        .clone()
-                        .run_job_solver(connection, init_target, solver)
-                        .await;
+                    self.clone().run_job_solver(connection, init_target).await;
                 }
             }
             Err(_) => self.status.initiate_failing(),
         }
-
-        solver
     }
 
     async fn main_task(self: Arc<Self>) {
         loop {
-            let solver = self.take_job_solver().await;
-            let solver = self.clone().run(solver).await;
-            self.return_job_solver(solver).await;
-            // TODO: Invalidate current job to stop working on it
+            self.clone().run().await;
             if self.status.can_stop() {
                 break;
             }
