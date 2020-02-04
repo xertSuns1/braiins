@@ -43,6 +43,8 @@ const SUMMARY: &str = "summary";
 const VERSION: &str = "version";
 const SWITCH_POOL: &str = "switchpool";
 const CONFIG: &str = "config";
+const ENABLE_POOL: &str = "enablepool";
+const DISABLE_POOL: &str = "disablepool";
 const ADD_POOL: &str = "addpool";
 const REMOVE_POOL: &str = "removepool";
 const STATS: &str = "stats";
@@ -79,6 +81,14 @@ pub trait Handler: Send + Sync {
     ) -> Result<response::SwitchPool>;
     async fn handle_config(&self) -> Result<response::Config>;
     async fn handle_add_pool(&self, parameter: Option<&json::Value>) -> Result<response::AddPool>;
+    async fn handle_enable_pool(
+        &self,
+        parameter: Option<&json::Value>,
+    ) -> Result<response::EnablePool>;
+    async fn handle_disable_pool(
+        &self,
+        parameter: Option<&json::Value>,
+    ) -> Result<response::DisablePool>;
     async fn handle_remove_pool(
         &self,
         parameter: Option<&json::Value>,
@@ -233,6 +243,10 @@ where
 
         let check_switch_pool: ParameterCheckHandler =
             Box::new(|command, parameter| Self::check_pool_id(command, parameter));
+        let check_enable_pool: ParameterCheckHandler =
+            Box::new(|command, parameter| Self::check_pool_id(command, parameter));
+        let check_disable_pool: ParameterCheckHandler =
+            Box::new(|command, parameter| Self::check_pool_id(command, parameter));
         let check_add_pool: ParameterCheckHandler =
             Box::new(|command, parameter| Self::check_add_pool(command, parameter));
         let check_remove_pool: ParameterCheckHandler =
@@ -248,6 +262,8 @@ where
             (SUMMARY: ParameterLess -> handler.handle_summary),
             (SWITCH_POOL: Parameter(check_switch_pool) -> handler.handle_switch_pool),
             (CONFIG: ParameterLess -> handler.handle_config),
+            (ENABLE_POOL: Parameter(check_enable_pool) -> handler.handle_enable_pool),
+            (DISABLE_POOL: Parameter(check_disable_pool) -> handler.handle_disable_pool),
             (ADD_POOL: Parameter(check_add_pool) -> handler.handle_add_pool),
             (REMOVE_POOL: Parameter(check_remove_pool) -> handler.handle_remove_pool),
             (STATS: ParameterLess -> handler.handle_stats),

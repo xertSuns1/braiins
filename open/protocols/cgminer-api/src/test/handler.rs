@@ -170,6 +170,26 @@ impl command::Handler for BasicTest {
         })
     }
 
+    async fn handle_enable_pool(
+        &self,
+        _parameter: Option<&json::Value>,
+    ) -> command::Result<response::EnablePool> {
+        Ok(response::EnablePool {
+            idx: 0,
+            url: "".to_string(),
+        })
+    }
+
+    async fn handle_disable_pool(
+        &self,
+        _parameter: Option<&json::Value>,
+    ) -> command::Result<response::DisablePool> {
+        Ok(response::DisablePool {
+            idx: 0,
+            url: "".to_string(),
+        })
+    }
+
     async fn handle_add_pool(
         &self,
         _parameter: Option<&json::Value>,

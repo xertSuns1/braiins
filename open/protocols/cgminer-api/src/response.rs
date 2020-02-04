@@ -113,6 +113,8 @@ pub enum StatusCode {
     Version = 22,
     SwitchPool = 27,
     MineConfig = 33,
+    EnablePool = 47,
+    DisablePool = 48,
     AddPool = 55,
     RemovePool = 68,
     DevDetails = 69,
@@ -127,6 +129,10 @@ pub enum StatusCode {
     TempCtrl = 200,
     Temps = 201,
     Fans = 202,
+
+    // info status codes
+    PoolAlreadyEnabled = 49,
+    PoolAlreadyDisabled = 50,
 
     // error status codes
     InvalidCommand = 14,
@@ -172,6 +178,17 @@ impl Serialize for StatusCodeType {
     }
 }
 
+pub enum InfoCode {
+    PoolAlreadyEnabled(i32, String),
+    PoolAlreadyDisabled(i32, String),
+}
+
+impl From<InfoCode> for Dispatch {
+    fn from(code: InfoCode) -> Self {
+        Error::from(code).into()
+    }
+}
+
 pub enum ErrorCode {
     InvalidCommand,
     MissingAscParameter,
@@ -193,7 +210,8 @@ impl From<ErrorCode> for Dispatch {
 }
 
 pub struct Error {
-    pub code: StatusCodeType,
+    status: Status,
+    code: StatusCodeType,
     msg: String,
 }
 
@@ -209,7 +227,29 @@ impl Error {
         T: Into<u32>,
     {
         Self {
+            status: Status::E,
             code: StatusCodeType::Custom(code.into()),
+            msg,
+        }
+    }
+}
+
+impl From<InfoCode> for Error {
+    fn from(code: InfoCode) -> Self {
+        let (code, msg) = match code {
+            InfoCode::PoolAlreadyEnabled(idx, url) => (
+                StatusCode::PoolAlreadyEnabled,
+                format!("Pool {}:'{}' already enabled", idx, url),
+            ),
+            InfoCode::PoolAlreadyDisabled(idx, url) => (
+                StatusCode::PoolAlreadyDisabled,
+                format!("Pool {}:'{}' already disabled", idx, url),
+            ),
+        };
+
+        Self {
+            status: Status::I,
+            code: code.into(),
             msg,
         }
     }
@@ -266,6 +306,7 @@ impl From<ErrorCode> for Error {
         };
 
         Self {
+            status: Status::E,
             code: code.into(),
             msg,
         }
@@ -275,7 +316,7 @@ impl From<ErrorCode> for Error {
 impl From<Error> for Dispatch {
     fn from(error: Error) -> Self {
         Self {
-            status: Status::E,
+            status: error.status,
             code: error.code,
             msg: error.msg().clone(),
             body: None,
@@ -649,6 +690,36 @@ impl From<Config> for Dispatch {
     }
 }
 
+pub struct EnablePool {
+    pub idx: usize,
+    pub url: String,
+}
+
+impl From<EnablePool> for Dispatch {
+    fn from(enable_pool: EnablePool) -> Self {
+        Dispatch::from_success::<()>(
+            StatusCode::EnablePool.into(),
+            format!("Enabling pool {}:'{}'", enable_pool.idx, enable_pool.url),
+            None,
+        )
+    }
+}
+
+pub struct DisablePool {
+    pub idx: usize,
+    pub url: String,
+}
+
+impl From<DisablePool> for Dispatch {
+    fn from(disable_pool: DisablePool) -> Self {
+        Dispatch::from_success::<()>(
+            StatusCode::DisablePool.into(),
+            format!("Disabling pool {}:'{}'", disable_pool.idx, disable_pool.url),
+            None,
+        )
+    }
+}
+
 pub struct AddPool {
     pub idx: usize,
     pub url: String,
@@ -673,7 +744,7 @@ impl From<RemovePool> for Dispatch {
     fn from(remove_pool: RemovePool) -> Self {
         Dispatch::from_success::<()>(
             StatusCode::RemovePool.into(),
-            format!("Removed pool {}: '{}'", remove_pool.idx, remove_pool.url),
+            format!("Removed pool {}:'{}'", remove_pool.idx, remove_pool.url),
             None,
         )
     }
