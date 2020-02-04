@@ -324,6 +324,14 @@ impl Handler {
         .await
     }
 
+    async fn get_client(&self, idx: i32) -> Result<Arc<client::Handle>, response::ErrorCode> {
+        let clients = self.core.get_clients().await;
+        clients
+            .get(idx as usize)
+            .cloned()
+            .ok_or_else(|| response::ErrorCode::InvalidPoolId(idx, clients.len() as i32 - 1))
+    }
+
     fn get_client_descriptor(&self, parameter: &str) -> Result<Descriptor, ()> {
         let parameters: Vec<_> = parameter
             .split(ii_cgminer_api::PARAMETER_DELIMITER)
@@ -500,21 +508,43 @@ impl command::Handler for Handler {
 
     async fn handle_enable_pool(
         &self,
-        _parameter: Option<&json::Value>,
+        parameter: Option<&json::Value>,
     ) -> command::Result<response::EnablePool> {
+        let idx = parameter
+            .expect("BUG: missing ENABLEPOOL parameter")
+            .to_i32()
+            .expect("BUG: invalid ENABLEPOOL parameter type");
+        let client = self.get_client(idx).await?;
+        let url = client.descriptor.get_url(true, true, false);
+
+        client
+            .try_enable()
+            .map_err(|_| response::InfoCode::PoolAlreadyEnabled(idx, url.clone()))?;
+
         Ok(response::EnablePool {
-            idx: 0,
-            url: "".to_string(),
+            idx: idx as usize,
+            url,
         })
     }
 
     async fn handle_disable_pool(
         &self,
-        _parameter: Option<&json::Value>,
+        parameter: Option<&json::Value>,
     ) -> command::Result<response::DisablePool> {
+        let idx = parameter
+            .expect("BUG: missing DISABLEPOOL parameter")
+            .to_i32()
+            .expect("BUG: invalid DISABLEPOOL parameter type");
+        let client = self.get_client(idx).await?;
+        let url = client.descriptor.get_url(true, true, false);
+
+        client
+            .try_disable()
+            .map_err(|_| response::InfoCode::PoolAlreadyDisabled(idx, url.clone()))?;
+
         Ok(response::DisablePool {
-            idx: 0,
-            url: "".to_string(),
+            idx: idx as usize,
+            url,
         })
     }
 
@@ -532,7 +562,7 @@ impl command::Handler for Handler {
             .map_err(|_| response::ErrorCode::InvalidAddPoolDetails(parameter.to_string()))?;
 
         let (client, client_idx) = client::register(&self.core, client_descriptor).await;
-        client.enable();
+        client.try_enable().expect("BUG: client is already enabled");
 
         Ok(response::AddPool {
             idx: client_idx,
@@ -570,7 +600,7 @@ impl command::Handler for Handler {
                 }
             })?;
 
-        client.enable();
+        let _ = client.try_enable();
         Ok(response::SwitchPool {
             idx: idx as usize,
             url: client.descriptor.get_url(true, true, false),

@@ -111,28 +111,30 @@ impl Handle {
         self.enabled.load(Ordering::Relaxed)
     }
 
-    /// Enable the client and return its previous state. Default client state should be disabled.
-    pub(crate) fn enable(&self) -> bool {
+    /// Try to enable the client. Default client state should be disabled.
+    pub(crate) fn try_enable(&self) -> Result<(), ()> {
         let was_enabled = self.enabled.swap(true, Ordering::Relaxed);
         if !was_enabled {
             // Immediately start the client when it was disabled
+            // TODO: force the scheduler
             self.start();
+            Ok(())
+        } else {
+            Err(())
         }
-        // TODO: force the scheduler
-        was_enabled
     }
 
-    // TODO: Remove `#[allow(dead_code)]` after disable API command is implemented
-    /// Disable the client and return its previous state
-    #[allow(dead_code)]
-    pub(crate) fn disable(&self) -> bool {
+    /// Try to disable the client
+    pub(crate) fn try_disable(&self) -> Result<(), ()> {
         let was_enabled = self.enabled.swap(false, Ordering::Relaxed);
         if was_enabled {
             // Immediately stop the client when it was disabled
+            // TODO: force the scheduler
             self.stop();
+            Ok(())
+        } else {
+            Err(())
         }
-        // TODO: force the scheduler
-        was_enabled
     }
 
     #[inline]
