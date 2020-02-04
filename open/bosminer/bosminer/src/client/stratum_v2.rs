@@ -59,19 +59,19 @@ use std::collections::HashMap;
 const VERSION_MASK: u32 = 0x1fffe000;
 
 #[derive(Debug)]
-pub struct Descriptor {
+pub struct ConnectionDetails {
     pub user: String,
     pub host: String,
     pub port: u16,
 }
 
-impl Descriptor {
-    fn get_url(&self) -> String {
+impl ConnectionDetails {
+    fn get_host_and_port(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
 }
 
-impl From<client::Descriptor> for Descriptor {
+impl From<client::Descriptor> for ConnectionDetails {
     fn from(descriptor: client::Descriptor) -> Self {
         Self {
             user: descriptor.user,
@@ -443,8 +443,8 @@ impl StratumConnectionHandler {
             max_version: 2,
             min_version: 2,
             flags: 0,
-            endpoint_host: Str0_255::from_string(self.client.descriptor.host.clone()),
-            endpoint_port: self.client.descriptor.port,
+            endpoint_host: Str0_255::from_string(self.client.connection_details.host.clone()),
+            endpoint_port: self.client.connection_details.port,
             device: DeviceInfo {
                 vendor: "Braiins".try_into()?,
                 hw_rev: "1".try_into()?,
@@ -469,7 +469,7 @@ impl StratumConnectionHandler {
     async fn open_channel(&mut self, connection: &mut Connection<Framing>) -> Result<(), ()> {
         let channel_msg = OpenStandardMiningChannel {
             req_id: 10,
-            user: self.client.descriptor.user.clone().try_into()?,
+            user: self.client.connection_details.user.clone().try_into()?,
             nominal_hashrate: 1e9,
             // Maximum bitcoin target is 0xffff << 208 (= difficulty 1 share)
             max_target: ii_bitcoin::Target::default().into(),
@@ -491,8 +491,8 @@ impl StratumConnectionHandler {
     async fn connect(mut self) -> Result<(Connection<Framing>, ii_bitcoin::Target), ()> {
         let socket_addr = self
             .client
-            .descriptor
-            .get_url()
+            .connection_details
+            .get_host_and_port()
             .to_socket_addrs()
             .expect("BUG: invalid server address")
             .next()
@@ -550,7 +550,7 @@ impl Handler for StratumConnectionHandler {
 
 #[derive(Debug, ClientNode)]
 pub struct StratumClient {
-    descriptor: Descriptor,
+    connection_details: ConnectionDetails,
     #[member_client_stats]
     client_stats: stats::BasicClient,
     last_job: Mutex<Option<Arc<StratumJob>>>,
@@ -560,10 +560,10 @@ pub struct StratumClient {
 }
 
 impl StratumClient {
-    pub fn new(descriptor: Descriptor, job_solver: job::Solver) -> Self {
+    pub fn new(connection_details: ConnectionDetails, job_solver: job::Solver) -> Self {
         let (job_sender, job_solution) = job_solver.split();
         Self {
-            descriptor,
+            connection_details,
             client_stats: Default::default(),
             last_job: Mutex::new(None),
             solutions: Mutex::new(VecDeque::new()),
@@ -634,8 +634,8 @@ impl fmt::Display for StratumClient {
             f,
             "{}://{}@{}",
             client::SCHEME_STRATUM_V2,
-            self.descriptor.host,
-            self.descriptor.user
+            self.connection_details.host,
+            self.connection_details.user
         )
     }
 }
