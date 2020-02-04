@@ -81,9 +81,9 @@ impl NullJobClient {
 // TODO: Remove dependency on this trait in backend
 #[async_trait]
 impl node::Client for NullJobClient {
-    async fn start(self: Arc<Self>) {}
+    fn start(self: Arc<Self>) {}
 
-    async fn stop(self: Arc<Self>) {}
+    fn stop(&self) {}
 
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
         None

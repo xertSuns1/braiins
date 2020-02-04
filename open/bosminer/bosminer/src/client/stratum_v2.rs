@@ -46,6 +46,7 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
+use std::time;
 
 use ii_stratum::v2::framing::Framing;
 use ii_stratum::v2::messages::{
@@ -63,6 +64,9 @@ use std::collections::HashMap;
 
 // TODO: move it to the stratum crate
 const VERSION_MASK: u32 = 0x1fffe000;
+
+const CONNECTION_TIMEOUT: time::Duration = time::Duration::from_secs(5);
+const EVENT_TIMEOUT: time::Duration = time::Duration::from_secs(60);
 
 #[derive(Debug)]
 pub struct ConnectionDetails {
@@ -590,25 +594,23 @@ impl StratumClient {
 
     async fn main_loop(
         &self,
-        connection_rx: ConnectionRx<Framing>,
+        mut connection_rx: ConnectionRx<Framing>,
         event_handler: &mut StratumEventHandler,
         mut solution_handler: StratumSolutionHandler,
     ) -> error::Result<()> {
-        let mut connection_rx = connection_rx.fuse();
         let mut solution_receiver = self.solution_receiver.lock().await;
 
-        loop {
-            if self.status.is_shutting_down() {
-                break;
-            }
+        while !self.status.is_shutting_down() {
             select! {
-                frame = connection_rx.next() => {
+                frame = connection_rx.next().timeout(EVENT_TIMEOUT).fuse() => {
                     match frame {
-                        Some(frame) => {
+                        Ok(Some(frame)) => {
                             let event_msg = build_message_from_frame(frame?)?;
                             event_msg.accept(event_handler).await;
                         }
-                        None => Err("The remote stratum server was disconnected prematurely")?,
+                        Ok(None) | Err(_) => {
+                            Err("The remote stratum server was disconnected prematurely")?;
+                        }
                     }
                 },
                 solution = solution_receiver.receive().fuse() => {
@@ -644,14 +646,17 @@ impl StratumClient {
     }
 
     async fn run(self: Arc<Self>) {
-        // TODO: implement connection timeout
-        match StratumConnectionHandler::new(self.clone()).connect().await {
-            Ok((connection, init_target)) => {
+        match StratumConnectionHandler::new(self.clone())
+            .connect()
+            .timeout(CONNECTION_TIMEOUT)
+            .await
+        {
+            Ok(Ok((connection, init_target))) => {
                 if self.status.initiate_running() {
                     self.clone().run_job_solver(connection, init_target).await;
                 }
             }
-            Err(_) => self.status.initiate_failing(),
+            Ok(Err(_)) | Err(_) => self.status.initiate_failing(),
         }
     }
 
