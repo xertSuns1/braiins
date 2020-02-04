@@ -288,6 +288,9 @@ where
             Some(json::Value::Number(value)) => {
                 Err(response::ErrorCode::InvalidAddPoolDetails(value.to_string()).into())
             }
+            // CGMiner recognizes strings and integers as the same type. Other types (array, map,
+            // ..) are reported as a missing parameter. Therefore, we match anything else as
+            // missing parameter.
             _ => Err(response::ErrorCode::MissingAddPoolDetails.into()),
         }
     }
