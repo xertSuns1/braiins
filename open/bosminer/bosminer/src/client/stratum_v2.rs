@@ -175,7 +175,6 @@ type SolutionQueue = Mutex<VecDeque<(work::Solution, u32)>>;
 /// messages from remote server.
 struct StratumEventHandler {
     client: Arc<StratumClient>,
-    job_sender: job::Sender,
     all_jobs: HashMap<u32, NewMiningJob>,
     current_prevhash_msg: Option<SetNewPrevHash>,
     /// Mining target for the next job that is to be solved
@@ -183,14 +182,9 @@ struct StratumEventHandler {
 }
 
 impl StratumEventHandler {
-    pub fn new(
-        client: Arc<StratumClient>,
-        job_sender: job::Sender,
-        current_target: ii_bitcoin::Target,
-    ) -> Self {
+    pub fn new(client: Arc<StratumClient>, current_target: ii_bitcoin::Target) -> Self {
         Self {
             client,
-            job_sender,
             all_jobs: Default::default(),
             current_prevhash_msg: None,
             current_target,
@@ -210,7 +204,7 @@ impl StratumEventHandler {
             self.current_target,
         ));
         self.client.update_last_job(job.clone()).await;
-        self.job_sender.send(job);
+        self.client.job_sender.lock().await.send(job);
     }
 
     fn update_target(&mut self, value: Uint256Bytes) {
@@ -567,51 +561,27 @@ pub struct StratumClient {
     #[member_client_stats]
     client_stats: stats::BasicClient,
     stop_sender: Mutex<mpsc::Sender<()>>,
-    stop_receiver: Mutex<Option<mpsc::Receiver<()>>>,
+    stop_receiver: Mutex<mpsc::Receiver<()>>,
     last_job: Mutex<Option<Arc<StratumJob>>>,
     solutions: SolutionQueue,
-    job_solver: Mutex<Option<job::Solver>>,
+    job_sender: Mutex<job::Sender>,
+    solution_receiver: Mutex<job::SolutionReceiver>,
 }
 
 impl StratumClient {
-    pub fn new(connection_details: ConnectionDetails, job_solver: job::Solver) -> Self {
+    pub fn new(connection_details: ConnectionDetails, solver: job::Solver) -> Self {
         let (stop_sender, stop_receiver) = mpsc::channel(1);
         Self {
             connection_details,
             status: Default::default(),
             client_stats: Default::default(),
             stop_sender: Mutex::new(stop_sender),
-            stop_receiver: Mutex::new(Some(stop_receiver)),
+            stop_receiver: Mutex::new(stop_receiver),
             last_job: Mutex::new(None),
             solutions: Mutex::new(VecDeque::new()),
-            job_solver: Mutex::new(Some(job_solver)),
+            job_sender: Mutex::new(solver.job_sender),
+            solution_receiver: Mutex::new(solver.solution_receiver),
         }
-    }
-
-    async fn take_stop_receiver(&self) -> mpsc::Receiver<()> {
-        self.stop_receiver
-            .lock()
-            .await
-            .take()
-            .expect("BUG: missing stop receiver")
-    }
-
-    async fn return_stop_receiver(&self, stop_receiver: mpsc::Receiver<()>) {
-        let old = self.stop_receiver.lock().await.replace(stop_receiver);
-        assert!(old.is_none(), "BUG: unexpected stop receiver");
-    }
-
-    async fn take_job_solver(&self) -> job::Solver {
-        self.job_solver
-            .lock()
-            .await
-            .take()
-            .expect("BUG: missing job solver")
-    }
-
-    async fn return_job_solver(&self, solver: job::Solver) {
-        let old = self.job_solver.lock().await.replace(solver);
-        assert!(old.is_none(), "BUG: unexpected job solver");
     }
 
     async fn update_last_job(&self, job: Arc<StratumJob>) {
@@ -620,20 +590,18 @@ impl StratumClient {
 
     async fn main_loop(
         &self,
-        stop_receiver: &mut mpsc::Receiver<()>,
         connection_rx: ConnectionRx<Framing>,
         event_handler: &mut StratumEventHandler,
-        solution_receiver: &mut job::SolutionReceiver,
         mut solution_handler: StratumSolutionHandler,
     ) -> error::Result<()> {
         let mut connection_rx = connection_rx.fuse();
+        let mut solution_receiver = self.solution_receiver.lock().await;
 
         loop {
             if self.status.is_shutting_down() {
                 break;
             }
             select! {
-                _ = stop_receiver.next() => break,
                 frame = connection_rx.next() => {
                     match frame {
                         Some(frame) => {
@@ -664,38 +632,19 @@ impl StratumClient {
     ) {
         let (connection_rx, connection_tx) = connection.split();
 
-        let mut solver = self.take_job_solver().await;
-        let mut stop_receiver = self.take_stop_receiver().await;
-
-        let mut event_handler =
-            StratumEventHandler::new(self.clone(), solver.job_sender, init_target);
+        let mut event_handler = StratumEventHandler::new(self.clone(), init_target);
         let solution_handler = StratumSolutionHandler::new(self.clone(), connection_tx);
 
         if let Err(_) = self
-            .main_loop(
-                &mut stop_receiver,
-                connection_rx,
-                &mut event_handler,
-                &mut solver.solution_receiver,
-                solution_handler,
-            )
+            .main_loop(connection_rx, &mut event_handler, solution_handler)
             .await
         {
             self.status.initiate_failing();
         }
-
-        // Invalidate current job to stop working on it
-        event_handler.job_sender.invalidate();
-
-        self.return_stop_receiver(stop_receiver).await;
-        self.return_job_solver(job::Solver {
-            job_sender: event_handler.job_sender,
-            solution_receiver: solver.solution_receiver,
-        })
-        .await;
     }
 
     async fn run(self: Arc<Self>) {
+        // TODO: implement connection timeout
         match StratumConnectionHandler::new(self.clone()).connect().await {
             Ok((connection, init_target)) => {
                 if self.status.initiate_running() {
@@ -708,8 +657,17 @@ impl StratumClient {
 
     async fn main_task(self: Arc<Self>) {
         loop {
-            self.clone().run().await;
+            let mut stop_receiver = self.stop_receiver.lock().await;
+            select! {
+                _ = self.clone().run().fuse() => {}
+                _ = stop_receiver.next() => {}
+            }
+
+            // Invalidate current job to stop working on it
+            self.job_sender.lock().await.invalidate();
+
             if self.status.can_stop() {
+                // NOTE: it is not safe to add here any code!
                 break;
             }
             // Restarting
