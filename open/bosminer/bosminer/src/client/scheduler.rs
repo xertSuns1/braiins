@@ -127,6 +127,7 @@ struct JobDispatcher {
 }
 
 impl JobDispatcher {
+    /// Returns the registered `client::Handle` and its registration index
     async fn create_and_register_client<F, T>(
         &self,
         engine_sender: work::EngineSender,
