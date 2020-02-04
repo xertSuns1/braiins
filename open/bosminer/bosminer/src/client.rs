@@ -87,32 +87,36 @@ impl Handle {
         )
     }
 
-    async fn start(&self) {
+    pub fn status(&self) -> crate::sync::Status {
+        self.node.status().status()
+    }
+
+    fn start(&self) {
         if self.node.status().initiate_starting() {
             // The client can be started safely
-            self.node.clone().start().await;
+            self.node.clone().start();
         }
     }
 
-    async fn stop(&self) {
+    fn stop(&self) {
         if self.node.status().initiate_stopping() {
             // The client can be stopped safely
-            self.node.clone().stop().await;
+            self.node.clone().stop();
         }
     }
 
     /// Check if current state of the client is enabled
     #[inline]
-    pub async fn is_enabled(&self) -> bool {
+    pub fn is_enabled(&self) -> bool {
         self.enabled.load(Ordering::Relaxed)
     }
 
     /// Enable the client and return its previous state. Default client state should be disabled.
-    pub(crate) async fn enable(&self) -> bool {
+    pub(crate) fn enable(&self) -> bool {
         let was_enabled = self.enabled.swap(true, Ordering::Relaxed);
         if !was_enabled {
             // Immediately start the client when it was disabled
-            self.start().await;
+            self.start();
         }
         // TODO: force the scheduler
         was_enabled
@@ -121,11 +125,11 @@ impl Handle {
     // TODO: Remove `#[allow(dead_code)]` after disable API command is implemented
     /// Disable the client and return its previous state
     #[allow(dead_code)]
-    pub(crate) async fn disable(&self) -> bool {
+    pub(crate) fn disable(&self) -> bool {
         let was_enabled = self.enabled.swap(false, Ordering::Relaxed);
         if was_enabled {
             // Immediately stop the client when it was disabled
-            self.stop().await;
+            self.stop();
         }
         // TODO: force the scheduler
         was_enabled
@@ -139,6 +143,12 @@ impl Handle {
     #[inline]
     pub(crate) async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
         self.node.get_last_job().await
+    }
+}
+
+impl Drop for Handle {
+    fn drop(&mut self) {
+        self.node.stop()
     }
 }
 

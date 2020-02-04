@@ -56,7 +56,7 @@ pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
     // start client based on user input
     for client_descriptor in clients {
         let (client, _) = client::register(&core, client_descriptor).await;
-        client.enable().await;
+        client.enable();
     }
 
     // the bosminer is controlled with API which also controls when the miner will end

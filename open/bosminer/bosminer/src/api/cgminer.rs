@@ -512,7 +512,7 @@ impl command::Handler for Handler {
             .map_err(|_| response::ErrorCode::InvalidAddPoolDetails(parameter.to_string()))?;
 
         let (client, client_idx) = client::register(&self.core, client_descriptor).await;
-        client.enable().await;
+        client.enable();
 
         Ok(response::AddPool {
             idx: client_idx,
@@ -550,7 +550,7 @@ impl command::Handler for Handler {
                 }
             })?;
 
-        client.enable().await;
+        client.enable();
         Ok(response::SwitchPool {
             idx: idx as usize,
             url: client.descriptor.get_url(true, true, false),

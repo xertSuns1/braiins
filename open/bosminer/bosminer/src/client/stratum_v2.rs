@@ -560,7 +560,7 @@ pub struct StratumClient {
     status: sync::StatusMonitor,
     #[member_client_stats]
     client_stats: stats::BasicClient,
-    stop_sender: Mutex<mpsc::Sender<()>>,
+    stop_sender: mpsc::Sender<()>,
     stop_receiver: Mutex<mpsc::Receiver<()>>,
     last_job: Mutex<Option<Arc<StratumJob>>>,
     solutions: SolutionQueue,
@@ -575,7 +575,7 @@ impl StratumClient {
             connection_details,
             status: Default::default(),
             client_stats: Default::default(),
-            stop_sender: Mutex::new(stop_sender),
+            stop_sender: stop_sender,
             stop_receiver: Mutex::new(stop_receiver),
             last_job: Mutex::new(None),
             solutions: Mutex::new(VecDeque::new()),
@@ -677,12 +677,12 @@ impl StratumClient {
 
 #[async_trait]
 impl node::Client for StratumClient {
-    async fn start(self: Arc<Self>) {
+    fn start(self: Arc<Self>) {
         tokio::spawn(self.clone().main_task());
     }
 
-    async fn stop(self: Arc<Self>) {
-        if let Err(e) = self.stop_sender.lock().await.try_send(()) {
+    fn stop(&self) {
+        if let Err(e) = self.stop_sender.clone().try_send(()) {
             assert!(
                 e.is_full(),
                 "BUG: Unexpected error in stop sender: {}",

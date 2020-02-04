@@ -52,10 +52,10 @@ pub trait Stats: Send + Sync {
 pub trait Client: Info + ClientStats {
     /// Try to start the client (e.g. connection to a remote server).
     /// Default state of the client should be `Initialized`.
-    async fn start(self: Arc<Self>);
+    fn start(self: Arc<Self>);
     /// Stop the running client.
     /// Change its state to `Stopped` when it was `Starting` or `Running`.
-    async fn stop(self: Arc<Self>);
+    fn stop(&self);
     /// Return latest received job
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>>;
 }

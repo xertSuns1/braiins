@@ -80,9 +80,9 @@ impl TestClient {
 
 #[async_trait]
 impl node::Client for TestClient {
-    async fn start(self: Arc<Self>) {}
+    fn start(self: Arc<Self>) {}
 
-    async fn stop(self: Arc<Self>) {}
+    fn stop(&self) {}
 
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
         None
