@@ -633,7 +633,7 @@ impl fmt::Display for StratumClient {
         write!(
             f,
             "{}://{}@{}",
-            client::SCHEME_STRATUM_V2,
+            client::Protocol::SCHEME_STRATUM_V2,
             self.connection_details.host,
             self.connection_details.user
         )

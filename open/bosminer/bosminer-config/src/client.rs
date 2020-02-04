@@ -28,17 +28,16 @@ use std::fmt;
 
 use failure::ResultExt;
 
-pub const SCHEME_STRATUM_V2: &str = "stratum2+tcp";
-pub const USER_INFO_DELIMITER: char = ':';
-
 #[derive(Copy, Clone, Debug)]
 pub enum Protocol {
     StratumV2,
 }
 
 impl Protocol {
+    pub const SCHEME_STRATUM_V2: &'static str = "stratum2+tcp";
+
     pub fn parse(scheme: &str) -> error::Result<Self> {
-        if scheme == SCHEME_STRATUM_V2 {
+        if scheme == Self::SCHEME_STRATUM_V2 {
             Ok(Self::StratumV2)
         } else {
             Err(error::ErrorKind::Client("unknown protocol".to_string()))?
@@ -47,7 +46,7 @@ impl Protocol {
 
     pub fn scheme(&self) -> &'static str {
         match self {
-            Self::StratumV2 => SCHEME_STRATUM_V2,
+            Self::StratumV2 => Self::SCHEME_STRATUM_V2,
         }
     }
 }
@@ -71,6 +70,8 @@ pub struct Descriptor {
 }
 
 impl Descriptor {
+    pub const USER_INFO_DELIMITER: char = ':';
+
     pub fn get_url(&self, protocol: bool, port: bool, user: bool) -> String {
         let mut result = if protocol {
             self.protocol.scheme().to_string() + "://"
@@ -110,7 +111,7 @@ impl Descriptor {
             .ok_or(error::ErrorKind::Client("missing port".to_string()))?;
 
         // Parse user and password from user info (user[:password])
-        let user_info: Vec<_> = user_info.rsplitn(2, USER_INFO_DELIMITER).collect();
+        let user_info: Vec<_> = user_info.rsplitn(2, Self::USER_INFO_DELIMITER).collect();
         let mut user_info = user_info.iter().rev();
 
         let user = user_info.next().expect("BUG: missing user").to_string();
