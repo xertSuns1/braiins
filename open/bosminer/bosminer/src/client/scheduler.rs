@@ -76,6 +76,10 @@ impl Handle {
             .take_snapshot();
         self.generated_work.update(global_generated_work)
     }
+
+    fn reset_generated_work(&mut self) {
+        self.generated_work.reset();
+    }
 }
 
 impl PartialEq for Handle {
@@ -116,6 +120,10 @@ impl LocalGeneratedWork {
 
         self.local_counter
     }
+
+    pub fn reset(&mut self) {
+        self.local_counter = Default::default();
+    }
 }
 
 /// Responsible for selecting and switching jobs
@@ -147,8 +155,11 @@ impl JobDispatcher {
             1.0
         };
 
-        // update all clients with newly calculated percentage share
+        // Update all clients with newly calculated percentage share.
+        // Also reset generated work to prevent switching all future work to new client because
+        // new client has zero shares and so maximal error.
         for mut client in client_registry.iter_mut() {
+            client.reset_generated_work();
             client.percentage_share = percentage_share;
         }
 
