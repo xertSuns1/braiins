@@ -63,6 +63,7 @@ impl fmt::Display for Protocol {
 #[derive(Clone, Debug)]
 pub struct Descriptor {
     pub protocol: Protocol,
+    pub enable: bool,
     pub user: String,
     pub password: Option<String>,
     pub host: String,
@@ -122,6 +123,7 @@ impl Descriptor {
 
         Ok(Descriptor {
             protocol,
+            enable: true,
             user,
             password,
             host,

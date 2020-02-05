@@ -60,7 +60,7 @@ pub struct Handle {
 impl Handle {
     fn new<T>(
         descriptor: Descriptor,
-        client: T,
+        client_node: T,
         engine_sender: Arc<work::EngineSender>,
         solution_sender: mpsc::UnboundedSender<work::Solution>,
     ) -> Self
@@ -69,7 +69,7 @@ impl Handle {
     {
         Self {
             descriptor,
-            node: Arc::new(client),
+            node: Arc::new(client_node),
             enabled: AtomicBool::new(false),
             engine_sender,
             solution_sender,

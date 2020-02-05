@@ -47,7 +47,7 @@ pub struct Handle {
 impl Handle {
     pub fn new<T>(
         descriptor: Descriptor,
-        client: T,
+        client_node: T,
         engine_sender: Arc<work::EngineSender>,
         solution_sender: mpsc::UnboundedSender<work::Solution>,
         percentage_share: f64,
@@ -58,7 +58,7 @@ impl Handle {
         Self {
             client_handle: Arc::new(client::Handle::new::<T>(
                 descriptor,
-                client,
+                client_node,
                 engine_sender,
                 solution_sender,
             )),
@@ -161,6 +161,7 @@ impl JobDispatcher {
             solution_receiver,
         );
 
+        let enable_client = descriptor.enable;
         let scheduler_handle = Handle::new(
             descriptor,
             create(job_solver),
@@ -170,6 +171,14 @@ impl JobDispatcher {
         );
 
         let (scheduler_handle, client_idx) = client_registry.register_client(scheduler_handle);
+
+        if enable_client {
+            scheduler_handle
+                .client_handle
+                .try_enable()
+                .expect("BUG: client is already enabled");
+        }
+
         (scheduler_handle.client_handle.clone(), client_idx)
     }
 

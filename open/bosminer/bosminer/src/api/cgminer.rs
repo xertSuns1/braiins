@@ -560,9 +560,7 @@ impl command::Handler for Handler {
         let client_descriptor = self
             .get_client_descriptor(parameter)
             .map_err(|_| response::ErrorCode::InvalidAddPoolDetails(parameter.to_string()))?;
-
         let (client, client_idx) = client::register(&self.core, client_descriptor).await;
-        client.try_enable().expect("BUG: client is already enabled");
 
         Ok(response::AddPool {
             idx: client_idx,
