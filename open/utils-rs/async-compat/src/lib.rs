@@ -216,7 +216,7 @@ pub struct HaltHandle {
     tripwire: Tripwire,
     /// Used to trigger the tripwire and then notifies `tasks`.
     halt: Mutex<Option<Halt>>,
-    /// Spawned task handles as well as a ready notification are sent here, see `JoinsMsg`
+    /// Spawned task handles as well as a ready notification are sent here, see `TaskMsg`
     tasks_tx: mpsc::UnboundedSender<TaskMsg>,
     /// Used to receive notification from `halt` and the task handles.
     tasks: Mutex<Option<Tasks>>,
