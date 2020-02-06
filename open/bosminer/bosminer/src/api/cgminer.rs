@@ -28,6 +28,7 @@ use crate::error;
 use crate::hub;
 use crate::node::{self, Stats as _, WorkSolver, WorkSolverStats as _};
 use crate::stats::{self, UnixTime as _};
+use crate::sync;
 use crate::version;
 
 use ii_cgminer_api::support::ValueExt as _;
@@ -115,11 +116,24 @@ impl Handler {
             .unwrap_or(0.0);
         let current_block_version = last_job.map(|job| job.version()).unwrap_or_default();
 
+        let (mut status, stratum_active) = match client.status() {
+            sync::Status::Created
+            | sync::Status::Starting
+            | sync::Status::Running
+            | sync::Status::Restarting => (response::PoolStatus::Alive, true),
+            sync::Status::Stopping
+            | sync::Status::Failing
+            | sync::Status::Stopped
+            | sync::Status::Failed => (response::PoolStatus::Dead, false),
+        };
+        if !client.is_enabled() {
+            status = response::PoolStatus::Disabled;
+        }
+
         response::Pool {
             idx: idx as i32,
             url: client.descriptor.get_url(true, true, false),
-            // TODO: get actual status from client
-            status: response::PoolStatus::Alive,
+            status,
             // The pools are sorted by its priority
             priority: idx as i32,
             // TODO: get actual value from client
@@ -148,8 +162,7 @@ impl Handler {
             last_share_difficulty,
             work_difficulty: last_diff,
             has_stratum: true,
-            // TODO: get actual value from client
-            stratum_active: true,
+            stratum_active,
             stratum_url: client.descriptor.get_url(false, true, false),
             stratum_difficulty: last_diff,
             // TODO: get actual value from client (Asic Boost)
