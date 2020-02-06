@@ -233,10 +233,15 @@ impl HaltHandle {
     {
         let ft = f(self.tripwire.clone());
         let task = tokio::spawn(ft);
+        // Send the task handle so that join() can join on it later
         self.add_task(task);
     }
 
     pub(crate) fn add_task(&self, task: JoinHandle<()>) {
+        // Add the task join handle to joins_tx (used by join()).
+        // Errors are ignored here - send() on an unbounded channel
+        // only fails if the receiver is dropped, and in that case
+        // we don't care that the send() failed...
         let _ = self.joins_tx.send(task);
     }
 
@@ -275,11 +280,13 @@ impl HaltHandle {
     }
 
     /// Wait for all associated tasks to finish once `halt()` is called.
+    ///
     /// An optional `timeout` may be provided, this is the maximum time
-    /// to wait after `halt()` has been called before.
+    /// to wait **after** `halt()` has been called.
     ///
     /// Returns `Ok(())` when tasks are collected succesfully, or a `HaltError::Timeout`
-    /// when tasks didn't stop in time, or a `HaltError::Join` when a task panics.
+    /// if tasks tasks didn't stop in time, or a `HaltError::Join` when a task panics.
+    /// If multiple tasks panic, the first join error encountered is returned.
     pub async fn join(&self, timeout: Option<Duration>) -> Result<(), HaltError> {
         let mut joins = self
             .joins
@@ -289,12 +296,17 @@ impl HaltHandle {
             .expect("HaltHandle: join() called multiple times");
         let _ = joins.notify_rx.await;
 
+        // Collect join handles. Join handles are added to the
+        // joins channel by Self::spawn(). Here we take out all the
+        // join handles that are in the channel right now.
         let mut handles = vec![];
         while let Ok(handle) = joins.joins_rx.try_recv() {
             handles.push(handle);
         }
 
+        // Join all the tasks, wait for them to finalize
         let ft = future::join_all(handles.drain(..));
+        // If there's a timeout, only wait so much
         let mut res = if let Some(timeout) = timeout {
             match ft.timeout(timeout).await {
                 Ok(res) => res,
@@ -304,6 +316,7 @@ impl HaltHandle {
             ft.await
         };
 
+        // Map errors, return the first one encountered (if any)
         res.drain(..)
             .fold(Ok(()), Result::and)
             .map_err(|e| HaltError::Join(e))
