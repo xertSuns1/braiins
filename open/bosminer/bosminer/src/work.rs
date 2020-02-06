@@ -354,6 +354,10 @@ impl EngineSender {
     }
 
     pub fn swap_sender(&self, other: &Self) {
+        assert!(
+            !std::ptr::eq(self, other),
+            "BUG: swapping the same engine sender"
+        );
         let a = &mut *self.lock_inner();
         let b = &mut *other.lock_inner();
 

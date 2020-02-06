@@ -126,19 +126,74 @@ impl LocalGeneratedWork {
     }
 }
 
+enum ActiveClient {
+    None(Arc<work::EngineSender>),
+    Some(Arc<client::Handle>),
+}
+
+impl ActiveClient {
+    #[inline]
+    pub fn is_some(&self) -> bool {
+        match *self {
+            Self::Some(_) => true,
+            Self::None(_) => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_none(&self) -> bool {
+        !self.is_some()
+    }
+
+    #[inline]
+    pub fn get_client(&self) -> Option<Arc<client::Handle>> {
+        match self {
+            Self::Some(client) => Some(client.clone()),
+            Self::None(_) => None,
+        }
+    }
+
+    #[inline]
+    pub fn get_engine_sender(&self) -> &Arc<work::EngineSender> {
+        match self {
+            Self::Some(client) => &client.engine_sender,
+            Self::None(engine_sender) => engine_sender,
+        }
+    }
+}
+
+impl PartialEq<Arc<client::Handle>> for ActiveClient {
+    fn eq(&self, other: &Arc<client::Handle>) -> bool {
+        match self {
+            Self::Some(client) => client == other,
+            Self::None(_) => false,
+        }
+    }
+}
+
 /// Responsible for selecting and switching jobs
 struct JobDispatcher {
     midstate_count: usize,
-    engine_sender: Option<work::EngineSender>,
-    active_client: Option<Arc<client::Handle>>,
+    active_client: ActiveClient,
     client_registry: Arc<Mutex<client::Registry>>,
 }
 
 impl JobDispatcher {
+    fn new(
+        midstate_count: usize,
+        engine_sender: work::EngineSender,
+        client_registry: Arc<Mutex<client::Registry>>,
+    ) -> Self {
+        Self {
+            midstate_count,
+            active_client: ActiveClient::None(Arc::new(engine_sender)),
+            client_registry,
+        }
+    }
+
     /// Returns the registered `client::Handle` and its registration index
     async fn create_and_register_client<F, T>(
-        &self,
-        engine_sender: work::EngineSender,
+        &mut self,
         descriptor: Descriptor,
         create: F,
     ) -> (Arc<client::Handle>, usize)
@@ -165,7 +220,8 @@ impl JobDispatcher {
 
         let (solution_sender, solution_receiver) = mpsc::unbounded();
 
-        let engine_sender = Arc::new(engine_sender);
+        // Initially register new client without ability to send work
+        let engine_sender = Arc::new(work::EngineSender::new(None));
         let job_solver = job::Solver::new(
             self.midstate_count,
             engine_sender.clone(),
@@ -193,7 +249,7 @@ impl JobDispatcher {
         (scheduler_handle.client_handle.clone(), client_idx)
     }
 
-    pub async fn add_client<F, T>(
+    async fn add_client<F, T>(
         &mut self,
         descriptor: Descriptor,
         create: F,
@@ -202,30 +258,35 @@ impl JobDispatcher {
         T: node::Client + 'static,
         F: FnOnce(job::Solver) -> T,
     {
-        let engine_sender = self
-            .engine_sender
-            .take()
-            .unwrap_or_else(|| work::EngineSender::new(None));
+        let (client_handle, client_idx) = self.create_and_register_client(descriptor, create).await;
 
-        let (client_handle, client_idx) =
-            Self::create_and_register_client(self, engine_sender, descriptor, create).await;
+        // When there is no active client then set current one
+        if self.active_client.is_none() {
+            self.switch_client(client_handle.clone());
+        }
 
-        // when there is no active client then set current one
-        self.active_client
-            .get_or_insert_with(|| client_handle.clone());
         (client_handle, client_idx)
     }
 
-    fn switch_client(&mut self, next_client: Arc<client::Handle>) {
-        let active_client = self
-            .active_client
-            .as_mut()
-            .expect("BUG: missing active client");
-        if &next_client != active_client {
-            next_client
-                .engine_sender
-                .swap_sender(&active_client.engine_sender);
-            *active_client = next_client;
+    fn switch_client<T>(&mut self, next_client: T)
+    where
+        T: Into<Option<Arc<client::Handle>>>,
+    {
+        match next_client.into() {
+            Some(next_client) => {
+                if self.active_client != next_client {
+                    next_client
+                        .engine_sender
+                        .swap_sender(self.active_client.get_engine_sender());
+                    self.active_client = ActiveClient::Some(next_client);
+                }
+            }
+            None => match &self.active_client {
+                ActiveClient::Some(prev_client) => {
+                    self.active_client = ActiveClient::None(prev_client.engine_sender.clone());
+                }
+                ActiveClient::None(_) => {}
+            },
         }
     }
 
@@ -285,12 +346,11 @@ impl JobExecutor {
         Self {
             frontend,
             client_registry: client_registry.clone(),
-            dispatcher: Mutex::new(JobDispatcher {
+            dispatcher: Mutex::new(JobDispatcher::new(
                 midstate_count,
-                engine_sender: Some(engine_sender),
-                active_client: None,
+                engine_sender,
                 client_registry,
-            }),
+            )),
         }
     }
 
@@ -299,7 +359,7 @@ impl JobExecutor {
     }
 
     async fn active_client(&self) -> Option<Arc<client::Handle>> {
-        self.lock_dispatcher().await.active_client.clone()
+        self.lock_dispatcher().await.active_client.get_client()
     }
 
     /// Find client which given solution is associated with

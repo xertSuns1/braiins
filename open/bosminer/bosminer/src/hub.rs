@@ -169,7 +169,7 @@ impl Core {
         self.job_executor.add_client(descriptor, create).await
     }
 
-    /// Attempt to switch the clients at the same index is explicitely permitted here and results
+    /// Attempt to switch the clients at the same index is explicitly permitted here and results
     /// in returning a tuple with the same client
     #[inline]
     pub async fn swap_clients(
