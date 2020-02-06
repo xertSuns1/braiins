@@ -45,7 +45,7 @@ use ii_async_compat::select;
 use std::collections::VecDeque;
 use std::fmt;
 use std::net::ToSocketAddrs;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time;
 
 use ii_stratum::v2::framing::Framing;
@@ -566,7 +566,9 @@ pub struct StratumClient {
     client_stats: stats::BasicClient,
     stop_sender: mpsc::Sender<()>,
     stop_receiver: Mutex<mpsc::Receiver<()>>,
-    last_job: Mutex<Option<Arc<StratumJob>>>,
+    // Last job has to be week reference to prevent circular reference (the `StratumJob` keeps
+    // reference to `StratumClient`)
+    last_job: Mutex<Option<Weak<StratumJob>>>,
     solutions: SolutionQueue,
     job_sender: Mutex<job::Sender>,
     solution_receiver: Mutex<job::SolutionReceiver>,
@@ -589,7 +591,7 @@ impl StratumClient {
     }
 
     async fn update_last_job(&self, job: Arc<StratumJob>) {
-        self.last_job.lock().await.replace(job);
+        self.last_job.lock().await.replace(Arc::downgrade(&job));
     }
 
     async fn main_loop(
@@ -701,7 +703,7 @@ impl node::Client for StratumClient {
             .lock()
             .await
             .as_ref()
-            .map(|job| job.clone() as Arc<dyn job::Bitcoin>)
+            .and_then(|job| job.upgrade().map(|job| job as Arc<dyn job::Bitcoin>))
     }
 }
 

@@ -150,7 +150,7 @@ impl Handle {
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        self.node.stop()
+        self.node.stop();
     }
 }
 
