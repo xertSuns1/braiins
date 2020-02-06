@@ -100,7 +100,7 @@ impl<F: Future> FutureExt for F {}
 
 /// Wrapper for `select!` macro from `futures`.
 /// The reason for this is that the macro needs to be told
-/// to look for futures at `::ii_async_compat::futures` rather than `::furures`.
+/// to look for futures at `::ii_async_compat::futures` rather than `::futures`.
 #[macro_export]
 macro_rules! select {
     ($($tokens:tt)*) => {
@@ -124,12 +124,17 @@ macro_rules! join {
     }
 }
 
+/// Internal, used to signal termination via `trigger`
+/// and notify `Joins` when that happens.
 #[derive(Debug)]
 struct Halt {
     trigger: Trigger,
     notify_tx: oneshot::Sender<()>,
 }
 
+/// Internal, used in `HaltHandle::join()`
+/// to wait on signal from `halt()`
+/// and then collect halting tasks' join handles.
 #[derive(Debug)]
 struct Joins {
     joins_rx: mpsc::UnboundedReceiver<JoinHandle<()>>,
@@ -141,7 +146,7 @@ struct Joins {
 pub enum HaltError {
     /// Tasks didn't finish inside the timeout passed to `join()`.
     Timeout,
-    /// Once of the tasks panicked.
+    /// One of the tasks panicked.
     Join(JoinError),
 }
 
@@ -178,10 +183,17 @@ impl StdError for HaltError {
 /// that can be then signaled to halt.
 #[derive(Debug)]
 pub struct HaltHandle {
+    /// `stream-cancels` tripwire that is cloned into
+    /// 'child' tasks when they are started with this handle.
     tripwire: Tripwire,
+    /// Used to trigger the tripwire and then signals to `joins`.
     halt: Mutex<Option<Halt>>,
+    /// Child tasks join handles are sent here to be awaited in `join()`.
     joins_tx: mpsc::UnboundedSender<JoinHandle<()>>,
+    /// Used to receive notification from `halt` and the task handles.
     joins: Mutex<Option<Joins>>,
+    /// A flag whether we've already spawned a ctrlc tasks;
+    /// this can only be done once.
     ctrlc_task_spawned: AtomicBool,
 }
 
