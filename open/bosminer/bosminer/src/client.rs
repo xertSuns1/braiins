@@ -203,6 +203,25 @@ impl Registry {
             .map(|scheduler_handle| scheduler_handle.client_handle.clone())
     }
 
+    fn recalculate_quotas(&mut self, reset_generated_work: bool) {
+        let clients = self.count();
+        let percentage_share = if clients > 0 {
+            1.0 / clients as f64
+        } else {
+            return;
+        };
+
+        // Update all clients with newly calculated percentage share.
+        // Also reset generated work to prevent switching all future work to new client because
+        // new client has zero shares and so maximal error.
+        for mut scheduler_handle in self.iter_mut() {
+            if reset_generated_work {
+                scheduler_handle.reset_generated_work();
+            }
+            scheduler_handle.percentage_share = percentage_share;
+        }
+    }
+
     fn register_client(
         &mut self,
         scheduler_handle: scheduler::Handle,
@@ -215,10 +234,30 @@ impl Registry {
             "BUG: client already present in the registry"
         );
         self.list.push(scheduler_handle);
+        self.recalculate_quotas(true);
+
         (
             self.list.last().expect("BUG: client list is empty"),
             self.list.len() - 1,
         )
+    }
+
+    fn unregister_client(
+        &mut self,
+        client_handle: Arc<Handle>,
+    ) -> Result<scheduler::Handle, error::Client> {
+        if let Some(index) = self
+            .list
+            .iter()
+            .position(|scheduler_handle| scheduler_handle.client_handle == client_handle)
+        {
+            let scheduler_handle = self.list.remove(index);
+            self.recalculate_quotas(false);
+
+            Ok(scheduler_handle)
+        } else {
+            Err(error::Client::Missing)
+        }
     }
 
     fn swap_clients(

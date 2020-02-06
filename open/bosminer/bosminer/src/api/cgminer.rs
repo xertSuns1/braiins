@@ -570,12 +570,29 @@ impl command::Handler for Handler {
 
     async fn handle_remove_pool(
         &self,
-        _parameter: Option<&json::Value>,
+        parameter: Option<&json::Value>,
     ) -> command::Result<response::RemovePool> {
-        // TODO: implement pool removal
+        let idx = parameter
+            .expect("BUG: missing REMOVEPOOL parameter")
+            .to_i32()
+            .expect("BUG: invalid REMOVEPOOL parameter type");
+        let mut url;
+
+        loop {
+            let client = self.get_client(idx).await?;
+            url = client.descriptor.get_url(true, true, false);
+
+            match self.core.remove_client(client).await {
+                // Try it again because there was probably a race
+                Err(error::Client::Missing) => continue,
+                Err(e) => panic!("BUG: unexpected error: {}", e.to_string()),
+                Ok(_) => break,
+            };
+        }
+
         Ok(response::RemovePool {
-            idx: 0,
-            url: "".to_string(),
+            idx: idx as usize,
+            url,
         })
     }
 
@@ -596,6 +613,7 @@ impl command::Handler for Handler {
                 error::Client::OutOfRange(idx, limit) => {
                     response::ErrorCode::InvalidPoolId(idx as i32, limit as i32 - 1)
                 }
+                _ => panic!("BUG: unexpected error: {}", e.to_string()),
             })?;
 
         let _ = client.try_enable();

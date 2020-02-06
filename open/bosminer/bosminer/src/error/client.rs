@@ -24,6 +24,8 @@ use failure::Fail;
 
 #[derive(Clone, Eq, PartialEq, Debug, Fail)]
 pub enum ErrorKind {
+    #[fail(display = "the client has been already unregistered")]
+    Missing,
     #[fail(display = "index {} out of range (0..{}>", _0, _1)]
     OutOfRange(usize, usize),
 }

@@ -157,6 +157,7 @@ impl Core {
     /// Adds a client that is dynamically created using its `create` method. The reason for
     /// late building of the client is that the closure requires a job solver that is dynamically
     /// created
+    #[inline]
     pub async fn add_client<F, T>(
         &self,
         descriptor: Descriptor,
@@ -167,6 +168,12 @@ impl Core {
         F: FnOnce(job::Solver) -> T,
     {
         self.job_executor.add_client(descriptor, create).await
+    }
+
+    /// Removes the client and disable it
+    #[inline]
+    pub async fn remove_client(&self, client: Arc<client::Handle>) -> Result<(), error::Client> {
+        self.job_executor.remove_client(client).await
     }
 
     /// Attempt to switch the clients at the same index is explicitly permitted here and results

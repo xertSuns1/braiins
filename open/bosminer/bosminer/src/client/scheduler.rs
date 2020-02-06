@@ -41,7 +41,7 @@ use std::time;
 pub struct Handle {
     pub client_handle: Arc<client::Handle>,
     generated_work: LocalGeneratedWork,
-    percentage_share: f64,
+    pub percentage_share: f64,
 }
 
 impl Handle {
@@ -50,7 +50,6 @@ impl Handle {
         client_node: T,
         engine_sender: Arc<work::EngineSender>,
         solution_sender: mpsc::UnboundedSender<work::Solution>,
-        percentage_share: f64,
     ) -> Self
     where
         T: node::Client + 'static,
@@ -63,7 +62,7 @@ impl Handle {
                 solution_sender,
             )),
             generated_work: LocalGeneratedWork::new(),
-            percentage_share,
+            percentage_share: 0.0,
         }
     }
 
@@ -77,7 +76,8 @@ impl Handle {
         self.generated_work.update(global_generated_work)
     }
 
-    fn reset_generated_work(&mut self) {
+    #[inline]
+    pub fn reset_generated_work(&mut self) {
         self.generated_work.reset();
     }
 }
@@ -203,21 +203,6 @@ impl JobDispatcher {
     {
         let mut client_registry = self.client_registry.lock().await;
 
-        let clients = client_registry.count();
-        let percentage_share = if clients > 0 {
-            1.0 / (clients + 1) as f64
-        } else {
-            1.0
-        };
-
-        // Update all clients with newly calculated percentage share.
-        // Also reset generated work to prevent switching all future work to new client because
-        // new client has zero shares and so maximal error.
-        for mut client in client_registry.iter_mut() {
-            client.reset_generated_work();
-            client.percentage_share = percentage_share;
-        }
-
         let (solution_sender, solution_receiver) = mpsc::unbounded();
 
         // Initially register new client without ability to send work
@@ -234,7 +219,6 @@ impl JobDispatcher {
             create(job_solver),
             engine_sender,
             solution_sender,
-            percentage_share,
         );
 
         let (scheduler_handle, client_idx) = client_registry.register_client(scheduler_handle);
@@ -247,6 +231,21 @@ impl JobDispatcher {
         }
 
         (scheduler_handle.client_handle.clone(), client_idx)
+    }
+
+    async fn unregister_client(
+        &mut self,
+        client_handle: Arc<client::Handle>,
+    ) -> Result<Handle, error::Client> {
+        let mut client_registry = self.client_registry.lock().await;
+
+        let scheduler_handle = client_registry.unregister_client(client_handle)?;
+
+        // If anybody holds client handle then it can be enabled again but for usual case
+        // we force client stop immediately after unregistration from registry
+        let _ = scheduler_handle.client_handle.try_disable();
+
+        Ok(scheduler_handle)
     }
 
     async fn add_client<F, T>(
@@ -266,6 +265,21 @@ impl JobDispatcher {
         }
 
         (client_handle, client_idx)
+    }
+
+    async fn remove_client(
+        &mut self,
+        client_handle: Arc<client::Handle>,
+    ) -> Result<(), error::Client> {
+        let client_handle = self.unregister_client(client_handle).await?.client_handle;
+
+        // Select new active client when current one is the deleted client
+        if self.active_client == client_handle {
+            let next_client = self.select_client(0).await;
+            self.switch_client(next_client);
+        }
+
+        Ok(())
     }
 
     fn switch_client<T>(&mut self, next_client: T)
@@ -388,6 +402,7 @@ impl JobExecutor {
         client.map(|client| client.solution_sender.clone())
     }
 
+    #[inline]
     pub async fn add_client<F, T>(
         &self,
         descriptor: Descriptor,
@@ -400,6 +415,17 @@ impl JobExecutor {
         self.lock_dispatcher()
             .await
             .add_client(descriptor, create)
+            .await
+    }
+
+    #[inline]
+    pub async fn remove_client(
+        &self,
+        client_handle: Arc<client::Handle>,
+    ) -> Result<(), error::Client> {
+        self.lock_dispatcher()
+            .await
+            .remove_client(client_handle)
             .await
     }
 
