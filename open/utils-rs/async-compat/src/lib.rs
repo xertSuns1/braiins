@@ -322,3 +322,121 @@ impl HaltHandle {
             .map_err(|e| HaltError::Join(e))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::prelude::*;
+    use super::*;
+
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use tokio::{stream, time};
+
+    /// Wait indefinitely on a stream with a `Tripwire` for cancellation.
+    async fn forever_stream(tripwire: Tripwire) {
+        let mut stream = stream::pending::<()>().take_until(tripwire);
+
+        // The pending stream never actually yields a value,
+        // ie. next() resolves to None only in the canelled case,
+        // otherwise it doesn't return at all.
+        stream.next().await;
+    }
+
+    // Basic functional test
+    #[tokio::test]
+    async fn test_halthandle_basic() {
+        let handle = HaltHandle::new();
+
+        // Spawn a couple of tasks on the handle
+        for _ in 0..10 {
+            handle.spawn(|tripwire| {
+                async {
+                    forever_stream(tripwire).await;
+                }
+            });
+        }
+
+        // Signal halt and join tasks
+        handle.halt();
+        handle.join(None).await.expect("join() failed");
+    }
+
+    // The same as basic test but with halting happening from within a task.
+    // In this case the `HaltHandle` is shared in an `Arc`.
+    #[tokio::test]
+    async fn test_halthandle_shared() {
+        let handle = HaltHandle::arc();
+
+        // Spawn a couple of tasks on the handle
+        for _ in 0..10 {
+            handle.spawn(|tripwire| {
+                async {
+                    forever_stream(tripwire).await;
+                }
+            });
+        }
+
+        // Spawn a task that will halt()
+        let handle2 = handle.clone();
+        handle.spawn(|_| {
+            async move {
+                handle2.halt();
+            }
+        });
+
+        // Join tasks
+        handle.join(None).await.expect("join() failed");
+    }
+
+    // Test that if cleanup after halt takes too long, handler will return the right error
+    #[tokio::test]
+    async fn test_halthandle_timeout() {
+        let handle = HaltHandle::new();
+
+        handle.spawn(|tripwire| {
+            async {
+                forever_stream(tripwire).await;
+
+                // Delay cleanup on purpose here
+                time::delay_for(Duration::from_secs(9001)).await;
+            }
+        });
+
+        handle.halt();
+        let res = handle.join(Some(Duration::from_millis(100))).await;
+
+        // Verify we've got a timeout
+        match &res {
+            Err(HaltError::Timeout) => (),
+            _ => panic!(
+                "join result was supposed to be HaltError::Timeout but was instead: {:?}",
+                res
+            ),
+        }
+    }
+
+    // Verify panicking works
+    #[tokio::test]
+    async fn test_halthandle_panic() {
+        let handle = HaltHandle::new();
+
+        handle.spawn(|_| {
+            async {
+                panic!("Things aren't going well");
+            }
+        });
+
+        handle.halt();
+        let res = handle.join(Some(Duration::from_millis(100))).await;
+
+        // Verify we've got a join error
+        match &res {
+            Err(HaltError::Join(_)) => (),
+            _ => panic!(
+                "join result was supposed to be HaltError::Join but was instead: {:?}",
+                res
+            ),
+        }
+    }
+}
