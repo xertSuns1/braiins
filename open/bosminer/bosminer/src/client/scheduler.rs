@@ -408,8 +408,11 @@ impl JobExecutor {
         a: usize,
         b: usize,
     ) -> Result<(Arc<client::Handle>, Arc<client::Handle>), error::Client> {
-        self.client_registry.lock().await.swap_clients(a, b)
-        // TODO: force scheduler
+        let result = self.client_registry.lock().await.swap_clients(a, b);
+        // Run scheduler with delta 0 to select client with higher priority
+        self.lock_dispatcher().await.schedule(0).await;
+
+        result
     }
 
     pub async fn run(self: Arc<Self>) {
