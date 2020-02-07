@@ -23,7 +23,6 @@
 use crate::client;
 use crate::error;
 use crate::job;
-use crate::node;
 use crate::work;
 
 use bosminer_config::client::Descriptor;
@@ -45,22 +44,9 @@ pub struct Handle {
 }
 
 impl Handle {
-    pub fn new<T>(
-        descriptor: Descriptor,
-        client_node: T,
-        engine_sender: Arc<work::EngineSender>,
-        solution_sender: mpsc::UnboundedSender<work::Solution>,
-    ) -> Self
-    where
-        T: node::Client + 'static,
-    {
+    pub fn new(client_handle: client::Handle) -> Self {
         Self {
-            client_handle: Arc::new(client::Handle::new::<T>(
-                descriptor,
-                client_node,
-                engine_sender,
-                solution_sender,
-            )),
+            client_handle: Arc::new(client_handle),
             generated_work: LocalGeneratedWork::new(),
             percentage_share: 0.0,
         }

@@ -238,12 +238,8 @@ impl Registry {
                 job_solver,
             ),
         };
-        self.list.push(scheduler::Handle::new(
-            descriptor,
-            client_node,
-            engine_sender,
-            solution_sender,
-        ));
+        let client_handle = Handle::new(descriptor, client_node, engine_sender, solution_sender);
+        self.list.push(scheduler::Handle::new(client_handle));
 
         self.recalculate_quotas(true);
         self.list.last().expect("BUG: client list is empty")
