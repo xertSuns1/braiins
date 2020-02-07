@@ -147,6 +147,30 @@ impl Handle {
     }
 }
 
+impl From<Descriptor> for Handle {
+    fn from(descriptor: Descriptor) -> Self {
+        let (solution_sender, solution_receiver) = mpsc::unbounded();
+        // Initially register new client without ability to send work
+        let engine_sender = Arc::new(work::EngineSender::new(None));
+
+        let job_solver = job::Solver::new(engine_sender.clone(), solution_receiver);
+        let client_node = match &descriptor.protocol {
+            Protocol::StratumV2 => stratum_v2::StratumClient::new(
+                stratum_v2::ConnectionDetails::from_descriptor(&descriptor),
+                job_solver,
+            ),
+        };
+
+        Self {
+            descriptor,
+            node: Arc::new(client_node),
+            enabled: AtomicBool::new(false),
+            engine_sender,
+            solution_sender,
+        }
+    }
+}
+
 impl Drop for Handle {
     fn drop(&mut self) {
         self.node.stop();
