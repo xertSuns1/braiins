@@ -22,10 +22,7 @@
 
 use crate::client;
 use crate::error;
-use crate::job;
 use crate::work;
-
-use bosminer_config::client::Descriptor;
 
 use futures::channel::mpsc;
 use futures::lock::{Mutex, MutexGuard};
@@ -44,9 +41,9 @@ pub struct Handle {
 }
 
 impl Handle {
-    pub fn new(client_handle: client::Handle) -> Self {
+    pub fn new(client_handle: Arc<client::Handle>) -> Self {
         Self {
-            client_handle: Arc::new(client_handle),
+            client_handle,
             generated_work: LocalGeneratedWork::new(),
             percentage_share: 0.0,
         }
@@ -159,42 +156,27 @@ impl PartialEq<Arc<client::Handle>> for ActiveClient {
 
 /// Responsible for selecting and switching jobs
 struct JobDispatcher {
-    midstate_count: usize,
     active_client: ActiveClient,
     client_registry: Arc<Mutex<client::Registry>>,
 }
 
 impl JobDispatcher {
     fn new(
-        midstate_count: usize,
         engine_sender: work::EngineSender,
         client_registry: Arc<Mutex<client::Registry>>,
     ) -> Self {
         Self {
-            midstate_count,
             active_client: ActiveClient::None(Arc::new(engine_sender)),
             client_registry,
         }
     }
 
     /// Returns the registered `client::Handle`
-    async fn create_and_register_client(&mut self, descriptor: Descriptor) -> Arc<client::Handle> {
+    async fn register_client(&mut self, client_handle: Arc<client::Handle>) {
         let mut client_registry = self.client_registry.lock().await;
 
-        let (solution_sender, solution_receiver) = mpsc::unbounded();
-
-        // Initially register new client without ability to send work
-        let engine_sender = Arc::new(work::EngineSender::new(None));
-        let midstate_count = self.midstate_count;
-        let _ = engine_sender.replace_engine_generator(Box::new(move |job| {
-            Arc::new(work::engine::VersionRolling::new(job, midstate_count))
-        }));
-
-        let job_solver = job::Solver::new(engine_sender.clone(), solution_receiver);
-
-        let enable_client = descriptor.enable;
-        let scheduler_handle =
-            client_registry.register_client(descriptor, job_solver, engine_sender, solution_sender);
+        let enable_client = client_handle.descriptor.enable;
+        let scheduler_handle = client_registry.register_client(client_handle);
 
         if enable_client {
             scheduler_handle
@@ -202,8 +184,6 @@ impl JobDispatcher {
                 .try_enable()
                 .expect("BUG: client is already enabled");
         }
-
-        scheduler_handle.client_handle.clone()
     }
 
     async fn unregister_client(
@@ -221,15 +201,13 @@ impl JobDispatcher {
         Ok(scheduler_handle)
     }
 
-    async fn add_client(&mut self, descriptor: Descriptor) -> Arc<client::Handle> {
-        let client_handle = self.create_and_register_client(descriptor).await;
+    async fn add_client(&mut self, client_handle: Arc<client::Handle>) {
+        self.register_client(client_handle.clone()).await;
 
         // When there is no active client then set current one
         if self.active_client.is_none() {
-            self.switch_client(client_handle.clone());
+            self.switch_client(client_handle);
         }
-
-        client_handle
     }
 
     async fn remove_client(
@@ -317,7 +295,6 @@ impl JobExecutor {
     const SCHEDULE_INTERVAL: time::Duration = time::Duration::from_secs(1);
 
     pub fn new(
-        midstate_count: usize,
         frontend: Arc<crate::Frontend>,
         engine_sender: work::EngineSender,
         client_registry: Arc<Mutex<client::Registry>>,
@@ -325,11 +302,7 @@ impl JobExecutor {
         Self {
             frontend,
             client_registry: client_registry.clone(),
-            dispatcher: Mutex::new(JobDispatcher::new(
-                midstate_count,
-                engine_sender,
-                client_registry,
-            )),
+            dispatcher: Mutex::new(JobDispatcher::new(engine_sender, client_registry)),
         }
     }
 
@@ -368,8 +341,8 @@ impl JobExecutor {
     }
 
     #[inline]
-    pub async fn add_client(&self, descriptor: Descriptor) -> Arc<client::Handle> {
-        self.lock_dispatcher().await.add_client(descriptor).await
+    pub async fn add_client(&self, client_handle: Arc<client::Handle>) {
+        self.lock_dispatcher().await.add_client(client_handle).await
     }
 
     #[inline]

@@ -57,22 +57,12 @@ pub struct Handle {
 }
 
 impl Handle {
-    fn new<T>(
-        descriptor: Descriptor,
-        client_node: T,
-        engine_sender: Arc<work::EngineSender>,
-        solution_sender: mpsc::UnboundedSender<work::Solution>,
-    ) -> Self
-    where
-        T: node::Client + 'static,
-    {
-        Self {
-            descriptor,
-            node: Arc::new(client_node),
-            enabled: AtomicBool::new(false),
-            engine_sender,
-            solution_sender,
-        }
+    pub fn replace_engine_generator(
+        &self,
+        engine_generator: work::EngineGenerator,
+    ) -> work::EngineGenerator {
+        self.engine_sender
+            .replace_engine_generator(engine_generator)
     }
 
     /// Tests if solution should be delivered to this client
@@ -249,20 +239,7 @@ impl Registry {
     }
 
     /// Register client that implements a protocol set in `descriptor`
-    fn register_client(
-        &mut self,
-        descriptor: Descriptor,
-        job_solver: job::Solver,
-        engine_sender: Arc<work::EngineSender>,
-        solution_sender: mpsc::UnboundedSender<work::Solution>,
-    ) -> &scheduler::Handle {
-        let client_node = match &descriptor.protocol {
-            Protocol::StratumV2 => stratum_v2::StratumClient::new(
-                stratum_v2::ConnectionDetails::from_descriptor(&descriptor),
-                job_solver,
-            ),
-        };
-        let client_handle = Handle::new(descriptor, client_node, engine_sender, solution_sender);
+    fn register_client(&mut self, client_handle: Arc<Handle>) -> &scheduler::Handle {
         self.list.push(scheduler::Handle::new(client_handle));
 
         self.recalculate_quotas(true);

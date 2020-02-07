@@ -580,7 +580,7 @@ impl command::Handler for Handler {
         let client_descriptor = self
             .get_client_descriptor(parameter)
             .map_err(|_| response::ErrorCode::InvalidAddPoolDetails(parameter.to_string()))?;
-        let client = self.core.add_client(client_descriptor).await;
+        let client = self.core.add_client(client_descriptor.into()).await;
         let clients = self.core.get_clients().await;
 
         // There is race for client index determination so use index out of range when the client

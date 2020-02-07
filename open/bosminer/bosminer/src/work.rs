@@ -301,7 +301,7 @@ pub fn engine_channel(event_handler: impl ExhaustedHandler) -> (EngineSender, En
     )
 }
 
-type EngineGenerator = Box<dyn Fn(Arc<dyn job::Bitcoin>) -> DynEngine + Send + 'static>;
+pub type EngineGenerator = Box<dyn Fn(Arc<dyn job::Bitcoin>) -> DynEngine + Send + 'static>;
 
 struct EngineSenderInner {
     engine_generator: Option<EngineGenerator>,

@@ -32,8 +32,6 @@ use crate::hal;
 use crate::node;
 use crate::work;
 
-use bosminer_config::client::Descriptor;
-
 use futures::channel::mpsc;
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
@@ -84,6 +82,7 @@ impl SolutionRouter {
 }
 
 pub struct Core {
+    midstate_count: usize,
     pub frontend: Arc<crate::Frontend>,
     job_executor: Arc<client::JobExecutor>,
     engine_receiver: work::EngineReceiver,
@@ -104,13 +103,13 @@ impl Core {
 
         let client_registry = Arc::new(Mutex::new(client::Registry::new()));
         let job_executor = Arc::new(client::JobExecutor::new(
-            midstate_count,
             frontend.clone(),
             engine_sender,
             client_registry.clone(),
         ));
 
         Self {
+            midstate_count,
             frontend,
             job_executor: job_executor.clone(),
             engine_receiver,
@@ -155,8 +154,16 @@ impl Core {
 
     /// Register client that implements a protocol set in `descriptor`
     #[inline]
-    pub async fn add_client(&self, descriptor: Descriptor) -> Arc<client::Handle> {
-        self.job_executor.add_client(descriptor).await
+    pub async fn add_client(&self, client: client::Handle) -> Arc<client::Handle> {
+        let midstate_count = self.midstate_count;
+        let _ = client.replace_engine_generator(Box::new(move |job| {
+            Arc::new(work::engine::VersionRolling::new(job, midstate_count))
+        }));
+        let _ = client.try_disable();
+
+        let client = Arc::new(client);
+        self.job_executor.add_client(client.clone()).await;
+        client
     }
 
     /// Removes the client and disable it
