@@ -196,11 +196,14 @@ impl Registry {
     }
 
     #[inline]
-    pub fn get_client(&self, index: usize) -> Result<Arc<Handle>, error::Client> {
+    fn get_scheduler_handle(
+        &self,
+        client_handle: &Arc<Handle>,
+    ) -> Result<&scheduler::Handle, error::Client> {
         self.list
-            .get(index)
-            .ok_or(error::Client::OutOfRange(index, self.list.len()))
-            .map(|scheduler_handle| scheduler_handle.client_handle.clone())
+            .iter()
+            .find(|scheduler_handle| scheduler_handle.client_handle == *client_handle)
+            .ok_or(error::Client::Missing)
     }
 
     fn recalculate_quotas(&mut self, reset_generated_work: bool) {
@@ -260,18 +263,20 @@ impl Registry {
         }
     }
 
-    fn swap_clients(
-        &mut self,
-        a: usize,
-        b: usize,
-    ) -> Result<(Arc<Handle>, Arc<Handle>), error::Client> {
-        assert_ne!(a, b, "BUG: swapping clients with the same index");
-        let client_handle_a = self.get_client(a)?;
-        let client_handle_b = self.get_client(b)?;
-
-        self.list.swap(a, b);
-
-        Ok((client_handle_a, client_handle_b))
+    fn reorder_clients<'a, 'b, T>(&'a mut self, client_handles: T) -> Result<(), error::Client>
+    where
+        T: Iterator<Item = &'b Arc<Handle>>,
+    {
+        let mut scheduler_handles = Vec::with_capacity(self.list.len());
+        for client_handle in client_handles {
+            scheduler_handles.push(self.get_scheduler_handle(&client_handle)?.clone());
+        }
+        if self.list.len() != scheduler_handles.len() {
+            Err(error::Client::Additional)
+        } else {
+            self.list = scheduler_handles;
+            Ok(())
+        }
     }
 }
 

@@ -37,7 +37,7 @@ use std::sync::Arc;
 use std::time;
 
 /// Private client handle with internal information which shouldn't be leaked
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Handle {
     pub client_handle: Arc<client::Handle>,
     generated_work: LocalGeneratedWork,
@@ -429,15 +429,21 @@ impl JobExecutor {
             .await
     }
 
-    pub async fn swap_clients(
-        &self,
-        a: usize,
-        b: usize,
-    ) -> Result<(Arc<client::Handle>, Arc<client::Handle>), error::Client> {
-        let result = self.client_registry.lock().await.swap_clients(a, b);
+    pub async fn reorder_clients<'a, 'b, T>(
+        &'a self,
+        client_handles: T,
+    ) -> Result<(), error::Client>
+    where
+        T: Iterator<Item = &'b Arc<client::Handle>>,
+    {
+        let result = self
+            .client_registry
+            .lock()
+            .await
+            .reorder_clients(client_handles);
+
         // Run scheduler with delta 0 to select client with higher priority
         self.lock_dispatcher().await.schedule(0).await;
-
         result
     }
 

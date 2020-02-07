@@ -176,23 +176,13 @@ impl Core {
         self.job_executor.remove_client(client).await
     }
 
-    /// Attempt to switch the clients at the same index is explicitly permitted here and results
-    /// in returning a tuple with the same client
+    /// Attempt to switch the clients
     #[inline]
-    pub async fn swap_clients(
-        &self,
-        a: usize,
-        b: usize,
-    ) -> Result<(Arc<client::Handle>, Arc<client::Handle>), error::Client> {
-        if a != b {
-            self.job_executor.swap_clients(a, b).await
-        } else {
-            self.client_registry
-                .lock()
-                .await
-                .get_client(a)
-                .map(|client| (client.clone(), client))
-        }
+    pub async fn reorder_clients<'a, 'b, T>(&'a self, clients: T) -> Result<(), error::Client>
+    where
+        T: Iterator<Item = &'b Arc<client::Handle>>,
+    {
+        self.job_executor.reorder_clients(clients).await
     }
 
     #[inline]

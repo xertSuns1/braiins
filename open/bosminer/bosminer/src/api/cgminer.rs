@@ -337,12 +337,16 @@ impl Handler {
         .await
     }
 
-    async fn get_client(&self, idx: i32) -> Result<Arc<client::Handle>, response::ErrorCode> {
+    async fn get_client(
+        &self,
+        idx: i32,
+    ) -> Result<(Arc<client::Handle>, Vec<Arc<client::Handle>>), response::ErrorCode> {
         let clients = self.core.get_clients().await;
         clients
             .get(idx as usize)
             .cloned()
             .ok_or_else(|| response::ErrorCode::InvalidPoolId(idx, clients.len() as i32 - 1))
+            .map(|client| (client, clients))
     }
 
     fn get_client_descriptor(&self, parameter: &str) -> Result<Descriptor, ()> {
@@ -527,7 +531,7 @@ impl command::Handler for Handler {
             .expect("BUG: missing ENABLEPOOL parameter")
             .to_i32()
             .expect("BUG: invalid ENABLEPOOL parameter type");
-        let client = self.get_client(idx).await?;
+        let (client, _) = self.get_client(idx).await?;
         let url = client.descriptor.get_url(true, true, false);
 
         client
@@ -548,7 +552,7 @@ impl command::Handler for Handler {
             .expect("BUG: missing DISABLEPOOL parameter")
             .to_i32()
             .expect("BUG: invalid DISABLEPOOL parameter type");
-        let client = self.get_client(idx).await?;
+        let (client, _) = self.get_client(idx).await?;
         let url = client.descriptor.get_url(true, true, false);
 
         client
@@ -592,11 +596,11 @@ impl command::Handler for Handler {
         let mut url;
 
         loop {
-            let client = self.get_client(idx).await?;
+            let (client, _) = self.get_client(idx).await?;
             url = client.descriptor.get_url(true, true, false);
 
             match self.core.remove_client(client).await {
-                // Try it again because there was probably a race
+                // Try it again because there was probably a race and registry is changed
                 Err(error::Client::Missing) => continue,
                 Err(e) => panic!("BUG: unexpected error: {}", e.to_string()),
                 Ok(_) => break,
@@ -617,22 +621,32 @@ impl command::Handler for Handler {
             .expect("BUG: missing SWITCHPOOL parameter")
             .to_i32()
             .expect("BUG: invalid SWITCHPOOL parameter type");
+        let mut url;
+        let client;
 
-        let (client, _) = self
-            .core
-            .swap_clients(idx as usize, 0)
-            .await
-            .map_err(|e| match e {
-                error::Client::OutOfRange(idx, limit) => {
-                    response::ErrorCode::InvalidPoolId(idx as i32, limit as i32 - 1)
+        loop {
+            let (client1, clients) = self.get_client(idx).await?;
+            url = client1.descriptor.get_url(true, true, false);
+
+            let (clients2, clients3) = clients.split_at(idx as usize);
+            let clients = std::iter::once(&client1)
+                .chain(clients2.into_iter())
+                .chain(clients3.into_iter().skip(1));
+
+            match self.core.reorder_clients(clients).await {
+                // Try it again because there was probably a race and registry is changed
+                Err(error::Client::Missing) | Err(error::Client::Additional) => continue,
+                Ok(_) => {
+                    client = client1;
+                    break;
                 }
-                _ => panic!("BUG: unexpected error: {}", e.to_string()),
-            })?;
+            };
+        }
 
         let _ = client.try_enable();
         Ok(response::SwitchPool {
             idx: idx as usize,
-            url: client.descriptor.get_url(true, true, false),
+            url,
         })
     }
 
