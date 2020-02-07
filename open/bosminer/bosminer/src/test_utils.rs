@@ -357,7 +357,7 @@ pub fn create_test_work_solver() -> Arc<TestWorkSolver> {
 pub fn create_test_work_receiver() -> work::EngineReceiver {
     let work_engine = Arc::new(TestWorkEngine::new());
     let (sender, receiver) = work::engine_channel(work::IgnoreEvents);
-    sender.broadcast(work_engine);
+    sender.broadcast_engine(work_engine);
     receiver
 }
 

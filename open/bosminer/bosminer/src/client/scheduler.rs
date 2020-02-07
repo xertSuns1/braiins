@@ -185,11 +185,12 @@ impl JobDispatcher {
 
         // Initially register new client without ability to send work
         let engine_sender = Arc::new(work::EngineSender::new(None));
-        let job_solver = job::Solver::new(
-            self.midstate_count,
-            engine_sender.clone(),
-            solution_receiver,
-        );
+        let midstate_count = self.midstate_count;
+        let _ = engine_sender.replace_engine_generator(Box::new(move |job| {
+            Arc::new(work::engine::VersionRolling::new(job, midstate_count))
+        }));
+
+        let job_solver = job::Solver::new(engine_sender.clone(), solution_receiver);
 
         let enable_client = descriptor.enable;
         let scheduler_handle =

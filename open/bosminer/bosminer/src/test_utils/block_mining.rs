@@ -335,7 +335,7 @@ pub async fn run<T: hal::Backend>(mut backend_config: T::Config) {
 
     // TODO: first work sent to miner is for some reason ignored
     // workaround: send two works
-    engine_sender.broadcast(Arc::new(test_utils::OneWorkEngine::new(
+    engine_sender.broadcast_engine(Arc::new(test_utils::OneWorkEngine::new(
         Problem::new((&test_utils::TEST_BLOCKS[0]).into(), 0).into_work(midstate_count),
     )));
 
@@ -352,7 +352,7 @@ pub async fn run<T: hal::Backend>(mut backend_config: T::Config) {
             }
             // wait for the work (engine) to be sent out (exhausted)
             reschedule_receiver.next().await;
-            engine_sender.broadcast(Arc::new(test_utils::OneWorkEngine::new(
+            engine_sender.broadcast_engine(Arc::new(test_utils::OneWorkEngine::new(
                 problem.clone().into_work(midstate_count),
             )));
         }

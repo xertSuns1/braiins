@@ -232,8 +232,11 @@ pub mod test {
         let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
         let (solution_sender, solution_receiver) = mpsc::unbounded();
         let frontend = Arc::new(crate::Frontend::new());
+        let _ = engine_sender.replace_engine_generator(Box::new(move |job| {
+            Arc::new(work::engine::VersionRolling::new(job, 1))
+        }));
         (
-            job::Solver::new(1, Arc::new(engine_sender), solution_receiver),
+            job::Solver::new(Arc::new(engine_sender), solution_receiver),
             work::SolverBuilder::new(
                 frontend,
                 Arc::new(backend::Registry::new()),

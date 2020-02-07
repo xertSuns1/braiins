@@ -301,8 +301,10 @@ pub fn engine_channel(event_handler: impl ExhaustedHandler) -> (EngineSender, En
     )
 }
 
-#[derive(Debug)]
+type EngineGenerator = Box<dyn Fn(Arc<dyn job::Bitcoin>) -> DynEngine + Send + 'static>;
+
 struct EngineSenderInner {
+    engine_generator: Option<EngineGenerator>,
     current_engine: DynEngine,
     sender: Option<watch::Sender<DynEngine>>,
 }
@@ -316,15 +318,26 @@ impl EngineSenderInner {
         }
     }
 
-    fn broadcast(&mut self, engine: DynEngine) {
+    fn broadcast_engine(&mut self, engine: DynEngine) {
         self.current_engine = engine;
+        self.re_broadcast();
+    }
+
+    fn broadcast_job(&mut self, job: Arc<dyn job::Bitcoin>) {
+        let engine = self
+            .engine_generator
+            .as_ref()
+            .expect("BUG: missing engine generator")(job);
+        self.broadcast_engine(engine);
+    }
+
+    fn invalidate(&mut self) {
+        self.current_engine = Arc::new(engine::ExhaustedWork);
         self.re_broadcast();
     }
 }
 
-/// Sender is responsible for broadcasting a new WorkEngine to all mining
-/// backends
-#[derive(Debug)]
+/// Sender is responsible for broadcasting a new WorkEngine to all mining backends
 pub struct EngineSender {
     inner: StdMutex<EngineSenderInner>,
 }
@@ -343,6 +356,7 @@ impl EngineSender {
     {
         Self {
             inner: StdMutex::new(EngineSenderInner {
+                engine_generator: Some(Box::new(|_| Arc::new(engine::ExhaustedWork))),
                 current_engine,
                 sender: sender.into(),
             }),
@@ -351,6 +365,13 @@ impl EngineSender {
 
     fn lock_inner(&self) -> StdMutexGuard<EngineSenderInner> {
         self.inner.lock().expect("cannot lock engine sender")
+    }
+
+    pub fn replace_engine_generator(&self, engine_generator: EngineGenerator) -> EngineGenerator {
+        self.lock_inner()
+            .engine_generator
+            .replace(engine_generator)
+            .expect("BUG: missing engine generator")
     }
 
     pub fn swap_sender(&self, other: &Self) {
@@ -368,8 +389,24 @@ impl EngineSender {
     }
 
     #[inline]
-    pub fn broadcast(&self, engine: DynEngine) {
-        self.lock_inner().broadcast(engine)
+    pub fn broadcast_engine(&self, engine: DynEngine) {
+        self.lock_inner().broadcast_engine(engine)
+    }
+
+    #[inline]
+    pub fn broadcast_job(&self, job: Arc<dyn job::Bitcoin>) {
+        self.lock_inner().broadcast_job(job)
+    }
+
+    #[inline]
+    pub fn invalidate(&self) {
+        self.lock_inner().invalidate();
+    }
+}
+
+impl Debug for EngineSender {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "EngineSender")
     }
 }
 
