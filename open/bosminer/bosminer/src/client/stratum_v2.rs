@@ -48,7 +48,7 @@ use std::net::ToSocketAddrs;
 use std::sync::{Arc, Weak};
 use std::time;
 
-use ii_stratum::v2::framing::Framing;
+use ii_stratum::v2::framing::{Framing, Header};
 use ii_stratum::v2::messages::{
     NewMiningJob, OpenStandardMiningChannel, OpenStandardMiningChannelError,
     OpenStandardMiningChannelSuccess, SetNewPrevHash, SetTarget, SetupConnection,
@@ -57,8 +57,8 @@ use ii_stratum::v2::messages::{
 };
 use ii_stratum::v2::types::DeviceInfo;
 use ii_stratum::v2::types::*;
-use ii_stratum::v2::{build_message_from_frame, Handler, Protocol};
-use ii_wire::{Connection, ConnectionRx, ConnectionTx, Message};
+use ii_stratum::v2::{build_message_from_frame, Handler};
+use ii_wire::{Connection, ConnectionRx, ConnectionTx};
 
 use std::collections::HashMap;
 
@@ -300,7 +300,7 @@ impl Handler for StratumEventHandler {
     //      - start mining the job it references (by job id)
     //      - flush all other jobs
 
-    async fn visit_new_mining_job(&mut self, _msg: &Message<Protocol>, job_msg: &NewMiningJob) {
+    async fn visit_new_mining_job(&mut self, _header: &Header, job_msg: &NewMiningJob) {
         // all jobs since last `prevmsg` have to be stored in job table
         self.all_jobs.insert(job_msg.job_id, job_msg.clone());
         // TODO: close connection when maximal capacity of `all_jobs` has been reached
@@ -311,11 +311,7 @@ impl Handler for StratumEventHandler {
         }
     }
 
-    async fn visit_set_new_prev_hash(
-        &mut self,
-        _msg: &Message<Protocol>,
-        prevhash_msg: &SetNewPrevHash,
-    ) {
+    async fn visit_set_new_prev_hash(&mut self, _header: &Header, prevhash_msg: &SetNewPrevHash) {
         self.current_prevhash_msg.replace(prevhash_msg.clone());
 
         // find the future job with ID referenced in prevhash_msg
@@ -336,23 +332,19 @@ impl Handler for StratumEventHandler {
         self.update_job(&future_job_msg).await;
     }
 
-    async fn visit_set_target(&mut self, _msg: &Message<Protocol>, target_msg: &SetTarget) {
+    async fn visit_set_target(&mut self, _header: &Header, target_msg: &SetTarget) {
         self.update_target(target_msg.max_target);
     }
 
     async fn visit_submit_shares_success(
         &mut self,
-        _msg: &Message<Protocol>,
+        _header: &Header,
         success_msg: &SubmitSharesSuccess,
     ) {
         self.process_accepted_shares(success_msg).await;
     }
 
-    async fn visit_submit_shares_error(
-        &mut self,
-        _msg: &Message<Protocol>,
-        error_msg: &SubmitSharesError,
-    ) {
+    async fn visit_submit_shares_error(&mut self, _header: &Header, error_msg: &SubmitSharesError) {
         self.process_rejected_shares(error_msg).await;
     }
 }
@@ -523,7 +515,7 @@ impl StratumConnectionHandler {
 impl Handler for StratumConnectionHandler {
     async fn visit_setup_connection_success(
         &mut self,
-        _msg: &Message<Protocol>,
+        _header: &Header,
         _success_msg: &SetupConnectionSuccess,
     ) {
         self.status = Ok(()).into();
@@ -531,7 +523,7 @@ impl Handler for StratumConnectionHandler {
 
     async fn visit_setup_connection_error(
         &mut self,
-        _msg: &Message<Protocol>,
+        _header: &Header,
         error_msg: &SetupConnectionError,
     ) {
         self.status =
@@ -540,7 +532,7 @@ impl Handler for StratumConnectionHandler {
 
     async fn visit_open_standard_mining_channel_success(
         &mut self,
-        _msg: &Message<Protocol>,
+        _header: &Header,
         success_msg: &OpenStandardMiningChannelSuccess,
     ) {
         self.init_target = success_msg.target.into();
@@ -549,7 +541,7 @@ impl Handler for StratumConnectionHandler {
 
     async fn visit_open_standard_mining_channel_error(
         &mut self,
-        _msg: &Message<Protocol>,
+        _header: &Header,
         error_msg: &OpenStandardMiningChannelError,
     ) {
         self.status =
