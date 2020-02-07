@@ -24,7 +24,6 @@
 //! the frontend and hardware specific backend.
 
 use crate::api;
-use crate::client;
 use crate::hal::{self, BackendConfig as _};
 use crate::hub;
 use crate::stats;
@@ -55,7 +54,7 @@ pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
 
     // start client based on user input
     for client_descriptor in clients {
-        client::register(&core, client_descriptor).await;
+        core.add_client(client_descriptor).await;
     }
 
     // the bosminer is controlled with API which also controls when the miner will end

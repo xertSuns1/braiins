@@ -577,10 +577,18 @@ impl command::Handler for Handler {
         let client_descriptor = self
             .get_client_descriptor(parameter)
             .map_err(|_| response::ErrorCode::InvalidAddPoolDetails(parameter.to_string()))?;
-        let (client, client_idx) = client::register(&self.core, client_descriptor).await;
+        let client = self.core.add_client(client_descriptor).await;
+        let clients = self.core.get_clients().await;
+
+        // There is race for client index determination so use index out of range when the client
+        // is missing after addition
+        let idx = clients
+            .iter()
+            .position(|x| x == &client)
+            .unwrap_or_else(|| clients.len() + 1);
 
         Ok(response::AddPool {
-            idx: client_idx,
+            idx,
             url: client.descriptor.get_url(true, true, false),
         })
     }

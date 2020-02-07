@@ -191,16 +191,8 @@ impl JobDispatcher {
         }
     }
 
-    /// Returns the registered `client::Handle` and its registration index
-    async fn create_and_register_client<F, T>(
-        &mut self,
-        descriptor: Descriptor,
-        create: F,
-    ) -> (Arc<client::Handle>, usize)
-    where
-        T: node::Client + 'static,
-        F: FnOnce(job::Solver) -> T,
-    {
+    /// Returns the registered `client::Handle`
+    async fn create_and_register_client(&mut self, descriptor: Descriptor) -> Arc<client::Handle> {
         let mut client_registry = self.client_registry.lock().await;
 
         let (solution_sender, solution_receiver) = mpsc::unbounded();
@@ -214,14 +206,8 @@ impl JobDispatcher {
         );
 
         let enable_client = descriptor.enable;
-        let scheduler_handle = Handle::new(
-            descriptor,
-            create(job_solver),
-            engine_sender,
-            solution_sender,
-        );
-
-        let (scheduler_handle, client_idx) = client_registry.register_client(scheduler_handle);
+        let scheduler_handle =
+            client_registry.register_client(descriptor, job_solver, engine_sender, solution_sender);
 
         if enable_client {
             scheduler_handle
@@ -230,7 +216,7 @@ impl JobDispatcher {
                 .expect("BUG: client is already enabled");
         }
 
-        (scheduler_handle.client_handle.clone(), client_idx)
+        scheduler_handle.client_handle.clone()
     }
 
     async fn unregister_client(
@@ -248,23 +234,15 @@ impl JobDispatcher {
         Ok(scheduler_handle)
     }
 
-    async fn add_client<F, T>(
-        &mut self,
-        descriptor: Descriptor,
-        create: F,
-    ) -> (Arc<client::Handle>, usize)
-    where
-        T: node::Client + 'static,
-        F: FnOnce(job::Solver) -> T,
-    {
-        let (client_handle, client_idx) = self.create_and_register_client(descriptor, create).await;
+    async fn add_client(&mut self, descriptor: Descriptor) -> Arc<client::Handle> {
+        let client_handle = self.create_and_register_client(descriptor).await;
 
         // When there is no active client then set current one
         if self.active_client.is_none() {
             self.switch_client(client_handle.clone());
         }
 
-        (client_handle, client_idx)
+        client_handle
     }
 
     async fn remove_client(
@@ -403,19 +381,8 @@ impl JobExecutor {
     }
 
     #[inline]
-    pub async fn add_client<F, T>(
-        &self,
-        descriptor: Descriptor,
-        create: F,
-    ) -> (Arc<client::Handle>, usize)
-    where
-        T: node::Client + 'static,
-        F: FnOnce(job::Solver) -> T,
-    {
-        self.lock_dispatcher()
-            .await
-            .add_client(descriptor, create)
-            .await
+    pub async fn add_client(&self, descriptor: Descriptor) -> Arc<client::Handle> {
+        self.lock_dispatcher().await.add_client(descriptor).await
     }
 
     #[inline]

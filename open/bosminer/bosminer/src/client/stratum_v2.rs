@@ -76,18 +76,16 @@ pub struct ConnectionDetails {
 }
 
 impl ConnectionDetails {
-    fn get_host_and_port(&self) -> String {
-        format!("{}:{}", self.host, self.port)
-    }
-}
-
-impl From<client::Descriptor> for ConnectionDetails {
-    fn from(descriptor: client::Descriptor) -> Self {
+    pub fn from_descriptor(descriptor: &client::Descriptor) -> Self {
         Self {
-            user: descriptor.user,
-            host: descriptor.host,
+            user: descriptor.user.clone(),
+            host: descriptor.host.clone(),
             port: descriptor.port,
         }
+    }
+
+    fn get_host_and_port(&self) -> String {
+        format!("{}:{}", self.host, self.port)
     }
 }
 

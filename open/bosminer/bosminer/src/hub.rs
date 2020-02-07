@@ -29,7 +29,6 @@ use crate::backend;
 use crate::client;
 use crate::error;
 use crate::hal;
-use crate::job;
 use crate::node;
 use crate::work;
 
@@ -154,20 +153,10 @@ impl Core {
         }
     }
 
-    /// Adds a client that is dynamically created using its `create` method. The reason for
-    /// late building of the client is that the closure requires a job solver that is dynamically
-    /// created
+    /// Register client that implements a protocol set in `descriptor`
     #[inline]
-    pub async fn add_client<F, T>(
-        &self,
-        descriptor: Descriptor,
-        create: F,
-    ) -> (Arc<client::Handle>, usize)
-    where
-        T: node::Client + 'static,
-        F: FnOnce(job::Solver) -> T,
-    {
-        self.job_executor.add_client(descriptor, create).await
+    pub async fn add_client(&self, descriptor: Descriptor) -> Arc<client::Handle> {
+        self.job_executor.add_client(descriptor).await
     }
 
     /// Removes the client and disable it
@@ -231,6 +220,7 @@ impl Core {
 #[cfg(test)]
 pub mod test {
     use super::*;
+    use crate::job;
     use crate::test_utils;
     use crate::Frontend;
 

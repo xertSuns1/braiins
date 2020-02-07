@@ -29,7 +29,6 @@ mod scheduler;
 pub mod stratum_v2;
 
 use crate::error;
-use crate::hub;
 use crate::job;
 use crate::node;
 use crate::stats;
@@ -225,24 +224,29 @@ impl Registry {
         }
     }
 
+    /// Register client that implements a protocol set in `descriptor`
     fn register_client(
         &mut self,
-        scheduler_handle: scheduler::Handle,
-    ) -> (&scheduler::Handle, usize) {
-        assert!(
-            self.list
-                .iter()
-                .find(|old| *old == &scheduler_handle)
-                .is_none(),
-            "BUG: client already present in the registry"
-        );
-        self.list.push(scheduler_handle);
-        self.recalculate_quotas(true);
+        descriptor: Descriptor,
+        job_solver: job::Solver,
+        engine_sender: Arc<work::EngineSender>,
+        solution_sender: mpsc::UnboundedSender<work::Solution>,
+    ) -> &scheduler::Handle {
+        let client_node = match &descriptor.protocol {
+            Protocol::StratumV2 => stratum_v2::StratumClient::new(
+                stratum_v2::ConnectionDetails::from_descriptor(&descriptor),
+                job_solver,
+            ),
+        };
+        self.list.push(scheduler::Handle::new(
+            descriptor,
+            client_node,
+            engine_sender,
+            solution_sender,
+        ));
 
-        (
-            self.list.last().expect("BUG: client list is empty"),
-            self.list.len() - 1,
-        )
+        self.recalculate_quotas(true);
+        self.list.last().expect("BUG: client list is empty")
     }
 
     fn unregister_client(
@@ -278,13 +282,4 @@ impl Registry {
             Ok(())
         }
     }
-}
-
-/// Register client that implements a protocol set in `descriptor`
-pub async fn register(core: &Arc<hub::Core>, descriptor: Descriptor) -> (Arc<Handle>, usize) {
-    // NOTE: the match statement needs to be updated in case of multiple protocol support
-    core.add_client(descriptor.clone(), |job_solver| match descriptor.protocol {
-        Protocol::StratumV2 => stratum_v2::StratumClient::new(descriptor.into(), job_solver),
-    })
-    .await
 }
