@@ -249,6 +249,9 @@ impl JobDispatcher {
 
     async fn select_client(&self, generated_work_delta: u64) -> Option<Arc<client::Handle>> {
         let mut client_registry = self.client_registry.lock().await;
+        if client_registry.is_empty() {
+            return None;
+        }
 
         let mut total_generated_work = 0;
         for client in client_registry.iter_mut() {
@@ -276,9 +279,16 @@ impl JobDispatcher {
     }
 
     async fn schedule(&mut self, generated_work_delta: u64) {
-        let next_client = self.select_client(generated_work_delta).await;
-
-        if let Some(next_client) = next_client {
+        match &self.active_client {
+            ActiveClient::Some(client_handle) => {
+                if generated_work_delta == 0 && client_handle.is_running() {
+                    // When some client is active and no work has been generated then do nothing
+                    return;
+                }
+            }
+            _ => {}
+        }
+        if let Some(next_client) = self.select_client(generated_work_delta).await {
             self.switch_client(next_client);
         }
     }
@@ -378,14 +388,11 @@ impl JobExecutor {
         loop {
             let last_generated_work = self.frontend.get_generated_work();
 
+            // TODO: Interrupt waiting whenever the client state has changed
             delay_for(Self::SCHEDULE_INTERVAL).await;
 
-            // determine how much work has been generated from last run
+            // Determine how much work has been generated from last run
             let generated_work_delta = self.frontend.get_generated_work() - last_generated_work;
-            if generated_work_delta == 0 {
-                // when no work has been generated then keep running job unchanged
-                continue;
-            }
 
             self.lock_dispatcher()
                 .await

@@ -76,10 +76,17 @@ impl Handle {
         )
     }
 
+    #[inline]
+    pub fn is_running(&self) -> bool {
+        self.is_enabled() && self.status() == crate::sync::Status::Running
+    }
+
+    #[inline]
     pub fn status(&self) -> crate::sync::Status {
         self.node.status().status()
     }
 
+    #[inline]
     fn start(&self) {
         if self.node.status().initiate_starting() {
             // The client can be started safely
@@ -87,6 +94,7 @@ impl Handle {
         }
     }
 
+    #[inline]
     fn stop(&self) {
         if self.node.status().initiate_stopping() {
             // The client can be stopped safely
@@ -189,6 +197,11 @@ impl Registry {
     #[inline]
     pub fn count(&self) -> usize {
         self.list.len()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.list.is_empty()
     }
 
     #[inline]
