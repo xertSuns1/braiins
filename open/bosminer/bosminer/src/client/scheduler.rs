@@ -35,6 +35,7 @@ use std::time;
 /// Private client handle with internal information which shouldn't be leaked
 #[derive(Debug, Clone)]
 pub struct Handle {
+    group: Vec<Arc<client::Group>>,
     pub client_handle: Arc<client::Handle>,
     generated_work: LocalGeneratedWork,
     pub percentage_share: f64,
@@ -43,6 +44,7 @@ pub struct Handle {
 impl Handle {
     pub fn new(client_handle: Arc<client::Handle>) -> Self {
         Self {
+            group: vec![],
             client_handle,
             generated_work: LocalGeneratedWork::new(),
             percentage_share: 0.0,

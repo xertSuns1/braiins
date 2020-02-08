@@ -40,6 +40,7 @@ pub use scheduler::JobExecutor;
 use bosminer_config::client::{Descriptor, Protocol};
 
 use futures::channel::mpsc;
+use futures::lock::Mutex;
 use ii_async_compat::futures;
 
 use std::slice;
@@ -181,6 +182,91 @@ impl PartialEq for Handle {
             &self.node.clone().get_unique_ptr(),
             &other.node.clone().get_unique_ptr(),
         )
+    }
+}
+
+#[derive(Debug)]
+pub struct Group {
+    client_handles: Mutex<Vec<Arc<Handle>>>,
+    midstate_count: usize,
+}
+
+impl Group {
+    #[inline]
+    pub async fn count(&self) -> usize {
+        self.client_handles.lock().await.len()
+    }
+
+    #[inline]
+    pub async fn is_empty(&self) -> bool {
+        self.client_handles.lock().await.is_empty()
+    }
+
+    #[inline]
+    pub async fn get_clients(&self) -> Vec<Arc<Handle>> {
+        self.client_handles.lock().await.iter().cloned().collect()
+    }
+
+    pub async fn add_client(&self, client_handle: Handle) -> Arc<Handle> {
+        let midstate_count = self.midstate_count;
+        let _ = client_handle.replace_engine_generator(Box::new(move |job| {
+            Arc::new(work::engine::VersionRolling::new(job, midstate_count))
+        }));
+        let _ = client_handle.try_disable();
+
+        let client_handle = Arc::new(client_handle);
+        self.client_handles.lock().await.push(client_handle.clone());
+
+        if client_handle.descriptor.enable {
+            client_handle
+                .try_enable()
+                .expect("BUG: client is already enabled");
+        }
+
+        client_handle
+    }
+
+    pub async fn remove_client_at(&self, index: usize) -> Result<Arc<Handle>, error::Client> {
+        let mut client_handles = self.client_handles.lock().await;
+        if index >= client_handles.len() {
+            Err(error::Client::Missing)
+        } else {
+            let client_handle = client_handles.remove(index);
+            // Immediately disable client to force scheduler to select another client
+            let _ = client_handle.try_disable();
+            Ok(client_handle)
+        }
+    }
+
+    pub async fn move_client_to(
+        &self,
+        index_from: usize,
+        index_to: usize,
+    ) -> Result<Arc<Handle>, error::Client> {
+        let mut client_handles = self.client_handles.lock().await;
+        if index_from >= client_handles.len() || index_to >= client_handles.len() {
+            return Err(error::Client::Missing);
+        }
+
+        if index_from > index_to {
+            *client_handles = [
+                &client_handles[0..index_to],
+                &client_handles[index_from..index_from + 1],
+                &client_handles[index_to..index_from],
+                &client_handles[index_from + 1..],
+            ]
+            .concat();
+        } else if index_from < index_to {
+            *client_handles = [
+                &client_handles[0..index_from],
+                &client_handles[index_from + 1..index_to + 1],
+                &client_handles[index_from..index_from + 1],
+                &client_handles[index_to + 1..],
+            ]
+            .concat();
+        }
+
+        Ok(client_handles[index_to].clone())
     }
 }
 
