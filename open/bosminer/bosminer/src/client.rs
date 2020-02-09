@@ -187,24 +187,29 @@ impl PartialEq for Handle {
 
 #[derive(Debug)]
 pub struct Group {
-    client_handles: Mutex<Vec<Arc<Handle>>>,
+    scheduler_client_handles: Mutex<Vec<scheduler::ClientHandle>>,
     midstate_count: usize,
 }
 
 impl Group {
     #[inline]
     pub async fn count(&self) -> usize {
-        self.client_handles.lock().await.len()
+        self.scheduler_client_handles.lock().await.len()
     }
 
     #[inline]
     pub async fn is_empty(&self) -> bool {
-        self.client_handles.lock().await.is_empty()
+        self.scheduler_client_handles.lock().await.is_empty()
     }
 
     #[inline]
     pub async fn get_clients(&self) -> Vec<Arc<Handle>> {
-        self.client_handles.lock().await.iter().cloned().collect()
+        self.scheduler_client_handles
+            .lock()
+            .await
+            .iter()
+            .map(|scheduler_handle| scheduler_handle.client_handle.clone())
+            .collect()
     }
 
     pub async fn add_client(&self, client_handle: Handle) -> Arc<Handle> {
@@ -215,7 +220,11 @@ impl Group {
         let _ = client_handle.try_disable();
 
         let client_handle = Arc::new(client_handle);
-        self.client_handles.lock().await.push(client_handle.clone());
+        let scheduler_client_handle = scheduler::ClientHandle::new(client_handle.clone());
+        self.scheduler_client_handles
+            .lock()
+            .await
+            .push(scheduler_client_handle);
 
         if client_handle.descriptor.enable {
             client_handle
@@ -227,11 +236,11 @@ impl Group {
     }
 
     pub async fn remove_client_at(&self, index: usize) -> Result<Arc<Handle>, error::Client> {
-        let mut client_handles = self.client_handles.lock().await;
-        if index >= client_handles.len() {
+        let mut scheduler_client_handles = self.scheduler_client_handles.lock().await;
+        if index >= scheduler_client_handles.len() {
             Err(error::Client::Missing)
         } else {
-            let client_handle = client_handles.remove(index);
+            let client_handle = scheduler_client_handles.remove(index).client_handle;
             // Immediately disable client to force scheduler to select another client
             let _ = client_handle.try_disable();
             Ok(client_handle)
@@ -243,30 +252,31 @@ impl Group {
         index_from: usize,
         index_to: usize,
     ) -> Result<Arc<Handle>, error::Client> {
-        let mut client_handles = self.client_handles.lock().await;
-        if index_from >= client_handles.len() || index_to >= client_handles.len() {
+        let mut scheduler_client_handles = self.scheduler_client_handles.lock().await;
+        let len = scheduler_client_handles.len();
+        if index_from >= len || index_to >= len {
             return Err(error::Client::Missing);
         }
 
         if index_from > index_to {
-            *client_handles = [
-                &client_handles[0..index_to],
-                &client_handles[index_from..index_from + 1],
-                &client_handles[index_to..index_from],
-                &client_handles[index_from + 1..],
+            *scheduler_client_handles = [
+                &scheduler_client_handles[0..index_to],
+                &scheduler_client_handles[index_from..index_from + 1],
+                &scheduler_client_handles[index_to..index_from],
+                &scheduler_client_handles[index_from + 1..],
             ]
             .concat();
         } else if index_from < index_to {
-            *client_handles = [
-                &client_handles[0..index_from],
-                &client_handles[index_from + 1..index_to + 1],
-                &client_handles[index_from..index_from + 1],
-                &client_handles[index_to + 1..],
+            *scheduler_client_handles = [
+                &scheduler_client_handles[0..index_from],
+                &scheduler_client_handles[index_from + 1..index_to + 1],
+                &scheduler_client_handles[index_from..index_from + 1],
+                &scheduler_client_handles[index_to + 1..],
             ]
             .concat();
         }
 
-        Ok(client_handles[index_to].clone())
+        Ok(scheduler_client_handles[index_to].client_handle.clone())
     }
 }
 

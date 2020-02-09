@@ -32,10 +32,46 @@ use tokio::time::delay_for;
 use std::sync::Arc;
 use std::time;
 
+#[derive(Debug, Clone)]
+pub struct ClientHandle {
+    pub client_handle: Arc<client::Handle>,
+    last_generated_work: u64,
+}
+
+impl ClientHandle {
+    pub fn new(client_handle: Arc<client::Handle>) -> Self {
+        Self {
+            last_generated_work: Self::get_generated_work(&client_handle),
+            client_handle,
+        }
+    }
+
+    fn get_generated_work(client_handle: &Arc<client::Handle>) -> u64 {
+        *client_handle
+            .node
+            .client_stats()
+            .generated_work()
+            .take_snapshot()
+    }
+
+    // TODO: Remove `allow(dead_code)`
+    #[allow(dead_code)]
+    fn get_delta_and_update_generated_work(&mut self) -> u64 {
+        let next_generated_work = Self::get_generated_work(&self.client_handle);
+        assert!(
+            next_generated_work >= self.last_generated_work,
+            "generated work must be monotonic"
+        );
+
+        let delta = next_generated_work - self.last_generated_work;
+        self.last_generated_work = next_generated_work;
+        delta
+    }
+}
+
 /// Private client handle with internal information which shouldn't be leaked
 #[derive(Debug, Clone)]
 pub struct Handle {
-    group: Vec<Arc<client::Group>>,
     pub client_handle: Arc<client::Handle>,
     generated_work: LocalGeneratedWork,
     pub percentage_share: f64,
@@ -44,7 +80,6 @@ pub struct Handle {
 impl Handle {
     pub fn new(client_handle: Arc<client::Handle>) -> Self {
         Self {
-            group: vec![],
             client_handle,
             generated_work: LocalGeneratedWork::new(),
             percentage_share: 0.0,
