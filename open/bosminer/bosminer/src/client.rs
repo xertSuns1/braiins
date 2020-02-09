@@ -192,8 +192,15 @@ pub struct Group {
 }
 
 impl Group {
+    fn new(midstate_count: usize) -> Self {
+        Self {
+            scheduler_client_handles: Mutex::new(vec![]),
+            midstate_count,
+        }
+    }
+
     #[inline]
-    pub async fn count(&self) -> usize {
+    pub async fn len(&self) -> usize {
         self.scheduler_client_handles.lock().await.len()
     }
 
@@ -212,7 +219,7 @@ impl Group {
             .collect()
     }
 
-    pub async fn add_client(&self, client_handle: Handle) -> Arc<Handle> {
+    pub async fn push_client(&self, client_handle: Handle) -> Arc<Handle> {
         let midstate_count = self.midstate_count;
         let _ = client_handle.replace_engine_generator(Box::new(move |job| {
             Arc::new(work::engine::VersionRolling::new(job, midstate_count))
@@ -278,14 +285,27 @@ impl Group {
 
         Ok(scheduler_client_handles[index_to].client_handle.clone())
     }
+
+    async fn find_client(&self, solution: &work::Solution) -> Option<Arc<Handle>> {
+        self.scheduler_client_handles
+            .lock()
+            .await
+            .iter()
+            .find(|scheduler_client_handle| {
+                scheduler_client_handle
+                    .client_handle
+                    .matching_solution(solution)
+            })
+            .map(|scheduler_client_handle| scheduler_client_handle.client_handle.clone())
+    }
 }
 
 /// Keeps track of all active clients
-pub struct Registry {
+pub struct GroupRegistry {
     list: Vec<scheduler::GroupHandle>,
 }
 
-impl Registry {
+impl GroupRegistry {
     pub fn new() -> Self {
         Self { list: vec![] }
     }
@@ -301,6 +321,7 @@ impl Registry {
     }
 
     #[inline]
+    #[allow(dead_code)]
     fn iter(&self) -> slice::Iter<scheduler::GroupHandle> {
         self.list.iter()
     }
@@ -310,80 +331,58 @@ impl Registry {
         self.list.iter_mut()
     }
 
-    pub fn get_clients(&self) -> Vec<Arc<Handle>> {
+    pub fn create_group(&mut self, midstate_count: usize) -> Arc<Group> {
+        let group_handle = Arc::new(Group::new(midstate_count));
+        let scheduler_group_handle = scheduler::GroupHandle::new(group_handle.clone());
+        self.list.push(scheduler_group_handle);
+        self.recalculate_quotas(true);
+        group_handle
+    }
+
+    pub fn get_groups(&self) -> Vec<Arc<Group>> {
         self.list
             .iter()
-            .map(|scheduler_group_handle| scheduler_group_handle.client_handle.clone())
+            .map(|scheduler_group_handle| scheduler_group_handle.group_handle.clone())
             .collect()
     }
 
-    #[inline]
-    fn get_scheduler_handle(
-        &self,
-        client_handle: &Arc<Handle>,
-    ) -> Result<&scheduler::GroupHandle, error::Client> {
+    pub fn get_group(&self, index: usize) -> Option<Arc<Group>> {
         self.list
-            .iter()
-            .find(|scheduler_group_handle| scheduler_group_handle.client_handle == *client_handle)
-            .ok_or(error::Client::Missing)
+            .get(index)
+            .map(|scheduler_group_handle| scheduler_group_handle.group_handle.clone())
+    }
+
+    /// Find client which given solution is associated with
+    async fn find_client(&self, solution: &work::Solution) -> Option<Arc<Handle>> {
+        for scheduler_group_handle in &self.list {
+            match scheduler_group_handle
+                .group_handle
+                .find_client(solution)
+                .await
+            {
+                client_handle @ Some(_) => return client_handle,
+                None => {}
+            }
+        }
+        None
     }
 
     fn recalculate_quotas(&mut self, reset_generated_work: bool) {
-        let clients = self.count();
-        let percentage_share = if clients > 0 {
-            1.0 / clients as f64
+        let groups = self.count();
+        let percentage_share = if groups > 0 {
+            1.0 / groups as f64
         } else {
             return;
         };
 
-        // Update all clients with newly calculated percentage share.
-        // Also reset generated work to prevent switching all future work to new client because
-        // new client has zero shares and so maximal error.
-        for mut scheduler_group_handle in self.iter_mut() {
+        // Update all groups with newly calculated percentage share.
+        // Also reset generated work to prevent switching all future work to new group because
+        // new group has zero shares and so maximal error.
+        for mut scheduler_group_handle in self.list.iter_mut() {
             if reset_generated_work {
                 scheduler_group_handle.reset_generated_work();
             }
             scheduler_group_handle.percentage_share = percentage_share;
-        }
-    }
-
-    /// Register client that implements a protocol set in `descriptor`
-    fn register_client(&mut self, client_handle: Arc<Handle>) -> &scheduler::GroupHandle {
-        self.list.push(scheduler::GroupHandle::new(client_handle));
-
-        self.recalculate_quotas(true);
-        self.list.last().expect("BUG: client list is empty")
-    }
-
-    fn unregister_client(
-        &mut self,
-        client_handle: Arc<Handle>,
-    ) -> Result<scheduler::GroupHandle, error::Client> {
-        if let Some(index) = self.list.iter().position(|scheduler_group_handle| {
-            scheduler_group_handle.client_handle == client_handle
-        }) {
-            let scheduler_group_handle = self.list.remove(index);
-            self.recalculate_quotas(false);
-
-            Ok(scheduler_group_handle)
-        } else {
-            Err(error::Client::Missing)
-        }
-    }
-
-    fn reorder_clients<'a, 'b, T>(&'a mut self, client_handles: T) -> Result<(), error::Client>
-    where
-        T: Iterator<Item = &'b Arc<Handle>>,
-    {
-        let mut scheduler_handles = Vec::with_capacity(self.list.len());
-        for client_handle in client_handles {
-            scheduler_handles.push(self.get_scheduler_handle(&client_handle)?.clone());
-        }
-        if self.list.len() != scheduler_handles.len() {
-            Err(error::Client::Additional)
-        } else {
-            self.list = scheduler_handles;
-            Ok(())
         }
     }
 }

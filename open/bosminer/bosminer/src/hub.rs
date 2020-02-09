@@ -90,22 +90,24 @@ pub struct Core {
     solution_router: Mutex<Option<SolutionRouter>>,
     backend_registry: Arc<backend::Registry>,
     /// Registry of clients that are able to supply new jobs for mining
-    client_registry: Arc<Mutex<client::Registry>>,
+    group_registry: Arc<Mutex<client::GroupRegistry>>,
 }
 
 /// Concentrates handles to all nodes associated with mining (backends, clients, work solvers)
 impl Core {
+    const DEFAULT_GROUP_INDEX: usize = 0;
+
     pub fn new(midstate_count: usize) -> Self {
         let frontend = Arc::new(crate::Frontend::new());
 
         let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
         let (solution_sender, solution_receiver) = mpsc::unbounded();
 
-        let client_registry = Arc::new(Mutex::new(client::Registry::new()));
+        let group_registry = Arc::new(Mutex::new(client::GroupRegistry::new()));
         let job_executor = Arc::new(client::JobExecutor::new(
             frontend.clone(),
             engine_sender,
-            client_registry.clone(),
+            group_registry.clone(),
         ));
 
         Self {
@@ -116,7 +118,7 @@ impl Core {
             solution_sender,
             solution_router: Mutex::new(Some(SolutionRouter::new(job_executor, solution_receiver))),
             backend_registry: Arc::new(backend::Registry::new()),
-            client_registry,
+            group_registry,
         }
     }
 
@@ -152,35 +154,6 @@ impl Core {
         }
     }
 
-    /// Register client that implements a protocol set in `descriptor`
-    #[inline]
-    pub async fn add_client(&self, client: client::Handle) -> Arc<client::Handle> {
-        let midstate_count = self.midstate_count;
-        let _ = client.replace_engine_generator(Box::new(move |job| {
-            Arc::new(work::engine::VersionRolling::new(job, midstate_count))
-        }));
-        let _ = client.try_disable();
-
-        let client = Arc::new(client);
-        self.job_executor.add_client(client.clone()).await;
-        client
-    }
-
-    /// Removes the client and disable it
-    #[inline]
-    pub async fn remove_client(&self, client: Arc<client::Handle>) -> Result<(), error::Client> {
-        self.job_executor.remove_client(client).await
-    }
-
-    /// Attempt to switch the clients
-    #[inline]
-    pub async fn reorder_clients<'a, 'b, T>(&'a self, clients: T) -> Result<(), error::Client>
-    where
-        T: Iterator<Item = &'b Arc<client::Handle>>,
-    {
-        self.job_executor.reorder_clients(clients).await
-    }
-
     #[inline]
     pub async fn get_root_hub(&self) -> Option<Arc<dyn node::WorkSolver>> {
         self.backend_registry.lock_root_hub().await.clone()
@@ -207,8 +180,32 @@ impl Core {
     }
 
     #[inline]
-    pub async fn get_clients(&self) -> Vec<Arc<client::Handle>> {
-        self.client_registry.lock().await.get_clients()
+    pub async fn create_group(&self) -> Arc<client::Group> {
+        self.group_registry
+            .lock()
+            .await
+            .create_group(self.midstate_count)
+    }
+
+    pub async fn create_or_get_default_group(&self) -> Arc<client::Group> {
+        let mut group_registry = self.group_registry.lock().await;
+        match group_registry.get_group(Self::DEFAULT_GROUP_INDEX) {
+            Some(group) => group,
+            None => group_registry.create_group(self.midstate_count),
+        }
+    }
+
+    #[inline]
+    pub async fn get_default_group(&self) -> Option<Arc<client::Group>> {
+        self.group_registry
+            .lock()
+            .await
+            .get_group(Self::DEFAULT_GROUP_INDEX)
+    }
+
+    #[inline]
+    pub async fn get_groups(&self) -> Vec<Arc<client::Group>> {
+        self.group_registry.lock().await.get_groups()
     }
 
     pub async fn run(self: Arc<Self>) {

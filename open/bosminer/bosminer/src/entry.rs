@@ -52,9 +52,10 @@ pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
         T::DEFAULT_HASHRATE_INTERVAL,
     ));
 
+    let group = core.create_group().await;
     // start client based on user input
     for client_descriptor in clients {
-        core.add_client(client_descriptor.into()).await;
+        group.push_client(client_descriptor.into()).await;
     }
 
     // the bosminer is controlled with API which also controls when the miner will end

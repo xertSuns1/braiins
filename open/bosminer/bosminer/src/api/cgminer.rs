@@ -181,7 +181,7 @@ impl Handler {
     }
 
     async fn collect_pool_statuses(&self) -> Vec<response::Pool> {
-        self.collect_data(self.core.get_clients(), 0, |idx, client| {
+        self.collect_data(self.get_clients(), 0, |idx, client| {
             async move { Self::get_pool_status(idx, client).await }
         })
         .await
@@ -308,7 +308,7 @@ impl Handler {
     }
 
     async fn collect_pool_stats(&self, base_idx: usize) -> Vec<response::PoolStats> {
-        self.collect_data(self.core.get_clients(), base_idx, |idx, client| {
+        self.collect_data(self.get_clients(), base_idx, |idx, client| {
             async move { Self::get_pool_stats(idx, client).await }
         })
         .await
@@ -340,11 +340,19 @@ impl Handler {
         .await
     }
 
+    async fn get_clients(&self) -> Vec<Arc<client::Handle>> {
+        let mut clients = vec![];
+        for group in self.core.get_groups().await {
+            clients.extend(group.get_clients().await.into_iter());
+        }
+        clients
+    }
+
     async fn get_client(
         &self,
         idx: i32,
     ) -> Result<(Arc<client::Handle>, Vec<Arc<client::Handle>>), response::ErrorCode> {
-        let clients = self.core.get_clients().await;
+        let clients = self.get_clients().await;
         clients
             .get(idx as usize)
             .cloned()
@@ -433,7 +441,7 @@ impl command::Handler for Handler {
         let mut pools_stale = 0;
         let mut pools_stale_shares = 0.0;
 
-        for client in self.core.get_clients().await {
+        for client in self.get_clients().await {
             let client_stats = client.stats();
 
             let valid_jobs = client_stats.valid_jobs().take_snapshot();
@@ -515,7 +523,7 @@ impl command::Handler for Handler {
         Ok(response::Config {
             asc_count: self.core.get_work_solvers().await.len() as i32,
             pga_count: 0,
-            pool_count: self.core.get_clients().await.len() as i32,
+            pool_count: self.get_clients().await.len() as i32,
             // TODO: get actual multi-pool strategy
             strategy: response::MultipoolStrategy::Failover,
             log_interval: DEFAULT_LOG_INTERVAL as i32,
@@ -580,8 +588,10 @@ impl command::Handler for Handler {
         let client_descriptor = self
             .get_client_descriptor(parameter)
             .map_err(|_| response::ErrorCode::InvalidAddPoolDetails(parameter.to_string()))?;
-        let client = self.core.add_client(client_descriptor.into()).await;
-        let clients = self.core.get_clients().await;
+
+        let group = self.core.create_or_get_default_group().await;
+        let client = group.push_client(client_descriptor.into()).await;
+        let clients = group.get_clients().await;
 
         // There is race for client index determination so use index out of range when the client
         // is missing after addition
@@ -604,23 +614,26 @@ impl command::Handler for Handler {
             .expect("BUG: missing REMOVEPOOL parameter")
             .to_i32()
             .expect("BUG: invalid REMOVEPOOL parameter type");
-        let mut url;
 
-        loop {
-            let (client, _) = self.get_client(idx).await?;
-            url = client.descriptor.get_url(true, true, false);
-
-            match self.core.remove_client(client).await {
-                // Try it again because there was probably a race and registry is changed
-                Err(error::Client::Missing) => continue,
-                Err(e) => panic!("BUG: unexpected error: {}", e.to_string()),
-                Ok(_) => break,
-            };
-        }
+        let client = match self.core.get_default_group().await {
+            Some(group) => {
+                let client_len = group.len().await;
+                group
+                    .remove_client_at(idx as usize)
+                    .await
+                    .map_err(|e| match e {
+                        error::Client::Missing => {
+                            response::ErrorCode::InvalidPoolId(idx, client_len as i32 - 1)
+                        }
+                        _ => panic!("BUG: unexpected remove client error"),
+                    })?
+            }
+            None => Err(response::ErrorCode::InvalidPoolId(idx, -1))?,
+        };
 
         Ok(response::RemovePool {
             idx: idx as usize,
-            url,
+            url: client.descriptor.get_url(true, true, false),
         })
     }
 
@@ -632,32 +645,26 @@ impl command::Handler for Handler {
             .expect("BUG: missing SWITCHPOOL parameter")
             .to_i32()
             .expect("BUG: invalid SWITCHPOOL parameter type");
-        let mut url;
-        let client;
 
-        loop {
-            let (client1, clients) = self.get_client(idx).await?;
-            url = client1.descriptor.get_url(true, true, false);
+        let client = match self.core.get_default_group().await {
+            Some(group) => {
+                let client_len = group.len().await;
+                group
+                    .move_client_to(idx as usize, 0)
+                    .await
+                    .map_err(|e| match e {
+                        error::Client::Missing => {
+                            response::ErrorCode::InvalidPoolId(idx, client_len as i32 - 1)
+                        }
+                        _ => panic!("BUG: unexpected move client error"),
+                    })?
+            }
+            None => Err(response::ErrorCode::InvalidPoolId(idx, -1))?,
+        };
 
-            let (clients2, clients3) = clients.split_at(idx as usize);
-            let clients = std::iter::once(&client1)
-                .chain(clients2.into_iter())
-                .chain(clients3.into_iter().skip(1));
-
-            match self.core.reorder_clients(clients).await {
-                // Try it again because there was probably a race and registry is changed
-                Err(error::Client::Missing) | Err(error::Client::Additional) => continue,
-                Ok(_) => {
-                    client = client1;
-                    break;
-                }
-            };
-        }
-
-        let _ = client.try_enable();
         Ok(response::SwitchPool {
             idx: idx as usize,
-            url,
+            url: client.descriptor.get_url(true, true, false),
         })
     }
 
