@@ -117,14 +117,13 @@ impl Handler {
         let current_block_version = last_job.map(|job| job.version()).unwrap_or_default();
 
         let (mut status, stratum_active) = match client.status() {
+            sync::Status::Running => (response::PoolStatus::Alive, true),
             sync::Status::Created
             | sync::Status::Starting
-            | sync::Status::Running
-            | sync::Status::Restarting => (response::PoolStatus::Alive, true),
-            sync::Status::Stopping
-            | sync::Status::Failing
-            | sync::Status::Stopped
-            | sync::Status::Failed => (response::PoolStatus::Dead, false),
+            | sync::Status::Stopping
+            | sync::Status::Restarting
+            | sync::Status::Stopped => (response::PoolStatus::Alive, false),
+            sync::Status::Failing | sync::Status::Failed => (response::PoolStatus::Dead, false),
         };
         if !client.is_enabled() {
             status = response::PoolStatus::Disabled;
