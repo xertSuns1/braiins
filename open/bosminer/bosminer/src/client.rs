@@ -208,7 +208,7 @@ impl Group {
             .lock()
             .await
             .iter()
-            .map(|scheduler_handle| scheduler_handle.client_handle.clone())
+            .map(|scheduler_group_handle| scheduler_group_handle.client_handle.clone())
             .collect()
     }
 
@@ -282,7 +282,7 @@ impl Group {
 
 /// Keeps track of all active clients
 pub struct Registry {
-    list: Vec<scheduler::Handle>,
+    list: Vec<scheduler::GroupHandle>,
 }
 
 impl Registry {
@@ -301,19 +301,19 @@ impl Registry {
     }
 
     #[inline]
-    fn iter(&self) -> slice::Iter<scheduler::Handle> {
+    fn iter(&self) -> slice::Iter<scheduler::GroupHandle> {
         self.list.iter()
     }
 
     #[inline]
-    fn iter_mut(&mut self) -> slice::IterMut<scheduler::Handle> {
+    fn iter_mut(&mut self) -> slice::IterMut<scheduler::GroupHandle> {
         self.list.iter_mut()
     }
 
     pub fn get_clients(&self) -> Vec<Arc<Handle>> {
         self.list
             .iter()
-            .map(|scheduler_handle| scheduler_handle.client_handle.clone())
+            .map(|scheduler_group_handle| scheduler_group_handle.client_handle.clone())
             .collect()
     }
 
@@ -321,10 +321,10 @@ impl Registry {
     fn get_scheduler_handle(
         &self,
         client_handle: &Arc<Handle>,
-    ) -> Result<&scheduler::Handle, error::Client> {
+    ) -> Result<&scheduler::GroupHandle, error::Client> {
         self.list
             .iter()
-            .find(|scheduler_handle| scheduler_handle.client_handle == *client_handle)
+            .find(|scheduler_group_handle| scheduler_group_handle.client_handle == *client_handle)
             .ok_or(error::Client::Missing)
     }
 
@@ -339,17 +339,17 @@ impl Registry {
         // Update all clients with newly calculated percentage share.
         // Also reset generated work to prevent switching all future work to new client because
         // new client has zero shares and so maximal error.
-        for mut scheduler_handle in self.iter_mut() {
+        for mut scheduler_group_handle in self.iter_mut() {
             if reset_generated_work {
-                scheduler_handle.reset_generated_work();
+                scheduler_group_handle.reset_generated_work();
             }
-            scheduler_handle.percentage_share = percentage_share;
+            scheduler_group_handle.percentage_share = percentage_share;
         }
     }
 
     /// Register client that implements a protocol set in `descriptor`
-    fn register_client(&mut self, client_handle: Arc<Handle>) -> &scheduler::Handle {
-        self.list.push(scheduler::Handle::new(client_handle));
+    fn register_client(&mut self, client_handle: Arc<Handle>) -> &scheduler::GroupHandle {
+        self.list.push(scheduler::GroupHandle::new(client_handle));
 
         self.recalculate_quotas(true);
         self.list.last().expect("BUG: client list is empty")
@@ -358,16 +358,14 @@ impl Registry {
     fn unregister_client(
         &mut self,
         client_handle: Arc<Handle>,
-    ) -> Result<scheduler::Handle, error::Client> {
-        if let Some(index) = self
-            .list
-            .iter()
-            .position(|scheduler_handle| scheduler_handle.client_handle == client_handle)
-        {
-            let scheduler_handle = self.list.remove(index);
+    ) -> Result<scheduler::GroupHandle, error::Client> {
+        if let Some(index) = self.list.iter().position(|scheduler_group_handle| {
+            scheduler_group_handle.client_handle == client_handle
+        }) {
+            let scheduler_group_handle = self.list.remove(index);
             self.recalculate_quotas(false);
 
-            Ok(scheduler_handle)
+            Ok(scheduler_group_handle)
         } else {
             Err(error::Client::Missing)
         }

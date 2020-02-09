@@ -71,13 +71,13 @@ impl ClientHandle {
 
 /// Private client handle with internal information which shouldn't be leaked
 #[derive(Debug, Clone)]
-pub struct Handle {
+pub struct GroupHandle {
     pub client_handle: Arc<client::Handle>,
     generated_work: LocalGeneratedWork,
     pub percentage_share: f64,
 }
 
-impl Handle {
+impl GroupHandle {
     pub fn new(client_handle: Arc<client::Handle>) -> Self {
         Self {
             client_handle,
@@ -102,8 +102,8 @@ impl Handle {
     }
 }
 
-impl PartialEq for Handle {
-    fn eq(&self, other: &Handle) -> bool {
+impl PartialEq for GroupHandle {
+    fn eq(&self, other: &GroupHandle) -> bool {
         &self.client_handle == &other.client_handle
     }
 }
@@ -213,10 +213,10 @@ impl JobDispatcher {
         let mut client_registry = self.client_registry.lock().await;
 
         let enable_client = client_handle.descriptor.enable;
-        let scheduler_handle = client_registry.register_client(client_handle);
+        let scheduler_group_handle = client_registry.register_client(client_handle);
 
         if enable_client {
-            scheduler_handle
+            scheduler_group_handle
                 .client_handle
                 .try_enable()
                 .expect("BUG: client is already enabled");
@@ -226,16 +226,16 @@ impl JobDispatcher {
     async fn unregister_client(
         &mut self,
         client_handle: Arc<client::Handle>,
-    ) -> Result<Handle, error::Client> {
+    ) -> Result<GroupHandle, error::Client> {
         let mut client_registry = self.client_registry.lock().await;
 
-        let scheduler_handle = client_registry.unregister_client(client_handle)?;
+        let scheduler_group_handle = client_registry.unregister_client(client_handle)?;
 
         // If anybody holds client handle then it can be enabled again but for usual case
         // we force client stop immediately after unregistration from registry
-        let _ = scheduler_handle.client_handle.try_disable();
+        let _ = scheduler_group_handle.client_handle.try_disable();
 
-        Ok(scheduler_handle)
+        Ok(scheduler_group_handle)
     }
 
     async fn add_client(&mut self, client_handle: Arc<client::Handle>) {
@@ -296,18 +296,21 @@ impl JobDispatcher {
         }
 
         let mut next_client = None;
-        for scheduler_handle in client_registry.iter() {
-            let client_generated_work = scheduler_handle.generated_work.count();
+        for scheduler_group_handle in client_registry.iter() {
+            let client_generated_work = scheduler_group_handle.generated_work.count();
             let next_client_percentage_share = (client_generated_work + generated_work_delta)
                 as f64
                 / (total_generated_work + generated_work_delta) as f64;
             let next_error =
-                (scheduler_handle.percentage_share - next_client_percentage_share).abs();
+                (scheduler_group_handle.percentage_share - next_client_percentage_share).abs();
             match next_client {
-                None => next_client = Some((scheduler_handle.client_handle.clone(), next_error)),
+                None => {
+                    next_client = Some((scheduler_group_handle.client_handle.clone(), next_error))
+                }
                 Some((_, min_error)) => {
                     if min_error >= next_error {
-                        next_client = Some((scheduler_handle.client_handle.clone(), next_error));
+                        next_client =
+                            Some((scheduler_group_handle.client_handle.clone(), next_error));
                     }
                 }
             }
@@ -367,8 +370,12 @@ impl JobExecutor {
             .lock()
             .await
             .iter()
-            .find(|scheduler_handle| scheduler_handle.client_handle.matching_solution(solution))
-            .map(|scheduler_handle| scheduler_handle.client_handle.clone())
+            .find(|scheduler_group_handle| {
+                scheduler_group_handle
+                    .client_handle
+                    .matching_solution(solution)
+            })
+            .map(|scheduler_group_handle| scheduler_group_handle.client_handle.clone())
     }
 
     pub async fn get_solution_sender(
