@@ -247,6 +247,10 @@ impl HashChain {
         })
     }
 
+    pub fn current_temperature(&self) -> Option<sensor::Temperature> {
+        self.temperature_receiver.borrow().clone()
+    }
+
     async fn take_work_rx_io(&self) -> io::WorkRx {
         self.work_rx_io
             .lock()
@@ -910,12 +914,6 @@ pub struct HashChainRuntime {
     halt_receiver: halt::Receiver,
     #[allow(dead_code)]
     hash_chain: Arc<HashChain>,
-}
-
-impl HashChainRuntime {
-    pub fn current_temperature(&self) -> Option<sensor::Temperature> {
-        self.hash_chain.temperature_receiver.borrow().clone()
-    }
 }
 
 #[derive(WorkSolverNode)]

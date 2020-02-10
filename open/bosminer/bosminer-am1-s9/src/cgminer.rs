@@ -167,7 +167,9 @@ impl Handler {
         for manager in self.managers.iter() {
             let manager = manager.lock().await;
             if let Some(runtime) = manager.runtime.as_ref() {
-                if let Some(sensor::Temperature { local, remote }) = runtime.current_temperature() {
+                if let Some(sensor::Temperature { local, remote }) =
+                    runtime.hash_chain.current_temperature()
+                {
                     list.push(response::ext::Temp {
                         idx: list.len() as i32,
                         id: manager.node.hashboard_idx as i32,
