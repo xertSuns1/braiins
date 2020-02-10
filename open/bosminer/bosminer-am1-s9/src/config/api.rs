@@ -350,7 +350,7 @@ impl<'a> Handler<'a> {
                                 "max": TEMPERATURE_C_MAX,
                                 "float": true,
                                 "default": DEFAULT_HOT_TEMP_C,
-                                "readonly": ["$eq", ["$get", "temp_control", "mode"], "disable"],
+                                "readonly": ["$eq", ["$get", "temp_control", "mode"], "disabled"],
                                 "span": 4
                             }
                         ],
@@ -364,7 +364,7 @@ impl<'a> Handler<'a> {
                                 "max": TEMPERATURE_C_MAX,
                                 "float": true,
                                 "default": DEFAULT_DANGEROUS_TEMP_C,
-                                "readonly": ["$eq", ["$get", "temp_control", "mode"], "disable"],
+                                "readonly": ["$eq", ["$get", "temp_control", "mode"], "disabled"],
                                 "span": 4
                             }
                         ]
