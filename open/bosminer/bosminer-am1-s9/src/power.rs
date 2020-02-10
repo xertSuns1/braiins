@@ -142,6 +142,7 @@ impl Voltage {
         Self::pic_to_volts(self.0 as f32)
     }
 
+    #[inline]
     pub fn as_pic_value(&self) -> u8 {
         self.0
     }
@@ -150,6 +151,13 @@ impl Voltage {
 impl std::fmt::Display for Voltage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:.02} V", self.as_volts())
+    }
+}
+
+impl std::cmp::PartialOrd for Voltage {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        // We cannot compare voltages directly on PIC values, because they are inverted
+        self.as_volts().partial_cmp(&other.as_volts())
     }
 }
 
