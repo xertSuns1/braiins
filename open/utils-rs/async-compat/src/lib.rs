@@ -113,7 +113,7 @@ macro_rules! select {
 
 /// Wrapper for `join!` macro from `futures`.
 /// The reason for this is that the macro needs to be told
-/// to look for futures at `::ii_async_compat::futures` rather than `::furures`.
+/// to look for futures at `::ii_async_compat::futures` rather than `::futures`.
 #[macro_export]
 macro_rules! join {
     ($($tokens:tt)*) => {
