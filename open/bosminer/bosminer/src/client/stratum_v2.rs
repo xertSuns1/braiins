@@ -494,6 +494,8 @@ impl StratumConnectionHandler {
     }
 
     async fn connect(mut self) -> error::Result<(Connection<Framing>, ii_bitcoin::Target)> {
+        // TODO the connect would always try only the first address, we should persist the list
+        //  of addresses or actually we should use wire 'client' functionality for this...
         let socket_addr = self
             .client
             .connection_details

@@ -39,6 +39,7 @@ pub enum Status {
     // TODO: Destroyed
 }
 
+/// Monitor is intended for generic synchronization of node states
 #[derive(Debug)]
 pub struct StatusMonitor {
     status: AtomicStatus,
