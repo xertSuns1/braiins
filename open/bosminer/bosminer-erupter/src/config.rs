@@ -38,7 +38,7 @@ pub const JOB_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
 pub struct Backend {
-    pub client: Option<bosminer_config::client::Descriptor>,
+    pub client: Option<bosminer_config::ClientDescriptor>,
 }
 
 impl Default for Backend {
@@ -53,7 +53,7 @@ impl hal::BackendConfig for Backend {
         DEFAULT_MIDSTATE_COUNT
     }
 
-    fn clients(&mut self) -> Vec<bosminer_config::client::Descriptor> {
+    fn clients(&mut self) -> Vec<bosminer_config::ClientDescriptor> {
         self.client
             .take()
             .map(|client| vec![client])

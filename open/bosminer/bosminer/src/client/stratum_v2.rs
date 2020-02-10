@@ -33,7 +33,7 @@ use failure::ResultExt;
 
 use ii_bitcoin::HashTrait;
 
-use bosminer_config::client;
+use bosminer_config::{ClientDescriptor, ClientProtocol};
 use bosminer_macros::ClientNode;
 
 use async_trait::async_trait;
@@ -76,7 +76,7 @@ pub struct ConnectionDetails {
 }
 
 impl ConnectionDetails {
-    pub fn from_descriptor(descriptor: &client::Descriptor) -> Self {
+    pub fn from_descriptor(descriptor: &ClientDescriptor) -> Self {
         Self {
             user: descriptor.user.clone(),
             host: descriptor.host.clone(),
@@ -712,7 +712,7 @@ impl fmt::Display for StratumClient {
         write!(
             f,
             "{}://{}@{}",
-            client::Protocol::SCHEME_STRATUM_V2,
+            ClientProtocol::SCHEME_STRATUM_V2,
             self.connection_details.host,
             self.connection_details.user
         )

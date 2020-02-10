@@ -228,7 +228,7 @@ pub struct Backend {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pools: Option<Vec<bosminer_config::PoolConfig>>,
     #[serde(skip)]
-    pub clients: Vec<bosminer_config::client::Descriptor>,
+    pub clients: Vec<bosminer_config::ClientDescriptor>,
 }
 
 impl Backend {
@@ -417,11 +417,8 @@ impl Backend {
                 .into_iter()
                 .map(|pool| {
                     // TODO: do not panic!
-                    bosminer_config::client::Descriptor::parse(
-                        pool.url.as_str(),
-                        pool.user.as_str(),
-                    )
-                    .expect("Server parameters")
+                    bosminer_config::ClientDescriptor::parse(pool.url.as_str(), pool.user.as_str())
+                        .expect("Server parameters")
                 })
                 .collect();
         }
@@ -445,7 +442,7 @@ impl hal::BackendConfig for Backend {
         }
     }
 
-    fn clients(&mut self) -> Vec<bosminer_config::client::Descriptor> {
+    fn clients(&mut self) -> Vec<bosminer_config::ClientDescriptor> {
         self.clients.drain(..).collect()
     }
 }

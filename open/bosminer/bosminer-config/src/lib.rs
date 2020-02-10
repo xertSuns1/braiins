@@ -20,8 +20,14 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-pub mod client;
-pub mod error;
+mod client;
+mod error;
+mod group;
+
+// Reexport inner structures
+pub use client::Descriptor as ClientDescriptor;
+pub use client::Protocol as ClientProtocol;
+pub use group::Descriptor as GroupDescriptor;
 
 // reexport common crates
 pub use clap;

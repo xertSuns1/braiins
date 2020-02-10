@@ -37,7 +37,7 @@ use crate::work;
 // Scheduler re-exports
 pub use scheduler::JobExecutor;
 
-use bosminer_config::client::{Descriptor, Protocol};
+use bosminer_config::{ClientDescriptor, ClientProtocol, GroupDescriptor};
 
 use futures::channel::mpsc;
 use futures::lock::Mutex;
@@ -50,7 +50,7 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct Handle {
     // Basic information about client used for connection to remote server
-    pub descriptor: Descriptor,
+    pub descriptor: ClientDescriptor,
     node: Arc<dyn node::Client>,
     enabled: AtomicBool,
     engine_sender: Arc<work::EngineSender>,
@@ -146,15 +146,15 @@ impl Handle {
     }
 }
 
-impl From<Descriptor> for Handle {
-    fn from(descriptor: Descriptor) -> Self {
+impl From<ClientDescriptor> for Handle {
+    fn from(descriptor: ClientDescriptor) -> Self {
         let (solution_sender, solution_receiver) = mpsc::unbounded();
         // Initially register new client without ability to send work
         let engine_sender = Arc::new(work::EngineSender::new(None));
 
         let job_solver = job::Solver::new(engine_sender.clone(), solution_receiver);
         let client_node = match &descriptor.protocol {
-            Protocol::StratumV2 => stratum_v2::StratumClient::new(
+            ClientProtocol::StratumV2 => stratum_v2::StratumClient::new(
                 stratum_v2::ConnectionDetails::from_descriptor(&descriptor),
                 job_solver,
             ),
@@ -187,13 +187,15 @@ impl PartialEq for Handle {
 
 #[derive(Debug)]
 pub struct Group {
+    pub descriptor: GroupDescriptor,
     scheduler_client_handles: Mutex<Vec<scheduler::ClientHandle>>,
     midstate_count: usize,
 }
 
 impl Group {
-    fn new(midstate_count: usize) -> Self {
+    fn new(descriptor: GroupDescriptor, midstate_count: usize) -> Self {
         Self {
+            descriptor,
             scheduler_client_handles: Mutex::new(vec![]),
             midstate_count,
         }
@@ -303,11 +305,17 @@ impl Group {
 /// Keeps track of all active clients
 pub struct GroupRegistry {
     list: Vec<scheduler::GroupHandle>,
+    fixed_percentage_share_count: usize,
+    total_fixed_percentage_share: f64,
 }
 
 impl GroupRegistry {
     pub fn new() -> Self {
-        Self { list: vec![] }
+        Self {
+            list: vec![],
+            fixed_percentage_share_count: 0,
+            total_fixed_percentage_share: 0.0,
+        }
     }
 
     #[inline]
@@ -321,7 +329,6 @@ impl GroupRegistry {
     }
 
     #[inline]
-    #[allow(dead_code)]
     fn iter(&self) -> slice::Iter<scheduler::GroupHandle> {
         self.list.iter()
     }
@@ -331,12 +338,30 @@ impl GroupRegistry {
         self.list.iter_mut()
     }
 
-    pub fn create_group(&mut self, midstate_count: usize) -> Arc<Group> {
-        let group_handle = Arc::new(Group::new(midstate_count));
+    pub fn create_group(
+        &mut self,
+        descriptor: GroupDescriptor,
+        midstate_count: usize,
+    ) -> Result<Arc<Group>, error::Client> {
+        match descriptor.fixed_percentage_share {
+            Some(fixed_percentage_share) => {
+                if self.is_empty() {
+                    Err(error::Client::OnlyFixedPercentageShare)?;
+                } else if self.total_fixed_percentage_share + fixed_percentage_share >= 1.0 {
+                    Err(error::Client::FixedPercentageShareOverflow)?;
+                }
+                self.fixed_percentage_share_count += 1;
+                self.total_fixed_percentage_share += fixed_percentage_share;
+            }
+            None => {}
+        }
+
+        let group_handle = Arc::new(Group::new(descriptor, midstate_count));
         let scheduler_group_handle = scheduler::GroupHandle::new(group_handle.clone());
         self.list.push(scheduler_group_handle);
         self.recalculate_quotas(true);
-        group_handle
+
+        Ok(group_handle)
     }
 
     pub fn get_groups(&self) -> Vec<Arc<Group>> {
@@ -368,12 +393,18 @@ impl GroupRegistry {
     }
 
     fn recalculate_quotas(&mut self, reset_generated_work: bool) {
-        let groups = self.count();
-        let percentage_share = if groups > 0 {
-            1.0 / groups as f64
-        } else {
+        assert!(
+            self.total_fixed_percentage_share < 1.0
+                && self.fixed_percentage_share_count < self.count(),
+            "BUG: no percentage share left for common groups"
+        );
+
+        if self.is_empty() {
             return;
-        };
+        }
+
+        let common_groups = self.count() - self.fixed_percentage_share_count;
+        let percentage_share = (1.0 - self.total_fixed_percentage_share) / common_groups as f64;
 
         // Update all groups with newly calculated percentage share.
         // Also reset generated work to prevent switching all future work to new group because
@@ -382,7 +413,9 @@ impl GroupRegistry {
             if reset_generated_work {
                 scheduler_group_handle.reset_generated_work();
             }
-            scheduler_group_handle.percentage_share = percentage_share;
+            if !scheduler_group_handle.has_fixed_percentage_share() {
+                scheduler_group_handle.percentage_share = percentage_share;
+            }
         }
     }
 }

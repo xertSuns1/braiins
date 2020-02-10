@@ -56,7 +56,7 @@ pub trait BackendConfig: Debug + Send + Sync {
     /// Number of midstates that backend is able to solve at once.
     fn midstate_count(&self) -> usize;
     /// List of clients which should be used after backend initialization.
-    fn clients(&mut self) -> Vec<bosminer_config::client::Descriptor> {
+    fn clients(&mut self) -> Vec<bosminer_config::ClientDescriptor> {
         vec![]
     }
 }

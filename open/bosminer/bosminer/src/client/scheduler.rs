@@ -110,11 +110,22 @@ pub struct GroupHandle {
 impl GroupHandle {
     pub fn new(group_handle: Arc<client::Group>) -> Self {
         Self {
-            group_handle,
             active_client: None,
             generated_work: 0,
-            percentage_share: 0.0,
+            percentage_share: group_handle
+                .descriptor
+                .fixed_percentage_share
+                .unwrap_or_default(),
+            group_handle,
         }
+    }
+
+    #[inline]
+    pub fn has_fixed_percentage_share(&self) -> bool {
+        self.group_handle
+            .descriptor
+            .fixed_percentage_share
+            .is_some()
     }
 
     async fn update_status(&mut self) {

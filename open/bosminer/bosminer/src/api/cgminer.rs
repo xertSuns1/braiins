@@ -34,7 +34,7 @@ use crate::version;
 use ii_cgminer_api::support::ValueExt as _;
 use ii_cgminer_api::{command, json, response};
 
-use bosminer_config::client::Descriptor;
+use bosminer_config::ClientDescriptor;
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -359,7 +359,7 @@ impl Handler {
             .map(|client| (client, clients))
     }
 
-    fn get_client_descriptor(&self, parameter: &str) -> Result<Descriptor, ()> {
+    fn get_client_descriptor(&self, parameter: &str) -> Result<ClientDescriptor, ()> {
         let parameters: Vec<_> = parameter
             .split(ii_cgminer_api::PARAMETER_DELIMITER)
             .collect();
@@ -379,7 +379,7 @@ impl Handler {
             return Err(());
         }
 
-        Descriptor::parse(url, format!("{}:{}", user, password).as_str()).map_err(|_| ())
+        ClientDescriptor::parse(url, format!("{}:{}", user, password).as_str()).map_err(|_| ())
     }
 }
 

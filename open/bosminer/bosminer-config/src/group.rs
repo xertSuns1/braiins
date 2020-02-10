@@ -1,4 +1,4 @@
-// Copyright (C) 2019  Braiins Systems s.r.o.
+// Copyright (C) 2020  Braiins Systems s.r.o.
 //
 // This file is part of Braiins Open-Source Initiative (BOSI).
 //
@@ -20,16 +20,8 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use failure::Fail;
-
-#[derive(Clone, Eq, PartialEq, Debug, Fail)]
-pub enum ErrorKind {
-    #[fail(display = "the client has been already unregistered")]
-    Missing,
-    #[fail(display = "the client client has been registered")]
-    Additional,
-    #[fail(display = "all client groups have only fixed percentage share")]
-    OnlyFixedPercentageShare,
-    #[fail(display = "total fixed percentage share is greater than or equal to 1.0")]
-    FixedPercentageShareOverflow,
+/// Contains basic information about group
+#[derive(Clone, Debug)]
+pub struct Descriptor {
+    pub fixed_percentage_share: Option<f64>,
 }

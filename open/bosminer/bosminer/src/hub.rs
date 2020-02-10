@@ -32,6 +32,8 @@ use crate::hal;
 use crate::node;
 use crate::work;
 
+use bosminer_config::GroupDescriptor;
+
 use futures::channel::mpsc;
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
@@ -180,18 +182,28 @@ impl Core {
     }
 
     #[inline]
-    pub async fn create_group(&self) -> Arc<client::Group> {
+    pub async fn create_group(
+        &self,
+        descriptor: GroupDescriptor,
+    ) -> Result<Arc<client::Group>, error::Client> {
         self.group_registry
             .lock()
             .await
-            .create_group(self.midstate_count)
+            .create_group(descriptor, self.midstate_count)
     }
 
     pub async fn create_or_get_default_group(&self) -> Arc<client::Group> {
         let mut group_registry = self.group_registry.lock().await;
         match group_registry.get_group(Self::DEFAULT_GROUP_INDEX) {
             Some(group) => group,
-            None => group_registry.create_group(self.midstate_count),
+            None => group_registry
+                .create_group(
+                    GroupDescriptor {
+                        fixed_percentage_share: None,
+                    },
+                    self.midstate_count,
+                )
+                .expect("BUG: cannot create default group"),
         }
     }
 
