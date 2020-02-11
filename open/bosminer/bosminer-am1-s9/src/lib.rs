@@ -890,15 +890,15 @@ impl HashChain {
             .spawn(Self::monitor_watchdog_temp_task(self.clone()));
     }
 
-    pub async fn get_params(&self) -> HashChainParams {
-        HashChainParams {
-            frequency: self.frequency.lock().await.clone(),
-            voltage: self
-                .voltage_ctrl
-                .get_current_voltage()
-                .await
-                .expect("BUG: no voltage on hashchain"),
-        }
+    pub async fn get_frequency(&self) -> FrequencySettings {
+        self.frequency.lock().await.clone()
+    }
+
+    pub async fn get_voltage(&self) -> power::Voltage {
+        self.voltage_ctrl
+            .get_current_voltage()
+            .await
+            .expect("BUG: no voltage on hashchain")
     }
 }
 
@@ -977,13 +977,6 @@ impl fmt::Display for FrequencySettings {
     }
 }
 
-/// Mining parameters that can change run-time
-#[derive(Clone)]
-pub struct HashChainParams {
-    frequency: FrequencySettings,
-    voltage: power::Voltage,
-}
-
 #[derive(Debug)]
 pub struct StoppedChain {
     pub manager: Arc<Manager>,
@@ -1003,7 +996,8 @@ impl Drop for StoppedChain {
 impl StoppedChain {
     async fn start(
         self,
-        initial_params: &HashChainParams,
+        initial_frequency: &FrequencySettings,
+        initial_voltage: power::Voltage,
     ) -> Result<RunningChain, (Self, error::Error)> {
         // if miner initialization fails, retry
         let mut tries_left = ENUM_RETRY_COUNT;
@@ -1019,7 +1013,11 @@ impl StoppedChain {
             // less chips than expected (63).
             match self
                 .manager
-                .attempt_start_chain(tries_left <= ENUM_RETRY_COUNT / 2, initial_params)
+                .attempt_start_chain(
+                    tries_left <= ENUM_RETRY_COUNT / 2,
+                    initial_frequency,
+                    initial_voltage,
+                )
                 .await
             {
                 // start successful
@@ -1080,17 +1078,26 @@ impl RunningChain {
     }
 
     #[allow(dead_code)]
-    async fn set_params(&self, params: &HashChainParams) -> error::Result<()> {
+    async fn set_frequency(&self, frequency: &FrequencySettings) -> error::Result<()> {
         let inner = self.manager.inner.lock().await;
-        let hash_chain = inner
+        inner
             .hash_chain
             .as_ref()
-            .expect("BUG: hashchain is not running");
+            .expect("BUG: hashchain is not running")
+            .set_pll(frequency)
+            .await
+    }
 
-        hash_chain.voltage_ctrl.set_voltage(params.voltage).await?;
-        hash_chain.set_pll(&params.frequency).await?;
-
-        Ok(())
+    #[allow(dead_code)]
+    async fn set_voltage(&self, voltage: power::Voltage) -> error::Result<()> {
+        let inner = self.manager.inner.lock().await;
+        inner
+            .hash_chain
+            .as_ref()
+            .expect("BUG: hashchain is not running")
+            .voltage_ctrl
+            .set_voltage(voltage)
+            .await
     }
 
     pub async fn current_temperature(&self) -> Option<sensor::Temperature> {
@@ -1204,8 +1211,8 @@ pub struct Manager {
     /// TODO: wrap this type in a structure (in Monitor)
     status_receiver: watch::Receiver<Option<monitor::Status>>,
     owned_by: StdMutex<Option<&'static str>>,
-    initial_params: HashChainParams,
     inner: Mutex<ManagerInner>,
+    chain_config: config::ResolvedChainConfig,
 }
 
 impl Manager {
@@ -1241,7 +1248,8 @@ impl Manager {
     async fn attempt_start_chain(
         &self,
         accept_less_chips: bool,
-        initial_params: &HashChainParams,
+        initial_frequency: &FrequencySettings,
+        initial_voltage: power::Voltage,
     ) -> error::Result<()> {
         // lock inner to guarantee atomicity of hashchain start
         let mut inner = self.inner.lock().await;
@@ -1272,11 +1280,7 @@ impl Manager {
 
         // initialize it
         let work_registry = match hash_chain
-            .init(
-                &initial_params.frequency,
-                initial_params.voltage,
-                accept_less_chips,
-            )
+            .init(initial_frequency, initial_voltage, accept_less_chips)
             .await
         {
             Err(e) => {
@@ -1498,14 +1502,11 @@ impl Backend {
                         monitor_tx,
                         status_receiver,
                         owned_by: StdMutex::new(None),
-                        initial_params: HashChainParams {
-                            frequency: chain_config.frequency.clone(),
-                            voltage: chain_config.voltage,
-                        },
                         inner: Mutex::new(ManagerInner {
                             hash_chain: None,
                             start_count: 0,
                         }),
+                        chain_config,
                     }
                 })
                 .await;
@@ -1517,6 +1518,9 @@ impl Backend {
             let halt_receiver = halt_receiver.clone();
             let manager = manager.clone();
 
+            let initial_frequency = manager.chain_config.frequency.clone();
+            let initial_voltage = manager.chain_config.voltage;
+
             tokio::spawn(async move {
                 // Register handler stop hashchain when miner is stopped
                 halt_receiver
@@ -1524,13 +1528,12 @@ impl Backend {
                     .await
                     .spawn_halt_handler(Manager::termination_handler(manager.clone()));
 
-                let params = manager.initial_params.clone();
                 manager
                     .acquire("main")
                     .await
                     .expect("BUG: failed to acquire hashchain")
                     .expect_stopped()
-                    .start(&params)
+                    .start(&initial_frequency, initial_voltage)
                     .await
                     .expect("BUG: failed to start hashchain");
             });

@@ -111,9 +111,8 @@ impl Handler {
             let mut frequency = 0;
             if let Some(hash_chain) = inner.hash_chain.as_ref() {
                 chip_count = hash_chain.chip_count;
-                let params = hash_chain.get_params().await;
-                voltage = params.voltage.as_volts() as f64;
-                frequency = params.frequency.avg() as u32;
+                voltage = hash_chain.get_voltage().await.as_volts() as f64;
+                frequency = hash_chain.get_frequency().await.avg() as u32;
             }
             list.push(response::DevDetail {
                 idx: list.len() as i32,
