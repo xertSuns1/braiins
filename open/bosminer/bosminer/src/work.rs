@@ -301,6 +301,9 @@ pub fn engine_channel(event_handler: impl ExhaustedHandler) -> (EngineSender, En
     )
 }
 
+/// The responsibility of Engine generator is to transform a `job::Bitcoin`
+/// into a `work::Engine`. The engine then becomes a source of work based on
+/// this Job.
 pub type EngineGenerator = Box<dyn Fn(Arc<dyn job::Bitcoin>) -> DynEngine + Send + 'static>;
 
 struct EngineSenderInner {
@@ -323,6 +326,7 @@ impl EngineSenderInner {
         self.re_broadcast();
     }
 
+    /// Generates a new work engine for the specified `job` and broadcasts it to its subscribers
     fn broadcast_job(&mut self, job: Arc<dyn job::Bitcoin>) {
         let engine = self
             .engine_generator
@@ -367,6 +371,7 @@ impl EngineSender {
         self.inner.lock().expect("cannot lock engine sender")
     }
 
+    /// Returns the `EngineGenerator` that has been replaced
     pub fn replace_engine_generator(&self, engine_generator: EngineGenerator) -> EngineGenerator {
         self.lock_inner()
             .engine_generator

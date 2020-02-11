@@ -189,6 +189,7 @@ impl PartialEq for Handle {
 pub struct Group {
     pub descriptor: GroupDescriptor,
     scheduler_client_handles: Mutex<Vec<scheduler::ClientHandle>>,
+    /// All clients in the group must support the same amount of midstates
     midstate_count: usize,
 }
 
@@ -256,6 +257,7 @@ impl Group {
         }
     }
 
+    /// Changes the position of a client within the group
     pub async fn move_client_to(
         &self,
         index_from: usize,
@@ -338,6 +340,10 @@ impl GroupRegistry {
         self.list.iter_mut()
     }
 
+    /// Creates a new group that handles clients connected to pools that support `midstate_count`
+    /// of midstates.
+    /// TODO: once this functionality is available through the API, we should review arbitrary
+    ///  recalculation of quotas
     pub fn create_group(
         &mut self,
         descriptor: GroupDescriptor,

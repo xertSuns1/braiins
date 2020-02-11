@@ -31,6 +31,9 @@ use tokio::time::delay_for;
 use std::sync::Arc;
 use std::time;
 
+/// This struct cannot be shared and it is possible to use mutable references. However, the
+/// client handle is shared object with interior mutability scheduler::ClientHandle. It solves
+/// many synchronization problems.
 #[derive(Debug, Clone)]
 pub struct ClientHandle {
     pub client_handle: Arc<client::Handle>,
