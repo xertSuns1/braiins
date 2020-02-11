@@ -91,11 +91,14 @@ where
 
 /// Common interface for nodes with ability to solve generated work and providing common interface
 /// for mining control
+#[async_trait]
 pub trait WorkSolver: Info + WorkSolverStats {
     /// Optionally return work solver unique id (e.g. hash chain index)
     fn get_id(&self) -> Option<usize> {
         None
     }
+    /// Return nominal/expected hashrate in hashes per second
+    async fn get_nominal_hashrate(&self) -> Option<ii_bitcoin::HashesUnit>;
 }
 
 pub trait WorkSolverStats: Stats {
@@ -124,9 +127,14 @@ impl<T: ?Sized + Stats> Stats for Arc<T> {
     }
 }
 
+#[async_trait]
 impl<T: ?Sized + WorkSolver> WorkSolver for Arc<T> {
     fn get_id(&self) -> Option<usize> {
         self.as_ref().get_id()
+    }
+
+    async fn get_nominal_hashrate(&self) -> Option<ii_bitcoin::HashesUnit> {
+        self.as_ref().get_nominal_hashrate().await
     }
 }
 

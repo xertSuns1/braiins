@@ -109,7 +109,12 @@ impl TestWorkSolver {
     }
 }
 
-impl node::WorkSolver for TestWorkSolver {}
+#[async_trait]
+impl node::WorkSolver for TestWorkSolver {
+    async fn get_nominal_hashrate(&self) -> Option<ii_bitcoin::HashesUnit> {
+        None
+    }
+}
 
 impl fmt::Display for TestWorkSolver {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

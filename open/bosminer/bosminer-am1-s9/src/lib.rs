@@ -1335,9 +1335,21 @@ impl Manager {
     }
 }
 
+#[async_trait]
 impl node::WorkSolver for Manager {
     fn get_id(&self) -> Option<usize> {
         Some(self.hashboard_idx)
+    }
+
+    async fn get_nominal_hashrate(&self) -> Option<ii_bitcoin::HashesUnit> {
+        let inner = self.inner.lock().await;
+        match inner.hash_chain.as_ref() {
+            Some(hash_chain) => {
+                let freq_sum = hash_chain.frequency.lock().await.total();
+                Some(((freq_sum as u128) * (bm1387::NUM_CORES_ON_CHIP as u128)).into())
+            }
+            None => None,
+        }
     }
 }
 
@@ -1579,7 +1591,12 @@ impl hal::Backend for Backend {
     }
 }
 
-impl node::WorkSolver for Backend {}
+#[async_trait]
+impl node::WorkSolver for Backend {
+    async fn get_nominal_hashrate(&self) -> Option<ii_bitcoin::HashesUnit> {
+        None
+    }
+}
 
 impl fmt::Display for Backend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

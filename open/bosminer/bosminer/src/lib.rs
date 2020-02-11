@@ -69,7 +69,12 @@ impl Frontend {
     }
 }
 
-impl node::WorkSolver for Frontend {}
+#[async_trait]
+impl node::WorkSolver for Frontend {
+    async fn get_nominal_hashrate(&self) -> Option<ii_bitcoin::HashesUnit> {
+        None
+    }
+}
 
 impl fmt::Display for Frontend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -35,7 +35,7 @@ lazy_static! {
 }
 
 // time for computation one double hash and target comparison in seconds
-const HASH_TIME_S: f64 = 0.0000000029761;
+pub const HASH_TIME_S: f64 = 0.0000000029761;
 
 /// Time needed for iteration of the whole search space in milliseconds
 pub const FULL_NONCE_TIME_MS: f64 = (HASH_TIME_S * (0xffffffffu64 + 1u64) as f64) * 1000f64;

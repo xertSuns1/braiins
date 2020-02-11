@@ -142,7 +142,14 @@ impl Backend {
     }
 }
 
-impl node::WorkSolver for Backend {}
+#[async_trait]
+impl node::WorkSolver for Backend {
+    async fn get_nominal_hashrate(&self) -> Option<ii_bitcoin::HashesUnit> {
+        Some(ii_bitcoin::HashesUnit::KiloHashes(
+            (1.0 / icarus::HASH_TIME_S) / 1000.0,
+        ))
+    }
+}
 
 impl fmt::Display for Backend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
