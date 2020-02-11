@@ -37,9 +37,13 @@ use futures::lock::Mutex;
 use ii_async_compat::futures;
 
 use std::fmt;
-use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
+use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard, Weak};
 
 use async_trait::async_trait;
+
+use once_cell::sync::Lazy;
+
+pub static TEST_CLIENT: Lazy<Arc<TestClient>> = Lazy::new(|| Arc::new(TestClient::new()));
 
 #[derive(Debug, MiningNode)]
 pub struct TestNode {
@@ -123,8 +127,8 @@ impl fmt::Display for TestWorkSolver {
 }
 
 impl job::Bitcoin for TestBlock {
-    fn origin(&self) -> Arc<dyn node::Client> {
-        Arc::new(TestClient::new())
+    fn origin(&self) -> Weak<dyn node::Client> {
+        Arc::downgrade(&(TEST_CLIENT.clone() as Arc<dyn node::Client>))
     }
 
     fn version(&self) -> u32 {
@@ -249,6 +253,13 @@ struct OneWorkEngineInner {
 }
 
 impl OneWorkEngineInner {
+    fn terminate(&mut self) {
+        match self.work {
+            Some(_) => self.work = None,
+            None => {}
+        }
+    }
+
     fn is_exhausted(&self) -> bool {
         self.work.is_none()
     }
@@ -282,6 +293,10 @@ impl OneWorkEngine {
 }
 
 impl work::Engine for OneWorkEngine {
+    fn terminate(&self) {
+        self.lock_inner().terminate();
+    }
+
     fn is_exhausted(&self) -> bool {
         self.lock_inner().is_exhausted()
     }
@@ -298,6 +313,13 @@ struct TestWorkEngineInner {
 }
 
 impl TestWorkEngineInner {
+    fn terminate(&mut self) {
+        match self.next_test_block {
+            Some(_) => self.next_test_block = None,
+            None => {}
+        }
+    }
+
     fn is_exhausted(&self) -> bool {
         self.next_test_block.is_none()
     }
@@ -341,6 +363,10 @@ impl TestWorkEngine {
 }
 
 impl work::Engine for TestWorkEngine {
+    fn terminate(&self) {
+        self.lock_inner().terminate();
+    }
+
     fn is_exhausted(&self) -> bool {
         self.lock_inner().is_exhausted()
     }

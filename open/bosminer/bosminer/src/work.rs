@@ -42,7 +42,7 @@ use once_cell::sync::OnceCell;
 use std::fmt::{self, Debug};
 use std::iter;
 use std::mem;
-use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
+use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard, Weak};
 use std::time;
 
 pub enum LoopState<T> {
@@ -109,7 +109,7 @@ impl Assignment {
 
     /// Return origin from which the work has been generated
     #[inline]
-    pub fn origin(&self) -> Arc<dyn node::Client> {
+    pub fn origin(&self) -> Weak<dyn node::Client> {
         self.job.origin()
     }
 
@@ -162,7 +162,7 @@ impl Solution {
 
     /// Return origin from which the work has been generated
     #[inline]
-    pub fn origin(&self) -> Arc<dyn node::Client> {
+    pub fn origin(&self) -> Weak<dyn node::Client> {
         self.work.job.origin()
     }
 
@@ -246,11 +246,16 @@ impl Solution {
         // indirection with implemented `node::Info` trait.
         // This blanket implementation can be found in the module `crate::node`:
         // impl<T: ?Sized + Info> Info for Arc<T> {}
-        let job_origin: node::DynInfo = Arc::new(self.work.job.origin());
-        iter::once(&job_origin)
-            .chain(self.work.path.iter())
-            .cloned()
-            .collect()
+        if let Some(origin) = self.work.job.origin().upgrade() {
+            let job_origin: node::DynInfo = Arc::new(origin);
+            iter::once(&job_origin)
+                .chain(self.work.path.iter())
+                .cloned()
+                .collect()
+        } else {
+            // Origin has been removed and no one will receive any solution
+            self.work.path.clone()
+        }
     }
 }
 
@@ -267,6 +272,8 @@ impl Debug for Solution {
 }
 
 pub trait Engine: Debug + Send + Sync {
+    fn terminate(&self);
+
     fn is_exhausted(&self) -> bool;
 
     fn next_work(&self) -> LoopState<Assignment>;

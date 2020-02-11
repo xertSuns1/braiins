@@ -217,17 +217,20 @@ impl Generator {
                 // tha last work is returned from work engine (the work is exhausted)
                 LoopState::Break(value) => {
                     // inform about this event
-                    self.engine_receiver.handle_exhausted(engine);
+                    self.engine_receiver.handle_exhausted(engine.clone());
                     value
                 }
             };
             // determine how much work has been generated for current work assignment
             let work_amount = work.generated_work_amount() as u64;
             // account generated work on the client side
-            work.origin()
-                .client_stats()
-                .generated_work()
-                .add(work_amount);
+            if let Some(origin) = work.origin().upgrade() {
+                origin.client_stats().generated_work().add(work_amount);
+            } else {
+                // Origin has been removed and no one will receive any solution
+                engine.terminate();
+                continue;
+            }
 
             // account generated work in all work solvers in the path
             let now = time::SystemTime::now();

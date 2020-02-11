@@ -71,10 +71,16 @@ impl Handle {
     /// objects to point to the same pointer otherwise direct comparison of self with other is never
     /// satisfied even if the dynamic objects are same.
     pub fn matching_solution(&self, solution: &work::Solution) -> bool {
-        Arc::ptr_eq(
-            &self.node.clone().get_unique_ptr(),
-            &solution.origin().get_unique_ptr(),
-        )
+        solution
+            .origin()
+            .upgrade()
+            .map(|origin| {
+                Arc::ptr_eq(
+                    &self.node.clone().get_unique_ptr(),
+                    &origin.get_unique_ptr(),
+                )
+            })
+            .unwrap_or(false)
     }
 
     #[inline]

@@ -32,6 +32,8 @@ use std::sync::Arc;
 pub struct ExhaustedWork;
 
 impl Engine for ExhaustedWork {
+    fn terminate(&self) {}
+
     fn is_exhausted(&self) -> bool {
         true
     }
@@ -90,6 +92,10 @@ impl AtomicRange {
     /// Atomically get current index which will be used for next returned range
     fn get_current(&self) -> u32 {
         self.curr_index.load(Ordering::Relaxed)
+    }
+
+    fn terminate(&self) {
+        self.curr_index.store(self.max_index + 1, Ordering::Relaxed);
     }
 
     /// Concurrently determine next range of indexes
@@ -181,6 +187,10 @@ impl VersionRolling {
 }
 
 impl Engine for VersionRolling {
+    fn terminate(&self) {
+        self.curr_range.terminate();
+    }
+
     fn is_exhausted(&self) -> bool {
         self.curr_range.is_exhausted(None)
     }

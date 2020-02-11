@@ -36,7 +36,7 @@ use ii_async_compat::futures;
 use std::convert::TryInto;
 use std::fmt::Debug;
 use std::mem;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use downcast_rs::{impl_downcast, Downcast};
 
@@ -45,7 +45,7 @@ use downcast_rs::{impl_downcast, Downcast};
 /// and hide protocol specific details.
 pub trait Bitcoin: Debug + Downcast + Send + Sync {
     /// Information about origin where the job has been created
-    fn origin(&self) -> Arc<dyn node::Client>;
+    fn origin(&self) -> Weak<dyn node::Client>;
     /// Original version field that reflects the current network consensus
     fn version(&self) -> u32;
     /// Bit-mask with general purpose bits which can be freely manipulated (specified by BIP320)
@@ -113,13 +113,19 @@ impl Sender {
     }
 
     /// Check if the job has valid attributes
-    fn job_sanity_check(job: &Arc<dyn job::Bitcoin>) -> bool {
+    fn job_sanity_check(
+        job: &Arc<dyn job::Bitcoin>,
+        origin: &Option<Arc<dyn node::Client>>,
+    ) -> bool {
         let mut valid = true;
         if let Err(msg) = ii_bitcoin::Target::from_compact(job.bits()) {
             error!(
                 "Invalid job's nBits ({}) received from '{}'",
                 msg,
-                job.origin()
+                origin
+                    .as_ref()
+                    .map(|client| client.to_string())
+                    .unwrap_or("?".to_string())
             );
             valid = false;
         }
@@ -127,15 +133,21 @@ impl Sender {
     }
 
     pub fn send(&self, job: Arc<dyn job::Bitcoin>) {
-        if !Self::job_sanity_check(&job) {
-            job.origin().client_stats().invalid_jobs().inc();
+        let origin = job.origin().upgrade();
+        if !Self::job_sanity_check(&job, &origin) {
+            origin.map(|origin| origin.client_stats().invalid_jobs().inc());
             return;
         }
 
         // send only jobs with correct data
-        job.origin().client_stats().valid_jobs().inc();
-        info!("--- broadcasting new job ---");
-        self.engine_sender.broadcast_job(job);
+        if let Some(origin) = origin {
+            origin.client_stats().valid_jobs().inc();
+            info!("--- broadcasting new job ---");
+            self.engine_sender.broadcast_job(job);
+        } else {
+            // Origin has been removed and no one will receive any solution
+            info!("--- discarding job ---");
+        }
     }
 
     #[inline]

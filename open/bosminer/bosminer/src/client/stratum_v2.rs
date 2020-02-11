@@ -91,7 +91,7 @@ impl ConnectionDetails {
 
 #[derive(Debug, Clone)]
 pub struct StratumJob {
-    client: Arc<StratumClient>,
+    client: Weak<StratumClient>,
     id: u32,
     channel_id: u32,
     version: u32,
@@ -110,7 +110,7 @@ impl StratumJob {
         target: ii_bitcoin::Target,
     ) -> Self {
         Self {
-            client,
+            client: Arc::downgrade(&client),
             id: job_msg.job_id,
             channel_id: job_msg.channel_id,
             version: job_msg.version,
@@ -126,7 +126,7 @@ impl StratumJob {
 }
 
 impl job::Bitcoin for StratumJob {
-    fn origin(&self) -> Arc<dyn node::Client> {
+    fn origin(&self) -> Weak<dyn node::Client> {
         self.client.clone()
     }
 
@@ -614,7 +614,7 @@ impl StratumClient {
                             Err("The remote stratum server was disconnected prematurely")?;
                         }
                     }
-                },
+                }
                 solution = solution_receiver.receive().fuse() => {
                     match solution {
                         Some(solution) => solution_handler.process_solution(solution).await?,
@@ -623,7 +623,7 @@ impl StratumClient {
                             Err("Standard application shutdown")?;
                         }
                     }
-                },
+                }
             }
         }
         Ok(())

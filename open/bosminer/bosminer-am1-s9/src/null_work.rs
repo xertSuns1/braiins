@@ -30,9 +30,13 @@ use bosminer::work;
 use bosminer_macros::ClientNode;
 
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use async_trait::async_trait;
+
+use once_cell::sync::Lazy;
+
+static NULL_JOB_CLIENT: Lazy<Arc<NullJobClient>> = Lazy::new(|| Arc::new(NullJobClient::new()));
 
 /// NullJob to be used for chip initialization and tests
 #[derive(Debug, Copy, Clone)]
@@ -97,8 +101,8 @@ impl fmt::Display for NullJobClient {
 }
 
 impl job::Bitcoin for NullJob {
-    fn origin(&self) -> Arc<dyn node::Client> {
-        Arc::new(NullJobClient::new())
+    fn origin(&self) -> Weak<dyn node::Client> {
+        Arc::downgrade(&(NULL_JOB_CLIENT.clone() as Arc<dyn node::Client>))
     }
 
     fn version(&self) -> u32 {
