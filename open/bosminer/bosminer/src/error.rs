@@ -26,6 +26,8 @@ mod client;
 
 pub use client::ErrorKind as Client;
 
+use ii_async_compat::prelude::*;
+
 use failure::{Backtrace, Context, Fail};
 use std::fmt::{self, Debug, Display};
 
@@ -130,6 +132,15 @@ impl From<String> for Error {
 
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
+        let msg = e.to_string();
+        Self {
+            inner: e.context(ErrorKind::Io(msg)),
+        }
+    }
+}
+
+impl From<futures::channel::mpsc::SendError> for Error {
+    fn from(e: futures::channel::mpsc::SendError) -> Self {
         let msg = e.to_string();
         Self {
             inner: e.context(ErrorKind::Io(msg)),

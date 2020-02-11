@@ -28,6 +28,7 @@ mod scheduler;
 // Sub-modules with client implementation
 pub mod drain;
 pub mod stratum_v2;
+pub mod stratum_v2_channels;
 
 use crate::error;
 use crate::hal;
