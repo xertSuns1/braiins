@@ -58,7 +58,7 @@ use ii_stratum::v2::messages::{
 use ii_stratum::v2::types::DeviceInfo;
 use ii_stratum::v2::types::*;
 use ii_stratum::v2::{build_message_from_frame, Handler};
-use ii_wire::{Connection, ConnectionRx, ConnectionTx};
+use ii_wire::{Connection};
 
 use std::collections::HashMap;
 
@@ -349,14 +349,55 @@ impl Handler for StratumEventHandler {
     }
 }
 
-struct StratumSolutionHandler {
+trait FrameSink:
+    Sink<<Framing as ii_wire::Framing>::Tx, Error = <Framing as ii_wire::Framing>::Error>
+    + std::marker::Unpin
+    + std::fmt::Debug
+    + 'static
+{
+}
+
+impl<T> FrameSink for T where
+    T: Sink<<Framing as ii_wire::Framing>::Tx, Error = <Framing as ii_wire::Framing>::Error>
+        + std::marker::Unpin
+        + std::fmt::Debug
+        + 'static
+{
+}
+
+trait FrameStream:
+    Stream<
+        Item = std::result::Result<
+            <Framing as ii_wire::Framing>::Tx,
+            <Framing as ii_wire::Framing>::Error,
+        >,
+    > + std::marker::Unpin
+    + 'static
+{
+}
+
+impl<T> FrameStream for T where
+    T: Stream<
+            Item = std::result::Result<
+                <Framing as ii_wire::Framing>::Tx,
+                <Framing as ii_wire::Framing>::Error,
+            >,
+        > + std::marker::Unpin
+        + 'static
+{
+}
+
+struct StratumSolutionHandler<S> {
     client: Arc<StratumClient>,
-    connection_tx: ConnectionTx<Framing>,
+    connection_tx: S,
     seq_num: u32,
 }
 
-impl StratumSolutionHandler {
-    fn new(client: Arc<StratumClient>, connection_tx: ConnectionTx<Framing>) -> Self {
+impl<S> StratumSolutionHandler<S>
+where
+    S: FrameSink,
+{
+    fn new(client: Arc<StratumClient>, connection_tx: S) -> Self {
         Self {
             client,
             connection_tx,
@@ -385,8 +426,7 @@ impl StratumSolutionHandler {
             .await
             .push_back((solution, seq_num));
         // send solutions back to the stratum server
-        self.connection_tx
-            .send_msg(share_msg)
+        StratumClient::send_msg(&mut self.connection_tx, share_msg)
             .await
             .context("Cannot send submit to stratum server")?;
         // the response is handled in a separate task
@@ -590,12 +630,30 @@ impl StratumClient {
         self.last_job.lock().await.replace(job);
     }
 
-    async fn main_loop(
+    /// Send a message down a specified Tx Sink
+    async fn send_msg<M, S>(
+        connection_tx: &mut S,
+        message: M,
+    ) -> Result<(), <Framing as ii_wire::Framing>::Error>
+    where
+        M: TryInto<<Framing as ii_wire::Framing>::Tx, Error = <Framing as ii_wire::Framing>::Error>,
+        S: FrameSink,
+    {
+        let frame = message.try_into()?;
+        connection_tx.send(frame).await?;
+        Ok(())
+    }
+
+    async fn main_loop<R, S>(
         &self,
-        mut connection_rx: ConnectionRx<Framing>,
+        mut connection_rx: R,
         mut event_handler: StratumEventHandler,
-        mut solution_handler: StratumSolutionHandler,
-    ) -> error::Result<()> {
+        mut solution_handler: StratumSolutionHandler<S>,
+    ) -> error::Result<()>
+    where
+        R: FrameStream,
+        S: FrameSink,
+    {
         let mut solution_receiver = self.solution_receiver.lock().await;
 
         while !self.status.is_shutting_down() {
