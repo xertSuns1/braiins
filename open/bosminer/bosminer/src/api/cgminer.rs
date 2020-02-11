@@ -339,6 +339,7 @@ impl Handler {
         .await
     }
 
+    /// Collects all clients from all groups into a single `Vec`
     async fn get_clients(&self) -> Vec<Arc<client::Handle>> {
         let mut clients = vec![];
         for group in self.core.get_groups().await {

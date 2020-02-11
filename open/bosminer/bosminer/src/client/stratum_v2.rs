@@ -566,7 +566,7 @@ pub struct StratumClient {
     client_stats: stats::BasicClient,
     stop_sender: mpsc::Sender<()>,
     stop_receiver: Mutex<mpsc::Receiver<()>>,
-    // Last job has to be week reference to prevent circular reference (the `StratumJob` keeps
+    // Last job has to be weak reference to prevent circular reference (the `StratumJob` keeps
     // reference to `StratumClient`)
     last_job: Mutex<Option<Weak<StratumJob>>>,
     solutions: SolutionQueue,
@@ -675,6 +675,7 @@ impl StratumClient {
 
             if self.status.can_stop() {
                 // NOTE: it is not safe to add here any code!
+                // The reason is that at this point the main task can be executed in parallel again
                 break;
             }
             // Restarting

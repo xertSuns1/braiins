@@ -104,6 +104,8 @@ pub struct GroupHandle {
     pub group_handle: Arc<client::Group>,
     active_client: Option<Arc<client::Handle>>,
     generated_work: u64,
+    /// Current percentage of hashrate that this group has been allocated to. This number
+    /// changes based on newly added/removed groups.
     pub percentage_share: f64,
 }
 
