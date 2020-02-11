@@ -568,7 +568,7 @@ pub struct StratumClient {
     stop_receiver: Mutex<mpsc::Receiver<()>>,
     // Last job has to be weak reference to prevent circular reference (the `StratumJob` keeps
     // reference to `StratumClient`)
-    last_job: Mutex<Option<Weak<StratumJob>>>,
+    last_job: Mutex<Option<Arc<StratumJob>>>,
     solutions: SolutionQueue,
     job_sender: Mutex<job::Sender>,
     solution_receiver: Mutex<job::SolutionReceiver>,
@@ -591,7 +591,7 @@ impl StratumClient {
     }
 
     async fn update_last_job(&self, job: Arc<StratumJob>) {
-        self.last_job.lock().await.replace(Arc::downgrade(&job));
+        self.last_job.lock().await.replace(job);
     }
 
     async fn main_loop(
@@ -704,7 +704,7 @@ impl node::Client for StratumClient {
             .lock()
             .await
             .as_ref()
-            .and_then(|job| job.upgrade().map(|job| job as Arc<dyn job::Bitcoin>))
+            .map(|job| job.clone() as Arc<dyn job::Bitcoin>)
     }
 }
 
