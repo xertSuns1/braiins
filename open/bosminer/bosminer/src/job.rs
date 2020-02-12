@@ -191,7 +191,7 @@ impl SolutionReceiver {
 
             // compare block hash for given solution with all targets
             // TODO: create tests for solution validation with all difficulty variants
-            assert!(solution.network_target() <= job_target);
+            assert!(&solution.network_target() <= job_target);
             if hash.meets(&solution.network_target()) {
                 stats::account_valid_solution(&path, &solution, time, DiffTargetType::Network)
                     .await;

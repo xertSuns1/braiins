@@ -144,6 +144,10 @@ pub struct Solution {
     solution: Arc<dyn hal::BackendSolution>,
     /// Lazy evaluated double hash of this solution
     hash: OnceCell<ii_bitcoin::DHash>,
+    /// Lazy evaluated job target to ensure that the value is stable for this solution
+    job_target: OnceCell<ii_bitcoin::Target>,
+    /// Lazy evaluated backend target to ensure that the value is stable for this solution
+    backend_target: OnceCell<ii_bitcoin::Target>,
 }
 
 impl Solution {
@@ -157,6 +161,8 @@ impl Solution {
             work,
             solution: Arc::new(solution),
             hash: OnceCell::new(),
+            backend_target: OnceCell::new(),
+            job_target: OnceCell::new(),
         }
     }
 
@@ -202,13 +208,13 @@ impl Solution {
     }
 
     #[inline]
-    pub fn job_target(&self) -> ii_bitcoin::Target {
-        self.work.job.target()
+    pub fn job_target(&self) -> &ii_bitcoin::Target {
+        self.job_target.get_or_init(|| self.work.job.target())
     }
 
     #[inline]
     pub fn backend_target(&self) -> &ii_bitcoin::Target {
-        self.solution.target()
+        self.backend_target.get_or_init(|| *self.solution.target())
     }
 
     #[inline]
@@ -217,6 +223,7 @@ impl Solution {
     }
 
     /// Return double hash of this solution
+    #[inline]
     pub fn hash(&self) -> &ii_bitcoin::DHash {
         self.hash.get_or_init(|| self.get_block_header().hash())
     }

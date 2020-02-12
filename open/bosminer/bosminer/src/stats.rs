@@ -627,10 +627,10 @@ pub async fn account_valid_solution(
 ) {
     account_valid_backend_diff(path, solution.backend_target(), time).await;
     if met_diff_target_type != DiffTargetType::Backend {
-        let target: ii_bitcoin::Target = solution.job_target();
-        account_valid_job_diff(path, &target, time).await;
+        let target = solution.job_target();
+        account_valid_job_diff(path, target, time).await;
         if met_diff_target_type != DiffTargetType::Job {
-            account_valid_network_diff(path, &target, time).await;
+            account_valid_network_diff(path, target, time).await;
             assert_eq!(
                 met_diff_target_type,
                 DiffTargetType::Network,
@@ -643,9 +643,9 @@ pub async fn account_valid_solution(
             let mining_stats = node.mining_stats();
             mining_stats
                 .last_share()
-                .account_solution(&target, time::SystemTime::now())
+                .account_solution(target, time::SystemTime::now())
                 .await;
-            mining_stats.best_share().account_solution(&target);
+            mining_stats.best_share().account_solution(target);
         }
     }
 }
