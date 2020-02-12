@@ -1,6 +1,6 @@
-#!/bin/sh
+#!/bin/sh /etc/rc.common
 
-# Copyright (C) 2019  Braiins Systems s.r.o.
+# Copyright (C) 2020 Braiins Systems s.r.o.
 #
 # This file is part of Braiins Open-Source Initiative (BOSI).
 #
@@ -22,14 +22,28 @@
 # of such proprietary license or if you have any other questions, please
 # contact us at opensource@braiins.com.
 
-# redirect STDOUT and STDERR to /dev/kmsg
-exec 1<&- 2<&- 1>/dev/kmsg 2>&1
+START=99
 
-echo "System is running the bOSminer preview!"
+USE_PROCD=1
+PROG=/usr/bin/bosminer
 
-green_led="/sys/class/leds/Green LED"
-red_led="/sys/class/leds/Red LED"
+boot()
+{
+	start "$@"
+}
 
-# after successful boot, turn off the red LED and green LED let turned on
-echo default-on > "$green_led/trigger"
-echo none > "$red_led/trigger"
+start_service()
+{
+	procd_open_instance
+	procd_set_param command "$PROG" 
+	procd_set_param respawn 3600 5 0
+	procd_set_param stdout 0
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+reload_service()
+{
+	stop
+	start
+}

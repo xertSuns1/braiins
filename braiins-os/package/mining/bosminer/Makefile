@@ -82,6 +82,9 @@ define Package/bosminer/install
 	$(CP) ./files/bosminer-template.toml $(1)/etc/
 	$(INSTALL_DIR) $(1)/etc/antminer
 	$(CP) ./files/hash_s8_app.txt $(1)/etc/antminer/hash_s8_app.txt
+
+	$(INSTALL_DIR) $(1)/etc/init.d/
+	$(INSTALL_BIN) ./files/bosminer.init $(1)/etc/init.d/bosminer
 endef
 
 $(eval $(call BuildPackage,bosminer))
