@@ -31,16 +31,19 @@ use failure::ResultExt;
 #[derive(Copy, Clone, Debug)]
 pub enum Protocol {
     Drain,
+    StratumV1,
     StratumV2,
 }
 
 impl Protocol {
     pub const SCHEME_DRAIN: &'static str = "drain";
+    pub const SCHEME_STRATUM_V1: &'static str = "stratum+tcp";
     pub const SCHEME_STRATUM_V2: &'static str = "stratum2+tcp";
 
     pub fn parse(scheme: &str) -> error::Result<Self> {
         Ok(match scheme {
             Self::SCHEME_DRAIN => Self::Drain,
+            Self::SCHEME_STRATUM_V1 => Self::StratumV1,
             Self::SCHEME_STRATUM_V2 => Self::StratumV2,
             _ => Err(error::ErrorKind::Client(format!(
                 "unknown protocol '{}'",
@@ -52,6 +55,7 @@ impl Protocol {
     pub fn scheme(&self) -> &'static str {
         match self {
             Self::Drain => Self::SCHEME_DRAIN,
+            Self::StratumV1 => Self::SCHEME_STRATUM_V1,
             Self::StratumV2 => Self::SCHEME_STRATUM_V2,
         }
     }
@@ -61,6 +65,7 @@ impl fmt::Display for Protocol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Protocol::Drain => write!(f, "Drain"),
+            Protocol::StratumV1 => write!(f, "Stratum V1"),
             Protocol::StratumV2 => write!(f, "Stratum V2"),
         }
     }

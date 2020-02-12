@@ -60,6 +60,8 @@ use ii_stratum::v2::messages::{
 use ii_stratum::v2::types::DeviceInfo;
 use ii_stratum::v2::types::*;
 use ii_stratum::v2::{build_message_from_frame, Handler};
+use ii_stratum::{v1, v2};
+use ii_stratum_proxy::translation::V2ToV1Translation;
 use ii_wire::{Connection, ConnectionRx, ConnectionTx};
 
 use std::collections::HashMap;
@@ -93,7 +95,7 @@ impl ConnectionDetails {
 
 #[derive(Debug, Clone)]
 pub struct StratumJob {
-    client: Arc<StratumClient>,
+    client: Weak<StratumClient>,
     id: u32,
     channel_id: u32,
     version: u32,
@@ -112,7 +114,7 @@ impl StratumJob {
         target: ii_bitcoin::Target,
     ) -> Self {
         Self {
-            client,
+            client: Arc::downgrade(&client),
             id: job_msg.job_id,
             channel_id: job_msg.channel_id,
             version: job_msg.version,
@@ -128,7 +130,7 @@ impl StratumJob {
 }
 
 impl job::Bitcoin for StratumJob {
-    fn origin(&self) -> Arc<dyn node::Client> {
+    fn origin(&self) -> Weak<dyn node::Client> {
         self.client.clone()
     }
 
@@ -445,10 +447,15 @@ impl StratumConnectionHandler {
         }
     }
 
-    async fn setup_mining_connection(
+    async fn setup_mining_connection<R, S>(
         &mut self,
-        connection: &mut Connection<Framing>,
-    ) -> error::Result<()> {
+        connection_rx: &mut R,
+        connection_tx: &mut S,
+    ) -> error::Result<()>
+    where
+        R: FrameStream,
+        S: FrameSink,
+    {
         let setup_msg = SetupConnection {
             protocol: 0,
             max_version: 2,
@@ -472,14 +479,13 @@ impl StratumConnectionHandler {
                     .expect("BUG: cannot convert 'DeviceInfo::dev_id'"),
             },
         };
-        connection
-            .send_msg(setup_msg)
+        StratumClient::send_msg(connection_tx, setup_msg)
             .await
             .context("Cannot send stratum setup mining connection")?;
-        let frame = connection
+        let frame = connection_rx
             .next()
             .await
-            .ok_or("The remote stratum server was disconnected prematurely")??;
+            .ok_or("The remote stratum server was disconnected prematurely")?;
         let response_msg = build_message_from_frame(frame)?;
 
         self.status = None;
@@ -489,7 +495,15 @@ impl StratumConnectionHandler {
         ))
     }
 
-    async fn open_channel(&mut self, connection: &mut Connection<Framing>) -> error::Result<()> {
+    async fn open_channel<R, S>(
+        &mut self,
+        connection_rx: &mut R,
+        connection_tx: &mut S,
+    ) -> error::Result<()>
+    where
+        R: FrameStream,
+        S: FrameSink,
+    {
         let channel_msg = OpenStandardMiningChannel {
             req_id: 10,
             user: self
@@ -504,14 +518,14 @@ impl StratumConnectionHandler {
             max_target: ii_bitcoin::Target::default().into(),
         };
 
-        connection
-            .send_msg(channel_msg)
+        StratumClient::send_msg(connection_tx, channel_msg)
             .await
             .context("Cannot send stratum open channel")?;
-        let frame = connection
+        // TODO consolidate into recv_msg in client
+        let frame = connection_rx
             .next()
             .await
-            .ok_or("The remote stratum server was disconnected prematurely")??;
+            .ok_or("The remote stratum server was disconnected prematurely")?;
         let response_msg = build_message_from_frame(frame)?;
 
         self.status = None;
@@ -521,10 +535,9 @@ impl StratumConnectionHandler {
             .unwrap_or(Err("Unexpected response for stratum open channel".into()))
     }
 
-    async fn connect<R, S>(mut self) -> error::Result<(R, S, ii_bitcoin::Target)>
+    async fn connect<F>(self) -> error::Result<(ConnectionRx<F>, ConnectionTx<F>)>
     where
-        R: FrameStream,
-        S: FrameSink,
+        F: ii_wire::Framing,
     {
         let socket_addr = self
             .client
@@ -532,20 +545,37 @@ impl StratumConnectionHandler {
             .get_host_and_port()
             .to_socket_addrs()
             .context("Invalid server address")?
+            // TODO: this is not correct as it always only attempts to ever connect to the first
+            //  IP address from the resolved set
             .next()
             .ok_or("Cannot resolve any IP address")?;
 
-        let mut connection = Connection::<Framing>::connect(&socket_addr)
+        let connection = Connection::<F>::connect(&socket_addr)
             .await
             .context("Cannot connect to stratum server")?;
-        self.setup_mining_connection(&mut connection)
+        let (connection_rx, connection_tx) = connection.split();
+
+        Ok((connection_rx, connection_tx))
+    }
+
+    /// Starts mining session and provides the initial target negotiated by the upstream endpoint
+    async fn init_mining_session<R, S>(
+        mut self,
+        connection_rx: &mut R,
+        connection_tx: &mut S,
+    ) -> error::Result<ii_bitcoin::Target>
+    where
+        R: FrameStream,
+        S: FrameSink,
+    {
+        self.setup_mining_connection(connection_rx, connection_tx)
             .await
             .context("Cannot setup stratum mining connection")?;
-        self.open_channel(&mut connection)
+        self.open_channel(connection_rx, connection_tx)
             .await
             .context("Cannot open stratum channel")?;
 
-        Ok((connection, self.init_target))
+        Ok(self.init_target)
     }
 }
 
@@ -674,36 +704,47 @@ impl StratumClient {
         Ok(())
     }
 
-    async fn run_job_solver<R, S>(
-        self: Arc<Self>,
-        connection_rx: FrameStream,
-        connection_tx: FrameSink,
-        init_target: ii_bitcoin::Target,
-    ) where
+    async fn run_job_solver<R, S>(self: Arc<Self>, mut connection_rx: R, mut connection_tx: S)
+    where
         R: FrameStream,
         S: FrameSink,
     {
-        let mut event_handler = StratumEventHandler::new(self.clone(), init_target);
-        let solution_handler = StratumSolutionHandler::new(self.clone(), connection_tx);
-
-        if let Err(_) = self
-            .main_loop(connection_rx, &mut event_handler, solution_handler)
-            .await
-        {
-            self.status.initiate_failing();
+        // Initial target should be the result of properly initiated mining session
+        let mining_session_result = StratumConnectionHandler::new(self.clone())
+            .init_mining_session(&mut connection_rx, &mut connection_tx)
+            .timeout(CONNECTION_TIMEOUT)
+            .await;
+        match mining_session_result {
+            Ok(Ok(init_target)) => {
+                let mut event_handler = StratumEventHandler::new(self.clone(), init_target);
+                let solution_handler = StratumSolutionHandler::new(self.clone(), connection_tx);
+                if let Err(_) = self
+                    .main_loop(connection_rx, &mut event_handler, solution_handler)
+                    .await
+                {
+                    self.status.initiate_failing();
+                }
+            }
+            Ok(Err(_)) | Err(_) => self.status.initiate_failing(),
         }
     }
 
     async fn run(self: Arc<Self>) {
         match StratumConnectionHandler::new(self.clone())
-            .connect()
+            .connect::<v1::Framing>()
             .timeout(CONNECTION_TIMEOUT)
             .await
         {
-            Ok(Ok((connection_rx, connection_tx, init_target))) => {
+            Ok(Ok((v1_connection_rx, v1_connection_tx))) => {
                 if self.status.initiate_running() {
+                    let (translation_handler, v2_translation_rx, v2_translation_tx) =
+                        TranslationHandler::new(v1_connection_rx, v1_connection_tx);
+                    tokio::spawn(async move {
+                        let status = translation_handler.run().await;
+                        info!("V2->V1 translation terminated: {:?}", status);
+                    });
                     self.clone()
-                        .run_job_solver(connection_rx, connection_tx, init_target)
+                        .run_job_solver(v2_translation_rx, v2_translation_tx)
                         .await;
                 }
             }
@@ -724,9 +765,120 @@ impl StratumClient {
 
             if self.status.can_stop() {
                 // NOTE: it is not safe to add here any code!
+                // The reason is that at this point the main task can be executed in parallel again
                 break;
             }
             // Restarting
+        }
+    }
+}
+
+/// This object receives V1 messages and passes them to `V2ToV1Translation` component for
+/// translation. The user of this component is provided with an Rx/Tx channel pair that is
+/// intended for sending V2 messages and receiving the translated V2 messages.
+/// V1 messages received from the translator are sent out via V1 connection.
+struct TranslationHandler {
+    /// Actual protocol translator
+    translation: V2ToV1Translation,
+    /// Upstream V1 connection - rx part
+    v1_conn_rx: ConnectionRx<v1::Framing>,
+    /// Upstream V1 connection - tx part
+    v1_conn_tx: ConnectionTx<v1::Framing>,
+    /// Receiver for V1 frames from the translator that will be sent out via V1 connection
+    v1_translation_rx: mpsc::Receiver<v1::Frame>,
+    /// V2 Frames from the client that we use for feeding the translator
+    v2_client_rx: mpsc::Receiver<v2::Frame>,
+}
+
+impl TranslationHandler {
+    const MAX_TRANSLATION_CHANNEL_SIZE: usize = 10;
+
+    /// Builds the new translation handler and provides Tx/Rx communication ends
+    fn new(
+        v1_conn_rx: ConnectionRx<v1::Framing>,
+        v1_conn_tx: ConnectionTx<v1::Framing>,
+    ) -> (Self, mpsc::Receiver<v2::Frame>, mpsc::Sender<v2::Frame>) {
+        let (v1_translation_tx, v1_translation_rx) =
+            mpsc::channel(Self::MAX_TRANSLATION_CHANNEL_SIZE);
+        let (v2_translation_tx, v2_translation_rx) =
+            mpsc::channel(Self::MAX_TRANSLATION_CHANNEL_SIZE);
+        let (v2_client_tx, v2_client_rx) = mpsc::channel(Self::MAX_TRANSLATION_CHANNEL_SIZE);
+
+        let translation = V2ToV1Translation::new(v1_translation_tx, v2_translation_tx);
+
+        (
+            Self {
+                translation,
+                v1_conn_rx,
+                v1_conn_tx,
+                v1_translation_rx,
+                v2_client_rx,
+            },
+            v2_translation_rx,
+            v2_client_tx,
+        )
+    }
+
+    /// Executive part of the translation handler that drives the translation component and acts
+    /// like a message pump between the actual V2 client, translation component and upstream V1
+    /// server.
+    /// The main task selects from the following events and performs corresponding acction
+    /// - v1_conn_rx -> build message + accept(translation)
+    /// - v2_client_rx -> build message + accept(translation)
+    /// - v1_translation_rx -> send
+    /// terminate upon any error or timeout
+    async fn run(mut self) -> error::Result<()> {
+        //while !self.status.is_shutting_down() {
+        info!("Starting V2->V1 translation handler");
+        loop {
+            select! {
+                // Receive V1 frame and translate it to V2 message
+                // TODO: Review the timeout functionality as it doesn't seem to do anything.
+                //  Simple test: run the mining software and disable connectivity on the localhost
+                v1_frame = self.v1_conn_rx.next().timeout(EVENT_TIMEOUT).fuse() => {
+                    match v1_frame {
+                        Ok(Some(v1_frame)) => {
+                            let v1_msg = v1::build_message_from_frame(v1_frame?)?;
+                            v1_msg.accept(&mut self.translation).await;
+                        }
+                        Ok(None) | Err(_) => {
+                            Err("Upstream V1 stratum connection dropped terminating translation")?;
+                        }
+                    }
+                },
+                // Receive V2 frame from our client (no timeout needed) and pass it to V1
+                // translation
+                v2_frame = self.v2_client_rx.next().fuse() => {
+                    match v2_frame {
+                        Some(v2_frame) => {
+                            let v2_msg = v2::build_message_from_frame(v2_frame)?;
+                            v2_msg.accept(&mut self.translation).await;
+                        }
+                        None => {
+                            Err("V2 client shutdown, terminating translation")?;
+                        }
+                    }
+                },
+                // Receive V1 frame from the translation and send it upstream
+                v1_frame = self.v1_translation_rx.next().fuse() => {
+                    match v1_frame {
+                        Some(v1_frame) => self
+                            .v1_conn_tx
+                            .send(v1_frame)
+                            // NOTE: this timeout is important otherwise the whole task could
+                            // block indefinitely and the above timeout for v1_conn_rx wouldn't
+                            // do anything. Besides this, we don't want to wait with system time
+                            // out in case the upstream connection just hangs
+                            .timeout(EVENT_TIMEOUT)
+                            .await
+                            // Unwrap timeout and actual sending error
+                            .map_err(|e| "V1 send timeout")??,
+                        None => {
+                            Err("V1 translation component terminated, terminating translation")?;
+                        }
+                    }
+                },
+            }
         }
     }
 }
@@ -761,7 +913,7 @@ impl fmt::Display for StratumClient {
         write!(
             f,
             "{}://{}@{}",
-            ClientProtocol::SCHEME_STRATUM_V2,
+            ClientProtocol::SCHEME_STRATUM_V1,
             self.connection_details.host,
             self.connection_details.user
         )

@@ -58,7 +58,7 @@ use ii_stratum::v2::messages::{
 use ii_stratum::v2::types::DeviceInfo;
 use ii_stratum::v2::types::*;
 use ii_stratum::v2::{build_message_from_frame, Handler};
-use ii_wire::{Connection};
+use ii_wire::Connection;
 
 use std::collections::HashMap;
 

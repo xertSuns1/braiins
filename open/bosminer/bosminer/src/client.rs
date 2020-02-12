@@ -75,6 +75,16 @@ impl Handle {
                 );
                 Arc::new(drain::Client::new(descriptor.get_full_url(), job_solver))
             }
+            ClientProtocol::StratumV1 => {
+                assert!(
+                    channel.is_none(),
+                    "BUG: protocol 'Stratum V1' does not support channel"
+                );
+                Arc::new(stratum_v2_channels::StratumClient::new(
+                    stratum_v2_channels::ConnectionDetails::from_descriptor(&descriptor),
+                    job_solver,
+                ))
+            }
             ClientProtocol::StratumV2 => Arc::new(stratum_v2::StratumClient::new(
                 stratum_v2::ConnectionDetails::from_descriptor(&descriptor),
                 job_solver,

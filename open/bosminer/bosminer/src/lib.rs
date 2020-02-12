@@ -19,6 +19,7 @@
 // under a proprietary license. For more information on the terms and conditions
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
+#![recursion_limit = "256"]
 
 mod api;
 pub mod backend;

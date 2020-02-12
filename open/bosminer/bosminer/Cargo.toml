@@ -14,6 +14,7 @@ ii-cgminer-api = { path = "../../protocols/cgminer-api" }
 ii-logging = { path = "../../utils-rs/logging" }
 ii-stats = { path = "../../utils-rs/stats" }
 ii-stratum = { path = "../../protocols/stratum" }
+ii-stratum-proxy = { path = "../../stratum-proxy" }
 ii-wire = { path = "../../protocols/wire" }
 async-trait = "0.1"
 failure = "0.1.5"
