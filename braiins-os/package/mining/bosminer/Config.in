@@ -1,12 +1,12 @@
 config EXTERNAL_BOSMINER_TREE
-    string "Use external bOSminer tree" if DEVEL
+    string "Use external BOSMiner tree" if DEVEL
     default ""
 
 choice
-    prompt "Preferred backend for bOSminer"
+    prompt "Preferred backend for BOSMiner"
     default BOSMINER_BACKEND_antminer_s9 if TARGET_zynq_am1_s9
     help
-      Select the preferred backend for bOSminer.
+      Select the preferred backend for BOSMiner.
 
     config BOSMINER_BACKEND_antminer_s9
         bool "AntMiner S9"

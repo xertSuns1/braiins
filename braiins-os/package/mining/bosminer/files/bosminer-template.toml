@@ -1,4 +1,4 @@
-# bOSminer configuration file
+# BOSMiner configuration file
 
 # Mandatory fields for specification of configuration format 'version' and
 # compatible hardware 'model'
@@ -71,11 +71,11 @@ generator = 'template'
 # Set fixed fan speed in % (default=70)
 # This option is NOT used when 'temp_control.mode' is set to 'auto'!
 #speed = 70
-# Set minimum number of fans required for bOSminer to run (default=1)
+# Set minimum number of fans required for BOSMiner to run (default=1)
 #min_fans = 1
 
 # Specify default list of pools which are used for connection to remote servers
-# after successful run of bOSminer.
+# after successful run of BOSMiner.
 # The order of the pools specifies a priority for failover algorithm.
 # This section can be repeated.
 #[[pool]]
