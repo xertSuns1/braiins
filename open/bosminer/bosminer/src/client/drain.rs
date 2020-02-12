@@ -170,13 +170,59 @@ impl Default for Difficulty {
     }
 }
 
+// TODO: Use PID regulator
+struct DifficultyRegulator {
+    client: Arc<Client>,
+    difficulty: Difficulty,
+    last_accepted: stats::Snapshot<stats::MeterSnapshot>,
+    solutions_per_sec_avg: WindowedTimeMean,
+}
+
+impl DifficultyRegulator {
+    const SOLUTIONS_INTERVAL: time::Duration = time::Duration::from_secs(120);
+
+    async fn new(client: Arc<Client>, difficulty: Difficulty) -> Self {
+        Self {
+            difficulty,
+            last_accepted: client.stats.accepted.take_snapshot().await,
+            solutions_per_sec_avg: WindowedTimeMean::new(Self::SOLUTIONS_INTERVAL),
+            client,
+        }
+    }
+
+    async fn recalculate_target(&mut self) {
+        if *self.client.stats.generated_work.take_snapshot() <= 0 {
+            return;
+        }
+
+        let accepted = self.client.stats.accepted.take_snapshot().await;
+        let elapsed = accepted
+            .snapshot_time
+            .checked_duration_since(self.last_accepted.snapshot_time)
+            .expect("BUG: accepted snapshot time");
+        let solutions_per_sec =
+            (accepted.solutions - self.last_accepted.solutions) as f64 / elapsed.as_secs_f64();
+
+        self.solutions_per_sec_avg
+            .insert(solutions_per_sec, accepted.snapshot_time);
+
+        if self.solutions_per_sec_avg.measure(accepted.snapshot_time) > 10.0 {
+            self.difficulty.inc();
+        } else if solutions_per_sec < 3.0 {
+            self.difficulty.dec(solutions_per_sec < 0.1);
+        }
+
+        self.last_accepted = accepted;
+    }
+}
+
 #[derive(Debug, ClientNode)]
 pub struct Client {
     description: String,
     #[member_status]
     status: sync::StatusMonitor,
     #[member_client_stats]
-    client_stats: stats::BasicClient,
+    stats: stats::BasicClient,
     stop_sender: mpsc::Sender<()>,
     stop_receiver: Mutex<mpsc::Receiver<()>>,
     last_job: Mutex<Option<Arc<Job>>>,
@@ -186,14 +232,13 @@ pub struct Client {
 
 impl Client {
     const NEW_JOB_INTERVAL: time::Duration = time::Duration::from_secs(10);
-    const SOLUTIONS_INTERVAL: time::Duration = time::Duration::from_secs(120);
 
     pub fn new(description: String, solver: job::Solver) -> Self {
         let (stop_sender, stop_receiver) = mpsc::channel(1);
         Self {
             description,
             status: Default::default(),
-            client_stats: Default::default(),
+            stats: Default::default(),
             stop_sender,
             stop_receiver: Mutex::new(stop_receiver),
             last_job: Mutex::new(None),
@@ -210,35 +255,6 @@ impl Client {
         self.last_job.lock().await.as_ref().map(|job| job.clone())
     }
 
-    async fn recalculate_target(
-        &self,
-        difficulty: &Difficulty,
-        last_accepted: &mut stats::Snapshot<stats::MeterSnapshot>,
-        solutions_per_sec_avg: &mut WindowedTimeMean,
-    ) {
-        if *self.client_stats.generated_work.take_snapshot() <= 0 {
-            return;
-        }
-
-        let accepted = self.client_stats.accepted.take_snapshot().await;
-        let elapsed = accepted
-            .snapshot_time
-            .checked_duration_since(last_accepted.snapshot_time)
-            .expect("BUG: accepted snapshot time");
-        let solutions_per_sec =
-            (accepted.solutions - last_accepted.solutions) as f64 / elapsed.as_secs_f64();
-
-        solutions_per_sec_avg.insert(solutions_per_sec, accepted.snapshot_time);
-
-        if solutions_per_sec_avg.measure(accepted.snapshot_time) > 10.0 {
-            difficulty.inc();
-        } else if solutions_per_sec < 3.0 {
-            difficulty.dec(solutions_per_sec < 0.1);
-        }
-
-        *last_accepted = accepted;
-    }
-
     async fn send_job_and_wait(self: Arc<Self>, difficulty: Difficulty, index: &mut u64) {
         let job = Arc::new(Job::new(self.clone(), difficulty, *index));
         *index += 1;
@@ -251,7 +267,7 @@ impl Client {
 
     async fn account_solution(&self, solution: work::Solution) {
         let now = std::time::Instant::now();
-        self.client_stats
+        self.stats
             .accepted
             .account_solution(&solution.job_target(), now)
             .await;
@@ -259,10 +275,10 @@ impl Client {
 
     async fn main_loop(self: Arc<Self>) -> error::Result<()> {
         let mut solution_receiver = self.solution_receiver.lock().await;
-        let mut index = 0;
-        let mut last_accepted = self.client_stats.accepted.take_snapshot().await;
+
         let difficulty: Difficulty = Default::default();
-        let mut solutions_per_sec_avg = WindowedTimeMean::new(Self::SOLUTIONS_INTERVAL);
+        let mut regulator = DifficultyRegulator::new(self.clone(), difficulty.clone()).await;
+        let mut index = 0;
 
         while !self.status.is_shutting_down() {
             select! {
@@ -277,8 +293,7 @@ impl Client {
                     }
                 }
             }
-            self.recalculate_target(&difficulty, &mut last_accepted, &mut solutions_per_sec_avg)
-                .await;
+            regulator.recalculate_target().await;
         }
         Ok(())
     }
