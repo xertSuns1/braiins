@@ -26,6 +26,7 @@
 mod scheduler;
 
 // Sub-modules with client implementation
+pub mod drain;
 pub mod stratum_v2;
 
 use crate::error;
@@ -159,16 +160,19 @@ impl From<ClientDescriptor> for Handle {
         let engine_sender = Arc::new(work::EngineSender::new(None));
 
         let job_solver = job::Solver::new(engine_sender.clone(), solution_receiver);
-        let client_node = match &descriptor.protocol {
-            ClientProtocol::StratumV2 => stratum_v2::StratumClient::new(
+        let node: Arc<dyn node::Client> = match &descriptor.protocol {
+            ClientProtocol::Drain => {
+                Arc::new(drain::Client::new(descriptor.get_full_url(), job_solver))
+            }
+            ClientProtocol::StratumV2 => Arc::new(stratum_v2::StratumClient::new(
                 stratum_v2::ConnectionDetails::from_descriptor(&descriptor),
                 job_solver,
-            ),
+            )),
         };
 
         Self {
             descriptor,
-            node: Arc::new(client_node),
+            node,
             enabled: AtomicBool::new(false),
             engine_sender,
             solution_sender,
