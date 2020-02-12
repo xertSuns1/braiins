@@ -1575,8 +1575,8 @@ impl hal::Backend for Backend {
                 std::process::exit(0);
             })
             .await;
-        // Hook Ctrl-C
-        app_halt_sender.hook_ctrlc();
+        // Hook `Ctrl-C`, `SIGTERM` and other termination methods
+        app_halt_sender.hook_termination_signals();
 
         Ok(hal::FrontendConfig {
             cgminer_custom_commands: cgminer::create_custom_commands(backend, managers, monitor),

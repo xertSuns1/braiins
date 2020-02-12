@@ -40,6 +40,7 @@ use futures::channel::mpsc;
 use futures::future::{select, Either};
 use futures::lock::Mutex;
 use ii_async_compat::prelude::*;
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::task;
 
 /// Token sent by halted task to confirm that halting is done
@@ -241,18 +242,25 @@ impl Sender {
 
     /// This is a hack around `halt_sender` having to be run from tokio context, because it spawns
     /// additional threads.
-    pub fn hook_ctrlc(self: Arc<Self>) {
-        let (ctrlc_tx, mut ctrlc_rx) = mpsc::unbounded();
-        ctrlc::set_handler(move || {
-            println!("Received Ctrl-C, sending halt...");
-            ctrlc_tx.unbounded_send(()).expect("failed sending Ctrl-C");
-        })
-        .expect("Setting Ctrl-C handler failed");
-        tokio::spawn(async move {
-            if let Some(_) = ctrlc_rx.next().await {
-                self.send_halt().await;
-            }
-        });
+    pub fn hook_termination_signals(self: Arc<Self>) {
+        // Hook `SIGINT`, `SIGHUP` and `SIGTERM`
+        for signal_type in vec![
+            SignalKind::interrupt(),
+            SignalKind::hangup(),
+            SignalKind::terminate(),
+        ] {
+            let halt_sender = self.clone();
+            tokio::spawn(async move {
+                if let Some(_) = signal(signal_type)
+                    .expect("BUG: failed hooking signal")
+                    .next()
+                    .await
+                {
+                    // Exit after receiving signal
+                    halt_sender.send_halt().await;
+                }
+            });
+        }
     }
 
     pub async fn send_halt(self: Arc<Self>) {
