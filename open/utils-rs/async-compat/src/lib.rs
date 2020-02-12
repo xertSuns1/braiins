@@ -34,6 +34,8 @@ pub mod prelude {
     pub use super::{bytes, futures, tokio, tokio_util, FutureExt as _};
 
     pub use futures::prelude::*;
+    pub use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite};
+    pub use tokio::prelude::*;
 
     pub use stream_cancel::{StreamExt as _, Tripwire};
 }
