@@ -30,6 +30,7 @@ pub mod drain;
 pub mod stratum_v2;
 
 use crate::error;
+use crate::hal;
 use crate::job;
 use crate::node;
 use crate::stats;
@@ -59,6 +60,36 @@ pub struct Handle {
 }
 
 impl Handle {
+    fn new(descriptor: ClientDescriptor, channel: Option<()>) -> Self {
+        let (solution_sender, solution_receiver) = mpsc::unbounded();
+        // Initially register new client without ability to send work
+        let engine_sender = Arc::new(work::EngineSender::new(None));
+
+        let job_solver = job::Solver::new(engine_sender.clone(), solution_receiver);
+        let node: Arc<dyn node::Client> = match &descriptor.protocol {
+            ClientProtocol::Drain => {
+                assert!(
+                    channel.is_none(),
+                    "BUG: protocol 'Drain' does not support channel"
+                );
+                Arc::new(drain::Client::new(descriptor.get_full_url(), job_solver))
+            }
+            ClientProtocol::StratumV2 => Arc::new(stratum_v2::StratumClient::new(
+                stratum_v2::ConnectionDetails::from_descriptor(&descriptor),
+                job_solver,
+                channel,
+            )),
+        };
+
+        Self {
+            descriptor,
+            node,
+            enabled: AtomicBool::new(false),
+            engine_sender,
+            solution_sender,
+        }
+    }
+
     pub fn replace_engine_generator(
         &self,
         engine_generator: work::EngineGenerator,
@@ -155,28 +186,13 @@ impl Handle {
 
 impl From<ClientDescriptor> for Handle {
     fn from(descriptor: ClientDescriptor) -> Self {
-        let (solution_sender, solution_receiver) = mpsc::unbounded();
-        // Initially register new client without ability to send work
-        let engine_sender = Arc::new(work::EngineSender::new(None));
+        Handle::new(descriptor, None)
+    }
+}
 
-        let job_solver = job::Solver::new(engine_sender.clone(), solution_receiver);
-        let node: Arc<dyn node::Client> = match &descriptor.protocol {
-            ClientProtocol::Drain => {
-                Arc::new(drain::Client::new(descriptor.get_full_url(), job_solver))
-            }
-            ClientProtocol::StratumV2 => Arc::new(stratum_v2::StratumClient::new(
-                stratum_v2::ConnectionDetails::from_descriptor(&descriptor),
-                job_solver,
-            )),
-        };
-
-        Self {
-            descriptor,
-            node,
-            enabled: AtomicBool::new(false),
-            engine_sender,
-            solution_sender,
-        }
+impl From<hal::ClientConfig> for Handle {
+    fn from(client_config: hal::ClientConfig) -> Self {
+        Handle::new(client_config.descriptor, client_config.channel)
     }
 }
 

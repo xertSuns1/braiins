@@ -59,7 +59,7 @@ pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
             .await
             .expect("BUG: cannot create group");
         for client_config in group_config.clients {
-            group.push_client(client_config.descriptor.into()).await;
+            group.push_client(client_config.into()).await;
         }
     }
 

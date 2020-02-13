@@ -575,7 +575,11 @@ pub struct StratumClient {
 }
 
 impl StratumClient {
-    pub fn new(connection_details: ConnectionDetails, solver: job::Solver) -> Self {
+    pub fn new(
+        connection_details: ConnectionDetails,
+        solver: job::Solver,
+        _channel: Option<()>,
+    ) -> Self {
         let (stop_sender, stop_receiver) = mpsc::channel(1);
         Self {
             connection_details,
