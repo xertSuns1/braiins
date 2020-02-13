@@ -22,6 +22,7 @@
 
 use ii_logging::macros::*;
 
+use bosminer::hal;
 use bosminer_am1_s9::config;
 use bosminer_config::clap;
 
@@ -148,16 +149,23 @@ async fn main() {
 
         let client_descriptor =
             bosminer_config::ClientDescriptor::parse(url, user).expect("Server parameters");
+        let group_config = hal::GroupConfig {
+            descriptor: Default::default(),
+            clients: vec![hal::ClientConfig {
+                descriptor: client_descriptor,
+                channel: None,
+            }],
+        };
 
-        if !backend_config.clients.is_empty() {
+        if !backend_config.client_groups.is_empty() {
             warn!("Overriding pool settings located at '{}'", config_path);
         }
 
-        backend_config.clients = vec![client_descriptor];
+        backend_config.client_groups = vec![group_config];
     }
 
     // Check if there's enough pools
-    if backend_config.clients.len() == 0 {
+    if backend_config.client_groups.len() == 0 {
         error!("No pools specified!");
         info!("Use cli arguments:");
         info!("    bosminer --pool <HOSTNAME:PORT> --user <USERNAME.WORKERNAME[:PASSWORD]>");

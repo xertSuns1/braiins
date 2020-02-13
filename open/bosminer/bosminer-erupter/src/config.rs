@@ -38,12 +38,12 @@ pub const JOB_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
 pub struct Backend {
-    pub client: Option<bosminer_config::ClientDescriptor>,
+    pub group_config: Option<hal::GroupConfig>,
 }
 
 impl Default for Backend {
     fn default() -> Self {
-        Self { client: None }
+        Self { group_config: None }
     }
 }
 
@@ -53,10 +53,10 @@ impl hal::BackendConfig for Backend {
         DEFAULT_MIDSTATE_COUNT
     }
 
-    fn clients(&mut self) -> Vec<bosminer_config::ClientDescriptor> {
-        self.client
+    fn client_groups(&mut self) -> Vec<hal::GroupConfig> {
+        self.group_config
             .take()
-            .map(|client| vec![client])
+            .map(|group_config| vec![group_config])
             .unwrap_or_default()
     }
 }

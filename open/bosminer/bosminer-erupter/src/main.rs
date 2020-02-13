@@ -20,6 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use bosminer::hal;
 use bosminer_config::clap;
 use bosminer_erupter::config;
 
@@ -61,9 +62,16 @@ async fn main() {
 
     let client_descriptor =
         bosminer_config::ClientDescriptor::parse(url, user).expect("Server parameters");
+    let group_config = hal::GroupConfig {
+        descriptor: Default::default(),
+        clients: vec![hal::ClientConfig {
+            descriptor: client_descriptor,
+            channel: None,
+        }],
+    };
 
     let backend_config = config::Backend {
-        client: Some(client_descriptor),
+        group_config: Some(group_config),
     };
 
     ii_async_compat::setup_panic_handling();

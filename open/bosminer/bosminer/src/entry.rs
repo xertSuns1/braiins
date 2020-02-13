@@ -34,7 +34,7 @@ use std::sync::Arc;
 
 pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
     // Get frontend specific settings from backend config
-    let clients = backend_config.clients();
+    let client_groups = backend_config.client_groups();
 
     // Initialize hub core which manages all resources
     let core = Arc::new(hub::Core::new(backend_config.midstate_count()));
@@ -52,10 +52,15 @@ pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
         T::DEFAULT_HASHRATE_INTERVAL,
     ));
 
-    let group = core.create_or_get_default_group().await;
-    // start client based on user input
-    for client_descriptor in clients {
-        group.push_client(client_descriptor.into()).await;
+    // Create groups with clients based on backend configuration
+    for group_config in client_groups {
+        let group = core
+            .create_group(group_config.descriptor.clone())
+            .await
+            .expect("BUG: cannot create group");
+        for client_config in group_config.clients {
+            group.push_client(client_config.descriptor.into()).await;
+        }
     }
 
     // the bosminer is controlled with API which also controls when the miner will end

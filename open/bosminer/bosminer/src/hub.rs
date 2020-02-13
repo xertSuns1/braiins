@@ -97,8 +97,6 @@ pub struct Core {
 
 /// Concentrates handles to all nodes associated with mining (backends, clients, work solvers)
 impl Core {
-    const DEFAULT_GROUP_INDEX: usize = 0;
-
     pub fn new(midstate_count: usize) -> Self {
         let frontend = Arc::new(crate::Frontend::new());
 
@@ -194,11 +192,12 @@ impl Core {
 
     pub async fn create_or_get_default_group(&self) -> Arc<client::Group> {
         let mut group_registry = self.group_registry.lock().await;
-        match group_registry.get_group(Self::DEFAULT_GROUP_INDEX) {
+        match group_registry.get_group(GroupDescriptor::DEFAULT_INDEX) {
             Some(group) => group,
             None => group_registry
                 .create_group(
                     GroupDescriptor {
+                        name: GroupDescriptor::DEFAULT_NAME.to_string(),
                         fixed_percentage_share: None,
                     },
                     self.midstate_count,
@@ -212,7 +211,7 @@ impl Core {
         self.group_registry
             .lock()
             .await
-            .get_group(Self::DEFAULT_GROUP_INDEX)
+            .get_group(GroupDescriptor::DEFAULT_INDEX)
     }
 
     #[inline]

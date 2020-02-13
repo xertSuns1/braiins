@@ -23,5 +23,20 @@
 /// Contains basic information about group
 #[derive(Clone, Debug)]
 pub struct Descriptor {
+    pub name: String,
     pub fixed_percentage_share: Option<f64>,
+}
+
+impl Descriptor {
+    pub const DEFAULT_NAME: &'static str = "Default";
+    pub const DEFAULT_INDEX: usize = 0;
+}
+
+impl Default for Descriptor {
+    fn default() -> Self {
+        Self {
+            name: Self::DEFAULT_NAME.to_string(),
+            fixed_percentage_share: None,
+        }
+    }
 }

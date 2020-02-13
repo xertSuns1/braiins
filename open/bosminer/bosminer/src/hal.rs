@@ -52,11 +52,23 @@ pub type WorkNode<T> = node::WorkSolverType<
     Box<dyn FnOnce(work::Generator, work::SolutionSender) -> T + Send + Sync>,
 >;
 
+#[derive(Debug, Clone)]
+pub struct ClientConfig {
+    pub descriptor: bosminer_config::ClientDescriptor,
+    pub channel: Option<()>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GroupConfig {
+    pub descriptor: bosminer_config::GroupDescriptor,
+    pub clients: Vec<ClientConfig>,
+}
+
 pub trait BackendConfig: Debug + Send + Sync {
     /// Number of midstates that backend is able to solve at once.
     fn midstate_count(&self) -> usize;
-    /// List of clients which should be used after backend initialization.
-    fn clients(&mut self) -> Vec<bosminer_config::ClientDescriptor> {
+    /// List of client groups which should be used after backend initialization.
+    fn client_groups(&mut self) -> Vec<GroupConfig> {
         vec![]
     }
 }

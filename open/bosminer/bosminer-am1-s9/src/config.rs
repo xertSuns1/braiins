@@ -228,7 +228,7 @@ pub struct Backend {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pools: Option<Vec<bosminer_config::PoolConfig>>,
     #[serde(skip)]
-    pub clients: Vec<bosminer_config::ClientDescriptor>,
+    pub client_groups: Vec<hal::GroupConfig>,
 }
 
 impl Backend {
@@ -412,15 +412,20 @@ impl Backend {
         // Parse pools
         // Don't worry if is this section missing, maybe there are some pools on command line
         if let Some(pools) = backend_config.pools.as_ref() {
-            // parse user input to fail fast when it is incorrect
-            backend_config.clients = pools
-                .into_iter()
-                .map(|pool| {
-                    // TODO: do not panic!
+            let mut client_configs = Vec::with_capacity(pools.len());
+            for pool in pools {
+                let client_descriptor =
                     bosminer_config::ClientDescriptor::parse(pool.url.as_str(), pool.user.as_str())
-                        .expect("Server parameters")
-                })
-                .collect();
+                        .expect("Server parameters");
+                client_configs.push(hal::ClientConfig {
+                    descriptor: client_descriptor,
+                    channel: None,
+                });
+            }
+            backend_config.client_groups = vec![hal::GroupConfig {
+                descriptor: Default::default(),
+                clients: client_configs,
+            }];
         }
 
         Ok(backend_config)
@@ -442,7 +447,7 @@ impl hal::BackendConfig for Backend {
         }
     }
 
-    fn clients(&mut self) -> Vec<bosminer_config::ClientDescriptor> {
-        self.clients.drain(..).collect()
+    fn client_groups(&mut self) -> Vec<hal::GroupConfig> {
+        self.client_groups.drain(..).collect()
     }
 }
