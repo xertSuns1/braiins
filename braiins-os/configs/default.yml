@@ -68,9 +68,9 @@ build:
       major: no
       include: [command]
     zynq-am1:
-      major: no
+      major: yes
       require: 2018-10-24-0-9e5687a2
-      include: [command]
+      include: [command, spl, fpga]
 
 remote:
   # default configuration for fetching latest repository
