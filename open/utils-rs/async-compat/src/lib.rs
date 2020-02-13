@@ -373,6 +373,18 @@ mod test {
 
     use tokio::{stream, time};
 
+    #[tokio::test]
+    async fn test_timeout() {
+        let timeout = Duration::from_millis(100);
+
+        let future = future::pending::<()>().timeout(timeout);
+        future.await.expect_err("Timeout expected");
+
+        let mut stream = stream::pending::<()>();
+        let future = stream.next().timeout(timeout);
+        future.await.expect_err("Timeout expected");
+    }
+
     /// Wait indefinitely on a stream with a `Tripwire` for cancellation.
     async fn forever_stream(tripwire: Tripwire) {
         let mut stream = stream::pending::<()>().take_until(tripwire);
