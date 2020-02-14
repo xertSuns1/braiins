@@ -23,6 +23,7 @@
 use ii_logging::macros::*;
 
 use crate::error;
+use crate::hal;
 use crate::job;
 use crate::node;
 use crate::stats;
@@ -55,7 +56,6 @@ use ii_stratum::v2::messages::{
     SetupConnectionError, SetupConnectionSuccess, SubmitSharesError, SubmitSharesStandard,
     SubmitSharesSuccess,
 };
-use ii_stratum::v2::types::DeviceInfo;
 use ii_stratum::v2::types::*;
 use ii_stratum::v2::{build_message_from_frame, Handler};
 use ii_wire::Connection;
@@ -460,24 +460,7 @@ impl StratumConnectionHandler {
             flags: 0,
             endpoint_host: Str0_255::from_string(self.client.connection_details.host.clone()),
             endpoint_port: self.client.connection_details.port,
-            // TODO: Fill it with correct information
-            device: DeviceInfo {
-                vendor: "Braiins"
-                    .try_into()
-                    .expect("BUG: cannot convert 'DeviceInfo::vendor'"),
-                hw_rev: "1"
-                    .try_into()
-                    .expect("BUG: cannot convert 'DeviceInfo::hw_rev'"),
-                fw_ver: "Braiins OS 2019-06-05"
-                    .try_into()
-                    .expect("BUG: cannot convert 'DeviceInfo::fw_ver'"),
-                dev_id: self
-                    .client
-                    .backend_unique_id
-                    .as_str()
-                    .try_into()
-                    .expect("BUG: cannot convert 'DeviceInfo::dev_id'"),
-            },
+            device: self.client.backend_info.clone().unwrap_or_default().into(),
         };
         connection
             .send_msg(setup_msg)
@@ -595,7 +578,7 @@ impl Handler for StratumConnectionHandler {
 #[derive(Debug, ClientNode)]
 pub struct StratumClient {
     connection_details: ConnectionDetails,
-    backend_unique_id: String,
+    backend_info: Option<hal::BackendInfo>,
     #[member_status]
     status: sync::StatusMonitor,
     #[member_client_stats]
@@ -613,14 +596,14 @@ pub struct StratumClient {
 impl StratumClient {
     pub fn new(
         connection_details: ConnectionDetails,
-        backend_unique_id: String,
+        backend_info: Option<hal::BackendInfo>,
         solver: job::Solver,
         _channel: Option<()>,
     ) -> Self {
         let (stop_sender, stop_receiver) = mpsc::channel(1);
         Self {
             connection_details,
-            backend_unique_id,
+            backend_info,
             status: Default::default(),
             client_stats: Default::default(),
             stop_sender: stop_sender,

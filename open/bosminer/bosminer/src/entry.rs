@@ -36,12 +36,12 @@ use std::sync::Arc;
 pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
     // Get frontend specific settings from backend config
     let client_groups = backend_config.client_groups();
-    let backend_unique_id = backend_config.unique_id();
+    let backend_info = backend_config.info();
 
     // Initialize hub core which manages all resources
     let core = Arc::new(hub::Core::new(
         backend_config.midstate_count(),
-        backend_unique_id.clone(),
+        backend_info.clone(),
     ));
 
     // Create and initialize the backend
@@ -67,7 +67,7 @@ pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
             group
                 .push_client(client::Handle::from_config(
                     client_config,
-                    backend_unique_id.clone(),
+                    backend_info.clone(),
                 ))
                 .await;
         }

@@ -593,7 +593,7 @@ impl command::Handler for Handler {
         let client = group
             .push_client(client::Handle::from_descriptor(
                 client_descriptor,
-                self.core.backend_unique_id.clone(),
+                self.core.backend_info.clone(),
             ))
             .await;
         let clients = group.get_clients().await;

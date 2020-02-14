@@ -25,7 +25,9 @@ use crate::node;
 use crate::work;
 
 use ii_cgminer_api::command;
+use ii_stratum::v2::types::DeviceInfo;
 
+use std::convert::TryInto;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
@@ -64,6 +66,48 @@ pub struct GroupConfig {
     pub clients: Vec<ClientConfig>,
 }
 
+#[derive(Debug, Clone)]
+pub struct BackendInfo {
+    pub vendor: String,
+    pub hw_rev: String,
+    pub fw_ver: String,
+    pub dev_id: String,
+}
+
+impl Default for BackendInfo {
+    fn default() -> Self {
+        Self {
+            vendor: Default::default(),
+            hw_rev: Default::default(),
+            fw_ver: Default::default(),
+            dev_id: Default::default(),
+        }
+    }
+}
+
+impl From<BackendInfo> for DeviceInfo {
+    fn from(info: BackendInfo) -> DeviceInfo {
+        DeviceInfo {
+            vendor: info
+                .vendor
+                .try_into()
+                .expect("BUG: cannot convert 'DeviceInfo::vendor'"),
+            hw_rev: info
+                .hw_rev
+                .try_into()
+                .expect("BUG: cannot convert 'DeviceInfo::hw_rev'"),
+            fw_ver: info
+                .fw_ver
+                .try_into()
+                .expect("BUG: cannot convert 'DeviceInfo::fw_ver'"),
+            dev_id: info
+                .dev_id
+                .try_into()
+                .expect("BUG: cannot convert 'DeviceInfo::dev_id'"),
+        }
+    }
+}
+
 pub trait BackendConfig: Debug + Send + Sync {
     /// Number of midstates that backend is able to solve at once.
     fn midstate_count(&self) -> usize;
@@ -71,9 +115,9 @@ pub trait BackendConfig: Debug + Send + Sync {
     fn client_groups(&mut self) -> Vec<GroupConfig> {
         vec![]
     }
-    /// Unique backend identifier
-    fn unique_id(&self) -> String {
-        "".into()
+    /// Optional information about backend
+    fn info(&self) -> Option<BackendInfo> {
+        None
     }
 }
 

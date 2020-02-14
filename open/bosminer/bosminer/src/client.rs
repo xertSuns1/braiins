@@ -61,7 +61,11 @@ pub struct Handle {
 }
 
 impl Handle {
-    fn new(descriptor: ClientDescriptor, backend_unique_id: String, channel: Option<()>) -> Self {
+    fn new(
+        descriptor: ClientDescriptor,
+        backend_info: Option<hal::BackendInfo>,
+        channel: Option<()>,
+    ) -> Self {
         let (solution_sender, solution_receiver) = mpsc::unbounded();
         // Initially register new client without ability to send work
         let engine_sender = Arc::new(work::EngineSender::new(None));
@@ -87,7 +91,7 @@ impl Handle {
             }
             ClientProtocol::StratumV2 => Arc::new(stratum_v2::StratumClient::new(
                 stratum_v2::ConnectionDetails::from_descriptor(&descriptor),
-                backend_unique_id,
+                backend_info,
                 job_solver,
                 channel,
             )),
@@ -102,14 +106,20 @@ impl Handle {
         }
     }
 
-    pub fn from_descriptor(descriptor: ClientDescriptor, backend_unique_id: String) -> Self {
-        Handle::new(descriptor, backend_unique_id, None)
+    pub fn from_descriptor(
+        descriptor: ClientDescriptor,
+        backend_info: Option<hal::BackendInfo>,
+    ) -> Self {
+        Handle::new(descriptor, backend_info, None)
     }
 
-    pub fn from_config(client_config: hal::ClientConfig, backend_unique_id: String) -> Self {
+    pub fn from_config(
+        client_config: hal::ClientConfig,
+        backend_info: Option<hal::BackendInfo>,
+    ) -> Self {
         Handle::new(
             client_config.descriptor,
-            backend_unique_id,
+            backend_info,
             client_config.channel,
         )
     }
