@@ -49,11 +49,17 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::time::Duration;
 
+/// Vendor
+const VENDOR: &'static str = "Braiins";
+
+/// Hardware revision
+const HW_MODEL: &'static str = "Antminer S9";
+
 /// Expected configuration version
 const FORMAT_VERSION: &'static str = "beta";
 
 /// Expected configuration model
-const FORMAT_MODEL: &'static str = "Antminer S9";
+const FORMAT_MODEL: &'static str = HW_MODEL;
 
 /// Override the default drain channel size as miner tends to burst messages into the logger
 pub const ASYNC_LOGGER_DRAIN_CHANNEL_SIZE: usize = 4096;
@@ -464,9 +470,9 @@ impl hal::BackendConfig for Backend {
     fn info(&self) -> Option<hal::BackendInfo> {
         // TODO: Fill all information correctly
         Some(hal::BackendInfo {
-            vendor: "".to_string(),
-            hw_rev: "".to_string(),
-            fw_ver: "".to_string(),
+            vendor: VENDOR.to_string(),
+            hw_rev: HW_MODEL.to_string(),
+            fw_ver: bosminer::version::STRING.to_string(),
             // TODO: Read HW id in main where error can be handled correctly
             dev_id: Backend::get_hw_id().unwrap_or_else(|_| "failed to read hwid".to_string()),
         })
