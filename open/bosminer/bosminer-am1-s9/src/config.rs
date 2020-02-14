@@ -461,7 +461,8 @@ impl hal::BackendConfig for Backend {
         self.client_groups.drain(..).collect()
     }
 
-    fn hw_id(&self) -> String {
+    fn unique_id(&self) -> String {
+        // TODO: Read HW id in main where error can be handled correctly
         Backend::get_hw_id().unwrap_or_else(|_| "failed to read hwid".into())
     }
 }
