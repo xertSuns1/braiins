@@ -410,7 +410,7 @@ impl FlashFreq {
 /// This condition (NAK) manifests itself as Linux I2C driver returning error
 /// (EIO) from write syscall.
 ///
-/// Most of commands implemented bellow have correct timeout included,
+/// Most of commands implemented below have correct timeout included,
 /// but if you implement some new commands be sure to include timeout where
 /// necessary (`SET_HOST_MAC_ADDRESS` requires one etc., check bmminer
 /// sources).
