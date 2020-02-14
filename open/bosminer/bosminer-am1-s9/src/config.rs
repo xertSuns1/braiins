@@ -268,7 +268,8 @@ impl Backend {
             midstate_count: MidstateCount::new(self.midstate_count()),
             frequency: FrequencySettings::from_frequency((*frequency * 1_000_000.0) as usize),
             // TODO: handle config errors
-            voltage: power::Voltage::from_volts(*voltage as f32).expect("bad voltage requested"),
+            voltage: power::Voltage::from_volts(*voltage as f32)
+                .expect("TODO: bad voltage requested"),
         }
     }
 
@@ -416,7 +417,7 @@ impl Backend {
             for pool in pools {
                 let client_descriptor =
                     bosminer_config::ClientDescriptor::parse(pool.url.as_str(), pool.user.as_str())
-                        .expect("Server parameters");
+                        .expect("TODO: invalid server parameters");
                 client_configs.push(hal::ClientConfig {
                     descriptor: client_descriptor,
                     channel: None,
