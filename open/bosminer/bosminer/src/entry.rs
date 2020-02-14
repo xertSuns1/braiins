@@ -24,6 +24,7 @@
 //! the frontend and hardware specific backend.
 
 use crate::api;
+use crate::client;
 use crate::hal::{self, BackendConfig as _};
 use crate::hub;
 use crate::stats;
@@ -35,9 +36,13 @@ use std::sync::Arc;
 pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
     // Get frontend specific settings from backend config
     let client_groups = backend_config.client_groups();
+    let backend_unique_id = backend_config.unique_id();
 
     // Initialize hub core which manages all resources
-    let core = Arc::new(hub::Core::new(backend_config.midstate_count()));
+    let core = Arc::new(hub::Core::new(
+        backend_config.midstate_count(),
+        backend_unique_id.clone(),
+    ));
 
     // Create and initialize the backend
     let frontend_config = core
@@ -59,7 +64,12 @@ pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
             .await
             .expect("BUG: cannot create group");
         for client_config in group_config.clients {
-            group.push_client(client_config.into()).await;
+            group
+                .push_client(client::Handle::from_config(
+                    client_config,
+                    backend_unique_id.clone(),
+                ))
+                .await;
         }
     }
 

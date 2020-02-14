@@ -590,7 +590,12 @@ impl command::Handler for Handler {
             .map_err(|_| response::ErrorCode::InvalidAddPoolDetails(parameter.to_string()))?;
 
         let group = self.core.create_or_get_default_group().await;
-        let client = group.push_client(client_descriptor.into()).await;
+        let client = group
+            .push_client(client::Handle::from_descriptor(
+                client_descriptor,
+                self.core.backend_unique_id.clone(),
+            ))
+            .await;
         let clients = group.get_clients().await;
 
         // There is race for client index determination so use index out of range when the client

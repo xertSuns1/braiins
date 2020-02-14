@@ -61,7 +61,7 @@ pub struct Handle {
 }
 
 impl Handle {
-    fn new(descriptor: ClientDescriptor, channel: Option<()>) -> Self {
+    fn new(descriptor: ClientDescriptor, backend_unique_id: String, channel: Option<()>) -> Self {
         let (solution_sender, solution_receiver) = mpsc::unbounded();
         // Initially register new client without ability to send work
         let engine_sender = Arc::new(work::EngineSender::new(None));
@@ -87,6 +87,7 @@ impl Handle {
             }
             ClientProtocol::StratumV2 => Arc::new(stratum_v2::StratumClient::new(
                 stratum_v2::ConnectionDetails::from_descriptor(&descriptor),
+                backend_unique_id,
                 job_solver,
                 channel,
             )),
@@ -99,6 +100,18 @@ impl Handle {
             engine_sender,
             solution_sender,
         }
+    }
+
+    pub fn from_descriptor(descriptor: ClientDescriptor, backend_unique_id: String) -> Self {
+        Handle::new(descriptor, backend_unique_id, None)
+    }
+
+    pub fn from_config(client_config: hal::ClientConfig, backend_unique_id: String) -> Self {
+        Handle::new(
+            client_config.descriptor,
+            backend_unique_id,
+            client_config.channel,
+        )
     }
 
     pub fn replace_engine_generator(
@@ -192,18 +205,6 @@ impl Handle {
     #[inline]
     pub(crate) async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>> {
         self.node.get_last_job().await
-    }
-}
-
-impl From<ClientDescriptor> for Handle {
-    fn from(descriptor: ClientDescriptor) -> Self {
-        Handle::new(descriptor, None)
-    }
-}
-
-impl From<hal::ClientConfig> for Handle {
-    fn from(client_config: hal::ClientConfig) -> Self {
-        Handle::new(client_config.descriptor, client_config.channel)
     }
 }
 

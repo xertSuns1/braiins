@@ -471,7 +471,10 @@ impl StratumConnectionHandler {
                 fw_ver: "Braiins OS 2019-06-05"
                     .try_into()
                     .expect("BUG: cannot convert 'DeviceInfo::fw_ver'"),
-                dev_id: "xyz"
+                dev_id: self
+                    .client
+                    .backend_unique_id
+                    .as_str()
                     .try_into()
                     .expect("BUG: cannot convert 'DeviceInfo::dev_id'"),
             },
@@ -592,6 +595,7 @@ impl Handler for StratumConnectionHandler {
 #[derive(Debug, ClientNode)]
 pub struct StratumClient {
     connection_details: ConnectionDetails,
+    backend_unique_id: String,
     #[member_status]
     status: sync::StatusMonitor,
     #[member_client_stats]
@@ -609,12 +613,14 @@ pub struct StratumClient {
 impl StratumClient {
     pub fn new(
         connection_details: ConnectionDetails,
+        backend_unique_id: String,
         solver: job::Solver,
         _channel: Option<()>,
     ) -> Self {
         let (stop_sender, stop_receiver) = mpsc::channel(1);
         Self {
             connection_details,
+            backend_unique_id,
             status: Default::default(),
             client_stats: Default::default(),
             stop_sender: stop_sender,

@@ -85,6 +85,7 @@ impl SolutionRouter {
 
 pub struct Core {
     midstate_count: usize,
+    pub backend_unique_id: String,
     pub frontend: Arc<crate::Frontend>,
     job_executor: Arc<client::JobExecutor>,
     engine_receiver: work::EngineReceiver,
@@ -97,7 +98,7 @@ pub struct Core {
 
 /// Concentrates handles to all nodes associated with mining (backends, clients, work solvers)
 impl Core {
-    pub fn new(midstate_count: usize) -> Self {
+    pub fn new(midstate_count: usize, backend_unique_id: String) -> Self {
         let frontend = Arc::new(crate::Frontend::new());
 
         let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
@@ -112,6 +113,7 @@ impl Core {
 
         Self {
             midstate_count,
+            backend_unique_id,
             frontend,
             job_executor: job_executor.clone(),
             engine_receiver,
