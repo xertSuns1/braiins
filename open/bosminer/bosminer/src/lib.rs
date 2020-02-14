@@ -19,6 +19,9 @@
 // under a proprietary license. For more information on the terms and conditions
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
+
+// Increase recursion limit as e.g. `select!` macro  and other complex macros quickly run out of
+// the default recursion limit if more complex statements are used
 #![recursion_limit = "256"]
 
 mod api;
