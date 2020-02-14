@@ -71,6 +71,10 @@ pub trait BackendConfig: Debug + Send + Sync {
     fn client_groups(&mut self) -> Vec<GroupConfig> {
         vec![]
     }
+    /// Unique hardware id
+    fn hw_id(&self) -> String {
+        "unknown".into()
+    }
 }
 
 pub struct FrontendConfig {

@@ -46,6 +46,7 @@ use bosminer::hal::{self, BackendConfig as _};
 use serde::{Deserialize, Serialize};
 
 use std::collections::BTreeMap;
+use std::fs;
 use std::time::Duration;
 
 /// Expected configuration version
@@ -60,6 +61,9 @@ pub const ASYNC_LOGGER_DRAIN_CHANNEL_SIZE: usize = 4096;
 /// Location of default config
 /// TODO: Maybe don't add `.toml` prefix so we could use even JSON
 pub const DEFAULT_CONFIG_PATH: &'static str = "/etc/bosminer.toml";
+
+/// Default Hardware ID path
+pub const DEFAULT_HW_ID_PATH: &'static str = "/tmp/miner_hwid";
 
 /// Default number of midstates when AsicBoost is enabled
 pub const ASIC_BOOST_MIDSTATE_COUNT: usize = 4;
@@ -372,6 +376,11 @@ impl Backend {
         }
     }
 
+    fn get_hw_id() -> error::Result<String> {
+        let contents = fs::read_to_string(DEFAULT_HW_ID_PATH)?;
+        Ok(contents.trim().into())
+    }
+
     pub fn parse(config_path: &str) -> error::Result<Self> {
         // Parse config file - either user specified or the default one
         let mut backend_config: Self = bosminer_config::parse(config_path)?;
@@ -450,5 +459,9 @@ impl hal::BackendConfig for Backend {
 
     fn client_groups(&mut self) -> Vec<hal::GroupConfig> {
         self.client_groups.drain(..).collect()
+    }
+
+    fn hw_id(&self) -> String {
+        Backend::get_hw_id().unwrap_or_else(|_| "failed to read hwid".into())
     }
 }
