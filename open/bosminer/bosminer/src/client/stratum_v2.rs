@@ -631,6 +631,16 @@ impl StratumClient {
         Ok(())
     }
 
+    async fn handle_frame(
+        &self,
+        frame: <Framing as ii_wire::Framing>::Rx,
+        event_handler: &mut StratumEventHandler,
+    ) -> error::Result<()> {
+        let event_msg = build_message_from_frame(frame)?;
+        event_msg.accept(event_handler).await;
+        Ok(())
+    }
+
     async fn main_loop<R, S>(
         &self,
         mut connection_rx: R,
@@ -647,10 +657,7 @@ impl StratumClient {
             select! {
                 frame = connection_rx.next().timeout(EVENT_TIMEOUT).fuse() => {
                     match frame {
-                        Ok(Some(frame)) => {
-                            let event_msg = build_message_from_frame(frame?)?;
-                            event_msg.accept(&mut event_handler).await;
-                        }
+                        Ok(Some(frame)) => self.handle_frame(frame?, &mut event_handler).await?,
                         Ok(None) | Err(_) => {
                             Err("The remote stratum server was disconnected prematurely")?;
                         }
