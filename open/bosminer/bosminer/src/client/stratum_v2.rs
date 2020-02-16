@@ -393,9 +393,14 @@ struct StratumSolutionHandler<S> {
     seq_num: u32,
 }
 
-impl<S> StratumSolutionHandler<S>
+impl<S, E> StratumSolutionHandler<S>
 where
-    S: FrameSink,
+    E: Into<error::Error>,
+    // TODO use S: FrameSink once the trait is adjusted to deal with payload specific error
+    S: Sink<<Framing as ii_wire::Framing>::Tx, Error = E>
+        + std::marker::Unpin
+        + std::fmt::Debug
+        + 'static,
 {
     fn new(client: Arc<StratumClient>, connection_tx: S) -> Self {
         Self {
@@ -618,17 +623,18 @@ impl StratumClient {
     }
 
     /// Send a message down a specified Tx Sink
-    async fn send_msg<M, S>(
-        connection_tx: &mut S,
-        message: M,
-    ) -> Result<(), <Framing as ii_wire::Framing>::Error>
+    async fn send_msg<M, S, E>(connection_tx: &mut S, message: M) -> error::Result<()>
     where
         M: TryInto<<Framing as ii_wire::Framing>::Tx, Error = <Framing as ii_wire::Framing>::Error>,
-        S: FrameSink,
+        E: Into<error::Error>,
+        // TODO use S: FrameSink once the trait is adjusted to deal with payload specific error
+        S: Sink<<Framing as ii_wire::Framing>::Tx, Error = E>
+            + std::marker::Unpin
+            + std::fmt::Debug
+            + 'static,
     {
         let frame = message.try_into()?;
-        connection_tx.send(frame).await?;
-        Ok(())
+        connection_tx.send(frame).await.map_err(Into::into)
     }
 
     async fn handle_frame(
@@ -644,8 +650,12 @@ impl StratumClient {
     async fn main_loop<R, S>(
         &self,
         mut connection_rx: R,
+        mut connection_tx: S,
         mut event_handler: StratumEventHandler,
-        mut solution_handler: StratumSolutionHandler<S>,
+        mut solution_handler: StratumSolutionHandler<
+            mpsc::Sender<<Framing as ii_wire::Framing>::Tx>,
+        >,
+        mut solution_frame_channel_rx: mpsc::Receiver<<Framing as ii_wire::Framing>::Rx>,
     ) -> error::Result<()>
     where
         R: FrameStream,
@@ -660,6 +670,16 @@ impl StratumClient {
                         Ok(Some(frame)) => self.handle_frame(frame?, &mut event_handler).await?,
                         Ok(None) | Err(_) => {
                             Err("The remote stratum server was disconnected prematurely")?;
+                        }
+                    }
+                }
+                // Forward solution frames onto the network
+                frame = solution_frame_channel_rx.next().fuse() => {
+                    // TODO review whether the solution RX channel may terminate
+                    match frame {
+                        Some(frame) => connection_tx.send(frame).await?,
+                        None => {
+                            Err("Solution handler terminated")?;
                         }
                     }
                 }
@@ -683,12 +703,23 @@ impl StratumClient {
         init_target: ii_bitcoin::Target,
     ) {
         let (connection_rx, connection_tx) = connection.split();
+        // Interconnect with solution handler to collect frames from it and forward them via
+        // network connection
+        let (solution_frame_channel_tx, solution_frame_channel_rx) =
+            mpsc::channel::<<Framing as ii_wire::Framing>::Tx>(1);
 
         let event_handler = StratumEventHandler::new(self.clone(), init_target);
-        let solution_handler = StratumSolutionHandler::new(self.clone(), connection_tx);
-
+        let solution_handler = StratumSolutionHandler::new(self.clone(), solution_frame_channel_tx);
+        // TODO consider changing main_loop to accept Arc<Self> and build the solution_handler
+        //  along with solution handler communication channels inside of the main_loop.
         if let Err(_) = self
-            .main_loop(connection_rx, event_handler, solution_handler)
+            .main_loop(
+                connection_rx,
+                connection_tx,
+                event_handler,
+                solution_handler,
+                solution_frame_channel_rx,
+            )
             .await
         {
             self.status.initiate_failing();
