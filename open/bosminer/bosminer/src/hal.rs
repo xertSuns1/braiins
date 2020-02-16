@@ -54,13 +54,13 @@ pub type WorkNode<T> = node::WorkSolverType<
     Box<dyn FnOnce(work::Generator, work::SolutionSender) -> T + Send + Sync>,
 >;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ClientConfig {
     pub descriptor: bosminer_config::ClientDescriptor,
     pub channel: Option<()>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct GroupConfig {
     pub descriptor: bosminer_config::GroupDescriptor,
     pub clients: Vec<ClientConfig>,

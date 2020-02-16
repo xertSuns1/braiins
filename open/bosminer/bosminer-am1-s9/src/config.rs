@@ -218,7 +218,7 @@ pub struct FanControl {
     min_fans: Option<usize>,
 }
 
-#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Backend {
     format: Format,

@@ -85,7 +85,7 @@ struct MetadataResponse {
     pub data: serde_json::Value,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Debug)]
 struct DataResponse {
     pub status: Status,
     #[serde(skip_serializing_if = "Option::is_none")]
