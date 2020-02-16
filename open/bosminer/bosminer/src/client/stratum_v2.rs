@@ -462,8 +462,7 @@ impl StratumConnectionHandler {
             endpoint_port: self.client.connection_details.port,
             device: self.client.backend_info.clone().unwrap_or_default().into(),
         };
-        connection
-            .send_msg(setup_msg)
+        StratumClient::send_msg(&mut connection.tx, setup_msg)
             .await
             .context("Cannot send stratum setup mining connection")?;
         let frame = connection
@@ -494,8 +493,7 @@ impl StratumConnectionHandler {
             max_target: ii_bitcoin::Target::default().into(),
         };
 
-        connection
-            .send_msg(channel_msg)
+        StratumClient::send_msg(&mut connection.tx, channel_msg)
             .await
             .context("Cannot send stratum open channel")?;
         let frame = connection
