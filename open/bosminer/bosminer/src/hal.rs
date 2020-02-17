@@ -20,6 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use crate::client::stratum_v2;
 use crate::error;
 use crate::node;
 use crate::work;
@@ -57,7 +58,10 @@ pub type WorkNode<T> = node::WorkSolverType<
 #[derive(Debug)]
 pub struct ClientConfig {
     pub descriptor: bosminer_config::ClientDescriptor,
-    pub channel: Option<()>,
+    pub channel: Option<(
+        stratum_v2::ExtensionChannelRx,
+        stratum_v2::ExtensionChannelTx,
+    )>,
 }
 
 #[derive(Debug)]

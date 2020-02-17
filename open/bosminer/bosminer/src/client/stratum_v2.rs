@@ -57,7 +57,7 @@ use ii_stratum::v2::messages::{
     SubmitSharesSuccess,
 };
 use ii_stratum::v2::types::*;
-use ii_stratum::v2::{build_message_from_frame, Handler};
+use ii_stratum::v2::{build_message_from_frame, extensions, Handler};
 use ii_wire::Connection;
 
 use std::collections::HashMap;
@@ -578,6 +578,21 @@ impl Handler for StratumConnectionHandler {
     }
 }
 
+/// Messages to control the extension channel
+#[derive(Debug)]
+pub enum ExtensionChannelMsg {
+    /// Starts the extension channel
+    Start,
+    /// Stops the extension channel
+    Stop,
+    /// Frame being forwarded into the extension channel
+    Frame(<Framing as ii_wire::Framing>::Tx),
+}
+
+pub type ExtensionChannelRx = mpsc::Receiver<<Framing as ii_wire::Framing>::Rx>;
+/// The extension channel that accepts full ExtensionChannelMsg for controlling the client
+pub type ExtensionChannelTx = mpsc::Sender<ExtensionChannelMsg>;
+
 #[derive(Debug, ClientNode)]
 pub struct StratumClient {
     connection_details: ConnectionDetails,
@@ -594,6 +609,11 @@ pub struct StratumClient {
     solutions: SolutionQueue,
     job_sender: Mutex<job::Sender>,
     solution_receiver: Mutex<job::SolutionReceiver>,
+    /// Frames received from this channel will be forward to the network connection
+    extension_channel_rx: Mutex<ExtensionChannelRx>,
+    /// Frames intended for the specified extension will be forwarded into this channel (wrapped
+    /// into ExtensionChannelMsg
+    extension_channel_tx: Mutex<ExtensionChannelTx>,
 }
 
 impl StratumClient {
@@ -601,9 +621,23 @@ impl StratumClient {
         connection_details: ConnectionDetails,
         backend_info: Option<hal::BackendInfo>,
         solver: job::Solver,
-        _channel: Option<()>,
+        channel: Option<(ExtensionChannelRx, ExtensionChannelTx)>,
     ) -> Self {
         let (stop_sender, stop_receiver) = mpsc::channel(1);
+
+        // TODO: currently, the client has to have any channel pair as the select! statement that
+        //  we use for processing all frames cannot have dynamic number of entries. Rework this
+        //  by processing incoming frames from extension channel in a separate task.
+        let (extension_channel_rx, extension_channel_tx) = match channel {
+            Some((rx, tx)) => (Mutex::new(rx), Mutex::new(tx)),
+            None => {
+                // We have to open 2 dummy channels as each channel has different type of messages
+                let (tx, _) = mpsc::channel(1);
+                let (_, rx) = mpsc::channel(1);
+                (Mutex::new(rx), Mutex::new(tx))
+            }
+        };
+
         Self {
             connection_details,
             backend_info,
@@ -615,6 +649,8 @@ impl StratumClient {
             solutions: Mutex::new(VecDeque::new()),
             job_sender: Mutex::new(solver.job_sender),
             solution_receiver: Mutex::new(solver.solution_receiver),
+            extension_channel_rx,
+            extension_channel_tx,
         }
     }
 
@@ -642,8 +678,32 @@ impl StratumClient {
         frame: <Framing as ii_wire::Framing>::Rx,
         event_handler: &mut StratumEventHandler,
     ) -> error::Result<()> {
-        let event_msg = build_message_from_frame(frame)?;
-        event_msg.accept(event_handler).await;
+        match frame.header.extension_type {
+            extensions::BASE => {
+                let event_msg = build_message_from_frame(frame)?;
+                event_msg.accept(event_handler).await;
+            }
+            // pass any other extension down the line
+            _ => {
+                info!(
+                    "Received protocol extension frame: {:x?} passing down",
+                    frame
+                );
+                // Intentionally capture a potential error as an issue with extension channel
+                // must not cause the client to fail completely
+                if let Err(e) = self
+                    .extension_channel_tx
+                    .lock()
+                    .await
+                    .try_send(ExtensionChannelMsg::Frame(frame))
+                {
+                    info!(
+                        "Cannot pass extension frame, extension channel not available: {:?}",
+                        e
+                    );
+                }
+            }
+        }
         Ok(())
     }
 
@@ -662,7 +722,25 @@ impl StratumClient {
         S: FrameSink,
     {
         let mut solution_receiver = self.solution_receiver.lock().await;
+        let mut extension_channel_rx = self.extension_channel_rx.lock().await;
 
+        // Notify the extension user that we are ready to start forwarding its protocol, use a
+        // separate block, so that the lock is dropped immediately after the start notification
+        // is sent
+        // TODO: note that this may fail due to the dummy channel being full
+        {
+            if let Err(e) = self
+                .extension_channel_tx
+                .lock()
+                .await
+                .try_send(ExtensionChannelMsg::Start)
+            {
+                info!(
+                    "Cannot send start message to the extension channel: {:?}",
+                    e
+                );
+            }
+        }
         while !self.status.is_shutting_down() {
             select! {
                 frame = connection_rx.next().timeout(EVENT_TIMEOUT).fuse() => {
@@ -672,6 +750,12 @@ impl StratumClient {
                             Err("The remote stratum server was disconnected prematurely")?;
                         }
                     }
+                }
+                // Forward extension protocol frames onto the network
+                frame = extension_channel_rx.next().fuse() => {
+                    connection_tx
+                        .send(frame.expect("BUG: extension channel must not shutdown!"))
+                        .await?;
                 }
                 // Forward solution frames onto the network
                 frame = solution_frame_channel_rx.next().fuse() => {
@@ -749,6 +833,23 @@ impl StratumClient {
                 _ = stop_receiver.next() => {}
             }
 
+            // Notify the other end that uses the extension channel that it should restart its
+            // operation
+            // TODO Note that this error is triggered also when there is not extension channel.
+            //  It needs to be reworked once we eliminate the need for a dummy extension channel
+            //  pair
+
+            if let Err(e) = self
+                .extension_channel_tx
+                .lock()
+                .await
+                .try_send(ExtensionChannelMsg::Stop)
+            {
+                info!(
+                    "Cannot send stop notification into the extension channel: {:?}",
+                    e
+                );
+            }
             // Invalidate current job to stop working on it
             self.job_sender.lock().await.invalidate();
 

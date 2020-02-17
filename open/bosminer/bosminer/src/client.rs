@@ -64,7 +64,10 @@ impl Handle {
     fn new(
         descriptor: ClientDescriptor,
         backend_info: Option<hal::BackendInfo>,
-        channel: Option<()>,
+        channel: Option<(
+            stratum_v2::ExtensionChannelRx,
+            stratum_v2::ExtensionChannelTx,
+        )>,
     ) -> Self {
         let (solution_sender, solution_receiver) = mpsc::unbounded();
         // Initially register new client without ability to send work
