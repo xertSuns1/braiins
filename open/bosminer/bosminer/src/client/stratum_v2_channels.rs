@@ -306,8 +306,14 @@ impl Handler for StratumEventHandler {
         self.all_jobs.insert(job_msg.job_id, job_msg.clone());
         // TODO: close connection when maximal capacity of `all_jobs` has been reached
 
-        // When not marked as future job, we can start mining on it right away
-        if !job_msg.future_job {
+        // When not marked as future job, we can start mining on it right away (provided that we
+        // already have a prevhash to work on).
+        //
+        // Some servers do not send `clean_jobs` flag on first `mining.notify`, which results on
+        // a `NewMiningJob` being acted on immediately, which results in `no prevhash error`. This
+        // should be dealt with in proxy, but let's put the `current_prevhash_msg` existence check
+        // here anyway.
+        if !job_msg.future_job && self.current_prevhash_msg.is_some() {
             self.update_job(job_msg).await;
         }
     }
