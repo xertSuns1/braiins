@@ -147,8 +147,13 @@ async fn main() {
             .value_of("user")
             .expect("BUG: missing 'user' argument");
 
-        let client_descriptor =
-            bosminer_config::ClientDescriptor::parse(url, user).expect("Server parameters");
+        let client_descriptor = match bosminer_config::ClientDescriptor::parse(url, user) {
+            Ok(value) => value,
+            Err(e) => {
+                error!("Cannot set pool from command line: {}", e.to_string());
+                return;
+            }
+        };
         let group_config = hal::GroupConfig {
             descriptor: Default::default(),
             clients: vec![hal::ClientConfig {
@@ -186,7 +191,17 @@ async fn main() {
             .replace(false);
     }
     if let Some(value) = matches.value_of("frequency") {
-        let frequency = value.parse::<f64>().expect("not a float number");
+        let frequency = match value.parse::<f64>() {
+            Ok(value) => value,
+            Err(e) => {
+                error!(
+                    "Cannot use frequency '{}' from command line: {}",
+                    value,
+                    e.to_string()
+                );
+                return;
+            }
+        };
         backend_config
             .hash_chain_global
             .get_or_insert_with(|| Default::default())
@@ -196,7 +211,17 @@ async fn main() {
             .replace(frequency);
     }
     if let Some(value) = matches.value_of("voltage") {
-        let voltage = value.parse::<f64>().expect("not a float number");
+        let voltage = match value.parse::<f64>() {
+            Ok(value) => value,
+            Err(e) => {
+                error!(
+                    "Cannot use voltage '{}' from command line: {}",
+                    value,
+                    e.to_string()
+                );
+                return;
+            }
+        };
         backend_config
             .hash_chain_global
             .get_or_insert_with(|| Default::default())

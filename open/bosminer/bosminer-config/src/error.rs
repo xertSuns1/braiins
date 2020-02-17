@@ -36,7 +36,7 @@ pub enum ErrorKind {
     General(String),
 
     /// Error related to client settings.
-    #[fail(display = "Client: {}", _0)]
+    #[fail(display = "{}", _0)]
     Client(String),
 }
 

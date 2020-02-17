@@ -432,7 +432,9 @@ impl Backend {
             for pool in pools {
                 let client_descriptor =
                     bosminer_config::ClientDescriptor::parse(pool.url.as_str(), pool.user.as_str())
-                        .expect("TODO: invalid server parameters");
+                        .map_err(|e| {
+                            format!("{} in pool '{}@{}'", e.to_string(), pool.url, pool.user)
+                        })?;
                 client_configs.push(hal::ClientConfig {
                     descriptor: client_descriptor,
                     channel: None,
