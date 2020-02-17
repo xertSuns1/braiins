@@ -431,7 +431,7 @@ where
             .await
             .push_back((solution, seq_num));
         // send solutions back to the stratum server
-        StratumClient::send_msg(self.connection_tx.clone(), share_msg)
+        StratumClient::send_msg(&self.connection_tx, share_msg)
             .await
             .context("Cannot send submit to stratum server")?;
         // the response is handled in a separate task
@@ -472,7 +472,7 @@ impl StratumConnectionHandler {
             endpoint_port: self.client.connection_details.port,
             device: self.client.backend_info.clone().unwrap_or_default().into(),
         };
-        StratumClient::send_msg(connection_tx, setup_msg)
+        StratumClient::send_msg(&connection_tx, setup_msg)
             .await
             .context("Cannot send stratum setup mining connection")?;
         let frame = connection_rx
@@ -511,7 +511,7 @@ impl StratumConnectionHandler {
             max_target: ii_bitcoin::Target::default().into(),
         };
 
-        StratumClient::send_msg(connection_tx, channel_msg)
+        StratumClient::send_msg(&connection_tx, channel_msg)
             .await
             .context("Cannot send stratum open channel")?;
         let frame = connection_rx
@@ -691,7 +691,7 @@ impl StratumClient {
     /// TODO: temporarily, this became an associated method so that we don't have to generalize
     ///  with type parameters the full StratumClient struct. Once this is done, we will use the
     ///  new internal field connection_tx
-    async fn send_msg<M, S, E>(connection_tx: Arc<Mutex<S>>, message: M) -> error::Result<()>
+    async fn send_msg<M, S, E>(connection_tx: &Arc<Mutex<S>>, message: M) -> error::Result<()>
     where
         M: TryInto<<Framing as ii_wire::Framing>::Tx, Error = <Framing as ii_wire::Framing>::Error>,
         E: Into<error::Error>,
