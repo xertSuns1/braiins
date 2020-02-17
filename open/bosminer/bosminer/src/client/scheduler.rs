@@ -107,9 +107,9 @@ pub struct GroupHandle {
     pub group_handle: Arc<client::Group>,
     active_client: Option<Arc<client::Handle>>,
     generated_work: u64,
-    /// Current percentage of hashrate that this group has been allocated to. This number
+    /// Current ratio of hashrate that this group has been allocated to. This number
     /// changes based on newly added/removed groups.
-    pub percentage_share: f64,
+    pub share_ratio: f64,
 }
 
 impl GroupHandle {
@@ -117,20 +117,17 @@ impl GroupHandle {
         Self {
             active_client: None,
             generated_work: 0,
-            percentage_share: group_handle
+            share_ratio: group_handle
                 .descriptor
-                .fixed_percentage_share
+                .fixed_share_ratio
                 .unwrap_or_default(),
             group_handle,
         }
     }
 
     #[inline]
-    pub fn has_fixed_percentage_share(&self) -> bool {
-        self.group_handle
-            .descriptor
-            .fixed_percentage_share
-            .is_some()
+    pub fn has_fixed_share_ratio(&self) -> bool {
+        self.group_handle.descriptor.fixed_share_ratio.is_some()
     }
 
     async fn update_status(&mut self) {
@@ -264,10 +261,9 @@ impl JobDispatcher {
         let mut next_client = None;
         for scheduler_group_handle in group_registry.iter() {
             let group_generated_work = scheduler_group_handle.generated_work;
-            let next_group_percentage_share = (group_generated_work + generated_work_delta) as f64
+            let next_group_share_ratio = (group_generated_work + generated_work_delta) as f64
                 / (total_generated_work + generated_work_delta) as f64;
-            let next_error =
-                (scheduler_group_handle.percentage_share - next_group_percentage_share).abs();
+            let next_error = (scheduler_group_handle.share_ratio - next_group_share_ratio).abs();
             if let Some(active_client) = scheduler_group_handle.active_client.as_ref().cloned() {
                 match next_client {
                     None => next_client = Some((active_client, next_error)),

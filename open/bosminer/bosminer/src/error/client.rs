@@ -28,8 +28,8 @@ pub enum ErrorKind {
     Missing,
     #[fail(display = "the client client has been registered")]
     Additional,
-    #[fail(display = "all client groups have only fixed percentage share")]
-    OnlyFixedPercentageShare,
-    #[fail(display = "total fixed percentage share is greater than or equal to 1.0")]
-    FixedPercentageShareOverflow,
+    #[fail(display = "all client groups have only fixed share ratio")]
+    OnlyFixedShareRatio,
+    #[fail(display = "total fixed share ratio is greater than or equal to 1.0")]
+    FixedShareRatioOverflow,
 }

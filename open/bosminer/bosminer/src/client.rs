@@ -360,16 +360,16 @@ impl Group {
 /// Keeps track of all active clients
 pub struct GroupRegistry {
     list: Vec<scheduler::GroupHandle>,
-    fixed_percentage_share_count: usize,
-    total_fixed_percentage_share: f64,
+    fixed_share_ratio_count: usize,
+    total_fixed_share_ratio: f64,
 }
 
 impl GroupRegistry {
     pub fn new() -> Self {
         Self {
             list: vec![],
-            fixed_percentage_share_count: 0,
-            total_fixed_percentage_share: 0.0,
+            fixed_share_ratio_count: 0,
+            total_fixed_share_ratio: 0.0,
         }
     }
 
@@ -402,15 +402,15 @@ impl GroupRegistry {
         descriptor: GroupDescriptor,
         midstate_count: usize,
     ) -> Result<Arc<Group>, error::Client> {
-        match descriptor.fixed_percentage_share {
-            Some(fixed_percentage_share) => {
+        match descriptor.fixed_share_ratio {
+            Some(fixed_share_ratio) => {
                 if self.is_empty() {
-                    Err(error::Client::OnlyFixedPercentageShare)?;
-                } else if self.total_fixed_percentage_share + fixed_percentage_share >= 1.0 {
-                    Err(error::Client::FixedPercentageShareOverflow)?;
+                    Err(error::Client::OnlyFixedShareRatio)?;
+                } else if self.total_fixed_share_ratio + fixed_share_ratio >= 1.0 {
+                    Err(error::Client::FixedShareRatioOverflow)?;
                 }
-                self.fixed_percentage_share_count += 1;
-                self.total_fixed_percentage_share += fixed_percentage_share;
+                self.fixed_share_ratio_count += 1;
+                self.total_fixed_share_ratio += fixed_share_ratio;
             }
             None => {}
         }
@@ -453,27 +453,26 @@ impl GroupRegistry {
 
     fn recalculate_quotas(&mut self, reset_generated_work: bool) {
         assert!(
-            self.total_fixed_percentage_share < 1.0
-                && self.fixed_percentage_share_count < self.count(),
-            "BUG: no percentage share left for common groups"
+            self.total_fixed_share_ratio < 1.0 && self.fixed_share_ratio_count < self.count(),
+            "BUG: no share ratio left for common groups"
         );
 
         if self.is_empty() {
             return;
         }
 
-        let common_groups = self.count() - self.fixed_percentage_share_count;
-        let percentage_share = (1.0 - self.total_fixed_percentage_share) / common_groups as f64;
+        let common_groups = self.count() - self.fixed_share_ratio_count;
+        let share_ratio = (1.0 - self.total_fixed_share_ratio) / common_groups as f64;
 
-        // Update all groups with newly calculated percentage share.
+        // Update all groups with newly calculated share ratio.
         // Also reset generated work to prevent switching all future work to new group because
         // new group has zero shares and so maximal error.
         for mut scheduler_group_handle in self.list.iter_mut() {
             if reset_generated_work {
                 scheduler_group_handle.reset_generated_work();
             }
-            if !scheduler_group_handle.has_fixed_percentage_share() {
-                scheduler_group_handle.percentage_share = percentage_share;
+            if !scheduler_group_handle.has_fixed_share_ratio() {
+                scheduler_group_handle.share_ratio = share_ratio;
             }
         }
     }

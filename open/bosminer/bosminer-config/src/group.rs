@@ -24,7 +24,9 @@
 #[derive(Clone, Debug)]
 pub struct Descriptor {
     pub name: String,
-    pub fixed_percentage_share: Option<f64>,
+    /// Optionally set fixed share ratio which is value between 0.0 to 1.0 where 1.0 represents
+    /// that all work is generated from this group
+    pub fixed_share_ratio: Option<f64>,
 }
 
 impl Descriptor {
@@ -36,7 +38,7 @@ impl Default for Descriptor {
     fn default() -> Self {
         Self {
             name: Self::DEFAULT_NAME.to_string(),
-            fixed_percentage_share: None,
+            fixed_share_ratio: None,
         }
     }
 }

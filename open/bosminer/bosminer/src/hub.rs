@@ -200,7 +200,7 @@ impl Core {
                 .create_group(
                     GroupDescriptor {
                         name: GroupDescriptor::DEFAULT_NAME.to_string(),
-                        fixed_percentage_share: None,
+                        fixed_share_ratio: None,
                     },
                     self.midstate_count,
                 )
