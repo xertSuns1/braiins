@@ -90,7 +90,7 @@ const RD_TEMP_OFFSET_VALUE: u8 = 0x23;
 pub const EXPECTED_VOLTAGE_CTRL_VERSION: u8 = 0x03;
 
 /// Path to voltage controller PIC program
-pub const PIC_PROGRAM_PATH: &'static str = "/etc/antminer/hash_s8_app.txt";
+pub const PIC_PROGRAM_PATH: &'static str = "/lib/antminer/hash_s8_app.txt";
 
 /// Bundle voltage value with methods to convert it to/from various representations
 #[derive(Clone, Copy, PartialEq)]

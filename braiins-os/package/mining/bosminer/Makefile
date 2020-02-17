@@ -80,8 +80,8 @@ define Package/bosminer/install
 	$(INSTALL_BIN) $(CARGO_OUTPUT_DIR)/$(BOSMINER_NAME) $(1)/usr/bin/$(PKG_NAME)
 	$(INSTALL_DIR) $(1)/etc
 	$(CP) ./files/bosminer-template.toml $(1)/etc/
-	$(INSTALL_DIR) $(1)/etc/antminer
-	$(CP) ./files/hash_s8_app.txt $(1)/etc/antminer/hash_s8_app.txt
+	$(INSTALL_DIR) $(1)/lib/antminer
+	$(CP) ./files/hash_s8_app.txt $(1)/lib/antminer/hash_s8_app.txt
 
 	$(INSTALL_DIR) $(1)/etc/init.d/
 	$(INSTALL_BIN) ./files/bosminer.init $(1)/etc/init.d/bosminer
