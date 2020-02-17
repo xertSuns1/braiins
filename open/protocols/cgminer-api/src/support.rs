@@ -69,6 +69,7 @@ impl ValueExt for json::Value {
                 let number = value.as_f64().expect("BUG: cannot convert json number");
                 Some(number as i32)
             }
+            json::Value::String(value) => value.parse().ok(),
             // TODO: cgminer tries to parse all possible types if they contains some number
             _ => None,
         }
