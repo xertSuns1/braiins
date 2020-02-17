@@ -387,27 +387,21 @@ impl Backend {
         Ok(contents.trim().into())
     }
 
-    pub fn parse(config_path: &str) -> error::Result<Self> {
-        // Parse config file - either user specified or the default one
-        let mut backend_config: Self = bosminer_config::parse(config_path)?;
-
+    pub fn sanity_check(&mut self) -> error::Result<()> {
         // Check compatibility of configuration format
-        if backend_config.format.model != FORMAT_MODEL {
-            Err(format!(
-                "incompatible format model '{}'",
-                backend_config.format.model
-            ))?;
+        if self.format.model != FORMAT_MODEL {
+            Err(format!("incompatible format model '{}'", self.format.model))?;
         }
         // TODO: allow backward compatibility
-        if backend_config.format.version != FORMAT_VERSION {
+        if self.format.version != FORMAT_VERSION {
             Err(format!(
                 "incompatible format version '{}'",
-                backend_config.format.version
+                self.format.version
             ))?;
         }
 
         // Check if all hash chain keys have meaningful name
-        if let Some(hash_chains) = &backend_config.hash_chains {
+        if let Some(hash_chains) = &self.hash_chains {
             for idx in hash_chains.keys() {
                 let _ = idx
                     .parse::<usize>()
@@ -427,7 +421,7 @@ impl Backend {
 
         // Parse pools
         // Don't worry if is this section missing, maybe there are some pools on command line
-        if let Some(pools) = backend_config.pools.as_ref() {
+        if let Some(pools) = self.pools.as_ref() {
             let mut client_configs = Vec::with_capacity(pools.len());
             for pool in pools {
                 let client_descriptor =
@@ -440,13 +434,20 @@ impl Backend {
                     channel: None,
                 });
             }
-            backend_config.client_groups = vec![hal::GroupConfig {
+            self.client_groups = vec![hal::GroupConfig {
                 descriptor: Default::default(),
                 clients: client_configs,
             }];
         }
 
-        Ok(backend_config)
+        Ok(())
+    }
+
+    pub fn parse(config_path: &str) -> error::Result<Self> {
+        // Parse config file - either user specified or the default one
+        let mut backend_config: Self = bosminer_config::parse(config_path)?;
+
+        backend_config.sanity_check().map(|_| backend_config)
     }
 }
 

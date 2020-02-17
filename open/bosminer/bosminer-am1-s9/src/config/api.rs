@@ -446,8 +446,11 @@ impl<'a> Handler<'a> {
             .expect("TODO: invalid data type")
             .insert("format".to_string(), json_format);
 
-        let backend_config: Backend =
+        let mut backend_config: Backend =
             serde_json::from_value(request.data).expect("TODO: deserialize Backend");
+        backend_config
+            .sanity_check()
+            .expect("TODO: invalid configuration");
 
         let config_path = Path::new(self.config_path);
         let config_dir = config_path.parent().expect("TODO: path.parent");
