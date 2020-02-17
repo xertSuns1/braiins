@@ -851,8 +851,6 @@ impl TranslationHandler {
         loop {
             select! {
                 // Receive V1 frame and translate it to V2 message
-                // TODO: Review the timeout functionality as it doesn't seem to do anything.
-                //  Simple test: run the mining software and disable connectivity on the localhost
                 v1_frame = self.v1_conn_rx.next().timeout(StratumClient::EVENT_TIMEOUT).fuse() => {
                     match v1_frame {
                         Ok(Some(v1_frame)) => {

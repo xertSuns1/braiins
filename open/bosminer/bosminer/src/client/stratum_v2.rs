@@ -654,7 +654,7 @@ pub struct StratumClient {
 
 impl StratumClient {
     const CONNECTION_TIMEOUT: time::Duration = time::Duration::from_secs(5);
-    const EVENT_TIMEOUT: time::Duration = time::Duration::from_secs(60);
+    const EVENT_TIMEOUT: time::Duration = time::Duration::from_secs(150);
     const SEND_TIMEOUT: time::Duration = time::Duration::from_secs(2);
 
     /// Start a task that plays a dummy role for both communication channels that the stratum
