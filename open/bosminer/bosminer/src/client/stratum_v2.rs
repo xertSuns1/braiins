@@ -58,7 +58,7 @@ use ii_stratum::v2::messages::{
 };
 use ii_stratum::v2::types::*;
 use ii_stratum::v2::{build_message_from_frame, extensions, Handler};
-use ii_wire::Connection;
+use ii_wire::{Connection, ConnectionRx, ConnectionTx};
 
 use std::collections::HashMap;
 
@@ -389,7 +389,7 @@ impl<T> FrameStream for T where
 
 struct StratumSolutionHandler<S> {
     client: Arc<StratumClient>,
-    connection_tx: S,
+    connection_tx: Arc<Mutex<S>>,
     seq_num: u32,
 }
 
@@ -402,7 +402,7 @@ where
         + std::fmt::Debug
         + 'static,
 {
-    fn new(client: Arc<StratumClient>, connection_tx: S) -> Self {
+    fn new(client: Arc<StratumClient>, connection_tx: Arc<Mutex<S>>) -> Self {
         Self {
             client,
             connection_tx,
@@ -431,7 +431,7 @@ where
             .await
             .push_back((solution, seq_num));
         // send solutions back to the stratum server
-        StratumClient::send_msg(&mut self.connection_tx, share_msg)
+        StratumClient::send_msg(self.connection_tx.clone(), share_msg)
             .await
             .context("Cannot send submit to stratum server")?;
         // the response is handled in a separate task
@@ -454,10 +454,15 @@ impl StratumConnectionHandler {
         }
     }
 
-    async fn setup_mining_connection(
+    async fn setup_mining_connection<R, S>(
         &mut self,
-        connection: &mut Connection<Framing>,
-    ) -> error::Result<()> {
+        connection_rx: &mut R,
+        connection_tx: Arc<Mutex<S>>,
+    ) -> error::Result<()>
+    where
+        R: FrameStream,
+        S: FrameSink,
+    {
         let setup_msg = SetupConnection {
             protocol: 0,
             max_version: 2,
@@ -467,10 +472,10 @@ impl StratumConnectionHandler {
             endpoint_port: self.client.connection_details.port,
             device: self.client.backend_info.clone().unwrap_or_default().into(),
         };
-        StratumClient::send_msg(&mut connection.tx, setup_msg)
+        StratumClient::send_msg(connection_tx, setup_msg)
             .await
             .context("Cannot send stratum setup mining connection")?;
-        let frame = connection
+        let frame = connection_rx
             .next()
             .await
             .ok_or("The remote stratum server was disconnected prematurely")??;
@@ -483,9 +488,17 @@ impl StratumConnectionHandler {
         ))
     }
 
-    async fn open_channel(&mut self, connection: &mut Connection<Framing>) -> error::Result<()> {
+    async fn open_channel<R, S>(
+        &mut self,
+        connection_rx: &mut R,
+        connection_tx: Arc<Mutex<S>>,
+    ) -> error::Result<()>
+    where
+        R: FrameStream,
+        S: FrameSink,
+    {
         let channel_msg = OpenStandardMiningChannel {
-            req_id: 10,
+            req_id: 10, // TODO? come up with request ID sequencing
             user: self
                 .client
                 .connection_details
@@ -498,10 +511,10 @@ impl StratumConnectionHandler {
             max_target: ii_bitcoin::Target::default().into(),
         };
 
-        StratumClient::send_msg(&mut connection.tx, channel_msg)
+        StratumClient::send_msg(connection_tx, channel_msg)
             .await
             .context("Cannot send stratum open channel")?;
-        let frame = connection
+        let frame = connection_rx
             .next()
             .await
             .ok_or("The remote stratum server was disconnected prematurely")??;
@@ -514,29 +527,45 @@ impl StratumConnectionHandler {
             .unwrap_or(Err("Unexpected response for stratum open channel".into()))
     }
 
-    async fn connect(mut self) -> error::Result<(Connection<Framing>, ii_bitcoin::Target)> {
-        // TODO the connect would always try only the first address, we should persist the list
-        //  of addresses or actually we should use wire 'client' functionality for this...
+    async fn connect(&self) -> error::Result<(ConnectionRx<Framing>, ConnectionTx<Framing>)> {
         let socket_addr = self
             .client
             .connection_details
             .get_host_and_port()
             .to_socket_addrs()
             .context("Invalid server address")?
+            // TODO: this is not correct as it always only attempts to ever connect to the first
+            //  IP address from the resolved set. We should use wire 'client' functionality for
+            //  this...
             .next()
             .ok_or("Cannot resolve any IP address")?;
 
-        let mut connection = Connection::<Framing>::connect(&socket_addr)
+        let connection = Connection::<Framing>::connect(&socket_addr)
             .await
             .context("Cannot connect to stratum server")?;
-        self.setup_mining_connection(&mut connection)
+        let (connection_rx, connection_tx) = connection.split();
+
+        Ok((connection_rx, connection_tx))
+    }
+
+    /// Starts mining session and provides the initial target negotiated by the upstream endpoint
+    async fn init_mining_session<R, S>(
+        mut self,
+        connection_rx: &mut R,
+        connection_tx: Arc<Mutex<S>>,
+    ) -> error::Result<ii_bitcoin::Target>
+    where
+        R: FrameStream,
+        S: FrameSink,
+    {
+        self.setup_mining_connection(connection_rx, connection_tx.clone())
             .await
             .context("Cannot setup stratum mining connection")?;
-        self.open_channel(&mut connection)
+        self.open_channel(connection_rx, connection_tx)
             .await
             .context("Cannot open stratum channel")?;
 
-        Ok((connection, self.init_target))
+        Ok(self.init_target)
     }
 }
 
@@ -659,7 +688,10 @@ impl StratumClient {
     }
 
     /// Send a message down a specified Tx Sink
-    async fn send_msg<M, S, E>(connection_tx: &mut S, message: M) -> error::Result<()>
+    /// TODO: temporarily, this became an associated method so that we don't have to generalize
+    ///  with type parameters the full StratumClient struct. Once this is done, we will use the
+    ///  new internal field connection_tx
+    async fn send_msg<M, S, E>(connection_tx: Arc<Mutex<S>>, message: M) -> error::Result<()>
     where
         M: TryInto<<Framing as ii_wire::Framing>::Tx, Error = <Framing as ii_wire::Framing>::Error>,
         E: Into<error::Error>,
@@ -670,7 +702,12 @@ impl StratumClient {
             + 'static,
     {
         let frame = message.try_into()?;
-        connection_tx.send(frame).await.map_err(Into::into)
+        connection_tx
+            .lock()
+            .await
+            .send(frame)
+            .await
+            .map_err(Into::into)
     }
 
     async fn handle_frame(
@@ -708,14 +745,10 @@ impl StratumClient {
     }
 
     async fn main_loop<R, S>(
-        &self,
+        self: Arc<Self>,
         mut connection_rx: R,
-        mut connection_tx: S,
+        connection_tx: Arc<Mutex<S>>,
         mut event_handler: StratumEventHandler,
-        mut solution_handler: StratumSolutionHandler<
-            mpsc::Sender<<Framing as ii_wire::Framing>::Tx>,
-        >,
-        mut solution_frame_channel_rx: mpsc::Receiver<<Framing as ii_wire::Framing>::Rx>,
     ) -> error::Result<()>
     where
         R: FrameStream,
@@ -723,6 +756,7 @@ impl StratumClient {
     {
         let mut solution_receiver = self.solution_receiver.lock().await;
         let mut extension_channel_rx = self.extension_channel_rx.lock().await;
+        let mut solution_handler = StratumSolutionHandler::new(self.clone(), connection_tx.clone());
 
         // Notify the extension user that we are ready to start forwarding its protocol, use a
         // separate block, so that the lock is dropped immediately after the start notification
@@ -753,19 +787,9 @@ impl StratumClient {
                 }
                 // Forward extension protocol frames onto the network
                 frame = extension_channel_rx.next().fuse() => {
-                    connection_tx
+                    connection_tx.lock().await
                         .send(frame.expect("BUG: extension channel must not shutdown!"))
                         .await?;
-                }
-                // Forward solution frames onto the network
-                frame = solution_frame_channel_rx.next().fuse() => {
-                    // TODO review whether the solution RX channel may terminate
-                    match frame {
-                        Some(frame) => connection_tx.send(frame).await?,
-                        None => {
-                            Err("Solution handler terminated")?;
-                        }
-                    }
                 }
                 solution = solution_receiver.receive().fuse() => {
                     match solution {
@@ -781,29 +805,21 @@ impl StratumClient {
         Ok(())
     }
 
-    async fn run_job_solver(
+    async fn run_job_solver<R, S>(
         self: Arc<Self>,
-        connection: Connection<Framing>,
+        connection_rx: R,
+        connection_tx: Arc<Mutex<S>>,
         init_target: ii_bitcoin::Target,
-    ) {
-        let (connection_rx, connection_tx) = connection.split();
-        // Interconnect with solution handler to collect frames from it and forward them via
-        // network connection
-        let (solution_frame_channel_tx, solution_frame_channel_rx) =
-            mpsc::channel::<<Framing as ii_wire::Framing>::Tx>(1);
-
+    ) where
+        R: FrameStream,
+        S: FrameSink,
+    {
         let event_handler = StratumEventHandler::new(self.clone(), init_target);
-        let solution_handler = StratumSolutionHandler::new(self.clone(), solution_frame_channel_tx);
         // TODO consider changing main_loop to accept Arc<Self> and build the solution_handler
         //  along with solution handler communication channels inside of the main_loop.
-        if let Err(_) = self
-            .main_loop(
-                connection_rx,
-                connection_tx,
-                event_handler,
-                solution_handler,
-                solution_frame_channel_rx,
-            )
+        let client = self.clone();
+        if let Err(_) = client
+            .main_loop(connection_rx, connection_tx, event_handler)
             .await
         {
             self.status.initiate_failing();
@@ -811,14 +827,26 @@ impl StratumClient {
     }
 
     async fn run(self: Arc<Self>) {
-        match StratumConnectionHandler::new(self.clone())
+        let connection_handler = StratumConnectionHandler::new(self.clone());
+        match connection_handler
             .connect()
             .timeout(CONNECTION_TIMEOUT)
             .await
         {
-            Ok(Ok((connection, init_target))) => {
-                if self.status.initiate_running() {
-                    self.clone().run_job_solver(connection, init_target).await;
+            Ok(Ok((mut connection_rx, connection_tx))) => {
+                let connection_tx = Arc::new(Mutex::new(connection_tx));
+                match connection_handler
+                    .init_mining_session(&mut connection_rx, connection_tx.clone())
+                    .await
+                {
+                    Ok(init_target) => {
+                        if self.status.initiate_running() {
+                            self.clone()
+                                .run_job_solver(connection_rx, connection_tx, init_target)
+                                .await;
+                        }
+                    }
+                    Err(e) => info!("Failed to negotiation initial V2 target: {:?}", e),
                 }
             }
             Ok(Err(_)) | Err(_) => self.status.initiate_failing(),
