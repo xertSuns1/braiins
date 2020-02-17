@@ -753,6 +753,10 @@ impl StratumClient {
     }
 
     async fn main_task(self: Arc<Self>) {
+        // TODO: Count as a discarded solution?
+        // Flush all obsolete solutions from previous run
+        self.solution_receiver.lock().await.flush();
+
         loop {
             let mut stop_receiver = self.stop_receiver.lock().await;
             select! {
@@ -762,6 +766,10 @@ impl StratumClient {
 
             // Invalidate current job to stop working on it
             self.job_sender.lock().await.invalidate();
+            // Flush all unprocessed solutions to empty buffer
+            // TODO: Count as a discarded solution?
+            self.solution_receiver.lock().await.flush();
+            self.solutions.lock().await.clear();
 
             if self.status.can_stop() {
                 // NOTE: it is not safe to add here any code!

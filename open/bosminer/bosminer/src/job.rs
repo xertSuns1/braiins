@@ -216,4 +216,12 @@ impl SolutionReceiver {
         }
         None
     }
+
+    /// Empty all buffered solutions without blocking. This is to prevent the client from submitting
+    /// already stale solutions
+    /// TODO: We should review this regularly as there may be extensions in the mining protocol that
+    /// may allow resume a mining session
+    pub fn flush(&mut self) {
+        while let Ok(Some(_)) = self.solution_channel.try_next() {}
+    }
 }
