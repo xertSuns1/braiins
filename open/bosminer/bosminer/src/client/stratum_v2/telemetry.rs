@@ -23,7 +23,7 @@
 use crate::error::{self, ResultExt};
 
 use async_trait::async_trait;
-use bytes::{BytesMut};
+use bytes::BytesMut;
 use futures::channel::mpsc;
 
 use ii_async_compat::prelude::*;
@@ -50,7 +50,9 @@ enum State {
 }
 
 /// Client for telemetry stratum extension receives raw telemetry data from all components (e.g.
-/// hashboards) and submits it via the stratum telemetry extension protocol
+/// hashboards) and submits it via the stratum telemetry extension protocol.  The main idea is
+/// that the telemetry client should never terminate based on protocol errors. It can only be
+/// terminated based on explicit closing of communication channels from the main Stratum V2 client.
 #[derive(Debug)]
 pub struct Client {
     state: State,
@@ -163,7 +165,7 @@ impl Client {
                 // Telemetry cannot be sent in any other state. We will ignore the data for the time
                 // being. However, we will not communicate the error as we don't want to break
                 // the possibly ongoing handshake stage
-                self.error("Cannot send telemetry, ignoring the data").ok();
+                self.log_error("Cannot send telemetry, ignoring the data");
                 Ok(())
             }
         }
@@ -191,7 +193,11 @@ impl Client {
                 };
                 self.send_msg(msg).await
             }
-            _ => self.error("Cannot start telemetry client"),
+            _ => {
+                let err_msg = "Cannot start telemetry client";
+                self.log_error(err_msg);
+                Err(error::ErrorKind::Stratum(err_msg.to_string()).into())
+            }
         }
     }
 
@@ -210,34 +216,33 @@ impl Client {
             .map_err(Into::into)
     }
 
-    /// Helper that generates an error + logs about it
-    fn error(&self, err_msg: &str) -> error::Result<()> {
+    /// Helper that logs about an error appending the current telemetry state
+    fn log_error(&self, err_msg: &str) {
         let err_msg = format!("{}, state {:?}", err_msg, self.state);
         error!("{}", err_msg);
-        Err(error::ErrorKind::Stratum(err_msg).into())
     }
 
     /// Helper that generates a request ID mismatch error based on `received_req_id`
-    fn error_request_id(&self, err_msg: &str, received_req_id: u32) -> error::Result<()> {
+    fn log_error_request_id(&self, err_msg: &str, received_req_id: u32) {
         let err_msg = format!(
             "{} Request ID mismatch - expected: {}, received: {}",
             err_msg, self.curr_request_id, received_req_id
         );
-        self.error(err_msg.as_str())
+        self.log_error(err_msg.as_str());
     }
 
     /// Helper that generates a channel ID mismatch error based on `received_req_id`
-    fn error_channel_id(
+    fn log_error_channel_id(
         &self,
         err_msg: &str,
         expected_channel_id: u32,
         received_channel_id: u32,
-    ) -> error::Result<()> {
+    ) {
         let err_msg = format!(
             "{}, Channel id mismatch - expected: {}, received: {}",
             err_msg, expected_channel_id, received_channel_id
         );
-        self.error(err_msg.as_str())
+        self.log_error(err_msg.as_str());
     }
 
     /// Generates a next request ID and returns its next value. This also implies that the first ID
@@ -269,12 +274,12 @@ impl v2::Handler for Client {
                     info!("Telemetry channel operational, state: {:?}", self.state);
                     self.next_request_id();
                 } else {
-                    self.error_request_id("OpenTelemetryChannelSuccess", payload.req_id).ok();
+                    self.log_error_request_id("OpenTelemetryChannelSuccess", payload.req_id);
                     self.state = State::Init;
                 }
             }
             _ => {
-                self.error("Unexpected OpenTelemetryChannelSuccess message").ok();
+                self.log_error("Unexpected OpenTelemetryChannelSuccess message");
             }
         };
     }
@@ -295,11 +300,11 @@ impl v2::Handler for Client {
                     );
                     self.next_request_id();
                 } else {
-                    self.error_request_id("OpenTelemetryChannelError", payload.req_id).ok();
+                    self.log_error_request_id("OpenTelemetryChannelError", payload.req_id);
                 }
             }
             _ => {
-                self.error("Unexpected OpenTelemetryMessageError message").ok();
+                self.log_error("Unexpected OpenTelemetryMessageError message");
             }
         };
 
@@ -320,15 +325,15 @@ impl v2::Handler for Client {
                         payload.last_seq_num, self.state
                     );
                 } else {
-                    self.error_channel_id(
+                    self.log_error_channel_id(
                         "SubmitTelemetryDataSuccess",
                         channel_id,
                         payload.channel_id,
-                    ).ok();
+                    );
                 }
             }
             _ => {
-                self.error("Unexpected SubmitTelemetryDataSuccess message").ok();
+                self.log_error("Unexpected SubmitTelemetryDataSuccess message");
             }
         }
     }
@@ -346,15 +351,15 @@ impl v2::Handler for Client {
                         payload.seq_num, self.state
                     );
                 } else {
-                    self.error_channel_id(
+                    self.log_error_channel_id(
                         "SubmitTelemetryDataError",
                         channel_id,
                         payload.channel_id,
-                    ).ok();
+                    );
                 }
             }
             _ => {
-                self.error("Unexpected SubmitTelemetryDataError message").ok();
+                self.log_error("Unexpected SubmitTelemetryDataError message");
             }
         }
     }
