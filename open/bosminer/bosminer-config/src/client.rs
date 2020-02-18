@@ -28,6 +28,9 @@ use std::fmt;
 
 use failure::ResultExt;
 
+pub const URL_JAVA_SCRIPT_REGEX: &'static str =
+    "^(?:drain|(?:stratum2?\\+tcp)):\\/\\/[\\w\\.-]+:\\d+$";
+
 #[derive(Copy, Clone, Debug)]
 pub enum Protocol {
     Drain,

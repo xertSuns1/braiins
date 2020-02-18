@@ -188,7 +188,8 @@ impl<'a> Handler<'a> {
                                     "type": "url",
                                     "label": "URL",
                                     "min_length": 1,
-                                    "span": 4
+                                    "span": 4,
+                                    "match": bosminer_config::CLIENT_URL_JAVA_SCRIPT_REGEX,
                                 }
                             ],
                             [

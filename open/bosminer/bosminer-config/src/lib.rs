@@ -27,6 +27,7 @@ mod group;
 // Reexport inner structures
 pub use client::Descriptor as ClientDescriptor;
 pub use client::Protocol as ClientProtocol;
+pub use client::URL_JAVA_SCRIPT_REGEX as CLIENT_URL_JAVA_SCRIPT_REGEX;
 pub use group::Descriptor as GroupDescriptor;
 
 // reexport common crates
