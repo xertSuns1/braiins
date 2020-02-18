@@ -618,9 +618,16 @@ pub enum ExtensionChannelMsg {
     Frame(<Framing as ii_wire::Framing>::Tx),
 }
 
-pub type ExtensionChannelRx = mpsc::Receiver<<Framing as ii_wire::Framing>::Rx>;
-/// The extension channel that accepts full ExtensionChannelMsg for controlling the client
-pub type ExtensionChannelTx = mpsc::Sender<ExtensionChannelMsg>;
+/// Receiver for Stratum <-- Remote direction (stratum client end)
+pub(crate) type ExtensionChannelToStratumReceiver =
+    mpsc::Receiver<<Framing as ii_wire::Framing>::Rx>;
+/// Remote sender for Stratum <-- Remote direction (remote end)
+pub type ExtensionChannelToStratumSender = mpsc::Sender<<Framing as ii_wire::Framing>::Tx>;
+
+/// Receiver for Stratum --> Remote direction (remote end)
+pub type ExtensionChannelFromStratumReceiver = mpsc::Receiver<ExtensionChannelMsg>;
+/// Sender for Stratum --> Remote direction (stratum client end)
+pub(crate) type ExtensionChannelFromStratumSender = mpsc::Sender<ExtensionChannelMsg>;
 
 #[derive(Debug, ClientNode)]
 pub struct StratumClient {
@@ -638,11 +645,11 @@ pub struct StratumClient {
     solutions: SolutionQueue,
     job_sender: Mutex<job::Sender>,
     solution_receiver: Mutex<job::SolutionReceiver>,
-    /// Frames received from this channel will be forward to the network connection
-    extension_channel_rx: Mutex<ExtensionChannelRx>,
+    /// Frames received from this channel will be forwarded to the network connection
+    extension_channel_receiver: Mutex<ExtensionChannelToStratumReceiver>,
     /// Frames intended for the specified extension will be forwarded into this channel (wrapped
     /// into ExtensionChannelMsg
-    extension_channel_tx: Mutex<ExtensionChannelTx>,
+    extension_channel_sender: Mutex<ExtensionChannelFromStratumSender>,
 }
 
 impl StratumClient {
@@ -650,20 +657,23 @@ impl StratumClient {
         connection_details: ConnectionDetails,
         backend_info: Option<hal::BackendInfo>,
         solver: job::Solver,
-        channel: Option<(ExtensionChannelRx, ExtensionChannelTx)>,
+        channel: Option<(
+            ExtensionChannelToStratumReceiver,
+            ExtensionChannelFromStratumSender,
+        )>,
     ) -> Self {
         let (stop_sender, stop_receiver) = mpsc::channel(1);
 
         // TODO: currently, the client has to have any channel pair as the select! statement that
         //  we use for processing all frames cannot have dynamic number of entries. Rework this
         //  by processing incoming frames from extension channel in a separate task.
-        let (extension_channel_rx, extension_channel_tx) = match channel {
-            Some((rx, tx)) => (Mutex::new(rx), Mutex::new(tx)),
+        let (extension_channel_receiver, extension_channel_sender) = match channel {
+            Some((receiver, sender)) => (Mutex::new(receiver), Mutex::new(sender)),
             None => {
                 // We have to open 2 dummy channels as each channel has different type of messages
-                let (tx, _) = mpsc::channel(1);
-                let (_, rx) = mpsc::channel(1);
-                (Mutex::new(rx), Mutex::new(tx))
+                let (sender, _) = mpsc::channel(1);
+                let (_, receiver) = mpsc::channel(1);
+                (Mutex::new(receiver), Mutex::new(sender))
             }
         };
 
@@ -678,8 +688,8 @@ impl StratumClient {
             solutions: Mutex::new(VecDeque::new()),
             job_sender: Mutex::new(solver.job_sender),
             solution_receiver: Mutex::new(solver.solution_receiver),
-            extension_channel_rx,
-            extension_channel_tx,
+            extension_channel_receiver,
+            extension_channel_sender,
         }
     }
 
@@ -729,7 +739,7 @@ impl StratumClient {
                 // Intentionally capture a potential error as an issue with extension channel
                 // must not cause the client to fail completely
                 if let Err(e) = self
-                    .extension_channel_tx
+                    .extension_channel_sender
                     .lock()
                     .await
                     .try_send(ExtensionChannelMsg::Frame(frame))
@@ -755,7 +765,7 @@ impl StratumClient {
         S: FrameSink,
     {
         let mut solution_receiver = self.solution_receiver.lock().await;
-        let mut extension_channel_rx = self.extension_channel_rx.lock().await;
+        let mut extension_channel_rx = self.extension_channel_receiver.lock().await;
         let mut solution_handler = StratumSolutionHandler::new(self.clone(), connection_tx.clone());
 
         // Notify the extension user that we are ready to start forwarding its protocol, use a
@@ -764,7 +774,7 @@ impl StratumClient {
         // TODO: note that this may fail due to the dummy channel being full
         {
             if let Err(e) = self
-                .extension_channel_tx
+                .extension_channel_sender
                 .lock()
                 .await
                 .try_send(ExtensionChannelMsg::Start)
@@ -868,7 +878,7 @@ impl StratumClient {
             //  pair
 
             if let Err(e) = self
-                .extension_channel_tx
+                .extension_channel_sender
                 .lock()
                 .await
                 .try_send(ExtensionChannelMsg::Stop)

@@ -59,8 +59,8 @@ pub type WorkNode<T> = node::WorkSolverType<
 pub struct ClientConfig {
     pub descriptor: bosminer_config::ClientDescriptor,
     pub channel: Option<(
-        stratum_v2::ExtensionChannelRx,
-        stratum_v2::ExtensionChannelTx,
+        stratum_v2::ExtensionChannelToStratumReceiver,
+        stratum_v2::ExtensionChannelFromStratumSender,
     )>,
 }
 

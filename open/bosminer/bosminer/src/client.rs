@@ -61,12 +61,14 @@ pub struct Handle {
 }
 
 impl Handle {
+    /// `channel` - endpoints for 2 channels so that stratum V2 client can communicate with an
+    /// external client that implements some protocol extension
     fn new(
         descriptor: ClientDescriptor,
         backend_info: Option<hal::BackendInfo>,
         channel: Option<(
-            stratum_v2::ExtensionChannelRx,
-            stratum_v2::ExtensionChannelTx,
+            stratum_v2::ExtensionChannelToStratumReceiver,
+            stratum_v2::ExtensionChannelFromStratumSender,
         )>,
     ) -> Self {
         let (solution_sender, solution_receiver) = mpsc::unbounded();
