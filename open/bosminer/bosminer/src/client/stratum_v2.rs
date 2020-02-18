@@ -655,6 +655,7 @@ pub struct StratumClient {
 impl StratumClient {
     const CONNECTION_TIMEOUT: time::Duration = time::Duration::from_secs(5);
     const EVENT_TIMEOUT: time::Duration = time::Duration::from_secs(60);
+    const SEND_TIMEOUT: time::Duration = time::Duration::from_secs(2);
 
     pub fn new(
         connection_details: ConnectionDetails,
@@ -715,12 +716,17 @@ impl StratumClient {
             + 'static,
     {
         let frame = message.try_into()?;
-        connection_tx
+        match connection_tx
             .lock()
             .await
             .send(frame)
+            .timeout(Self::SEND_TIMEOUT)
             .await
-            .map_err(Into::into)
+        {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => Err(e.into()),
+            Err(_) => Err("Cannot send message due to timeout")?,
+        }
     }
 
     async fn handle_frame(
