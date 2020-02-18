@@ -69,9 +69,6 @@ use std::collections::HashMap;
 // TODO: move it to the stratum crate
 const VERSION_MASK: u32 = 0x1fffe000;
 
-const CONNECTION_TIMEOUT: time::Duration = time::Duration::from_secs(5);
-const EVENT_TIMEOUT: time::Duration = time::Duration::from_secs(60);
-
 #[derive(Debug)]
 pub struct ConnectionDetails {
     pub user: String,
@@ -635,6 +632,9 @@ pub struct StratumClient {
 }
 
 impl StratumClient {
+    const CONNECTION_TIMEOUT: time::Duration = time::Duration::from_secs(5);
+    const EVENT_TIMEOUT: time::Duration = time::Duration::from_secs(60);
+
     pub fn new(connection_details: ConnectionDetails, solver: job::Solver) -> Self {
         let (stop_sender, stop_receiver) = mpsc::channel(1);
         Self {
@@ -679,7 +679,7 @@ impl StratumClient {
 
         while !self.status.is_shutting_down() {
             select! {
-                frame = connection_rx.next().timeout(EVENT_TIMEOUT).fuse() => {
+                frame = connection_rx.next().timeout(Self::EVENT_TIMEOUT).fuse() => {
                     match frame {
                         Ok(Some(frame)) => {
                             let event_msg = build_message_from_frame(frame)?;
@@ -712,7 +712,7 @@ impl StratumClient {
         // Initial target should be the result of properly initiated mining session
         let mining_session_result = StratumConnectionHandler::new(self.clone())
             .init_mining_session(&mut connection_rx, &mut connection_tx)
-            .timeout(CONNECTION_TIMEOUT)
+            .timeout(Self::CONNECTION_TIMEOUT)
             .await;
         match mining_session_result {
             Ok(Ok(init_target)) => {
@@ -732,7 +732,7 @@ impl StratumClient {
     async fn run(self: Arc<Self>) {
         match StratumConnectionHandler::new(self.clone())
             .connect::<v1::Framing>()
-            .timeout(CONNECTION_TIMEOUT)
+            .timeout(Self::CONNECTION_TIMEOUT)
             .await
         {
             Ok(Ok((v1_connection_rx, v1_connection_tx))) => {
@@ -843,7 +843,7 @@ impl TranslationHandler {
                 // Receive V1 frame and translate it to V2 message
                 // TODO: Review the timeout functionality as it doesn't seem to do anything.
                 //  Simple test: run the mining software and disable connectivity on the localhost
-                v1_frame = self.v1_conn_rx.next().timeout(EVENT_TIMEOUT).fuse() => {
+                v1_frame = self.v1_conn_rx.next().timeout(StratumClient::EVENT_TIMEOUT).fuse() => {
                     match v1_frame {
                         Ok(Some(v1_frame)) => {
                             let v1_msg = v1::build_message_from_frame(v1_frame?)?;
@@ -877,7 +877,7 @@ impl TranslationHandler {
                             // block indefinitely and the above timeout for v1_conn_rx wouldn't
                             // do anything. Besides this, we don't want to wait with system time
                             // out in case the upstream connection just hangs
-                            .timeout(EVENT_TIMEOUT)
+                            .timeout(StratumClient::EVENT_TIMEOUT)
                             .await
                             // Unwrap timeout and actual sending error
                             .map_err(|e| "V1 send timeout")??,

@@ -68,9 +68,6 @@ use std::collections::HashMap;
 // TODO: move it to the stratum crate
 const VERSION_MASK: u32 = 0x1fffe000;
 
-const CONNECTION_TIMEOUT: time::Duration = time::Duration::from_secs(5);
-const EVENT_TIMEOUT: time::Duration = time::Duration::from_secs(60);
-
 #[derive(Debug)]
 pub struct ConnectionDetails {
     pub user: String,
@@ -656,6 +653,9 @@ pub struct StratumClient {
 }
 
 impl StratumClient {
+    const CONNECTION_TIMEOUT: time::Duration = time::Duration::from_secs(5);
+    const EVENT_TIMEOUT: time::Duration = time::Duration::from_secs(60);
+
     pub fn new(
         connection_details: ConnectionDetails,
         backend_info: Option<hal::BackendInfo>,
@@ -790,7 +790,7 @@ impl StratumClient {
         }
         while !self.status.is_shutting_down() {
             select! {
-                frame = connection_rx.next().timeout(EVENT_TIMEOUT).fuse() => {
+                frame = connection_rx.next().timeout(Self::EVENT_TIMEOUT).fuse() => {
                     match frame {
                         Ok(Some(frame)) => self.handle_frame(frame?, &mut event_handler).await?,
                         Ok(None) | Err(_) => {
@@ -843,7 +843,7 @@ impl StratumClient {
         let connection_handler = StratumConnectionHandler::new(self.clone());
         match connection_handler
             .connect()
-            .timeout(CONNECTION_TIMEOUT)
+            .timeout(Self::CONNECTION_TIMEOUT)
             .await
         {
             Ok(Ok((mut connection_rx, connection_tx))) => {
