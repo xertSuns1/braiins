@@ -20,6 +20,9 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+// Sub-modules with client implementation
+pub mod telemetry;
+
 use ii_logging::macros::*;
 
 use crate::error;
