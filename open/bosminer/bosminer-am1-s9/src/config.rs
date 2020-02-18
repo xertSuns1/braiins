@@ -101,8 +101,8 @@ pub const DEFAULT_MIN_FANS: usize = 1;
 pub const S9_HASHBOARD_INDEX: usize = 8;
 
 /// Range of hash chain index
-pub const HASH_CHAIN_INDEX_MIN: usize = 1;
-pub const HASH_CHAIN_INDEX_MAX: usize = 9;
+pub const HASH_CHAIN_INDEX_MIN: usize = 6;
+pub const HASH_CHAIN_INDEX_MAX: usize = 8;
 
 /// Range of PLL frequency for clocking the chips in MHz
 pub const FREQUENCY_MHZ_MIN: f64 = 200.0;
