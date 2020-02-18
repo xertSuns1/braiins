@@ -140,7 +140,11 @@ impl Client {
     async fn handle_message(&mut self, message: ExtensionChannelMsg) -> error::Result<()> {
         match message {
             ExtensionChannelMsg::Start => self.start_channel().await,
-            ExtensionChannelMsg::Stop => unimplemented!(),
+            // TODO currently there is no channel close protocol. This may need to be improved
+            ExtensionChannelMsg::Stop => {
+                self.state = State::Init;
+                Ok(())
+            }
             ExtensionChannelMsg::Frame(frame) => self.handle_frame(frame).await,
         }
     }
