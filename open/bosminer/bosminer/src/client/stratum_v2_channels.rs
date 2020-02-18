@@ -61,7 +61,7 @@ use ii_stratum::v2::types::DeviceInfo;
 use ii_stratum::v2::types::*;
 use ii_stratum::v2::{build_message_from_frame, Handler};
 use ii_stratum::{v1, v2};
-use ii_stratum_proxy::translation::V2ToV1Translation;
+use ii_stratum_proxy::translation::{V2ToV1Translation, V2ToV1TranslationOptions};
 use ii_wire::{Connection, ConnectionRx, ConnectionTx};
 
 use std::collections::HashMap;
@@ -74,6 +74,7 @@ pub struct ConnectionDetails {
     pub user: String,
     pub host: String,
     pub port: u16,
+    pub fragment: Option<String>,
 }
 
 impl ConnectionDetails {
@@ -82,11 +83,21 @@ impl ConnectionDetails {
             user: descriptor.user.clone(),
             host: descriptor.host.clone(),
             port: descriptor.port,
+            fragment: descriptor.fragment.clone(),
         }
     }
 
     fn get_host_and_port(&self) -> String {
         format!("{}:{}", self.host, self.port)
+    }
+
+    fn try_enable_xnsub(&self) -> bool {
+        self.host.find(".nicehash.com").is_some()
+            || self
+                .fragment
+                .as_ref()
+                .and_then(|fragment| fragment.find("xnsub"))
+                .is_some()
     }
 }
 
@@ -747,8 +758,11 @@ impl StratumClient {
         {
             Ok(Ok((v1_connection_rx, v1_connection_tx))) => {
                 if self.status.initiate_running() {
+                    let options = V2ToV1TranslationOptions {
+                        try_enable_xnsub: self.connection_details.try_enable_xnsub(),
+                    };
                     let (translation_handler, v2_translation_rx, v2_translation_tx) =
-                        TranslationHandler::new(v1_connection_rx, v1_connection_tx);
+                        TranslationHandler::new(v1_connection_rx, v1_connection_tx, options);
                     tokio::spawn(async move {
                         let status = translation_handler.run().await;
                         info!("V2->V1 translation terminated: {:?}", status);
@@ -815,6 +829,7 @@ impl TranslationHandler {
     fn new(
         v1_conn_rx: ConnectionRx<v1::Framing>,
         v1_conn_tx: ConnectionTx<v1::Framing>,
+        options: V2ToV1TranslationOptions,
     ) -> (Self, mpsc::Receiver<v2::Frame>, mpsc::Sender<v2::Frame>) {
         let (v1_translation_tx, v1_translation_rx) =
             mpsc::channel(Self::MAX_TRANSLATION_CHANNEL_SIZE);
@@ -822,7 +837,7 @@ impl TranslationHandler {
             mpsc::channel(Self::MAX_TRANSLATION_CHANNEL_SIZE);
         let (v2_client_tx, v2_client_rx) = mpsc::channel(Self::MAX_TRANSLATION_CHANNEL_SIZE);
 
-        let translation = V2ToV1Translation::new(v1_translation_tx, v2_translation_tx);
+        let translation = V2ToV1Translation::new(v1_translation_tx, v2_translation_tx, options);
 
         (
             Self {
