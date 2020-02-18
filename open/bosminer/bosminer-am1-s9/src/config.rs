@@ -439,7 +439,7 @@ impl Backend {
         }
     }
 
-    fn get_hw_id() -> error::Result<String> {
+    pub fn get_hw_id() -> error::Result<String> {
         let contents = fs::read_to_string(DEFAULT_HW_ID_PATH)?;
         Ok(contents.trim().into())
     }
