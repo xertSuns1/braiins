@@ -28,7 +28,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{self, json};
 use serde_repr::*;
 
+use std::fs;
 use std::io::{self, Write};
+use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -111,11 +113,77 @@ struct SaveResponse {
     pub data: Option<SaveSuccess>,
 }
 
+struct FileGuard<'a> {
+    path: Option<&'a Path>,
+    file: Option<fs::File>,
+}
+
+impl<'a> FileGuard<'a> {
+    fn create(path: &'a Path) -> io::Result<Self> {
+        Ok(Self {
+            path: Some(path),
+            file: Some(
+                fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(path)?,
+            ),
+        })
+    }
+
+    fn persist<P: AsRef<Path>>(mut self, path: P) -> io::Result<()> {
+        // Close the file before moving
+        let _ = self
+            .file
+            .take()
+            .expect("BUG: missing file in file guard for 'persist'");
+        fs::rename(self.path.expect("BUG: missing path in file guard"), path)?;
+        // Drop the original path because the file has been deleted
+        self.path.take();
+
+        Ok(())
+    }
+}
+
+impl<'a> Deref for FileGuard<'a> {
+    type Target = fs::File;
+
+    fn deref(&self) -> &Self::Target {
+        self.file
+            .as_ref()
+            .expect("BUG: missing file in file guard for 'Deref'")
+    }
+}
+
+impl<'a> DerefMut for FileGuard<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.file
+            .as_mut()
+            .expect("BUG: missing file in file guard for 'DerefMut'")
+    }
+}
+
+impl<'a> Drop for FileGuard<'a> {
+    fn drop(&mut self) {
+        self.path.take().map(|path| {
+            fs::remove_file(path).expect(
+                format!(
+                    "TODO: cannot remove file '{}'",
+                    path.to_str().unwrap_or_default()
+                )
+                .as_str(),
+            )
+        });
+    }
+}
+
 pub struct Handler<'a> {
     config_path: &'a str,
 }
 
 impl<'a> Handler<'a> {
+    pub const CONFIG_TMP_EXTENSION: &'static str = "toml.part";
+
     pub fn new(config_path: &'a str) -> Self {
         Self { config_path }
     }
@@ -454,11 +522,9 @@ impl<'a> Handler<'a> {
             .expect("TODO: invalid configuration");
 
         let config_path = Path::new(self.config_path);
-        let config_dir = config_path.parent().expect("TODO: path.parent");
-        assert!(config_dir.exists());
+        let config_tmp_path = config_path.with_extension(Self::CONFIG_TMP_EXTENSION);
 
-        let mut file =
-            tempfile::NamedTempFile::new_in(config_dir).expect("TODO: NamedTempFile::new");
+        let mut file = FileGuard::create(&config_tmp_path).expect("TODO: File::create");
 
         file.write_all(
             toml::to_string_pretty(&backend_config)
