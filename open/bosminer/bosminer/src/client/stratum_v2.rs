@@ -799,19 +799,15 @@ impl StratumClient {
         // Notify the extension user that we are ready to start forwarding its protocol, use a
         // separate block, so that the lock is dropped immediately after the start notification
         // is sent
-        // TODO: note that this may fail due to the dummy channel being full
         {
-            if let Err(e) = self
-                .extension_channel_sender
+            self.extension_channel_sender
                 .lock()
                 .await
                 .try_send(ExtensionChannelMsg::Start)
-            {
-                info!(
-                    "Cannot send start message to the extension channel: {:?}",
-                    e
-                );
-            }
+                .map_err(|e| {
+                    info!("Stratum extension channel start error: {:?}", e);
+                })
+                .expect("BUG: stratum extension channel not available for start");
         }
         while !self.status.is_shutting_down() {
             select! {
