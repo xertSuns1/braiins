@@ -657,6 +657,31 @@ impl StratumClient {
     const EVENT_TIMEOUT: time::Duration = time::Duration::from_secs(60);
     const SEND_TIMEOUT: time::Duration = time::Duration::from_secs(2);
 
+    /// Start a task that plays a dummy role for both communication channels that the stratum
+    /// client uses to talk to stratum extension.
+    fn start_dummy_extension_task() -> (
+        ExtensionChannelToStratumReceiver,
+        ExtensionChannelFromStratumSender,
+    ) {
+        // Dummy channel for Stratum client --> extension communication
+        let (sender_from_client, mut receiver_from_client) = mpsc::channel(1);
+        // Dummy channel for Stratum client <-- extension communication
+        let (sender_to_client, receiver_to_client) = mpsc::channel(1);
+
+        tokio::spawn(async move {
+            info!("Stratum extension: starting dummy task...");
+            // Make sure the sender is moved inside the dummy task to prevent it from being
+            // dropped. Otherwise the receiver_to_client would immediately indicate end of stream
+            let _sender_to_client = sender_to_client;
+            //
+            while let Some(message) = receiver_from_client.next().await {
+                error!("Stratum extension: dummy task received: {:?}", message);
+            }
+            info!("Stratum extension: dummy task terminated");
+        });
+        (receiver_to_client, sender_from_client)
+    }
+
     pub fn new(
         connection_details: ConnectionDetails,
         backend_info: Option<hal::BackendInfo>,
@@ -668,18 +693,12 @@ impl StratumClient {
     ) -> Self {
         let (stop_sender, stop_receiver) = mpsc::channel(1);
 
-        // TODO: currently, the client has to have any channel pair as the select! statement that
-        //  we use for processing all frames cannot have dynamic number of entries. Rework this
-        //  by processing incoming frames from extension channel in a separate task.
-        let (extension_channel_receiver, extension_channel_sender) = match channel {
-            Some((receiver, sender)) => (Mutex::new(receiver), Mutex::new(sender)),
-            None => {
-                // We have to open 2 dummy channels as each channel has different type of messages
-                let (sender, _) = mpsc::channel(1);
-                let (_, receiver) = mpsc::channel(1);
-                (Mutex::new(receiver), Mutex::new(sender))
-            }
-        };
+        // Extract the both channel endpoints that connect the client with the stratum extension
+        // or populate it with dummy endpoints. That way we can handle the endpoints uniformly
+        // regardless whether they are configured or not (see `main_loop()`)
+        // that would handle all events regards
+        let (extension_channel_receiver, extension_channel_sender) =
+            channel.unwrap_or(Self::start_dummy_extension_task());
 
         Self {
             connection_details,
@@ -692,8 +711,8 @@ impl StratumClient {
             solutions: Mutex::new(VecDeque::new()),
             job_sender: Mutex::new(solver.job_sender),
             solution_receiver: Mutex::new(solver.solution_receiver),
-            extension_channel_receiver,
-            extension_channel_sender,
+            extension_channel_receiver: Mutex::new(extension_channel_receiver),
+            extension_channel_sender: Mutex::new(extension_channel_sender),
         }
     }
 
