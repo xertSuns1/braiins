@@ -26,9 +26,53 @@ START=99
 
 USE_PROCD=1
 PROG=/usr/bin/bosminer
+CONF=/etc/bosminer.toml
+
+. /lib/functions/bos-defaults.sh
+
+get_env_config()
+{
+	# if NAND is available, get default pool configuration from U-Boot env
+	[ "$bos_mode" == "nand" ] && fw_printenv -n $1 2>/dev/null || echo ""
+}
 
 boot()
 {
+	if [ ! -f "$CONF" ]; then
+		local bos_mode=$(cat /etc/bos_mode)
+		local pool_host=$(get_env_config miner_pool_host)
+		local pool_port=$(get_env_config miner_pool_port)
+		local pool_user=$(get_env_config miner_pool_user)
+		local pool_pass=$(get_env_config miner_pool_pass)
+		local miner_freq=$(get_env_config miner_freq)
+		local miner_voltage=$(get_env_config miner_voltage)
+		local miner_fixed_freq=$(get_env_config miner_fixed_freq)
+
+		cat > "$CONF" <<-END
+			[format]
+			version = 'beta'
+			model = 'Antminer S9'
+			generator = 'init_script'
+			timestamp = $(date +%s)
+		END
+		# applies only to AM1
+		[ "$miner_fixed_freq" == "true" -a -n "$miner_freq" ] && \
+		cat >> "$CONF" <<-END
+
+			[hash_chain_global]
+			frequency = ${miner_freq}
+		END
+		cat >> "$CONF" <<-END
+
+			[[pool]]
+			url = '${pool_host:-stratum+tcp://stratum.slushpool.com}:${pool_port:-3333}'
+			user = '${pool_user:-!non-existent-user!}'
+		END
+		[ -n "$pool_pass" ] && \
+		cat >> "$CONF" <<-END
+			password = '${pool_pass}'
+		END
+	fi
 	start "$@"
 }
 
