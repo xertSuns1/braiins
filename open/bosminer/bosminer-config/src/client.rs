@@ -83,6 +83,8 @@ pub struct Descriptor {
     pub password: Option<String>,
     pub host: String,
     pub port: u16,
+    // Currently used only for `#xnsub`: `stratum+tcp://equihash.eu.nicehash.com:3357#xnsub`
+    pub fragment: Option<String>,
 }
 
 impl Descriptor {
@@ -136,6 +138,9 @@ impl Descriptor {
             .filter(|v| !v.is_empty())
             .map(|v| v.to_string());
 
+        // Parse fragment part
+        let fragment = url.fragment().map(|s| s.to_string());
+
         Ok(Descriptor {
             protocol,
             enable: true,
@@ -143,6 +148,7 @@ impl Descriptor {
             password,
             host,
             port,
+            fragment,
         })
     }
 }
