@@ -675,7 +675,7 @@ impl StratumClient {
             let _sender_to_client = sender_to_client;
             //
             while let Some(message) = receiver_from_client.next().await {
-                error!("Stratum extension: dummy task received: {:?}", message);
+                info!("Stratum extension: dummy task received: {:?}", message);
             }
             info!("Stratum extension: dummy task terminated");
         });
