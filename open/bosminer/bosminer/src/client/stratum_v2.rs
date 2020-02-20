@@ -68,7 +68,7 @@ use std::collections::HashMap;
 // TODO: move it to the stratum crate
 const VERSION_MASK: u32 = 0x1fffe000;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConnectionDetails {
     pub user: String,
     pub host: String,
@@ -665,7 +665,9 @@ impl StratumClient {
 
     /// Start a task that plays a dummy role for both communication channels that the stratum
     /// client uses to talk to stratum extension.
-    fn start_dummy_extension_task() -> (
+    fn start_dummy_extension_task(
+        connection_details: ConnectionDetails,
+    ) -> (
         ExtensionChannelToStratumReceiver,
         ExtensionChannelFromStratumSender,
     ) {
@@ -675,15 +677,24 @@ impl StratumClient {
         let (sender_to_client, receiver_to_client) = mpsc::channel(1);
 
         tokio::spawn(async move {
-            info!("Stratum extension: starting dummy task...");
+            info!(
+                "Stratum extension: starting dummy task[{:?}]... ",
+                connection_details
+            );
             // Make sure the sender is moved inside the dummy task to prevent it from being
             // dropped. Otherwise the receiver_to_client would immediately indicate end of stream
             let _sender_to_client = sender_to_client;
             //
             while let Some(message) = receiver_from_client.next().await {
-                info!("Stratum extension: dummy task received: {:?}", message);
+                info!(
+                    "Stratum extension: dummy task[{:?}] received: {:?},",
+                    connection_details, message
+                );
             }
-            info!("Stratum extension: dummy task terminated");
+            info!(
+                "Stratum extension: dummy task[{:?}] terminated",
+                connection_details
+            );
         });
         (receiver_to_client, sender_from_client)
     }
@@ -703,8 +714,13 @@ impl StratumClient {
         // or populate it with dummy endpoints. That way we can handle the endpoints uniformly
         // regardless whether they are configured or not (see `main_loop()`)
         // that would handle all events regards
-        let (extension_channel_receiver, extension_channel_sender) =
-            channel.unwrap_or(Self::start_dummy_extension_task());
+        let (extension_channel_receiver, extension_channel_sender) = channel.unwrap_or_else(|| {
+            info!(
+                "V2: starting dummy task for client: {:?}",
+                connection_details
+            );
+            Self::start_dummy_extension_task(connection_details.clone())
+        });
 
         Self {
             connection_details,
