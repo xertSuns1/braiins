@@ -306,7 +306,13 @@ impl Handler for StratumEventHandler {
         // TODO: close connection when maximal capacity of `all_jobs` has been reached
 
         // When not marked as future job, we can start mining on it right away
-        if !job_msg.future_job {
+        // TODO see the _channels variant when consolidating this version of the client.
+        //  Transform the documentation from there too. Currently, this workaround with
+        //  .is_some() prevents a problem when a server indicates a new job however it doesn't
+        //  send the new prevhash ahead of this job. This scenario is still yet to be investigated
+        //  as it should prevented typically on the V2->V1->upstream translation proxies. These
+        //  proxies should guarantee that no such case like a job without a prevhash would exist.
+        if !job_msg.future_job && self.current_prevhash_msg.is_some() {
             self.update_job(job_msg).await;
         }
     }
