@@ -902,7 +902,12 @@ impl StratumClient {
                                 .await;
                         }
                     }
-                    Err(e) => info!("Failed to negotiation initial V2 target: {:?}", e),
+                    Err(e) => {
+                        info!("Failed to negotiation initial V2 target: {:?}", e);
+                        // TODO consolidate this, so that we have exactly 1 place where we
+                        //  initiate failing
+                        self.status.initiate_failing();
+                    }
                 }
             }
             Ok(Err(_)) | Err(_) => self.status.initiate_failing(),
