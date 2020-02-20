@@ -26,6 +26,7 @@ pub mod bm1387;
 mod cgminer;
 pub mod command;
 pub mod config;
+pub mod counters;
 pub mod error;
 pub mod fan;
 pub mod gpio;
@@ -115,6 +116,9 @@ lazy_static! {
         ii_bitcoin::Target::from_pool_difficulty(config::ASIC_DIFFICULTY);
 }
 
+/// Core address space size (it should be 114, but the addresses are non-consecutive)
+const CORE_ADR_SPACE_SIZE: usize = 128;
+
 /// Type representing plug pin
 #[derive(Clone)]
 pub struct PlugPin {
@@ -198,6 +202,8 @@ pub struct HashChain {
     /// channels through which temperature status is sent
     temperature_sender: Mutex<Option<watch::Sender<Option<sensor::Temperature>>>>,
     temperature_receiver: watch::Receiver<Option<sensor::Temperature>>,
+    /// nonce counter
+    counter: Arc<Mutex<counters::HashChain>>,
     /// halter to stop this hashchain
     halt_sender: Arc<halt::Sender>,
     /// we need to keep the halt receiver around, otherwise the "stop-notify" channel closes when chain ends
@@ -257,6 +263,7 @@ impl HashChain {
             disable_init_work: false,
             temperature_sender: Mutex::new(Some(temperature_sender)),
             temperature_receiver,
+            counter: Arc::new(Mutex::new(counters::HashChain::new(MAX_CHIPS_ON_CHAIN))),
             halt_sender,
             halt_receiver,
             frequency: Mutex::new(FrequencySettings::from_frequency(0)),
@@ -367,6 +374,7 @@ impl HashChain {
         // Figure out if we found enough chips
         info!("Discovered {} chips", self.chip_count);
         self.command_context.set_chip_count(self.chip_count).await;
+        self.counter.lock().await.set_chip_count(self.chip_count);
         self.frequency.lock().await.set_chip_count(self.chip_count);
 
         // If we don't have full number of chips and we do not want incomplete chain, then raise
@@ -671,6 +679,7 @@ impl HashChain {
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         mut rx_fifo: io::WorkRx,
         solution_sender: work::SolutionSender,
+        counter: Arc<Mutex<counters::HashChain>>,
     ) {
         // solution receiving/filtering part
         loop {
@@ -687,6 +696,7 @@ impl HashChain {
                     if work_item.initial_work {
                         continue;
                     }
+                    let core_addr = bm1387::CoreAddress::new(solution.nonce);
                     let status = work_item.insert_solution(solution);
 
                     // work item detected a new unique solution, we will push it for further processing
@@ -695,10 +705,18 @@ impl HashChain {
                             let hash = unique_solution.hash();
                             if !hash.meets(&ASIC_TARGET) {
                                 trace!("Solution from hashchain not hitting ASIC target");
+                                counter.lock().await.add_error(core_addr);
                             } else {
+                                counter.lock().await.add_valid(core_addr);
                             }
                             solution_sender.send(unique_solution);
                         }
+                    }
+                    if status.duplicate {
+                        counter.lock().await.add_error(core_addr);
+                    }
+                    if status.mismatched_nonce {
+                        counter.lock().await.add_error(core_addr);
                     }
                 }
                 None => {
@@ -872,6 +890,7 @@ impl HashChain {
                 work_registry.clone(),
                 rx_fifo,
                 solution_sender,
+                self.counter.clone(),
             ));
 
         // spawn hashrate monitor
@@ -888,6 +907,14 @@ impl HashChain {
             .register_client("temperature monitor".into())
             .await
             .spawn(Self::monitor_watchdog_temp_task(self.clone()));
+    }
+
+    pub async fn reset_counter(&self) {
+        self.counter.lock().await.reset();
+    }
+
+    pub async fn snapshot_counter(&self) -> counters::HashChain {
+        self.counter.lock().await.snapshot()
     }
 
     pub async fn get_frequency(&self) -> FrequencySettings {
@@ -925,7 +952,7 @@ impl FrequencySettings {
     /// Build frequency settings with all chips having the same frequency
     pub fn from_frequency(frequency: usize) -> Self {
         Self {
-            chip: vec![frequency; MAX_CHIPS_ON_CHAIN],
+            chip: vec![frequency; EXPECTED_CHIPS_ON_CHAIN],
         }
     }
 
@@ -1097,6 +1124,30 @@ impl RunningChain {
             .expect("BUG: hashchain is not running")
             .voltage_ctrl
             .set_voltage(voltage)
+            .await
+    }
+
+    pub async fn reset_counter(&self) {
+        self.manager
+            .inner
+            .lock()
+            .await
+            .hash_chain
+            .as_ref()
+            .expect("not running")
+            .reset_counter()
+            .await;
+    }
+
+    pub async fn snapshot_counter(&self) -> counters::HashChain {
+        self.manager
+            .inner
+            .lock()
+            .await
+            .hash_chain
+            .as_ref()
+            .expect("not running")
+            .snapshot_counter()
             .await
     }
 
