@@ -195,6 +195,7 @@ impl Client {
                     req_id: self.next_request_id(),
                     dev_id: self.dev_id.clone(),
                 };
+                self.log_info(format!("starting client, message: {:?}", msg).as_str());
                 self.send_msg(msg).await
             }
             _ => {
@@ -221,8 +222,14 @@ impl Client {
     }
 
     /// Helper that logs about an error appending the current telemetry state
+    fn log_info(&self, info_msg: &str) {
+        let info_msg = format!("Telemetry: {}, state: {:?}", info_msg, self.state);
+        info!("{}", info_msg);
+    }
+
+    /// Helper that logs about an error appending the current telemetry state
     fn log_error(&self, err_msg: &str) {
-        let err_msg = format!("{}, state {:?}", err_msg, self.state);
+        let err_msg = format!("Telemetry: {}, state: {:?}", err_msg, self.state);
         error!("{}", err_msg);
     }
 
@@ -275,7 +282,7 @@ impl v2::Handler for Client {
             State::Handshake => {
                 if payload.req_id == self.curr_request_id {
                     self.state = State::Operational(payload.channel_id);
-                    info!("Telemetry channel operational, state: {:?}", self.state);
+                    self.log_info("channel operational");
                     self.next_request_id();
                 } else {
                     self.log_error_request_id("OpenTelemetryChannelSuccess", payload.req_id);
@@ -324,9 +331,9 @@ impl v2::Handler for Client {
         match self.state {
             State::Operational(channel_id) => {
                 if payload.channel_id == channel_id {
-                    info!(
-                        "Telemetry data confirmed sequence ID: {}, state: {:?}",
-                        payload.last_seq_num, self.state
+                    self.log_info(
+                        format!("data confirmed, last_seq_num ID: {}", payload.last_seq_num)
+                            .as_str(),
                     );
                 } else {
                     self.log_error_channel_id(
@@ -350,9 +357,8 @@ impl v2::Handler for Client {
         match self.state {
             State::Operational(channel_id) => {
                 if payload.channel_id == channel_id {
-                    info!(
-                        "Telemetry data rejected sequence num: {}, state: {:?}",
-                        payload.seq_num, self.state
+                    self.log_info(
+                        format!("data rejected sequence seq_num: {}", payload.seq_num).as_str(),
                     );
                 } else {
                     self.log_error_channel_id(
