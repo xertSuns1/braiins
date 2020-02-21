@@ -93,9 +93,9 @@ const ENUM_RETRY_COUNT: usize = 10;
 
 /// Maximum number of chips is limitted by the fact that there is only 8-bit address field and
 /// addresses to the chips need to be assigned with step of 4 (e.g. 0, 4, 8, etc.)
-const MAX_CHIPS_ON_CHAIN: usize = 64;
+pub const MAX_CHIPS_ON_CHAIN: usize = 64;
 /// Number of chips to consider OK for initialization
-const EXPECTED_CHIPS_ON_CHAIN: usize = 63;
+pub const EXPECTED_CHIPS_ON_CHAIN: usize = 63;
 
 /// Oscillator speed for all chips on S9 hash boards
 pub const CHIP_OSC_CLK_HZ: usize = 25_000_000;
@@ -208,7 +208,7 @@ pub struct HashChain {
     temperature_sender: Mutex<Option<watch::Sender<Option<sensor::Temperature>>>>,
     temperature_receiver: watch::Receiver<Option<sensor::Temperature>>,
     /// nonce counter
-    counter: Arc<Mutex<counters::HashChain>>,
+    pub counter: Arc<Mutex<counters::HashChain>>,
     /// halter to stop this hashchain
     halt_sender: Arc<halt::Sender>,
     /// we need to keep the halt receiver around, otherwise the "stop-notify" channel closes when chain ends
@@ -980,7 +980,7 @@ impl FrequencySettings {
         *self.chip.iter().max().expect("BUG: no chips on chain")
     }
 
-    fn avg(&self) -> usize {
+    pub fn avg(&self) -> usize {
         assert!(self.chip.len() > 0, "BUG: no chips on chain");
         let sum: u64 = self.chip.iter().map(|frequency| *frequency as u64).sum();
         (sum / self.chip.len() as u64) as usize
@@ -1026,7 +1026,7 @@ impl Drop for StoppedChain {
 }
 
 impl StoppedChain {
-    async fn start(
+    pub async fn start(
         self,
         initial_frequency: &FrequencySettings,
         initial_voltage: power::Voltage,
@@ -1100,8 +1100,7 @@ impl Drop for RunningChain {
 }
 
 impl RunningChain {
-    #[allow(dead_code)]
-    async fn stop(self) -> StoppedChain {
+    pub async fn stop(self) -> StoppedChain {
         self.manager.stop_chain(false).await;
 
         StoppedChain {
@@ -1109,8 +1108,29 @@ impl RunningChain {
         }
     }
 
-    #[allow(dead_code)]
-    async fn set_frequency(&self, frequency: &FrequencySettings) -> error::Result<()> {
+    /// TODO: for the love of god use macros or something
+    pub async fn get_frequency(&self) -> FrequencySettings {
+        let inner = self.manager.inner.lock().await;
+        inner
+            .hash_chain
+            .as_ref()
+            .expect("BUG: hashchain is not running")
+            .get_frequency()
+            .await
+    }
+
+    /// TODO: for the love of god use macros or something
+    pub async fn get_voltage(&self) -> power::Voltage {
+        let inner = self.manager.inner.lock().await;
+        inner
+            .hash_chain
+            .as_ref()
+            .expect("BUG: hashchain is not running")
+            .get_voltage()
+            .await
+    }
+
+    pub async fn set_frequency(&self, frequency: &FrequencySettings) -> error::Result<()> {
         let inner = self.manager.inner.lock().await;
         inner
             .hash_chain
@@ -1120,8 +1140,7 @@ impl RunningChain {
             .await
     }
 
-    #[allow(dead_code)]
-    async fn set_voltage(&self, voltage: power::Voltage) -> error::Result<()> {
+    pub async fn set_voltage(&self, voltage: power::Voltage) -> error::Result<()> {
         let inner = self.manager.inner.lock().await;
         inner
             .hash_chain
@@ -1233,7 +1252,7 @@ pub enum ChainStatus {
 }
 
 impl ChainStatus {
-    fn expect_stopped(self) -> StoppedChain {
+    pub fn expect_stopped(self) -> StoppedChain {
         match self {
             Self::Stopped(s) => s,
             _ => panic!("BUG: expected stopped chain"),
@@ -1242,9 +1261,9 @@ impl ChainStatus {
 }
 
 pub struct ManagerInner {
-    hash_chain: Option<Arc<HashChain>>,
+    pub hash_chain: Option<Arc<HashChain>>,
     /// Each (attempted) hashchain start increments this counter by 1
-    start_count: usize,
+    pub start_count: usize,
 }
 
 /// Hashchain manager that can start and stop instances of hashchain
@@ -1254,7 +1273,7 @@ pub struct ManagerInner {
 pub struct Manager {
     #[member_work_solver_stats]
     work_solver_stats: stats::BasicWorkSolver,
-    hashboard_idx: usize,
+    pub hashboard_idx: usize,
     work_generator: work::Generator,
     solution_sender: work::SolutionSender,
     plug_pin: PlugPin,
@@ -1265,10 +1284,10 @@ pub struct Manager {
     /// channel to report to the monitor
     monitor_tx: mpsc::UnboundedSender<monitor::Message>,
     /// TODO: wrap this type in a structure (in Monitor)
-    status_receiver: watch::Receiver<Option<monitor::Status>>,
+    pub status_receiver: watch::Receiver<Option<monitor::Status>>,
     owned_by: StdMutex<Option<&'static str>>,
-    inner: Mutex<ManagerInner>,
-    chain_config: config::ResolvedChainConfig,
+    pub inner: Mutex<ManagerInner>,
+    pub chain_config: config::ResolvedChainConfig,
 }
 
 impl Manager {

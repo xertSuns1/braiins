@@ -30,7 +30,7 @@
 use ii_logging::macros::*;
 
 pub mod api;
-mod support;
+pub mod support;
 
 use crate::bm1387::MidstateCount;
 use crate::error;
