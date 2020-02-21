@@ -119,6 +119,10 @@ lazy_static! {
 /// Core address space size (it should be 114, but the addresses are non-consecutive)
 const CORE_ADR_SPACE_SIZE: usize = 128;
 
+/// Power type alias
+/// TODO: Implement it as a proper type (not just alias)
+pub type Power = usize;
+
 /// Type representing plug pin
 #[derive(Clone)]
 pub struct PlugPin {
