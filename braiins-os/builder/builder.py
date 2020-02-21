@@ -281,8 +281,11 @@ class Builder:
         :return:
             Current firmware version.
         """
-        fw_major = self._get_sysupgrade_attr(self.SYSUPGRADE_ATTR_MAJOR) == 'yes'
-        fw_major = self.get_firmware_version() if fw_major else self._get_sysupgrade_attr(self.SYSUPGRADE_ATTR_REQUIRE)
+        fw_major = self._get_sysupgrade_attr(self.SYSUPGRADE_ATTR_MAJOR)
+        if fw_major == 'no' or fw_major is None:
+            fw_major = self._get_sysupgrade_attr(self.SYSUPGRADE_ATTR_REQUIRE)
+        elif fw_major == 'yes':
+            fw_major = self.get_firmware_version()
         logging.debug("Set firmware major version to '{}'".format(fw_major))
         stream.write('{}="{}"\n'.format(config, fw_major))
 
