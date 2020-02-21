@@ -35,6 +35,7 @@ mod support;
 use crate::bm1387::MidstateCount;
 use crate::error;
 use crate::fan;
+use crate::hooks;
 use crate::monitor;
 use crate::power;
 use crate::FrequencySettings;
@@ -47,6 +48,7 @@ use serde::{Deserialize, Serialize};
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Vendor
@@ -239,6 +241,8 @@ pub struct Backend {
     pub pools: Option<Vec<bosminer_config::PoolConfig>>,
     #[serde(skip)]
     pub client_groups: Vec<hal::GroupConfig>,
+    #[serde(skip)]
+    pub hooks: Option<Arc<dyn hooks::Hooks>>,
 }
 
 impl Backend {

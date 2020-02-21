@@ -31,6 +31,7 @@ pub mod error;
 pub mod fan;
 pub mod gpio;
 pub mod halt;
+pub mod hooks;
 pub mod i2c;
 pub mod io;
 pub mod monitor;
@@ -1501,12 +1502,25 @@ impl Backend {
         app_halt_receiver: halt::Receiver,
         app_halt_sender: Arc<halt::Sender>,
     ) -> (Vec<Arc<Manager>>, Arc<monitor::Monitor>) {
+        // Create hooks
+        let hooks = match backend_config.hooks.as_ref() {
+            Some(hooks) => hooks.clone(),
+            None => Arc::new(hooks::NoHooks),
+        };
+
         // Create new termination context and link it to the main (app) termination context
         let (halt_sender, halt_receiver) = halt::make_pair(HALT_TIMEOUT);
         app_halt_receiver
             .register_client("miner termination".into())
             .await
             .spawn_halt_handler(Self::termination_handler(halt_sender.clone()));
+        hooks
+            .halt_created(
+                halt_sender.clone(),
+                halt_receiver.clone(),
+                app_halt_sender.clone(),
+            )
+            .await;
 
         // Start monitor in main (app) termination context
         // Let it shutdown the main context as well
@@ -1518,6 +1532,7 @@ impl Backend {
             app_halt_receiver.clone(),
         )
         .await;
+        hooks.monitor_started(monitor.clone()).await;
 
         let voltage_ctrl_backend = Arc::new(power::I2cBackend::new(0));
         let mut managers = Vec::new();
@@ -1575,22 +1590,26 @@ impl Backend {
 
             let initial_frequency = manager.chain_config.frequency.clone();
             let initial_voltage = manager.chain_config.voltage;
+            let hooks = hooks.clone();
 
             tokio::spawn(async move {
-                // Register handler stop hashchain when miner is stopped
+                // Register handler to stop hashchain when miner is stopped
                 halt_receiver
                     .register_client("hashchain".into())
                     .await
                     .spawn_halt_handler(Manager::termination_handler(manager.clone()));
 
-                manager
-                    .acquire("main")
-                    .await
-                    .expect("BUG: failed to acquire hashchain")
-                    .expect_stopped()
-                    .start(&initial_frequency, initial_voltage)
-                    .await
-                    .expect("BUG: failed to start hashchain");
+                // Default `NoHooks` starts hashchains right away
+                if hooks.can_start_chain(manager.clone()).await {
+                    manager
+                        .acquire("main")
+                        .await
+                        .expect("BUG: failed to acquire hashchain")
+                        .expect_stopped()
+                        .start(&initial_frequency, initial_voltage)
+                        .await
+                        .expect("BUG: failed to start hashchain");
+                }
             });
         }
         (managers, monitor)
