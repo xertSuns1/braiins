@@ -30,6 +30,7 @@
 use ii_logging::macros::*;
 
 pub mod api;
+mod metadata;
 pub mod support;
 
 use crate::bm1387::MidstateCount;
@@ -44,7 +45,7 @@ use support::OptionDefault;
 
 use bosminer::hal::{self, BackendConfig as _};
 
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -160,13 +161,13 @@ impl std::string::ToString for TempControlMode {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-struct Format {
-    version: String,
-    model: String,
+pub struct Format {
+    pub version: String,
+    pub model: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    generator: Option<String>,
+    pub generator: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    timestamp: Option<u32>,
+    pub timestamp: Option<u32>,
 }
 
 impl Default for Format {
@@ -223,7 +224,6 @@ pub struct FanControl {
 #[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Backend {
-    format: Format,
     // TODO: merge pools and clients
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hash_chain_global: Option<HashChainGlobal>,
@@ -243,6 +243,56 @@ pub struct Backend {
     pub client_groups: Vec<hal::GroupConfig>,
     #[serde(skip)]
     pub hooks: Option<Arc<dyn hooks::Hooks>>,
+}
+
+pub trait ConfigBody
+where
+    Self: Serialize + DeserializeOwned + Default,
+{
+    fn sanity_check(&mut self) -> error::Result<()>;
+
+    fn metadata() -> serde_json::Value;
+}
+
+#[derive(Serialize, Deserialize, Default, Debug)]
+pub struct FormatWrapper<B> {
+    format: Format,
+    #[serde(flatten)]
+    pub body: B,
+}
+
+impl<B> FormatWrapper<B>
+where
+    B: ConfigBody,
+{
+    pub fn sanity_check(&mut self) -> error::Result<()> {
+        // Check compatibility of configuration format
+        if self.format.model != FORMAT_MODEL {
+            Err(format!("incompatible format model '{}'", self.format.model))?;
+        }
+        // TODO: allow backward compatibility
+        if self.format.version != FORMAT_VERSION {
+            Err(format!(
+                "incompatible format version '{}'",
+                self.format.version
+            ))?;
+        }
+
+        self.body.sanity_check()
+    }
+
+    pub fn metadata() -> serde_json::Value {
+        // TODO: format-related metadata are for now stored within backend metadata, so move them
+        // here and just prepend them to whatever backend returns us
+        B::metadata()
+    }
+
+    pub fn parse(config_path: &str) -> error::Result<Self> {
+        // Parse config file - either user specified or the default one
+        let mut config: Self = bosminer_config::parse(config_path)?;
+
+        config.sanity_check().map(|_| config)
+    }
 }
 
 impl Backend {
@@ -390,20 +440,10 @@ impl Backend {
         let contents = fs::read_to_string(DEFAULT_HW_ID_PATH)?;
         Ok(contents.trim().into())
     }
+}
 
-    pub fn sanity_check(&mut self) -> error::Result<()> {
-        // Check compatibility of configuration format
-        if self.format.model != FORMAT_MODEL {
-            Err(format!("incompatible format model '{}'", self.format.model))?;
-        }
-        // TODO: allow backward compatibility
-        if self.format.version != FORMAT_VERSION {
-            Err(format!(
-                "incompatible format version '{}'",
-                self.format.version
-            ))?;
-        }
-
+impl ConfigBody for Backend {
+    fn sanity_check(&mut self) -> error::Result<()> {
         // Check if all hash chain keys have meaningful name
         if let Some(hash_chains) = &self.hash_chains {
             for idx in hash_chains.keys() {
@@ -447,11 +487,8 @@ impl Backend {
         Ok(())
     }
 
-    pub fn parse(config_path: &str) -> error::Result<Self> {
-        // Parse config file - either user specified or the default one
-        let mut backend_config: Self = bosminer_config::parse(config_path)?;
-
-        backend_config.sanity_check().map(|_| backend_config)
+    fn metadata() -> serde_json::Value {
+        metadata::for_backend()
     }
 }
 

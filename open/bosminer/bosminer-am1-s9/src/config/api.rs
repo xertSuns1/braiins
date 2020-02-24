@@ -25,7 +25,6 @@
 use super::*;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{self, json};
 use serde_repr::*;
 
 use std::fs;
@@ -88,10 +87,10 @@ struct MetadataResponse {
 }
 
 #[derive(Serialize, Debug)]
-struct DataResponse {
+struct DataResponse<B> {
     pub status: Status,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Backend>,
+    pub data: Option<B>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -179,6 +178,7 @@ impl<'a> Drop for FileGuard<'a> {
 
 pub struct Handler<'a> {
     config_path: &'a str,
+    // TODO: consider phantomdata to include `ConfigBody` type in this type
 }
 
 impl<'a> Handler<'a> {
@@ -195,283 +195,8 @@ impl<'a> Handler<'a> {
         serde_json::to_writer(io::stdout(), &response).expect("BUG: cannot serialize response");
     }
 
-    pub fn handle_metadata(self) {
-        let metadata = json!([
-            [
-                "format",
-                {
-                    "type": "object",
-                    "label": "Configuration File Details",
-                    "fields": [
-                        [
-                            "version",
-                            {
-                                "type": "string",
-                                "label": "Version",
-                                "span": 6
-                            }
-                        ],
-                        [
-                            "model",
-                            {
-                                "type": "string",
-                                "label": "Model",
-                                "span": 6
-                            }
-                        ],
-                        [
-                            "generator",
-                            {
-                                "type": "string",
-                                "label": "Generator",
-                                "default": null,
-                                "span": 6
-                            }
-                        ],
-                        [
-                            "timestamp",
-                            {
-                                "type": "time",
-                                "label": "Timestamp",
-                                "default": null,
-                                "span": 6
-                            }
-                        ]
-                    ],
-                    "readonly": true
-                }
-            ],
-            [
-                "pool",
-                {
-                    "type": "array",
-                    "label": "List of Pools",
-                    "sortable": true,
-                    "item": {
-                        "type": "object",
-                        "fields": [
-                            [
-                                "url",
-                                {
-                                    "type": "url",
-                                    "label": "URL",
-                                    "min_length": 1,
-                                    "span": 4,
-                                    "match": bosminer_config::CLIENT_URL_JAVA_SCRIPT_REGEX,
-                                }
-                            ],
-                            [
-                                "user",
-                                {
-                                    "type": "string",
-                                    "label": "User",
-                                    "min_length": 1,
-                                    "span": 4
-                                }
-                            ],
-                            [
-                                "password",
-                                {
-                                    "type": "password",
-                                    "label": "Password",
-                                    "default": null,
-                                    "span": 4
-                                }
-                            ]
-                        ]
-                    }
-                }
-            ],
-            [
-                "hash_chain_global",
-                {
-                    "type": "object",
-                    "label": "Global Hash Chain Settings",
-                    "fields": [
-                        [
-                            "asic_boost",
-                            {
-                                "type": "bool",
-                                "label": "AsicBoost",
-                                "default": DEFAULT_ASIC_BOOST
-                            }
-                        ],
-                        [
-                            "frequency",
-                            {
-                                "type": "number",
-                                "label": "Frequency",
-                                "unit": "MHz",
-                                "min": FREQUENCY_MHZ_MIN,
-                                "max": FREQUENCY_MHZ_MAX,
-                                "float": true,
-                                "default": DEFAULT_FREQUENCY_MHZ
-                            }
-                        ],
-                        [
-                            "voltage",
-                            {
-                                "type": "number",
-                                "label": "Voltage",
-                                "unit": "V",
-                                "min": VOLTAGE_V_MIN,
-                                "max": VOLTAGE_V_MAX,
-                                "float": true,
-                                "default": DEFAULT_VOLTAGE_V
-                            }
-                        ]
-                    ]
-                }
-            ],
-            [
-                "hash_chain",
-                {
-                    "type": "dict",
-                    "label": "Override Global Hash Chain Settings",
-                    "key": {
-                        "min": HASH_CHAIN_INDEX_MIN,
-                        "max": HASH_CHAIN_INDEX_MAX
-                    },
-                    "value": {
-                        "type": "object",
-                        "fields": [
-                            [
-                                "frequency",
-                                {
-                                    "type": "number",
-                                    "label": "Frequency",
-                                    "unit": "MHz",
-                                    "min": FREQUENCY_MHZ_MIN,
-                                    "max": FREQUENCY_MHZ_MAX,
-                                    "float": true,
-                                    "default": ["$get", "hash_chain_global", "frequency"],
-                                    "span": 6
-                                }
-                            ],
-                            [
-                                "voltage",
-                                {
-                                    "type": "number",
-                                    "label": "Voltage",
-                                    "unit": "V",
-                                    "min": VOLTAGE_V_MIN,
-                                    "max": VOLTAGE_V_MAX,
-                                    "float": true,
-                                    "default": ["$get", "hash_chain_global", "voltage"],
-                                    "span": 6
-                                }
-                            ]
-                        ]
-                    }
-                }
-            ],
-            [
-                "temp_control",
-                {
-                    "type": "object",
-                    "label": "Temperature Control",
-                    "fields": [
-                        [
-                            "mode",
-                            {
-                                "type": "enum",
-                                "label": "Mode",
-                                "values": [
-                                    {
-                                        "key": TempControlMode::Auto.to_string(),
-                                        "label": "Automatic"
-                                    },
-                                    {
-                                        "key": TempControlMode::Manual.to_string(),
-                                        "label": "Manual",
-                                        "alert": "Warning ..."
-                                    },
-                                    {
-                                        "key": TempControlMode::Disabled.to_string(),
-                                        "label": "Disabled",
-                                        "alert": "Warning ..."
-                                    }
-                                ],
-                                "default": TempControlMode::Auto.to_string()
-                            }
-                        ],
-                        [
-                            "target_temp",
-                            {
-                                "type": "number",
-                                "label": "Target Temperature",
-                                "unit": "°C",
-                                "min": TEMPERATURE_C_MIN,
-                                "max": TEMPERATURE_C_MAX,
-                                "float": true,
-                                "default": DEFAULT_TARGET_TEMP_C,
-                                "readonly": ["$neq", ["$get", "temp_control", "mode"], "auto"],
-                                "span": 4
-                            }
-                        ],
-                        [
-                            "hot_temp",
-                            {
-                                "type": "number",
-                                "label": "Hot Temperature",
-                                "unit": "°C",
-                                "min": TEMPERATURE_C_MIN,
-                                "max": TEMPERATURE_C_MAX,
-                                "float": true,
-                                "default": DEFAULT_HOT_TEMP_C,
-                                "readonly": ["$eq", ["$get", "temp_control", "mode"], "disabled"],
-                                "span": 4
-                            }
-                        ],
-                        [
-                            "dangerous_temp",
-                            {
-                                "type": "number",
-                                "label": "Dangerous Temperature",
-                                "unit": "°C",
-                                "min": TEMPERATURE_C_MIN,
-                                "max": TEMPERATURE_C_MAX,
-                                "float": true,
-                                "default": DEFAULT_DANGEROUS_TEMP_C,
-                                "readonly": ["$eq", ["$get", "temp_control", "mode"], "disabled"],
-                                "span": 4
-                            }
-                        ]
-                    ]
-                }
-            ],
-            [
-                "fan_control",
-                {
-                    "type": "object",
-                    "label": "Fan Control",
-                    "fields": [
-                        [
-                            "speed",
-                            {
-                                "type": "number",
-                                "label": "Speed",
-                                "unit": "%",
-                                "min": FAN_SPEED_MIN,
-                                "max": FAN_SPEED_MAX,
-                                "default": DEFAULT_FAN_SPEED,
-                                "readonly": ["$eq", ["$get", "temp_control", "mode"], "auto"]
-                            }
-                        ],
-                        [
-                            "min_fans",
-                            {
-                                "type": "number",
-                                "label": "Minimum Running Fans",
-                                "min": FANS_MIN,
-                                "max": FANS_MAX,
-                                "default": DEFAULT_MIN_FANS
-                            }
-                        ]
-                    ]
-                }
-            ]
-        ]);
+    pub fn handle_metadata<B: ConfigBody>(self) {
+        let metadata = FormatWrapper::<B>::metadata();
 
         let response = MetadataResponse {
             status: Status::new(StatusCode::Success, None),
@@ -481,23 +206,23 @@ impl<'a> Handler<'a> {
         self.send_response(response);
     }
 
-    pub fn handle_data(self) {
-        let response = match Backend::parse(self.config_path) {
+    pub fn handle_data<B: ConfigBody>(self) {
+        let response = match FormatWrapper::<B>::parse(self.config_path) {
             // TODO: Improve error handling
             Err(e) => DataResponse {
                 status: Status::new(StatusCode::InvalidFormat, format!("{}", e)),
                 data: None,
             },
-            Ok(backend_config) => DataResponse {
+            Ok(config) => DataResponse {
                 status: Status::new(StatusCode::Success, None),
-                data: Some(backend_config),
+                data: Some(config),
             },
         };
 
         self.send_response(response);
     }
 
-    pub fn handle_save(self) {
+    pub fn handle_save<B: ConfigBody>(self) {
         let mut request: SaveRequest =
             serde_json::from_reader(io::stdin()).expect("TODO: deserialize SaveRequest");
 
@@ -515,11 +240,9 @@ impl<'a> Handler<'a> {
             .expect("TODO: invalid data type")
             .insert("format".to_string(), json_format);
 
-        let mut backend_config: Backend =
+        let mut config: FormatWrapper<B> =
             serde_json::from_value(request.data).expect("TODO: deserialize Backend");
-        backend_config
-            .sanity_check()
-            .expect("TODO: invalid configuration");
+        config.sanity_check().expect("TODO: invalid configuration");
 
         let config_path = Path::new(self.config_path);
         let config_tmp_path = config_path.with_extension(Self::CONFIG_TMP_EXTENSION);
@@ -527,7 +250,7 @@ impl<'a> Handler<'a> {
         let mut file = FileGuard::create(&config_tmp_path).expect("TODO: File::create");
 
         file.write_all(
-            toml::to_string_pretty(&backend_config)
+            toml::to_string_pretty(&config)
                 .expect("TODO: toml::to_string_pretty")
                 .as_bytes(),
         )
@@ -544,7 +267,7 @@ impl<'a> Handler<'a> {
                     .into_os_string()
                     .into_string()
                     .expect("TODO: into_os_string"),
-                format: backend_config.format,
+                format: config.format,
             }),
         };
 

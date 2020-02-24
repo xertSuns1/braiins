@@ -123,22 +123,22 @@ async fn main() {
     if let Some(matches) = matches.subcommand_matches("config") {
         let config_handler = config::api::Handler::new(config_path);
         if matches.is_present("metadata") {
-            config_handler.handle_metadata();
+            config_handler.handle_metadata::<config::Backend>();
         } else if matches.is_present("data") {
-            config_handler.handle_data();
+            config_handler.handle_data::<config::Backend>();
         } else if matches.is_present("save") {
-            config_handler.handle_save();
+            config_handler.handle_save::<config::Backend>();
         }
         return;
     }
 
-    let mut backend_config = match config::Backend::parse(config_path) {
+    let mut backend_config = match config::FormatWrapper::<config::Backend>::parse(config_path) {
         Err(e) => {
             error!("Cannot load configuration file \"{}\"", config_path);
             error!("Reason: {}", e);
             return;
         }
-        Ok(v) => v,
+        Ok(v) => v.body,
     };
 
     // Add pools from command line
