@@ -82,13 +82,22 @@ pub fn for_backend() -> serde_json::Value {
                     "type": "object",
                     "fields": [
                         [
+                            "enabled",
+                            {
+                                "type": "bool",
+                                "label": "Enabled",
+                                "default": DEFAULT_POOL_ENABLED,
+                                "span": 1
+                            }
+                        ],
+                        [
                             "url",
                             {
                                 "type": "url",
                                 "label": "URL",
                                 "min_length": 1,
-                                "span": 4,
                                 "match": bosminer_config::CLIENT_URL_JAVA_SCRIPT_REGEX,
+                                "span": 5
                             }
                         ],
                         [
@@ -106,7 +115,7 @@ pub fn for_backend() -> serde_json::Value {
                                 "type": "password",
                                 "label": "Password",
                                 "default": null,
-                                "span": 4
+                                "span": 2
                             }
                         ]
                     ]

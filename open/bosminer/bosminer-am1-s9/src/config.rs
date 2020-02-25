@@ -44,6 +44,7 @@ use crate::FrequencySettings;
 use support::OptionDefault;
 
 use bosminer::hal::{self, BackendConfig as _};
+use bosminer_config::{ClientDescriptor, ClientUserInfo};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
@@ -73,6 +74,9 @@ pub const DEFAULT_CONFIG_PATH: &'static str = "/etc/bosminer.toml";
 
 /// Default Hardware ID path
 pub const DEFAULT_HW_ID_PATH: &'static str = "/tmp/miner_hwid";
+
+/// Default value for pool enabled flag
+pub const DEFAULT_POOL_ENABLED: bool = true;
 
 /// Default number of midstates when AsicBoost is enabled
 pub const ASIC_BOOST_MIDSTATE_COUNT: usize = 4;
@@ -477,11 +481,12 @@ impl ConfigBody for Backend {
         if let Some(pools) = self.pools.as_ref() {
             let mut client_configs = Vec::with_capacity(pools.len());
             for pool in pools {
-                let client_descriptor =
-                    bosminer_config::ClientDescriptor::parse(pool.url.as_str(), pool.user.as_str())
-                        .map_err(|e| {
-                            format!("{} in pool '{}@{}'", e.to_string(), pool.url, pool.user)
-                        })?;
+                let client_descriptor = ClientDescriptor::create(
+                    pool.url.as_str(),
+                    ClientUserInfo::new(pool.url.as_str(), pool.password.as_deref()),
+                    pool.enabled.unwrap_or(DEFAULT_POOL_ENABLED),
+                )
+                .map_err(|e| format!("{} in pool '{}@{}'", e.to_string(), pool.url, pool.user))?;
                 client_configs.push(hal::ClientConfig {
                     descriptor: client_descriptor,
                     channel: None,

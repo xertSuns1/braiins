@@ -74,11 +74,35 @@ impl fmt::Display for Protocol {
     }
 }
 
+pub struct UserInfo<'a> {
+    pub user: &'a str,
+    pub password: Option<&'a str>,
+}
+
+impl<'a> UserInfo<'a> {
+    pub const DELIMITER: char = ':';
+
+    pub fn new(user: &'a str, password: Option<&'a str>) -> Self {
+        Self { user, password }
+    }
+
+    /// Parse user and password from user info (user[:password])
+    pub fn parse(value: &'a str) -> Self {
+        let user_info: Vec<_> = value.rsplitn(2, Self::DELIMITER).collect();
+        let mut user_info = user_info.iter().rev();
+
+        let user = user_info.next().expect("BUG: missing user");
+        let password = user_info.next().map(|value| *value);
+
+        Self { user, password }
+    }
+}
+
 /// Contains basic information about client used for obtaining jobs for solving.
 #[derive(Clone, Debug)]
 pub struct Descriptor {
     pub protocol: Protocol,
-    pub enable: bool,
+    pub enabled: bool,
     pub user: String,
     pub password: Option<String>,
     pub host: String,
@@ -88,8 +112,6 @@ pub struct Descriptor {
 }
 
 impl Descriptor {
-    pub const USER_INFO_DELIMITER: char = ':';
-
     pub fn get_url(&self, protocol: bool, port: bool, user: bool) -> String {
         let mut result = if protocol {
             self.protocol.scheme().to_string() + "://"
@@ -113,10 +135,7 @@ impl Descriptor {
     }
 
     /// Create client `Descriptor` from information provided by user.
-    pub fn parse(url: &str, user_info: &str) -> error::Result<Self> {
-        if user_info.is_empty() {
-            Err(error::ErrorKind::Client("empty user info".to_string()))?
-        }
+    pub fn create(url: &str, user_info: UserInfo, enabled: bool) -> error::Result<Self> {
         let url = Url::parse(url).context(error::ErrorKind::Client("invalid URL".to_string()))?;
 
         let protocol = Protocol::parse(url.scheme())?;
@@ -128,24 +147,14 @@ impl Descriptor {
             .port()
             .ok_or(error::ErrorKind::Client("missing port".to_string()))?;
 
-        // Parse user and password from user info (user[:password])
-        let user_info: Vec<_> = user_info.rsplitn(2, Self::USER_INFO_DELIMITER).collect();
-        let mut user_info = user_info.iter().rev();
-
-        let user = user_info.next().expect("BUG: missing user").to_string();
-        let password = user_info
-            .next()
-            .filter(|v| !v.is_empty())
-            .map(|v| v.to_string());
-
         // Parse fragment part
         let fragment = url.fragment().map(|s| s.to_string());
 
         Ok(Descriptor {
             protocol,
-            enable: true,
-            user,
-            password,
+            enabled,
+            user: user_info.user.to_string(),
+            password: user_info.password.map(|value| value.to_string()),
             host,
             port,
             fragment,

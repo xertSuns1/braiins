@@ -34,7 +34,7 @@ use crate::version;
 use ii_cgminer_api::support::ValueExt as _;
 use ii_cgminer_api::{command, json, response};
 
-use bosminer_config::ClientDescriptor;
+use bosminer_config::{ClientDescriptor, ClientUserInfo};
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -379,8 +379,13 @@ impl Handler {
         if url.is_empty() || user.is_empty() {
             return Err(());
         }
+        let password = if password.is_empty() {
+            None
+        } else {
+            Some(password)
+        };
 
-        ClientDescriptor::parse(url, format!("{}:{}", user, password).as_str()).map_err(|_| ())
+        ClientDescriptor::create(url, ClientUserInfo::new(user, password), true).map_err(|_| ())
     }
 }
 

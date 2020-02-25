@@ -21,8 +21,10 @@
 // contact us at opensource@braiins.com.
 
 use bosminer::hal;
-use bosminer_config::clap;
 use bosminer_erupter::config;
+
+use bosminer_config::clap;
+use bosminer_config::{ClientDescriptor, ClientUserInfo};
 
 use ii_async_compat::tokio;
 
@@ -56,12 +58,13 @@ async fn main() {
     let url = matches
         .value_of("pool")
         .expect("BUG: missing 'pool' attribute");
-    let user = matches
+    let user_info = matches
         .value_of("user")
         .expect("BUG: missing 'user' attribute");
+    let user_info = ClientUserInfo::parse(user_info);
 
     let client_descriptor =
-        bosminer_config::ClientDescriptor::parse(url, user).expect("Server parameters");
+        ClientDescriptor::create(url, user_info, true).expect("Server parameters");
     let group_config = hal::GroupConfig {
         descriptor: Default::default(),
         clients: vec![hal::ClientConfig {

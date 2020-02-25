@@ -27,6 +27,7 @@ mod group;
 // Reexport inner structures
 pub use client::Descriptor as ClientDescriptor;
 pub use client::Protocol as ClientProtocol;
+pub use client::UserInfo as ClientUserInfo;
 pub use client::URL_JAVA_SCRIPT_REGEX as CLIENT_URL_JAVA_SCRIPT_REGEX;
 pub use group::Descriptor as GroupDescriptor;
 
@@ -39,8 +40,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct PoolConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
     pub url: String,
     pub user: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
 }
 

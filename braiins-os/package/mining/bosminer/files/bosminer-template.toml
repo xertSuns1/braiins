@@ -79,6 +79,8 @@ generator = 'template'
 # The order of the pools specifies a priority for failover algorithm.
 # This section can be repeated.
 #[[pool]]
+# Initial state of the pool after BOSMiner initialization (default=true)
+#enabled = true
 # Mandatory option for server URL specified in format <HOSTNAME:PORT>
 #url = "stratum2+tcp://v2.stratum.slushpool.com:3336"
 # Mandatory option for username specified in format <USERNAME.WORKERNAME>

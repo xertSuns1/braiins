@@ -24,7 +24,9 @@ use ii_logging::macros::*;
 
 use bosminer::hal;
 use bosminer_am1_s9::config;
+
 use bosminer_config::clap;
+use bosminer_config::{ClientDescriptor, ClientUserInfo};
 
 use ii_async_compat::tokio;
 
@@ -53,7 +55,7 @@ async fn main() {
             clap::Arg::with_name("user")
                 .short("u")
                 .long("user")
-                .value_name("USERNAME.WORKERNAME")
+                .value_name("USERNAME.WORKERNAME[:PASSWORD]")
                 .help("Specify user and worker name")
                 .required(false)
                 .requires("pool")
@@ -143,11 +145,12 @@ async fn main() {
 
     // Add pools from command line
     if let Some(url) = matches.value_of("pool") {
-        let user = matches
+        let user_info = matches
             .value_of("user")
             .expect("BUG: missing 'user' argument");
+        let user_info = ClientUserInfo::parse(user_info);
 
-        let client_descriptor = match bosminer_config::ClientDescriptor::parse(url, user) {
+        let client_descriptor = match ClientDescriptor::create(url, user_info, true) {
             Ok(value) => value,
             Err(e) => {
                 error!("Cannot set pool from command line: {}", e.to_string());

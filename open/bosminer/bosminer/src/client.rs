@@ -289,7 +289,7 @@ impl Group {
             .await
             .push(scheduler_client_handle);
 
-        if client_handle.descriptor.enable {
+        if client_handle.descriptor.enabled {
             client_handle
                 .try_enable()
                 .expect("BUG: client is already enabled");
