@@ -21,6 +21,8 @@
 // contact us at opensource@braiins.com.
 
 //! Nonce and error counters for estimating hashrate
+//!
+//! Note: `valid` counter is in shares, `errors` are in error event instances (not in shares)
 
 use crate::bm1387;
 
@@ -79,16 +81,18 @@ pub struct HashChain {
     pub errors: usize,
     pub started: Instant,
     pub stopped: Option<Instant>,
+    pub asic_difficulty: usize,
 }
 
 impl HashChain {
-    pub fn new(chip_count: usize) -> Self {
+    pub fn new(chip_count: usize, asic_difficulty: usize) -> Self {
         Self {
             valid: 0,
             errors: 0,
             started: Instant::now(),
             stopped: None,
             chip: vec![Chip::new(); chip_count],
+            asic_difficulty,
         }
     }
 
@@ -122,9 +126,9 @@ impl HashChain {
             // TODO: what to do?
             return;
         }
-        self.valid += 1;
-        self.chip[addr.chip].valid += 1;
-        self.chip[addr.chip].core[addr.core].valid += 1;
+        self.valid += self.asic_difficulty;
+        self.chip[addr.chip].valid += self.asic_difficulty;
+        self.chip[addr.chip].core[addr.core].valid += self.asic_difficulty;
     }
 
     pub fn add_error(&mut self, addr: bm1387::CoreAddress) {

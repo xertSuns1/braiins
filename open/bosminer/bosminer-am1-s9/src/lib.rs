@@ -263,7 +263,10 @@ impl HashChain {
             disable_init_work: false,
             temperature_sender: Mutex::new(Some(temperature_sender)),
             temperature_receiver,
-            counter: Arc::new(Mutex::new(counters::HashChain::new(MAX_CHIPS_ON_CHAIN))),
+            counter: Arc::new(Mutex::new(counters::HashChain::new(
+                MAX_CHIPS_ON_CHAIN,
+                asic_difficulty,
+            ))),
             halt_sender,
             halt_receiver,
             frequency: Mutex::new(FrequencySettings::from_frequency(0)),
