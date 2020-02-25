@@ -62,7 +62,7 @@ use error::ErrorKind;
 use failure::ResultExt;
 
 use futures::channel::mpsc;
-use futures::lock::Mutex;
+use futures::lock::{Mutex, MutexGuard};
 use futures::stream::StreamExt;
 use ii_async_compat::futures;
 
@@ -1030,6 +1030,10 @@ impl Drop for StoppedChain {
 }
 
 impl StoppedChain {
+    pub fn from_manager(manager: Arc<Manager>) -> Self {
+        StoppedChain { manager }
+    }
+
     pub async fn start(
         self,
         initial_frequency: &FrequencySettings,
@@ -1062,10 +1066,10 @@ impl StoppedChain {
                 Ok(_) => {
                     // we've started the hashchain
                     // create a `Running` tape and be gone
-                    return Ok(RunningChain {
-                        manager: self.manager.clone(),
-                        start_id: self.manager.inner.lock().await.start_count,
-                    });
+                    return Ok(RunningChain::from_manager(
+                        self.manager.clone(),
+                        self.manager.inner.lock().await,
+                    ));
                 }
                 // start failed
                 Err(e) => {
@@ -1092,6 +1096,7 @@ impl StoppedChain {
 pub struct RunningChain {
     pub manager: Arc<Manager>,
     pub start_id: usize,
+    pub asic_difficulty: usize,
 }
 
 impl Drop for RunningChain {
@@ -1106,6 +1111,18 @@ impl Drop for RunningChain {
 }
 
 impl RunningChain {
+    pub fn from_manager(manager: Arc<Manager>, inner: MutexGuard<ManagerInner>) -> Self {
+        let hash_chain = inner
+            .hash_chain
+            .as_ref()
+            .expect("BUG: hashchain is not running");
+        RunningChain {
+            manager: manager.clone(),
+            asic_difficulty: hash_chain.asic_difficulty,
+            start_id: inner.start_count,
+        }
+    }
+
     pub async fn stop(self) -> StoppedChain {
         self.manager.stop_chain(false).await;
 
@@ -1312,14 +1329,9 @@ impl Manager {
         // Create a `Chain` instance. If it's dropped, the ownership reverts back to `Manager`
         let inner = self.inner.lock().await;
         Ok(if inner.hash_chain.is_some() {
-            ChainStatus::Running(RunningChain {
-                manager: self.clone(),
-                start_id: inner.start_count,
-            })
+            ChainStatus::Running(RunningChain::from_manager(self.clone(), inner))
         } else {
-            ChainStatus::Stopped(StoppedChain {
-                manager: self.clone(),
-            })
+            ChainStatus::Stopped(StoppedChain::from_manager(self.clone()))
         })
     }
 
