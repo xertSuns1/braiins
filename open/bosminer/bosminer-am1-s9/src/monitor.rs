@@ -237,6 +237,9 @@ pub struct TempControlConfig {
 pub struct Config {
     pub fan_config: Option<FanControlConfig>,
     pub temp_config: Option<TempControlConfig>,
+    /// If true, then do not let fans bellow predefined limit while miner is warming up.
+    /// TODO: this is not particularly nice, it should be done per-chain and run-time.
+    pub fans_on_while_warming_up: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -586,7 +589,7 @@ impl Monitor {
                 target_temp,
                 input_temp,
             } => {
-                if miner_warming_up {
+                if inner.config.fans_on_while_warming_up && miner_warming_up {
                     inner.pid.set_warm_up_limits();
                 } else {
                     inner.pid.set_normal_limits();
@@ -905,6 +908,7 @@ mod test {
         };
         let fans_off = fan::Speed::STOPPED;
         let fans_off_config = Config {
+            fans_on_while_warming_up: true,
             fan_config: Some(FanControlConfig {
                 mode: FanControlMode::FixedSpeed(fans_off),
                 min_fans: 2,
@@ -912,22 +916,27 @@ mod test {
             temp_config: None,
         };
         let all_off_config = Config {
+            fans_on_while_warming_up: true,
             fan_config: None,
             temp_config: None,
         };
         let fans_on_config = Config {
+            fans_on_while_warming_up: true,
             fan_config: Some(fan_config.clone()),
             temp_config: None,
         };
         let temp_on_config = Config {
+            fans_on_while_warming_up: true,
             fan_config: None,
             temp_config: Some(temp_config.clone()),
         };
         let both_on_config = Config {
+            fans_on_while_warming_up: true,
             fan_config: Some(fan_config.clone()),
             temp_config: Some(temp_config.clone()),
         };
         let both_on_pid_config = Config {
+            fans_on_while_warming_up: true,
             fan_config: Some(FanControlConfig {
                 mode: FanControlMode::TargetTemperature(75.0),
                 min_fans: 2,

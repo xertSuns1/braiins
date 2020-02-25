@@ -243,6 +243,8 @@ pub struct Backend {
     pub client_groups: Vec<hal::GroupConfig>,
     #[serde(skip)]
     pub hooks: Option<Arc<dyn hooks::Hooks>>,
+    #[serde(skip)]
+    pub fans_on_while_warming_up: Option<bool>,
 }
 
 pub trait ConfigBody
@@ -433,6 +435,7 @@ impl Backend {
         monitor::Config {
             temp_config,
             fan_config,
+            fans_on_while_warming_up: self.fans_on_while_warming_up.unwrap_or(true),
         }
     }
 
