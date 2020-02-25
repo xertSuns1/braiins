@@ -707,11 +707,9 @@ impl HashChain {
                     // work item detected a new unique solution, we will push it for further processing
                     if let Some(unique_solution) = status.unique_solution {
                         if !status.duplicate {
-                            if !unique_solution
-                                .hash()
-                                .meets(unique_solution.backend_target())
-                            {
-                                info!("Solution from hashchain not hitting ASIC target");
+                            let hash = unique_solution.hash();
+                            if !hash.meets(unique_solution.backend_target()) {
+                                info!("Solution from hashchain not hitting ASIC target; {}", hash);
                                 counter.lock().await.add_error(core_addr);
                             } else {
                                 counter.lock().await.add_valid(core_addr);
@@ -1033,6 +1031,7 @@ impl StoppedChain {
         self,
         initial_frequency: &FrequencySettings,
         initial_voltage: power::Voltage,
+        asic_difficulty: usize,
     ) -> Result<RunningChain, (Self, error::Error)> {
         // if miner initialization fails, retry
         let mut tries_left = ENUM_RETRY_COUNT;
@@ -1052,6 +1051,7 @@ impl StoppedChain {
                     tries_left <= ENUM_RETRY_COUNT / 2,
                     initial_frequency,
                     initial_voltage,
+                    asic_difficulty,
                 )
                 .await
             {
@@ -1283,7 +1283,6 @@ pub struct Manager {
     reset_pin: ResetPin,
     voltage_ctrl_backend: Arc<power::I2cBackend>,
     midstate_count: MidstateCount,
-    asic_difficulty: usize,
     /// channel to report to the monitor
     monitor_tx: mpsc::UnboundedSender<monitor::Message>,
     /// TODO: wrap this type in a structure (in Monitor)
@@ -1328,6 +1327,7 @@ impl Manager {
         accept_less_chips: bool,
         initial_frequency: &FrequencySettings,
         initial_voltage: power::Voltage,
+        asic_difficulty: usize,
     ) -> error::Result<()> {
         // lock inner to guarantee atomicity of hashchain start
         let mut inner = self.inner.lock().await;
@@ -1351,7 +1351,7 @@ impl Manager {
             self.voltage_ctrl_backend.clone(),
             self.hashboard_idx,
             self.midstate_count,
-            self.asic_difficulty,
+            asic_difficulty,
             self.monitor_tx.clone(),
         )
         .expect("BUG: hashchain instantiation failed");
@@ -1598,7 +1598,6 @@ impl Backend {
                         voltage_ctrl_backend: voltage_ctrl_backend.clone(),
                         hashboard_idx,
                         midstate_count: chain_config.midstate_count,
-                        asic_difficulty: config::ASIC_DIFFICULTY,
                         work_solver_stats: Default::default(),
                         solution_sender,
                         work_generator,
@@ -1639,7 +1638,11 @@ impl Backend {
                         .await
                         .expect("BUG: failed to acquire hashchain")
                         .expect_stopped()
-                        .start(&initial_frequency, initial_voltage)
+                        .start(
+                            &initial_frequency,
+                            initial_voltage,
+                            config::DEFAULT_ASIC_DIFFICULTY,
+                        )
                         .await
                         .expect("BUG: failed to start hashchain");
                 }

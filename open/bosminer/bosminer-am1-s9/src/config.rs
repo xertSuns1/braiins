@@ -128,7 +128,7 @@ pub const FANS_MIN: usize = 0;
 pub const FANS_MAX: usize = 4;
 
 /// Default ASIC difficulty
-pub const ASIC_DIFFICULTY: usize = 64;
+pub const DEFAULT_ASIC_DIFFICULTY: usize = 64;
 
 /// Default hashrate interval used for statistics in seconds
 pub const DEFAULT_HASHRATE_INTERVAL: Duration = Duration::from_secs(60);
