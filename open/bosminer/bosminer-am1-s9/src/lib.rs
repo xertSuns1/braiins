@@ -58,8 +58,6 @@ use std::fmt;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
-use lazy_static::lazy_static;
-
 use error::ErrorKind;
 use failure::ResultExt;
 
@@ -110,12 +108,6 @@ const TEMP_CHIP: ChipAddress = ChipAddress::One(61);
 
 /// Timeout for completion of haschain halt
 const HALT_TIMEOUT: Duration = Duration::from_secs(30);
-
-lazy_static! {
-    /// What is our target?
-    static ref ASIC_TARGET: ii_bitcoin::Target =
-        ii_bitcoin::Target::from_pool_difficulty(config::ASIC_DIFFICULTY);
-}
 
 /// Core address space size (it should be 114, but the addresses are non-consecutive)
 const CORE_ADR_SPACE_SIZE: usize = 128;
@@ -191,6 +183,8 @@ pub struct HashChain {
     midstate_count: MidstateCount,
     /// ASIC difficulty
     asic_difficulty: usize,
+    /// ASIC target (matches difficulty)
+    asic_target: ii_bitcoin::Target,
     /// Voltage controller on this hashboard
     voltage_ctrl: Arc<power::Control>,
     /// Pin for resetting the hashboard
@@ -257,6 +251,7 @@ impl HashChain {
             chip_count: 0,
             midstate_count,
             asic_difficulty,
+            asic_target: ii_bitcoin::Target::from_pool_difficulty(asic_difficulty),
             voltage_ctrl: Arc::new(power::Control::new(voltage_ctrl_backend, hashboard_idx)),
             reset_pin,
             hashboard_idx,
@@ -421,7 +416,10 @@ impl HashChain {
             .init(self.halt_receiver.clone())
             .await?;
 
-        info!("Initializing hash chain {}", self.hashboard_idx);
+        info!(
+            "Initializing hash chain {}, (difficulty {})",
+            self.hashboard_idx, self.asic_difficulty
+        );
         self.ip_core_init().await?;
 
         // Enumerate chips
@@ -681,6 +679,7 @@ impl HashChain {
     /// TODO: this task is not very platform dependent, maybe move it somewhere else?
     /// TODO: figure out when and how to stop this task
     async fn solution_rx_task(
+        self: Arc<Self>,
         work_registry: Arc<Mutex<registry::WorkRegistry>>,
         mut rx_fifo: io::WorkRx,
         solution_sender: work::SolutionSender,
@@ -688,10 +687,11 @@ impl HashChain {
     ) {
         // solution receiving/filtering part
         loop {
-            let (rx_fifo_out, solution) =
+            let (rx_fifo_out, hw_solution) =
                 rx_fifo.recv_solution().await.expect("recv solution failed");
             rx_fifo = rx_fifo_out;
-            let work_id = solution.hardware_id;
+            let work_id = hw_solution.hardware_id;
+            let solution = Solution::from_hw_solution(&hw_solution, self.asic_target);
             let mut work_registry = work_registry.lock().await;
 
             let work = work_registry.find_work(work_id as usize);
@@ -707,9 +707,11 @@ impl HashChain {
                     // work item detected a new unique solution, we will push it for further processing
                     if let Some(unique_solution) = status.unique_solution {
                         if !status.duplicate {
-                            let hash = unique_solution.hash();
-                            if !hash.meets(&ASIC_TARGET) {
-                                trace!("Solution from hashchain not hitting ASIC target");
+                            if !unique_solution
+                                .hash()
+                                .meets(unique_solution.backend_target())
+                            {
+                                info!("Solution from hashchain not hitting ASIC target");
                                 counter.lock().await.add_error(core_addr);
                             } else {
                                 counter.lock().await.add_valid(core_addr);
@@ -892,6 +894,7 @@ impl HashChain {
             .register_client("work-rx".into())
             .await
             .spawn(Self::solution_rx_task(
+                self.clone(),
                 work_registry.clone(),
                 rx_fifo,
                 solution_sender,
@@ -1444,7 +1447,7 @@ impl fmt::Display for Manager {
     }
 }
 
-/// Represents raw solution from the Antminer S9
+/// Represents solution from the hardware combined with difficulty
 #[derive(Clone, Debug)]
 pub struct Solution {
     /// Actual nonce
@@ -1453,8 +1456,19 @@ pub struct Solution {
     midstate_idx: usize,
     /// Index of a solution (if multiple were found)
     solution_idx: usize,
-    /// Hardware specific solution identifier
-    pub hardware_id: u32,
+    /// Target to which was this solution solved
+    target: ii_bitcoin::Target,
+}
+
+impl Solution {
+    fn from_hw_solution(hw: &io::Solution, target: ii_bitcoin::Target) -> Self {
+        Self {
+            nonce: hw.nonce,
+            midstate_idx: hw.midstate_idx,
+            solution_idx: hw.solution_idx,
+            target,
+        }
+    }
 }
 
 impl hal::BackendSolution for Solution {
@@ -1475,7 +1489,7 @@ impl hal::BackendSolution for Solution {
 
     #[inline]
     fn target(&self) -> &ii_bitcoin::Target {
-        &ASIC_TARGET
+        &self.target
     }
 }
 

@@ -33,7 +33,6 @@ mod uio;
 
 use crate::error::{self, ErrorKind};
 use crate::MidstateCount;
-use crate::Solution;
 use ext_work_id::ExtWorkId;
 
 use bosminer::work;
@@ -117,6 +116,18 @@ impl fmt::Display for Version {
             self.major, self.minor, self.patch, model
         )
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct Solution {
+    /// Actual nonce
+    pub nonce: u32,
+    /// Index of a midstate that corresponds to the found nonce
+    pub midstate_idx: usize,
+    /// Index of a solution (if multiple were found)
+    pub solution_idx: usize,
+    /// Hardware specific solution identifier
+    pub hardware_id: u32,
 }
 
 struct WorkRxFifo {

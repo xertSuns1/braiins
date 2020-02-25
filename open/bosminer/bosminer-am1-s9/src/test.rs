@@ -39,7 +39,7 @@ async fn test_hchain_ctl_instance() {
         voltage_ctrl_backend,
         hashboard_idx,
         MidstateCount::new(1),
-        config::ASIC_DIFFICULTY,
+        config::DEFAULT_ASIC_DIFFICULTY,
         monitor_sender,
     );
     match hash_chain {

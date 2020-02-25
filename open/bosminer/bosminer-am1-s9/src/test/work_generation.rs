@@ -39,6 +39,8 @@ use futures::stream::StreamExt;
 use ii_async_compat::{tokio, FutureExt};
 use tokio::time::delay_for;
 
+const ASIC_DIFFICULTY: usize = 1;
+
 /// Prepares sample work with empty midstates
 /// NOTE: this work has 2 valid nonces:
 /// - 0x83ea0372 (solution 0)
@@ -60,13 +62,13 @@ async fn receiver_task(
     solution_sender: mpsc::UnboundedSender<Solution>,
 ) {
     let mut rx_io = hash_chain.take_work_rx_io().await;
+    let target = ii_bitcoin::Target::from_pool_difficulty(ASIC_DIFFICULTY);
 
     loop {
         let (rx_io_out, solution) = rx_io.recv_solution().await.expect("recv solution");
         rx_io = rx_io_out;
-
         solution_sender
-            .unbounded_send(solution)
+            .unbounded_send(Solution::from_hw_solution(&solution, target))
             .expect("solution send failed");
     }
 }
@@ -143,7 +145,7 @@ async fn start_hchain(monitor_tx: mpsc::UnboundedSender<monitor::Message>) -> Ha
         voltage_ctrl_backend.clone(),
         hashboard_idx,
         MidstateCount::new(1),
-        1,
+        ASIC_DIFFICULTY,
         monitor_tx,
     )
     .unwrap();
