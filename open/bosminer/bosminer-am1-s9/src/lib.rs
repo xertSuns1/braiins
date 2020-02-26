@@ -1639,15 +1639,15 @@ impl Backend {
             let initial_voltage = manager.chain_config.voltage;
             let hooks = hooks.clone();
 
-            tokio::spawn(async move {
-                // Register handler to stop hashchain when miner is stopped
-                halt_receiver
-                    .register_client("hashchain".into())
-                    .await
-                    .spawn_halt_handler(Manager::termination_handler(manager.clone()));
+            // Register handler to stop hashchain when miner is stopped
+            halt_receiver
+                .register_client("hashchain".into())
+                .await
+                .spawn_halt_handler(Manager::termination_handler(manager.clone()));
 
-                // Default `NoHooks` starts hashchains right away
-                if hooks.can_start_chain(manager.clone()).await {
+            // Default `NoHooks` starts hashchains right away
+            if hooks.can_start_chain(manager.clone()).await {
+                tokio::spawn(async move {
                     manager
                         .acquire("main")
                         .await
@@ -1660,9 +1660,10 @@ impl Backend {
                         )
                         .await
                         .expect("BUG: failed to start hashchain");
-                }
-            });
+                });
+            }
         }
+        hooks.miner_started().await;
         (managers, monitor)
     }
 }

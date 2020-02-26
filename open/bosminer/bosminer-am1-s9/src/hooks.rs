@@ -52,6 +52,9 @@ pub trait Hooks: Send + Sync + Debug {
     async fn can_start_chain(&self, _manager: Arc<Manager>) -> bool {
         return true;
     }
+
+    /// Called after miner has been started
+    async fn miner_started(&self) {}
 }
 
 /// NoHooks uses default implementation of all hooks
