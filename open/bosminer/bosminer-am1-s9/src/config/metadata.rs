@@ -88,7 +88,30 @@ pub fn for_backend() -> serde_json::Value {
                             {
                                 "type": "string",
                                 "label": "Name",
-                                "min_length": 1
+                                "min_length": 1,
+                                "span": 6
+                            }
+                        ],
+                        [
+                            "quota",
+                            {
+                                "type": "number",
+                                "label": "Quota",
+                                "default": 1,
+                                "span": 3
+                            }
+                        ],
+                        [
+                            "fixed_share_ratio",
+                            {
+                                "type": "number",
+                                "label": "Fixed Share Ratio",
+                                "min": 0.0,
+                                "max": 1.0,
+                                "step": 0.01,
+                                "float": true,
+                                "default": null,
+                                "span": 3
                             }
                         ],
                         [

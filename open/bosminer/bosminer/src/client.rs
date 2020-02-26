@@ -402,17 +402,14 @@ impl GroupRegistry {
         descriptor: GroupDescriptor,
         midstate_count: usize,
     ) -> Result<Arc<Group>, error::Client> {
-        match descriptor.fixed_share_ratio {
-            Some(fixed_share_ratio) => {
-                if self.is_empty() {
-                    Err(error::Client::OnlyFixedShareRatio)?;
-                } else if self.total_fixed_share_ratio + fixed_share_ratio >= 1.0 {
-                    Err(error::Client::FixedShareRatioOverflow)?;
-                }
-                self.fixed_share_ratio_count += 1;
-                self.total_fixed_share_ratio += fixed_share_ratio;
+        if let Some(fixed_share_ratio) = descriptor.get_fixed_share_ratio() {
+            if self.is_empty() {
+                Err(error::Client::OnlyFixedShareRatio)?;
+            } else if self.total_fixed_share_ratio + fixed_share_ratio >= 1.0 {
+                Err(error::Client::FixedShareRatioOverflow)?;
             }
-            None => {}
+            self.fixed_share_ratio_count += 1;
+            self.total_fixed_share_ratio += fixed_share_ratio;
         }
 
         let group_handle = Arc::new(Group::new(descriptor, midstate_count));

@@ -119,7 +119,7 @@ impl GroupHandle {
             generated_work: 0,
             share_ratio: group_handle
                 .descriptor
-                .fixed_share_ratio
+                .get_fixed_share_ratio()
                 .unwrap_or_default(),
             group_handle,
         }
@@ -127,7 +127,10 @@ impl GroupHandle {
 
     #[inline]
     pub fn has_fixed_share_ratio(&self) -> bool {
-        self.group_handle.descriptor.fixed_share_ratio.is_some()
+        self.group_handle
+            .descriptor
+            .get_fixed_share_ratio()
+            .is_some()
     }
 
     async fn update_status(&mut self) {

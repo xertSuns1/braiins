@@ -29,7 +29,9 @@ pub use client::Descriptor as ClientDescriptor;
 pub use client::Protocol as ClientProtocol;
 pub use client::UserInfo as ClientUserInfo;
 pub use client::URL_JAVA_SCRIPT_REGEX as CLIENT_URL_JAVA_SCRIPT_REGEX;
+
 pub use group::Descriptor as GroupDescriptor;
+pub use group::LoadBalanceStrategy;
 
 // reexport common crates
 pub use clap;
@@ -48,13 +50,15 @@ pub struct PoolConfig {
     pub password: Option<String>,
 }
 
+// NOTE: `#[serde(deny_unknown_fields)]` cannot be used due to flatten descriptor but the error is
+// caught in the `GroupDescriptor`
 #[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
 pub struct GroupConfig {
-    pub name: String,
+    #[serde(flatten)]
+    pub descriptor: GroupDescriptor,
     #[serde(rename = "pool")]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub pools: Vec<PoolConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pools: Option<Vec<PoolConfig>>,
 }
 
 /// Parse a configuration file from `config_path`.

@@ -197,13 +197,7 @@ impl Core {
         match group_registry.get_group(GroupDescriptor::DEFAULT_INDEX) {
             Some(group) => group,
             None => group_registry
-                .create_group(
-                    GroupDescriptor {
-                        name: GroupDescriptor::DEFAULT_NAME.to_string(),
-                        fixed_share_ratio: None,
-                    },
-                    self.midstate_count,
-                )
+                .create_group(Default::default(), self.midstate_count)
                 .expect("BUG: cannot create default group"),
         }
     }

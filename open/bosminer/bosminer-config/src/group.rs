@@ -20,25 +20,64 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub enum LoadBalanceStrategy {
+    #[serde(rename = "quota")]
+    Quota(u32),
+    /// Fixed share ratio is value between 0.0 to 1.0 where 1.0 represents that all work is
+    /// generated from the group
+    #[serde(rename = "fixed_share_ratio")]
+    FixedShareRatio(f64),
+}
+
+impl LoadBalanceStrategy {
+    pub fn get_fixed_share_ratio(&self) -> Option<f64> {
+        match self {
+            Self::FixedShareRatio(value) => Some(*value),
+            _ => None,
+        }
+    }
+}
+
 /// Contains basic information about group
-#[derive(Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct Descriptor {
     pub name: String,
-    /// Optionally set fixed share ratio which is value between 0.0 to 1.0 where 1.0 represents
-    /// that all work is generated from this group
-    pub fixed_share_ratio: Option<f64>,
+    #[serde(flatten)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    strategy: Option<LoadBalanceStrategy>,
 }
 
 impl Descriptor {
     pub const DEFAULT_NAME: &'static str = "Default";
     pub const DEFAULT_INDEX: usize = 0;
+
+    pub fn new<T>(name: String, strategy: T) -> Self
+    where
+        T: Into<Option<LoadBalanceStrategy>>,
+    {
+        Self {
+            name,
+            strategy: strategy.into(),
+        }
+    }
+
+    pub fn get_fixed_share_ratio(&self) -> Option<f64> {
+        self.strategy
+            .as_ref()
+            .and_then(|strategy| strategy.get_fixed_share_ratio())
+    }
 }
 
 impl Default for Descriptor {
     fn default() -> Self {
         Self {
             name: Self::DEFAULT_NAME.to_string(),
-            fixed_share_ratio: None,
+            strategy: None,
         }
     }
 }

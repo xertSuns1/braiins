@@ -44,7 +44,7 @@ use crate::FrequencySettings;
 use support::OptionDefault;
 
 use bosminer::hal::{self, BackendConfig as _};
-use bosminer_config::{ClientDescriptor, ClientUserInfo, GroupDescriptor};
+use bosminer_config::{ClientDescriptor, ClientUserInfo};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
@@ -230,8 +230,8 @@ pub struct Backend {
     #[serde(skip_serializing_if = "Option::is_none")]
     fan_control: Option<FanControl>,
     #[serde(rename = "group")]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub groups: Vec<bosminer_config::GroupConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub groups: Option<Vec<bosminer_config::GroupConfig>>,
     #[serde(skip)]
     pub client_groups: Vec<hal::GroupConfig>,
     #[serde(skip)]
@@ -478,32 +478,34 @@ impl ConfigBody for Backend {
 
         // Parse pools
         // Don't worry if is this section missing, maybe there are some pools on command line
-        let mut group_names = HashSet::with_capacity(self.groups.len());
-        for group in &self.groups {
-            if let Some(name) = group_names.replace(&group.name) {
-                Err(format!("group with name '{}' already defined", name))?;
+        if let Some(groups) = &self.groups {
+            let mut group_names = HashSet::with_capacity(groups.len());
+            for group in groups {
+                if let Some(name) = group_names.replace(&group.descriptor.name) {
+                    Err(format!("group with name '{}' already defined", name))?;
+                }
+                if let Some(pools) = &group.pools {
+                    let mut client_configs = Vec::with_capacity(pools.len());
+                    for pool in pools {
+                        let client_descriptor = ClientDescriptor::create(
+                            pool.url.as_str(),
+                            ClientUserInfo::new(pool.url.as_str(), pool.password.as_deref()),
+                            pool.enabled.unwrap_or(DEFAULT_POOL_ENABLED),
+                        )
+                        .map_err(|e| {
+                            format!("{} in pool '{}@{}'", e.to_string(), pool.url, pool.user)
+                        })?;
+                        client_configs.push(hal::ClientConfig {
+                            descriptor: client_descriptor,
+                            channel: None,
+                        });
+                    }
+                    self.client_groups.push(hal::GroupConfig {
+                        descriptor: group.descriptor.clone(),
+                        clients: client_configs,
+                    });
+                }
             }
-            let mut client_configs = Vec::with_capacity(group.pools.len());
-            for pool in &group.pools {
-                let client_descriptor = ClientDescriptor::create(
-                    pool.url.as_str(),
-                    ClientUserInfo::new(pool.url.as_str(), pool.password.as_deref()),
-                    pool.enabled.unwrap_or(DEFAULT_POOL_ENABLED),
-                )
-                .map_err(|e| format!("{} in pool '{}@{}'", e.to_string(), pool.url, pool.user))?;
-                client_configs.push(hal::ClientConfig {
-                    descriptor: client_descriptor,
-                    channel: None,
-                });
-            }
-            let descriptor = GroupDescriptor {
-                name: group.name.clone(),
-                fixed_share_ratio: None,
-            };
-            self.client_groups.push(hal::GroupConfig {
-                descriptor,
-                clients: client_configs,
-            });
         }
 
         Ok(())
