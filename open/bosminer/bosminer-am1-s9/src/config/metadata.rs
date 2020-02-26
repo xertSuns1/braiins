@@ -268,7 +268,7 @@ pub fn for_backend() -> serde_json::Value {
                             "max": TEMPERATURE_C_MAX,
                             "float": true,
                             "default": DEFAULT_TARGET_TEMP_C,
-                            "readonly": ["$neq", ["$get", "temp_control", "mode"], "auto"],
+                            "disabled": ["$neq", ["$get", "temp_control", "mode"], "auto"],
                             "span": 4
                         }
                     ],
@@ -282,7 +282,7 @@ pub fn for_backend() -> serde_json::Value {
                             "max": TEMPERATURE_C_MAX,
                             "float": true,
                             "default": DEFAULT_HOT_TEMP_C,
-                            "readonly": ["$eq", ["$get", "temp_control", "mode"], "disabled"],
+                            "disabled": ["$eq", ["$get", "temp_control", "mode"], "disabled"],
                             "span": 4
                         }
                     ],
@@ -296,7 +296,7 @@ pub fn for_backend() -> serde_json::Value {
                             "max": TEMPERATURE_C_MAX,
                             "float": true,
                             "default": DEFAULT_DANGEROUS_TEMP_C,
-                            "readonly": ["$eq", ["$get", "temp_control", "mode"], "disabled"],
+                            "disabled": ["$eq", ["$get", "temp_control", "mode"], "disabled"],
                             "span": 4
                         }
                     ]
@@ -318,7 +318,7 @@ pub fn for_backend() -> serde_json::Value {
                             "min": FAN_SPEED_MIN,
                             "max": FAN_SPEED_MAX,
                             "default": DEFAULT_FAN_SPEED,
-                            "readonly": ["$eq", ["$get", "temp_control", "mode"], "auto"]
+                            "disabled": ["$eq", ["$get", "temp_control", "mode"], "auto"]
                         }
                     ],
                     [
