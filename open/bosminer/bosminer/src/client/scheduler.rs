@@ -133,6 +133,11 @@ impl GroupHandle {
             .is_some()
     }
 
+    #[inline]
+    pub fn get_quota(&self) -> Option<usize> {
+        self.group_handle.descriptor.get_quota()
+    }
+
     async fn update_status(&mut self) {
         let mut scheduler_client_handles = self.group_handle.scheduler_client_handles.lock().await;
         let mut generated_work_delta = 0;

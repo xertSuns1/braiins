@@ -40,7 +40,7 @@ use crate::work;
 // Scheduler re-exports
 pub use scheduler::JobExecutor;
 
-use bosminer_config::{ClientDescriptor, ClientProtocol, GroupDescriptor};
+use bosminer_config::{ClientDescriptor, ClientProtocol, GroupDescriptor, LoadBalanceStrategy};
 
 use futures::channel::mpsc;
 use futures::lock::Mutex;
@@ -360,6 +360,7 @@ impl Group {
 /// Keeps track of all active clients
 pub struct GroupRegistry {
     list: Vec<scheduler::GroupHandle>,
+    total_quota: usize,
     fixed_share_ratio_count: usize,
     total_fixed_share_ratio: f64,
 }
@@ -368,6 +369,7 @@ impl GroupRegistry {
     pub fn new() -> Self {
         Self {
             list: vec![],
+            total_quota: 0,
             fixed_share_ratio_count: 0,
             total_fixed_share_ratio: 0.0,
         }
@@ -402,14 +404,19 @@ impl GroupRegistry {
         descriptor: GroupDescriptor,
         midstate_count: usize,
     ) -> Result<Arc<Group>, error::Client> {
-        if let Some(fixed_share_ratio) = descriptor.get_fixed_share_ratio() {
-            if self.is_empty() {
-                Err(error::Client::OnlyFixedShareRatio)?;
-            } else if self.total_fixed_share_ratio + fixed_share_ratio >= 1.0 {
-                Err(error::Client::FixedShareRatioOverflow)?;
+        match descriptor.strategy() {
+            LoadBalanceStrategy::Quota(quota) => {
+                self.total_quota += quota;
             }
-            self.fixed_share_ratio_count += 1;
-            self.total_fixed_share_ratio += fixed_share_ratio;
+            LoadBalanceStrategy::FixedShareRatio(fixed_share_ratio) => {
+                if self.is_empty() {
+                    Err(error::Client::OnlyFixedShareRatio)?;
+                } else if self.total_fixed_share_ratio + fixed_share_ratio >= 1.0 {
+                    Err(error::Client::FixedShareRatioOverflow)?;
+                }
+                self.fixed_share_ratio_count += 1;
+                self.total_fixed_share_ratio += fixed_share_ratio;
+            }
         }
 
         let group_handle = Arc::new(Group::new(descriptor, midstate_count));
@@ -458,8 +465,7 @@ impl GroupRegistry {
             return;
         }
 
-        let common_groups = self.count() - self.fixed_share_ratio_count;
-        let share_ratio = (1.0 - self.total_fixed_share_ratio) / common_groups as f64;
+        let share_ratio = (1.0 - self.total_fixed_share_ratio) / self.total_quota as f64;
 
         // Update all groups with newly calculated share ratio.
         // Also reset generated work to prevent switching all future work to new group because
@@ -469,7 +475,10 @@ impl GroupRegistry {
                 scheduler_group_handle.reset_generated_work();
             }
             if !scheduler_group_handle.has_fixed_share_ratio() {
-                scheduler_group_handle.share_ratio = share_ratio;
+                scheduler_group_handle.share_ratio = share_ratio
+                    * scheduler_group_handle
+                        .get_quota()
+                        .expect("BUG: missing group quota") as f64;
             }
         }
     }

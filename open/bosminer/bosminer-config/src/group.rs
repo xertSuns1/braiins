@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub enum LoadBalanceStrategy {
     #[serde(rename = "quota")]
-    Quota(u32),
+    Quota(usize),
     /// Fixed share ratio is value between 0.0 to 1.0 where 1.0 represents that all work is
     /// generated from the group
     #[serde(rename = "fixed_share_ratio")]
@@ -34,6 +34,13 @@ pub enum LoadBalanceStrategy {
 }
 
 impl LoadBalanceStrategy {
+    pub fn get_quota(&self) -> Option<usize> {
+        match self {
+            Self::Quota(value) => Some(*value),
+            _ => None,
+        }
+    }
+
     pub fn get_fixed_share_ratio(&self) -> Option<f64> {
         match self {
             Self::FixedShareRatio(value) => Some(*value),
@@ -55,6 +62,7 @@ pub struct Descriptor {
 impl Descriptor {
     pub const DEFAULT_NAME: &'static str = "Default";
     pub const DEFAULT_INDEX: usize = 0;
+    pub const DEFAULT_QUOTA: usize = 1;
 
     pub fn new<T>(name: String, strategy: T) -> Self
     where
@@ -63,6 +71,19 @@ impl Descriptor {
         Self {
             name,
             strategy: strategy.into(),
+        }
+    }
+
+    pub fn strategy(&self) -> LoadBalanceStrategy {
+        self.strategy
+            .clone()
+            .unwrap_or(LoadBalanceStrategy::Quota(Self::DEFAULT_QUOTA))
+    }
+
+    pub fn get_quota(&self) -> Option<usize> {
+        match self.strategy() {
+            LoadBalanceStrategy::Quota(value) => Some(value),
+            _ => None,
         }
     }
 
