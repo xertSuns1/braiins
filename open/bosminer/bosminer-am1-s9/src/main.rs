@@ -173,7 +173,11 @@ async fn main() {
     }
 
     // Check if there's enough pools
-    if backend_config.client_groups.len() == 0 {
+    if backend_config
+        .client_groups
+        .iter()
+        .all(|group| group.clients.is_empty())
+    {
         error!("No pools specified!");
         info!("Use cli arguments:");
         info!("    bosminer --pool <HOSTNAME:PORT> --user <USERNAME.WORKERNAME[:PASSWORD]>");
@@ -181,7 +185,7 @@ async fn main() {
             "Or specify pool(s) in configuration file '{}':",
             config_path
         );
-        info!("    in [[pool]] section");
+        info!("    in [[group.pool]] section");
         return;
     }
 

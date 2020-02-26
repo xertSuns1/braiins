@@ -24,6 +24,8 @@
 
 use super::*;
 
+use bosminer_config::CLIENT_URL_JAVA_SCRIPT_REGEX;
+
 use serde_json::{self, json};
 
 pub fn for_backend() -> serde_json::Value {
@@ -73,49 +75,70 @@ pub fn for_backend() -> serde_json::Value {
             }
         ],
         [
-            "pool",
+            "group",
             {
                 "type": "array",
-                "label": "List of Pools",
+                "label": "Groups",
                 "sortable": true,
                 "item": {
                     "type": "object",
                     "fields": [
                         [
-                            "enabled",
-                            {
-                                "type": "bool",
-                                "label": "Enabled",
-                                "default": DEFAULT_POOL_ENABLED,
-                                "span": 1
-                            }
-                        ],
-                        [
-                            "url",
-                            {
-                                "type": "url",
-                                "label": "URL",
-                                "min_length": 1,
-                                "match": bosminer_config::CLIENT_URL_JAVA_SCRIPT_REGEX,
-                                "span": 5
-                            }
-                        ],
-                        [
-                            "user",
+                            "name",
                             {
                                 "type": "string",
-                                "label": "User",
-                                "min_length": 1,
-                                "span": 4
+                                "label": "Name",
+                                "min_length": 1
                             }
                         ],
                         [
-                            "password",
+                            "pool",
                             {
-                                "type": "password",
-                                "label": "Password",
-                                "default": null,
-                                "span": 2
+                                "type": "array",
+                                "label": "List of Pools",
+                                "sortable": true,
+                                "item": {
+                                    "type": "object",
+                                    "fields": [
+                                        [
+                                            "enabled",
+                                            {
+                                                "type": "bool",
+                                                "label": "Enabled",
+                                                "default": DEFAULT_POOL_ENABLED,
+                                                "span": 1
+                                            }
+                                        ],
+                                        [
+                                            "url",
+                                            {
+                                                "type": "url",
+                                                "label": "URL",
+                                                "min_length": 1,
+                                                "match": CLIENT_URL_JAVA_SCRIPT_REGEX,
+                                                "span": 5
+                                            }
+                                        ],
+                                        [
+                                            "user",
+                                            {
+                                                "type": "string",
+                                                "label": "User",
+                                                "min_length": 1,
+                                                "span": 4
+                                            }
+                                        ],
+                                        [
+                                            "password",
+                                            {
+                                                "type": "password",
+                                                "label": "Password",
+                                                "default": null,
+                                                "span": 2
+                                            }
+                                        ]
+                                    ]
+                                }
                             }
                         ]
                     ]

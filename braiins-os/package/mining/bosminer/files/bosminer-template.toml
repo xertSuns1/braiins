@@ -3,7 +3,7 @@
 # Mandatory fields for specification of configuration format 'version' and
 # compatible hardware 'model'
 [format]
-version = 'beta'
+version = '1.0'
 model = 'Antminer S9'
 generator = 'template'
 
@@ -74,11 +74,17 @@ generator = 'template'
 # Set minimum number of fans required for BOSMiner to run (default=1)
 #min_fans = 1
 
+# Specify default list of pool groups. All pools in one group use fail-over
+# multipool strategy. Instead, load-balance strategy is used for all groups.
+# This strategy sends work to all the groups on a quota basis.
+[[group]]
+name = 'Default'
+
 # Specify default list of pools which are used for connection to remote servers
 # after successful run of BOSMiner.
 # The order of the pools specifies a priority for failover algorithm.
 # This section can be repeated.
-#[[pool]]
+#[[group.pool]]
 # Initial state of the pool after BOSMiner initialization (default=true)
 #enabled = true
 # Mandatory option for server URL specified in format <HOSTNAME:PORT>

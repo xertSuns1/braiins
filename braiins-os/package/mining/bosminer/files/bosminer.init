@@ -50,7 +50,7 @@ boot()
 
 		cat > "$CONF" <<-END
 			[format]
-			version = 'beta'
+			version = '1.0'
 			model = 'Antminer S9'
 			generator = 'init_script'
 			timestamp = $(date +%s)
@@ -64,7 +64,10 @@ boot()
 		END
 		cat >> "$CONF" <<-END
 
-			[[pool]]
+			[[group]]
+			name = 'Default'
+
+			[[group.pool]]
 			url = '${pool_host:-stratum+tcp://stratum.slushpool.com}:${pool_port:-3333}'
 			user = '${pool_user:-!non-existent-user!}'
 		END

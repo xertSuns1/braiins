@@ -48,6 +48,15 @@ pub struct PoolConfig {
     pub password: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct GroupConfig {
+    pub name: String,
+    #[serde(rename = "pool")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pools: Vec<PoolConfig>,
+}
+
 /// Parse a configuration file from `config_path`.
 pub fn parse<'a, T>(config_path: &str) -> Result<T, String>
 where

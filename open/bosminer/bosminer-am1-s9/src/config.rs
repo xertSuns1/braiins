@@ -44,11 +44,11 @@ use crate::FrequencySettings;
 use support::OptionDefault;
 
 use bosminer::hal::{self, BackendConfig as _};
-use bosminer_config::{ClientDescriptor, ClientUserInfo};
+use bosminer_config::{ClientDescriptor, ClientUserInfo, GroupDescriptor};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
@@ -60,7 +60,7 @@ const VENDOR: &'static str = "Braiins";
 const HW_MODEL: &'static str = "Antminer S9";
 
 /// Expected configuration version
-const FORMAT_VERSION: &'static str = "beta";
+const FORMAT_VERSION: &'static str = "1.0";
 
 /// Expected configuration model
 pub const FORMAT_MODEL: &'static str = HW_MODEL;
@@ -229,9 +229,9 @@ pub struct Backend {
     temp_control: Option<TempControl>,
     #[serde(skip_serializing_if = "Option::is_none")]
     fan_control: Option<FanControl>,
-    #[serde(rename = "pool")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pools: Option<Vec<bosminer_config::PoolConfig>>,
+    #[serde(rename = "group")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<bosminer_config::GroupConfig>,
     #[serde(skip)]
     pub client_groups: Vec<hal::GroupConfig>,
     #[serde(skip)]
@@ -478,9 +478,13 @@ impl ConfigBody for Backend {
 
         // Parse pools
         // Don't worry if is this section missing, maybe there are some pools on command line
-        if let Some(pools) = self.pools.as_ref() {
-            let mut client_configs = Vec::with_capacity(pools.len());
-            for pool in pools {
+        let mut group_names = HashSet::with_capacity(self.groups.len());
+        for group in &self.groups {
+            if let Some(name) = group_names.replace(&group.name) {
+                Err(format!("group with name '{}' already defined", name))?;
+            }
+            let mut client_configs = Vec::with_capacity(group.pools.len());
+            for pool in &group.pools {
                 let client_descriptor = ClientDescriptor::create(
                     pool.url.as_str(),
                     ClientUserInfo::new(pool.url.as_str(), pool.password.as_deref()),
@@ -492,10 +496,14 @@ impl ConfigBody for Backend {
                     channel: None,
                 });
             }
-            self.client_groups = vec![hal::GroupConfig {
-                descriptor: Default::default(),
+            let descriptor = GroupDescriptor {
+                name: group.name.clone(),
+                fixed_share_ratio: None,
+            };
+            self.client_groups.push(hal::GroupConfig {
+                descriptor,
                 clients: client_configs,
-            }];
+            });
         }
 
         Ok(())
