@@ -441,9 +441,13 @@ class Builder:
                 """
                 return value.format(**self._format_tags)
 
+        module_path = os.path.abspath(__file__)
+        module_dir = os.path.dirname(module_path)
+
         self._config = copy.deepcopy(config)
         self._config.formatter = StrFormatter(self)
         self._argv = argv
+        self._bos_dir = os.path.abspath(os.path.join(module_dir, '..'))
         self._build_dir = os.path.join(os.path.abspath(self._config.build.dir), self._config.build.name)
         # add build_dir tag after it has been initialized
         self._config.formatter.add_tag('build_dir', self._build_dir)
@@ -1530,8 +1534,7 @@ class Builder:
             logging.info("Creating '{}' in '{}'...".format(self.UENV_TXT, target_dir))
             self._write_uenv(target_file, recovery)
 
-    @staticmethod
-    def _get_project_file(*path):
+    def _get_project_file(self, *path):
         """
         Return absolute path to the file from project directory
 
@@ -1540,7 +1543,7 @@ class Builder:
         :return:
             Path to the file from project directory or None when file does not exist.
         """
-        file_path = os.path.abspath(os.path.join(*path))
+        file_path = os.path.abspath(os.path.join(self._bos_dir, *path))
         return file_path if os.path.isfile(file_path) else None
 
     def _create_upgrade_miner_cfg_input(self):
