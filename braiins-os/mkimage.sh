@@ -67,7 +67,7 @@ echo packing $src into $dest
 tmpdir=$(mktemp -d)
 
 # os partition size in MB (fat one)
-image_ospart_size=14
+image_ospart_size=16
 # upgrade partition size in MB (fat one)
 image_upgpart_size=32
 
