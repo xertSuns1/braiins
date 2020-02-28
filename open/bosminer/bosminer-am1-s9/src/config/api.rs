@@ -229,7 +229,8 @@ impl<'a> Handler<'a> {
         let config_format = Format {
             generator: generator_string().into(),
             timestamp: UnixTime::now().into(),
-            ..Default::default()
+            version: B::version(),
+            model: B::model(),
         };
 
         let json_format =

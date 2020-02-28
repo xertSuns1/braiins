@@ -62,7 +62,7 @@ const HW_MODEL: &'static str = "Antminer S9";
 const FORMAT_VERSION: &'static str = "beta";
 
 /// Expected configuration model
-const FORMAT_MODEL: &'static str = HW_MODEL;
+pub const FORMAT_MODEL: &'static str = HW_MODEL;
 
 /// Override the default drain channel size as miner tends to burst messages into the logger
 pub const ASYNC_LOGGER_DRAIN_CHANNEL_SIZE: usize = 4096;
@@ -170,17 +170,6 @@ pub struct Format {
     pub timestamp: Option<u32>,
 }
 
-impl Default for Format {
-    fn default() -> Self {
-        Self {
-            version: FORMAT_VERSION.to_string(),
-            model: FORMAT_MODEL.to_string(),
-            generator: None,
-            timestamp: None,
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct HashChainGlobal {
@@ -251,12 +240,18 @@ pub trait ConfigBody
 where
     Self: Serialize + DeserializeOwned + Default,
 {
+    fn model() -> String;
+
+    fn version() -> String;
+
+    fn version_is_supported(version: &str) -> bool;
+
     fn sanity_check(&mut self) -> error::Result<()>;
 
     fn metadata() -> serde_json::Value;
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct FormatWrapper<B> {
     format: Format,
     #[serde(flatten)]
@@ -269,15 +264,14 @@ where
 {
     pub fn sanity_check(&mut self) -> error::Result<()> {
         // Check compatibility of configuration format
-        if self.format.model != FORMAT_MODEL {
+        if self.format.model != B::model() {
             Err(format!("incompatible format model '{}'", self.format.model))?;
         }
-        // TODO: allow backward compatibility
-        if self.format.version != FORMAT_VERSION {
-            Err(format!(
-                "incompatible format version '{}'",
+        if !B::version_is_supported(&self.format.version) {
+            warn!(
+                "Incompatible format version '{}', but continuing anyway",
                 self.format.version
-            ))?;
+            );
         }
 
         self.body.sanity_check()
@@ -446,6 +440,18 @@ impl Backend {
 }
 
 impl ConfigBody for Backend {
+    fn model() -> String {
+        return FORMAT_MODEL.into();
+    }
+
+    fn version() -> String {
+        return FORMAT_VERSION.into();
+    }
+
+    fn version_is_supported(version: &str) -> bool {
+        version == FORMAT_VERSION
+    }
+
     fn sanity_check(&mut self) -> error::Result<()> {
         // Check if all hash chain keys have meaningful name
         if let Some(hash_chains) = &self.hash_chains {
