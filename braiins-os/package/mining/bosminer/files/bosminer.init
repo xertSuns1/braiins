@@ -68,8 +68,12 @@ boot()
 			name = 'Default'
 
 			[[group.pool]]
-			url = '${pool_host:-stratum+tcp://stratum.slushpool.com}:${pool_port:-3333}'
+			url = '${pool_host:-stratum2+tcp://v2.stratum.slushpool.com}:${pool_port:-3336}'
 			user = '${pool_user:-!non-existent-user!}'
+
+			[[group.pool]]
+			url = 'stratum+tcp://stratum.slushpool.com:3333'
+			user = '!non-existent-user!'
 		END
 		[ -n "$pool_pass" ] && \
 		cat >> "$CONF" <<-END
