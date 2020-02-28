@@ -135,6 +135,13 @@ async fn main() {
     }
 
     let mut backend_config = match config::FormatWrapper::<config::Backend>::parse(config_path) {
+        Err(config::FormatWrapperError::IncompatibleVersion(version, Some(v))) => {
+            warn!(
+                "Incompatible format version '{}', but continuing anyway",
+                version
+            );
+            v.body
+        }
         Err(e) => {
             error!("Cannot load configuration file \"{}\"", config_path);
             error!("Reason: {}", e);

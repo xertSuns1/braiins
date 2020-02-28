@@ -49,6 +49,7 @@ use bosminer_config::{ClientDescriptor, ClientUserInfo};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use std::collections::{BTreeMap, HashSet};
+use std::fmt;
 use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
@@ -242,7 +243,7 @@ pub struct Backend {
 
 pub trait ConfigBody
 where
-    Self: Serialize + DeserializeOwned + Default,
+    Self: Serialize + DeserializeOwned + Default + fmt::Debug,
 {
     fn model() -> String;
 
@@ -250,10 +251,32 @@ where
 
     fn version_is_supported(version: &str) -> bool;
 
-    fn sanity_check(&mut self) -> error::Result<()>;
+    fn sanity_check(&mut self) -> Result<(), String>;
 
     fn metadata() -> serde_json::Value;
 }
+
+#[derive(Debug)]
+pub enum FormatWrapperError<B> {
+    ParsingError(String),
+    IncompatibleFormat(String),
+    IncompatibleVersion(String, Option<FormatWrapper<B>>),
+    IncorrectBody(String),
+}
+
+impl<B> fmt::Display for FormatWrapperError<B> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ParsingError(message) | Self::IncorrectBody(message) => write!(f, "{}", message),
+            Self::IncompatibleFormat(model) => write!(f, "incompatible format model '{}'", model),
+            Self::IncompatibleVersion(version, _) => {
+                write!(f, "incompatible format version '{}'", version)
+            }
+        }
+    }
+}
+
+impl<B: fmt::Debug> std::error::Error for FormatWrapperError<B> {}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FormatWrapper<B> {
@@ -266,19 +289,26 @@ impl<B> FormatWrapper<B>
 where
     B: ConfigBody,
 {
-    pub fn sanity_check(&mut self) -> error::Result<()> {
+    pub fn sanity_check(&mut self) -> Result<(), FormatWrapperError<B>> {
         // Check compatibility of configuration format
         if self.format.model != B::model() {
-            Err(format!("incompatible format model '{}'", self.format.model))?;
-        }
-        if !B::version_is_supported(&self.format.version) {
-            warn!(
-                "Incompatible format version '{}', but continuing anyway",
-                self.format.version
-            );
+            return Err(FormatWrapperError::IncompatibleFormat(
+                self.format.model.clone(),
+            ));
         }
 
-        self.body.sanity_check()
+        self.body
+            .sanity_check()
+            .map_err(|msg| FormatWrapperError::IncorrectBody(msg))?;
+
+        // Check format version at last to allow caller to treat it as a warning
+        if !B::version_is_supported(&self.format.version) {
+            return Err(FormatWrapperError::IncompatibleVersion(
+                self.format.version.clone(),
+                None,
+            ));
+        }
+        Ok(())
     }
 
     pub fn metadata() -> serde_json::Value {
@@ -287,11 +317,18 @@ where
         B::metadata()
     }
 
-    pub fn parse(config_path: &str) -> error::Result<Self> {
+    pub fn parse(config_path: &str) -> Result<Self, FormatWrapperError<B>> {
         // Parse config file - either user specified or the default one
-        let mut config: Self = bosminer_config::parse(config_path)?;
+        let mut config: Self = bosminer_config::parse(config_path)
+            .map_err(|msg| FormatWrapperError::ParsingError(msg))?;
 
-        config.sanity_check().map(|_| config)
+        match config.sanity_check() {
+            Ok(_) => Ok(config),
+            Err(FormatWrapperError::IncompatibleVersion(version, _)) => Err(
+                FormatWrapperError::IncompatibleVersion(version, Some(config)),
+            ),
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -456,7 +493,7 @@ impl ConfigBody for Backend {
         version == FORMAT_VERSION
     }
 
-    fn sanity_check(&mut self) -> error::Result<()> {
+    fn sanity_check(&mut self) -> Result<(), String> {
         // Check if all hash chain keys have meaningful name
         if let Some(hash_chains) = &self.hash_chains {
             for idx in hash_chains.keys() {

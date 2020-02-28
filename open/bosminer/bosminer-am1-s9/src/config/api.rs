@@ -209,13 +209,16 @@ impl<'a> Handler<'a> {
     pub fn handle_data<B: ConfigBody>(self) {
         let response = match FormatWrapper::<B>::parse(self.config_path) {
             // TODO: Improve error handling
+            Ok(config)
+            | Err(crate::config::FormatWrapperError::IncompatibleVersion(_, Some(config))) => {
+                DataResponse {
+                    status: Status::new(StatusCode::Success, None),
+                    data: Some(config),
+                }
+            }
             Err(e) => DataResponse {
                 status: Status::new(StatusCode::InvalidFormat, format!("{}", e)),
                 data: None,
-            },
-            Ok(config) => DataResponse {
-                status: Status::new(StatusCode::Success, None),
-                data: Some(config),
             },
         };
 
