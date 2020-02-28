@@ -464,8 +464,9 @@ impl GroupRegistry {
         if self.is_empty() {
             return;
         }
-
-        let share_ratio = (1.0 - self.total_fixed_share_ratio) / self.total_quota as f64;
+        // Precalculate remaining share ratio normalized per 1 quota unit
+        let share_ratio_per_quota_unit =
+            (1.0 - self.total_fixed_share_ratio) / self.total_quota as f64;
 
         // Update all groups with newly calculated share ratio.
         // Also reset generated work to prevent switching all future work to new group because
@@ -475,7 +476,7 @@ impl GroupRegistry {
                 scheduler_group_handle.reset_generated_work();
             }
             if !scheduler_group_handle.has_fixed_share_ratio() {
-                scheduler_group_handle.share_ratio = share_ratio
+                scheduler_group_handle.share_ratio = share_ratio_per_quota_unit
                     * scheduler_group_handle
                         .get_quota()
                         .expect("BUG: missing group quota") as f64;

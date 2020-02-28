@@ -476,7 +476,8 @@ impl ConfigBody for Backend {
             }
         }
 
-        // Parse pools
+        // Analyze group configuration, make sure the groups are unique, and build descriptor
+        // topology out of the configuration data
         // Don't worry if is this section missing, maybe there are some pools on command line
         if let Some(groups) = &self.groups {
             let mut group_names = HashSet::with_capacity(groups.len());
