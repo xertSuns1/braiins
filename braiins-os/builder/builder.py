@@ -92,10 +92,6 @@ class Builder:
     LEDE = 'lede'
     LUCI = 'luci'
     PLATFORM = 'platform'
-    UBOOT = 'u-boot'
-    LINUX = 'linux'
-    CGMINER = 'cgminer'
-    BOSMINER = 'bosminer'
     FEEDS_CONF = 'feeds.conf'
     FEEDS_DIR = 'feeds'
     CONFIG_NAME = '.config'
@@ -187,9 +183,6 @@ class Builder:
         LEDE_MKENVIMAGE: os.path.join('build_dir', 'host', 'u-boot-2014.10', 'tools', 'mkenvimage'),
         LEDE_USIGN: os.path.join('staging_dir', 'host', 'bin', 'usign')
     }
-
-    # root directory with all packages stored in this monorepo
-    MONOREPO_PATH = os.path.abspath(os.path.join('..', 'open'))
 
     # configuration file constants
     CONFIG_DEVICES = ['nand', 'recovery', 'sd', 'upgrade']
@@ -342,7 +335,7 @@ class Builder:
         logging.debug("Set external {} tree to '{}'".format(name, external_dir))
         stream.write('{}="{}"\n'.format(config, external_dir))
 
-    def _write_monorepo_path(self, stream, config, project_name: str, name: str):
+    def _write_monorepo_path(self, stream, config, path: str, name: str):
         """
         Write absolute path to external directory of corespondent directory from monorepo
 
@@ -350,30 +343,43 @@ class Builder:
             Opened stream for writing configuration.
         :param config:
             Configuration name prefix.
-        :param project_name:
-            Name of project in monorepo.
+        :param path:
+            Relative path of project in monorepo.
         :param name:
             Descriptive name of project.
         :return:
             Absolute path to external directory.
         """
-        external_dir = os.path.join(self.MONOREPO_PATH, project_name)
+        external_dir = os.path.join(self._monorepo_dir, path)
         logging.debug("Set external {} tree to '{}'".format(name, external_dir))
         stream.write('{}="{}"\n'.format(config, external_dir))
 
-    GENERATED_CONFIGS = [
+    BUILTIN_GENERATED_CONFIGS = [
         ('CONFIG_TARGET_', _write_target_config),
         ('CONFIG_SYSUPGRADE_WITH_', _write_sysupgrade),
         ('CONFIG_FIRMWARE_MAJOR', _write_firmware_major),
         ('CONFIG_FIRMWARE_VERSION', _write_firmware_version),
         ('CONFIG_FIRMWARE_REQUIRE', _write_firmware_require),
-        ('CONFIG_EXTERNAL_KERNEL_TREE', partial(_write_external_path, repo_name=LINUX, name='kernel')),
-        ('CONFIG_EXTERNAL_CGMINER_TREE', partial(_write_external_path, repo_name=CGMINER, name='CGMiner')),
-        ('CONFIG_EXTERNAL_UBOOT_TREE', partial(_write_external_path, repo_name=UBOOT, name='U-Boot')),
-        ('CONFIG_EXTERNAL_BOSMINER_TREE', partial(_write_monorepo_path, project_name=BOSMINER, name='bOSminer')),
         # remove all commented CONFIG_TARGET_
         ('# CONFIG_TARGET_', None)
     ]
+
+    def _get_generated_configs(self):
+        generated_configs = copy.deepcopy(self.BUILTIN_GENERATED_CONFIGS)
+        for name, root_attributes in self._config.remote.repos.items():
+            config_name = root_attributes.get('config_name', None)
+            if config_name:
+                external_config = ('CONFIG_EXTERNAL_{}_TREE'.format(config_name),
+                                   partial(Builder._write_external_path, repo_name=name, name=config_name))
+                generated_configs.append(external_config)
+        for name, root_attributes in self._config.monorepo.items():
+            config_name = root_attributes.get('config_name', None)
+            if config_name:
+                relative_path = root_attributes.get('relative_path', None)
+                external_config = ('CONFIG_EXTERNAL_{}_TREE'.format(config_name),
+                                   partial(Builder._write_monorepo_path, path=relative_path, name=config_name))
+                generated_configs.append(external_config)
+        return generated_configs
 
     def __init__(self, config, argv):
         """
@@ -447,6 +453,8 @@ class Builder:
         self._config = copy.deepcopy(config)
         self._config.formatter = StrFormatter(self)
         self._argv = argv
+        # root directory with all packages stored in this monorepo
+        self._monorepo_dir = os.path.abspath(os.path.join(module_dir, '..', '..'))
         self._bos_dir = os.path.abspath(os.path.join(module_dir, '..'))
         self._build_dir = os.path.join(os.path.abspath(self._config.build.dir), self._config.build.name)
         # add build_dir tag after it has been initialized
@@ -456,6 +464,7 @@ class Builder:
         self._tmp_dir = os.path.join(self._working_dir, 'tmp')
         self._repos = OrderedDict()
         self._init_repos()
+        self._generated_configs = self._get_generated_configs()
 
     @property
     def build_dir(self):
@@ -935,7 +944,7 @@ class Builder:
         target_config = io.StringIO()
 
         # generate target configuration
-        for config, generator in self.GENERATED_CONFIGS:
+        for config, generator in self._generated_configs:
             generator and generator(self, target_config, config)
 
         target_config.seek(0)
@@ -1031,7 +1040,7 @@ class Builder:
             for line in output.decode('utf-8').splitlines():
                 # do not store lines with configuration of external directories
                 # this files are automatically generated
-                if not any(line.startswith(config) for config, _ in self.GENERATED_CONFIGS):
+                if not any(line.startswith(config) for config, _ in self._generated_configs):
                     config_dst.write(line)
                     config_dst.write('\n')
 

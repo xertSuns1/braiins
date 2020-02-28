@@ -108,10 +108,17 @@ remote:
         zynq:
           project: zynq-io-bin.git
     u-boot:
+      config_name: UBOOT
       project: u-boot-xlnx.git
     linux:
+      config_name: KERNEL
       project: linux-xlnx.git
     # it is possible to continue with any user repositories
+
+monorepo:
+  bosminer:
+    config_name: BOSMINER
+    relative_path: open/bosminer
 
 local:
   # list of output directories for local targets
