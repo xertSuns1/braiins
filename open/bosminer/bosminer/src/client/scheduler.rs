@@ -126,6 +126,11 @@ impl GroupHandle {
     }
 
     #[inline]
+    pub fn is_private(&self) -> bool {
+        self.group_handle.descriptor.private
+    }
+
+    #[inline]
     pub fn has_fixed_share_ratio(&self) -> bool {
         self.group_handle
             .descriptor

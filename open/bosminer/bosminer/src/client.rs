@@ -430,6 +430,7 @@ impl GroupRegistry {
     pub fn get_groups(&self) -> Vec<Arc<Group>> {
         self.list
             .iter()
+            .filter(|scheduler_group_handle| !scheduler_group_handle.is_private())
             .map(|scheduler_group_handle| scheduler_group_handle.group_handle.clone())
             .collect()
     }

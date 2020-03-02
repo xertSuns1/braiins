@@ -54,6 +54,8 @@ impl LoadBalanceStrategy {
 #[serde(deny_unknown_fields)]
 pub struct Descriptor {
     pub name: String,
+    #[serde(skip)]
+    pub private: bool,
     #[serde(flatten)]
     #[serde(skip_serializing_if = "Option::is_none")]
     strategy: Option<LoadBalanceStrategy>,
@@ -64,12 +66,13 @@ impl Descriptor {
     pub const DEFAULT_INDEX: usize = 0;
     pub const DEFAULT_QUOTA: usize = 1;
 
-    pub fn new<T>(name: String, strategy: T) -> Self
+    pub fn new<T>(name: String, private: bool, strategy: T) -> Self
     where
         T: Into<Option<LoadBalanceStrategy>>,
     {
         Self {
             name,
+            private,
             strategy: strategy.into(),
         }
     }
@@ -98,6 +101,7 @@ impl Default for Descriptor {
     fn default() -> Self {
         Self {
             name: Self::DEFAULT_NAME.to_string(),
+            private: false,
             strategy: None,
         }
     }
