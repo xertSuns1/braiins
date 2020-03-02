@@ -527,7 +527,7 @@ impl ConfigBody for Backend {
                     for pool in pools {
                         let client_descriptor = ClientDescriptor::create(
                             pool.url.as_str(),
-                            ClientUserInfo::new(pool.url.as_str(), pool.password.as_deref()),
+                            ClientUserInfo::new(pool.user.as_str(), pool.password.as_deref()),
                             pool.enabled.unwrap_or(DEFAULT_POOL_ENABLED),
                         )
                         .map_err(|e| {
