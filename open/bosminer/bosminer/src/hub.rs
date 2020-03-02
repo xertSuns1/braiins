@@ -39,7 +39,7 @@ use futures::lock::Mutex;
 use futures::stream::StreamExt;
 use ii_async_compat::{futures, tokio};
 
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 /// Handle external events. Currently it is used only wor handling exhausted work from work engine.
 /// It usually signals some serious problem in backend.
@@ -86,19 +86,24 @@ impl SolutionRouter {
 pub struct Core {
     midstate_count: usize,
     pub backend_info: Option<hal::BackendInfo>,
+    // NOTE: Weak reference must be released first!
+    backend_registry: Weak<backend::Registry>,
     pub frontend: Arc<crate::Frontend>,
     job_executor: Arc<client::JobExecutor>,
     engine_receiver: work::EngineReceiver,
     solution_sender: mpsc::UnboundedSender<work::Solution>,
     solution_router: Mutex<Option<SolutionRouter>>,
-    backend_registry: Arc<backend::Registry>,
     /// Registry of clients that are able to supply new jobs for mining
     group_registry: Arc<Mutex<client::GroupRegistry>>,
 }
 
 /// Concentrates handles to all nodes associated with mining (backends, clients, work solvers)
 impl Core {
-    pub fn new(midstate_count: usize, backend_info: Option<hal::BackendInfo>) -> Self {
+    pub fn new(
+        midstate_count: usize,
+        backend_registry: &Arc<backend::Registry>,
+        backend_info: Option<hal::BackendInfo>,
+    ) -> Self {
         let frontend = Arc::new(crate::Frontend::new());
 
         let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
@@ -114,12 +119,12 @@ impl Core {
         Self {
             midstate_count,
             backend_info,
+            backend_registry: Arc::downgrade(backend_registry),
             frontend,
             job_executor: job_executor.clone(),
             engine_receiver,
             solution_sender,
             solution_router: Mutex::new(Some(SolutionRouter::new(job_executor, solution_receiver))),
-            backend_registry: Arc::new(backend::Registry::new()),
             group_registry,
         }
     }
@@ -133,7 +138,9 @@ impl Core {
     ) -> error::Result<hal::FrontendConfig> {
         let work_solver_builder = work::SolverBuilder::new(
             self.frontend.clone(),
-            self.backend_registry.clone(),
+            self.backend_registry
+                .upgrade()
+                .expect("BUG: missing backend registry"),
             self.engine_receiver.clone(),
             self.solution_sender.clone(),
         );
@@ -158,27 +165,39 @@ impl Core {
 
     #[inline]
     pub async fn get_root_hub(&self) -> Option<Arc<dyn node::WorkSolver>> {
-        self.backend_registry.lock_root_hub().await.clone()
+        self.backend_registry
+            .upgrade()?
+            .lock_root_hub()
+            .await
+            .clone()
     }
 
     #[inline]
     pub async fn get_work_hubs(&self) -> Vec<Arc<dyn node::WorkSolver>> {
-        self.backend_registry
-            .lock_work_hubs()
-            .await
-            .iter()
-            .cloned()
-            .collect()
+        if let Some(backend_registry) = self.backend_registry.upgrade() {
+            backend_registry
+                .lock_work_hubs()
+                .await
+                .iter()
+                .cloned()
+                .collect()
+        } else {
+            vec![]
+        }
     }
 
     #[inline]
     pub async fn get_work_solvers(&self) -> Vec<Arc<dyn node::WorkSolver>> {
-        self.backend_registry
-            .lock_work_solvers()
-            .await
-            .iter()
-            .cloned()
-            .collect()
+        if let Some(backend_registry) = self.backend_registry.upgrade() {
+            backend_registry
+                .lock_work_solvers()
+                .await
+                .iter()
+                .cloned()
+                .collect()
+        } else {
+            vec![]
+        }
     }
 
     #[inline]

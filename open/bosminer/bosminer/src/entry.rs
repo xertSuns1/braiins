@@ -24,6 +24,7 @@
 //! the frontend and hardware specific backend.
 
 use crate::api;
+use crate::backend;
 use crate::client;
 use crate::hal::{self, BackendConfig as _};
 use crate::hub;
@@ -36,11 +37,13 @@ use std::sync::Arc;
 pub async fn main<T: hal::Backend>(mut backend_config: T::Config, signature: &'static str) {
     // Get frontend specific settings from backend config
     let client_groups = backend_config.client_groups();
+    let backend_registry = Arc::new(backend::Registry::new());
     let backend_info = backend_config.info();
 
     // Initialize hub core which manages all resources
     let core = Arc::new(hub::Core::new(
         backend_config.midstate_count(),
+        &backend_registry,
         backend_info.clone(),
     ));
 
