@@ -320,12 +320,15 @@ impl JobExecutor {
     pub fn new(
         frontend: Arc<crate::Frontend>,
         engine_sender: work::EngineSender,
-        group_registry: Arc<Mutex<client::GroupRegistry>>,
+        client_manager: client::Manager,
     ) -> Self {
         Self {
             frontend,
-            group_registry: group_registry.clone(),
-            dispatcher: Mutex::new(JobDispatcher::new(engine_sender, group_registry)),
+            group_registry: client_manager.group_registry.clone(),
+            dispatcher: Mutex::new(JobDispatcher::new(
+                engine_sender,
+                client_manager.group_registry,
+            )),
         }
     }
 

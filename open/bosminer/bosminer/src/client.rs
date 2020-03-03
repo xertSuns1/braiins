@@ -485,3 +485,52 @@ impl GroupRegistry {
         }
     }
 }
+
+#[derive(Clone)]
+pub struct Manager {
+    midstate_count: usize,
+    group_registry: Arc<Mutex<GroupRegistry>>,
+}
+
+impl Manager {
+    pub fn new(midstate_count: usize) -> Self {
+        Self {
+            midstate_count,
+            group_registry: Arc::new(Mutex::new(GroupRegistry::new())),
+        }
+    }
+
+    #[inline]
+    pub async fn create_group(
+        &self,
+        descriptor: GroupDescriptor,
+    ) -> Result<Arc<Group>, error::Client> {
+        self.group_registry
+            .lock()
+            .await
+            .create_group(descriptor, self.midstate_count)
+    }
+
+    pub async fn create_or_get_default_group(&self) -> Arc<Group> {
+        let mut group_registry = self.group_registry.lock().await;
+        match group_registry.get_group(GroupDescriptor::DEFAULT_INDEX) {
+            Some(group) => group,
+            None => group_registry
+                .create_group(Default::default(), self.midstate_count)
+                .expect("BUG: cannot create default group"),
+        }
+    }
+
+    #[inline]
+    pub async fn get_default_group(&self) -> Option<Arc<Group>> {
+        self.group_registry
+            .lock()
+            .await
+            .get_group(GroupDescriptor::DEFAULT_INDEX)
+    }
+
+    #[inline]
+    pub async fn get_groups(&self) -> Vec<Arc<Group>> {
+        self.group_registry.lock().await.get_groups()
+    }
+}

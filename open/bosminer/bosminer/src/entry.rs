@@ -63,6 +63,7 @@ pub async fn main<T: hal::Backend>(mut backend_config: T::Config, signature: &'s
     // Create groups with clients based on backend configuration
     for group_config in client_groups {
         let group = core
+            .get_client_manager()
             .create_group(group_config.descriptor.clone())
             .await
             .expect("BUG: cannot create group");

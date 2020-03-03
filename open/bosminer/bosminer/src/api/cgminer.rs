@@ -350,7 +350,7 @@ impl Handler {
     /// Collects all clients from all groups into a single `Vec`
     async fn get_clients(&self) -> Vec<Arc<client::Handle>> {
         let mut clients = vec![];
-        for group in self.core.get_groups().await {
+        for group in self.core.get_client_manager().get_groups().await {
             clients.extend(group.get_clients().await.into_iter());
         }
         clients
@@ -612,7 +612,11 @@ impl command::Handler for Handler {
             .get_client_descriptor(parameter)
             .map_err(|_| response::ErrorCode::InvalidAddPoolDetails(parameter.to_string()))?;
 
-        let group = self.core.create_or_get_default_group().await;
+        let group = self
+            .core
+            .get_client_manager()
+            .create_or_get_default_group()
+            .await;
         let client = group
             .push_client(client::Handle::from_descriptor(
                 client_descriptor,
@@ -643,7 +647,7 @@ impl command::Handler for Handler {
             .to_i32()
             .expect("BUG: invalid REMOVEPOOL parameter type");
 
-        let client = match self.core.get_default_group().await {
+        let client = match self.core.get_client_manager().get_default_group().await {
             Some(group) => {
                 let client_len = group.len().await;
                 group
@@ -674,7 +678,7 @@ impl command::Handler for Handler {
             .to_i32()
             .expect("BUG: invalid SWITCHPOOL parameter type");
 
-        let client = match self.core.get_default_group().await {
+        let client = match self.core.get_client_manager().get_default_group().await {
             Some(group) => {
                 let client_len = group.len().await;
                 group

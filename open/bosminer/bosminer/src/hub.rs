@@ -32,8 +32,6 @@ use crate::hal;
 use crate::node;
 use crate::work;
 
-use bosminer_config::GroupDescriptor;
-
 use futures::channel::mpsc;
 use futures::lock::Mutex;
 use futures::stream::StreamExt;
@@ -84,7 +82,6 @@ impl SolutionRouter {
 }
 
 pub struct Core {
-    midstate_count: usize,
     pub backend_info: Option<hal::BackendInfo>,
     // NOTE: Weak reference must be released first!
     backend_registry: Weak<backend::Registry>,
@@ -94,7 +91,7 @@ pub struct Core {
     solution_sender: mpsc::UnboundedSender<work::Solution>,
     solution_router: Mutex<Option<SolutionRouter>>,
     /// Registry of clients that are able to supply new jobs for mining
-    group_registry: Arc<Mutex<client::GroupRegistry>>,
+    client_manager: client::Manager,
 }
 
 /// Concentrates handles to all nodes associated with mining (backends, clients, work solvers)
@@ -109,15 +106,14 @@ impl Core {
         let (engine_sender, engine_receiver) = work::engine_channel(EventHandler);
         let (solution_sender, solution_receiver) = mpsc::unbounded();
 
-        let group_registry = Arc::new(Mutex::new(client::GroupRegistry::new()));
+        let client_manager = client::Manager::new(midstate_count);
         let job_executor = Arc::new(client::JobExecutor::new(
             frontend.clone(),
             engine_sender,
-            group_registry.clone(),
+            client_manager.clone(),
         ));
 
         Self {
-            midstate_count,
             backend_info,
             backend_registry: Arc::downgrade(backend_registry),
             frontend,
@@ -125,7 +121,7 @@ impl Core {
             engine_receiver,
             solution_sender,
             solution_router: Mutex::new(Some(SolutionRouter::new(job_executor, solution_receiver))),
-            group_registry,
+            client_manager,
         }
     }
 
@@ -200,38 +196,8 @@ impl Core {
         }
     }
 
-    #[inline]
-    pub async fn create_group(
-        &self,
-        descriptor: GroupDescriptor,
-    ) -> Result<Arc<client::Group>, error::Client> {
-        self.group_registry
-            .lock()
-            .await
-            .create_group(descriptor, self.midstate_count)
-    }
-
-    pub async fn create_or_get_default_group(&self) -> Arc<client::Group> {
-        let mut group_registry = self.group_registry.lock().await;
-        match group_registry.get_group(GroupDescriptor::DEFAULT_INDEX) {
-            Some(group) => group,
-            None => group_registry
-                .create_group(Default::default(), self.midstate_count)
-                .expect("BUG: cannot create default group"),
-        }
-    }
-
-    #[inline]
-    pub async fn get_default_group(&self) -> Option<Arc<client::Group>> {
-        self.group_registry
-            .lock()
-            .await
-            .get_group(GroupDescriptor::DEFAULT_INDEX)
-    }
-
-    #[inline]
-    pub async fn get_groups(&self) -> Vec<Arc<client::Group>> {
-        self.group_registry.lock().await.get_groups()
+    pub fn get_client_manager(&self) -> &client::Manager {
+        &self.client_manager
     }
 
     pub async fn run(self: Arc<Self>) {
