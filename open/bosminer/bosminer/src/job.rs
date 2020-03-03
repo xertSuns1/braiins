@@ -180,6 +180,10 @@ impl SolutionReceiver {
         );
         info!("  hash={:x}", solution.hash());
         info!("target={:x}", target);
+        trace!(
+            "origin={:?}",
+            solution.origin().upgrade().map(|x| x.to_string())
+        );
     }
 
     pub async fn receive(&mut self) -> Option<work::Solution> {

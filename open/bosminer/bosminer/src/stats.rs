@@ -654,12 +654,18 @@ pub async fn mining_task(node: node::DynInfo, interval: time::Duration) {
     loop {
         delay_for(time::Duration::from_secs(1)).await;
         let valid_job_diff = node.mining_stats().valid_job_diff().take_snapshot().await;
+        let valid_backend_diff = node
+            .mining_stats()
+            .valid_backend_diff()
+            .take_snapshot()
+            .await;
 
         info!(
-            "Hash rate ({} s avg.) for '{}' @ pool difficulty: {}/s",
+            "Hash rate ({} s avg.) for '{}' @ backend diff.: {}/s, job diff.: {}/s",
             interval.as_secs(),
             node,
-            valid_job_diff.to_pretty_hashes(interval, time::Instant::now())
+            valid_backend_diff.to_pretty_hashes(interval, time::Instant::now()),
+            valid_job_diff.to_pretty_hashes(interval, time::Instant::now()),
         );
     }
 }

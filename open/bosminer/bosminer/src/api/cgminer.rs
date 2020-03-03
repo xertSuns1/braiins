@@ -227,10 +227,18 @@ impl Handler {
             // TODO: get actual temperature from work solver?
             temperature: 0.0,
             mhs_av: total_mega_hashes / elapsed.as_secs_f64(),
-            mhs_5s: valid_job_diff.to_mega_hashes(*INTERVAL_5S, now).into_f64(),
-            mhs_1m: valid_job_diff.to_mega_hashes(*INTERVAL_1M, now).into_f64(),
-            mhs_5m: valid_job_diff.to_mega_hashes(*INTERVAL_5M, now).into_f64(),
-            mhs_15m: valid_job_diff.to_mega_hashes(*INTERVAL_15M, now).into_f64(),
+            mhs_5s: valid_backend_diff
+                .to_mega_hashes(*INTERVAL_5S, now)
+                .into_f64(),
+            mhs_1m: valid_backend_diff
+                .to_mega_hashes(*INTERVAL_1M, now)
+                .into_f64(),
+            mhs_5m: valid_backend_diff
+                .to_mega_hashes(*INTERVAL_5M, now)
+                .into_f64(),
+            mhs_15m: valid_backend_diff
+                .to_mega_hashes(*INTERVAL_15M, now)
+                .into_f64(),
             // TODO: bOSminer does not account this information
             accepted: 0,
             // TODO: bOSminer does not account this information
@@ -489,11 +497,21 @@ impl command::Handler for Handler {
         Ok(response::Summary {
             elapsed: elapsed.as_secs(),
             mhs_av: total_mega_hashes / elapsed.as_secs_f64(),
-            mhs_5s: valid_job_diff.to_mega_hashes(*INTERVAL_5S, now).into_f64(),
-            mhs_1m: valid_job_diff.to_mega_hashes(*INTERVAL_1M, now).into_f64(),
-            mhs_5m: valid_job_diff.to_mega_hashes(*INTERVAL_5M, now).into_f64(),
-            mhs_15m: valid_job_diff.to_mega_hashes(*INTERVAL_15M, now).into_f64(),
-            mhs_24h: valid_job_diff.to_mega_hashes(*INTERVAL_24H, now).into_f64(),
+            mhs_5s: valid_backend_diff
+                .to_mega_hashes(*INTERVAL_5S, now)
+                .into_f64(),
+            mhs_1m: valid_backend_diff
+                .to_mega_hashes(*INTERVAL_1M, now)
+                .into_f64(),
+            mhs_5m: valid_backend_diff
+                .to_mega_hashes(*INTERVAL_5M, now)
+                .into_f64(),
+            mhs_15m: valid_backend_diff
+                .to_mega_hashes(*INTERVAL_15M, now)
+                .into_f64(),
+            mhs_24h: valid_backend_diff
+                .to_mega_hashes(*INTERVAL_24H, now)
+                .into_f64(),
             found_blocks: network_valid_solutions as u32,
             getworks: pools_valid_jobs,
             accepted: pools_accepted,
