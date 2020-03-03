@@ -29,10 +29,12 @@ use atomic_enum::atomic_enum;
 pub enum Status {
     Created,
     Starting,
+    Retrying,
     Running,
     Stopping,
     Failing,
     Restarting,
+    Recovering,
     // TODO: Destroying
     Stopped,
     Failed,
@@ -57,7 +59,7 @@ impl StatusMonitor {
         loop {
             let previous = status;
             match status {
-                Status::Created | Status::Stopped | Status::Failed => {
+                Status::Created | Status::Stopped => {
                     status =
                         self.status
                             .compare_and_swap(status, Status::Starting, Ordering::Relaxed);
@@ -66,7 +68,16 @@ impl StatusMonitor {
                         return true;
                     }
                 }
-                Status::Stopping | Status::Failing => {
+                Status::Failed => {
+                    status =
+                        self.status
+                            .compare_and_swap(status, Status::Retrying, Ordering::Relaxed);
+                    if status == previous {
+                        // Retrying has been initiated successfully
+                        return true;
+                    }
+                }
+                Status::Stopping => {
                     // Try to change state to `Restarting`
                     status =
                         self.status
@@ -75,8 +86,21 @@ impl StatusMonitor {
                         break;
                     }
                 }
+                Status::Failing => {
+                    // Try to change state to `Recovering`
+                    status =
+                        self.status
+                            .compare_and_swap(status, Status::Recovering, Ordering::Relaxed);
+                    if status == previous {
+                        break;
+                    }
+                }
                 // Client is currently started
-                Status::Starting | Status::Running | Status::Restarting => break,
+                Status::Starting
+                | Status::Retrying
+                | Status::Running
+                | Status::Restarting
+                | Status::Recovering => break,
             };
             // Try it again because another task change the state
         }
@@ -94,7 +118,7 @@ impl StatusMonitor {
                 Status::Created | Status::Stopped | Status::Failed => {
                     panic!("BUG: 'report_fail': unexpected state '{:?}'", status)
                 }
-                Status::Starting => {
+                Status::Starting | Status::Retrying => {
                     status =
                         self.status
                             .compare_and_swap(status, Status::Running, Ordering::Relaxed);
@@ -104,8 +128,9 @@ impl StatusMonitor {
                     }
                 }
                 Status::Running => break,
-                Status::Stopping | Status::Failing | Status::Restarting => return false,
-                // Try it again because another task change the state
+                Status::Stopping | Status::Failing | Status::Restarting | Status::Recovering => {
+                    return false
+                } // Try it again because another task change the state
             }
         }
 
@@ -134,6 +159,15 @@ impl StatusMonitor {
                         return true;
                     }
                 }
+                Status::Retrying | Status::Recovering => {
+                    status =
+                        self.status
+                            .compare_and_swap(status, Status::Failing, Ordering::Relaxed);
+                    if status == previous {
+                        // Stopping has been initiated successfully
+                        return true;
+                    }
+                }
             };
             // Try it again because another task change the state
         }
@@ -151,7 +185,7 @@ impl StatusMonitor {
                 Status::Created | Status::Stopped | Status::Failed => {
                     panic!("BUG: 'report_fail': unexpected state '{:?}'", status)
                 }
-                Status::Starting | Status::Running | Status::Stopping => {
+                Status::Starting | Status::Retrying | Status::Running | Status::Stopping => {
                     status =
                         self.status
                             .compare_and_swap(status, Status::Failing, Ordering::Relaxed);
@@ -160,7 +194,7 @@ impl StatusMonitor {
                         break;
                     }
                 }
-                Status::Failing | Status::Restarting => break,
+                Status::Failing | Status::Restarting | Status::Recovering => break,
             };
             // Try it again because another task change the state
         }
@@ -172,7 +206,9 @@ impl StatusMonitor {
             Status::Created
             | Status::Starting
             | Status::Running
+            | Status::Retrying
             | Status::Restarting
+            | Status::Recovering
             | Status::Stopped
             | Status::Failed => false,
         }
@@ -186,6 +222,7 @@ impl StatusMonitor {
             match status {
                 Status::Created
                 | Status::Starting
+                | Status::Retrying
                 | Status::Running
                 | Status::Stopped
                 | Status::Failed => panic!("BUG: 'can_stop': unexpected state '{:?}'", status),
@@ -213,6 +250,16 @@ impl StatusMonitor {
                     status =
                         self.status
                             .compare_and_swap(status, Status::Starting, Ordering::Relaxed);
+                    if status == previous {
+                        break;
+                    }
+                }
+                // Recovering after previous fail has been initiated
+                Status::Recovering => {
+                    // Try to change state to `Retrying`
+                    status =
+                        self.status
+                            .compare_and_swap(status, Status::Retrying, Ordering::Relaxed);
                     if status == previous {
                         break;
                     }

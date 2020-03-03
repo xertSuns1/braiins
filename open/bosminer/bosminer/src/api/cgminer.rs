@@ -123,7 +123,10 @@ impl Handler {
             | sync::Status::Stopping
             | sync::Status::Restarting
             | sync::Status::Stopped => (response::PoolStatus::Alive, false),
-            sync::Status::Failing | sync::Status::Failed => (response::PoolStatus::Dead, false),
+            sync::Status::Failing
+            | sync::Status::Retrying
+            | sync::Status::Recovering
+            | sync::Status::Failed => (response::PoolStatus::Dead, false),
         };
         if !client.is_enabled() {
             status = response::PoolStatus::Disabled;
