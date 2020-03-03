@@ -884,33 +884,52 @@ impl StratumClient {
 
     async fn run(self: Arc<Self>) {
         let connection_handler = StratumConnectionHandler::new(self.clone());
+        let host_and_port = connection_handler
+            .client
+            .connection_details
+            .get_host_and_port();
+        let user = connection_handler.client.connection_details.user.clone();
+
         match connection_handler
             .connect()
             .timeout(Self::CONNECTION_TIMEOUT)
             .await
+            .map_err(|_| error::ErrorKind::General("Connection timeout".to_string()).into())
         {
             Ok(Ok((mut connection_rx, connection_tx))) => {
                 let connection_tx = Arc::new(Mutex::new(connection_tx));
                 match connection_handler
                     .init_mining_session(&mut connection_rx, connection_tx.clone())
+                    .timeout(Self::CONNECTION_TIMEOUT)
                     .await
-                {
-                    Ok(init_target) => {
+                    .map_err(|_| {
+                        error::ErrorKind::General("Init mining session timeout".to_string()).into()
+                    }) {
+                    Ok(Ok(init_target)) => {
                         if self.status.initiate_running() {
                             self.clone()
                                 .run_job_solver(connection_rx, connection_tx, init_target)
                                 .await;
                         }
                     }
-                    Err(e) => {
-                        info!("Failed to negotiation initial V2 target: {:?}", e);
+                    Ok(Err(e)) | Err(e) => {
+                        info!(
+                            "Failed to negotiation initial V2 target: at {}, user={} ({:?}",
+                            host_and_port, user, e
+                        );
                         // TODO consolidate this, so that we have exactly 1 place where we
                         //  initiate failing
                         self.status.initiate_failing();
                     }
                 }
             }
-            Ok(Err(_)) | Err(_) => self.status.initiate_failing(),
+            Ok(Err(e)) | Err(e) => {
+                info!(
+                    "Failed to connect to {}, user={} {:?}",
+                    host_and_port, user, e
+                );
+                self.status.initiate_failing()
+            }
         }
     }
 
