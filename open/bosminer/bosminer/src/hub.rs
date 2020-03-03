@@ -125,7 +125,7 @@ impl Core {
     }
 
     /// Builds a new backend for a specified `backend_config`.
-    /// The resulting `hal::FrontendConfig` is then available for starting additional bOSminer
+    /// The resulting `hal::FrontendConfig` is then available for starting additional BOSminer
     /// components
     pub async fn build_backend<T: hal::Backend>(
         &self,

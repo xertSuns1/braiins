@@ -82,6 +82,6 @@ impl node::WorkSolver for Frontend {
 
 impl fmt::Display for Frontend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "bOSminer")
+        write!(f, "BOSminer")
     }
 }

@@ -20,7 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-//! This module holds bOSminer configuration until better solution comes around.
+//! This module holds BOSminer configuration until better solution comes around.
 
 /// Override the default drain channel size as miner tends to burst messages into the logger
 pub const ASYNC_LOGGER_DRAIN_CHANNEL_SIZE: usize = 4096;

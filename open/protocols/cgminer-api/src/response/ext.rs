@@ -20,7 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-//! Defines all extended bOSminer API responses
+//! Defines all extended BOSminer API responses
 
 use super::*;
 

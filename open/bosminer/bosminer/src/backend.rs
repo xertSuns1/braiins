@@ -67,7 +67,7 @@ pub struct IgnoreHierarchy;
 impl HierarchyBuilder for IgnoreHierarchy {}
 
 /// This structure contains list of backend nodes and is also the default hierarchy builder for the
-/// bOSminer. It collects all work solvers and work hubs (special case of solver which only routes
+/// BOSminer. It collects all work solvers and work hubs (special case of solver which only routes
 /// work to its child nodes and is useful for statistics aggregation and group control)
 pub struct Registry {
     /// Special work hub which represents the whole backend

@@ -129,7 +129,7 @@ pub struct FrontendConfig {
     pub cgminer_custom_commands: Option<command::Map>,
 }
 
-/// Minimal interface for running compatible backend with bOSminer crate
+/// Minimal interface for running compatible backend with BOSminer crate
 #[async_trait]
 pub trait Backend: Send + Sync + 'static {
     /// Work solver type used for initialization of backend hierarchy
@@ -144,7 +144,7 @@ pub trait Backend: Send + Sync + 'static {
 
     /// Return `node::WorkSolverType` with closure for creating either work hub or work solver
     /// depending on backend preference/implementation. Returned node will be then registered in
-    /// bOSminer frontend and passed to appropriate backend method for future initialization
+    /// BOSminer frontend and passed to appropriate backend method for future initialization
     /// (`init_work_hub` or `init_work_solver`). The create method should be non-blocking and all
     /// blocking operation should be moved to init method which is asynchronous.
     fn create(backend_config: &mut Self::Config) -> WorkNode<Self::Type>;

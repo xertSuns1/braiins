@@ -20,7 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-//! This module implements CGMiner compatible API server to control bOSminer and to extract
+//! This module implements CGMiner compatible API server to control BOSminer and to extract
 //! statistics from it.
 
 use crate::client;
@@ -48,7 +48,7 @@ use stats::TIME_MEAN_INTERVAL_5M as INTERVAL_5M;
 use stats::TIME_MEAN_INTERVAL_5S as INTERVAL_5S;
 
 /// Miner signature where `CGMiner` text is used to be
-const SIGNATURE: &str = "bOSminer";
+const SIGNATURE: &str = "BOSminer";
 
 /// Default interval used for computation of default rolling average.
 const DEFAULT_LOG_INTERVAL: u32 = 5;
@@ -146,7 +146,7 @@ impl Handler {
             accepted: accepted.solutions,
             rejected: rejected.solutions,
             works: *generated_work as i32,
-            // TODO: bOSminer does not account this information
+            // TODO: BOSminer does not account this information
             discarded: 0,
             stale: stale.solutions as u32,
             // TODO: account failures
@@ -174,7 +174,7 @@ impl Handler {
             pool_rejected_ratio,
             pool_stale_ratio,
             bad_work: *invalid_jobs as u64,
-            // TODO: bOSminer does not have coinbase for Stratum V2
+            // TODO: BOSminer does not have coinbase for Stratum V2
             current_block_height: 0,
             current_block_version,
             // TODO: get actual value from client
@@ -242,26 +242,26 @@ impl Handler {
             mhs_15m: valid_backend_diff
                 .to_mega_hashes(*INTERVAL_15M, now)
                 .into_f64(),
-            // TODO: bOSminer does not account this information
+            // TODO: BOSminer does not account this information
             accepted: 0,
-            // TODO: bOSminer does not account this information
+            // TODO: BOSminer does not account this information
             rejected: 0,
             hardware_errors: backend_error_solutions as i32,
-            // TODO: bOSminer does not account accepted
+            // TODO: BOSminer does not account accepted
             utility: 0.0,
-            // TODO: bOSminer does not account accepted
+            // TODO: BOSminer does not account accepted
             last_share_pool: -1,
             last_share_time,
             total_mega_hashes,
             diff1_work: backend_valid_solutions,
-            // TODO: bOSminer does not account accepted
+            // TODO: BOSminer does not account accepted
             difficulty_accepted: 0.0,
-            // TODO: bOSminer does not account rejected
+            // TODO: BOSminer does not account rejected
             difficulty_rejected: 0.0,
             last_share_difficulty,
             last_valid_work: last_work_time,
             device_hardware_ratio: backend_error_ratio,
-            // TODO: bOSminer does not account rejected
+            // TODO: BOSminer does not account rejected
             device_rejected_ratio: 0.0,
             device_elapsed: elapsed.as_secs(),
             hardware_error_mhs_15m: error_backend_diff
@@ -521,15 +521,15 @@ impl command::Handler for Handler {
             rejected: pools_rejected,
             hardware_errors: backend_error_solutions as i32,
             utility: pools_utility,
-            // TODO: bOSminer does not account this information
+            // TODO: BOSminer does not account this information
             discarded: 0,
             stale: pools_stale,
-            // TODO: bOSminer does not account this information
+            // TODO: BOSminer does not account this information
             get_failures: 0,
             local_work: *generated_work as u32,
-            // TODO: bOSminer does not account this information
+            // TODO: BOSminer does not account this information
             remote_failures: 0,
-            // TODO: bOSminer does not account this information
+            // TODO: BOSminer does not account this information
             network_blocks: 0,
             total_mega_hashes,
             work_utility,

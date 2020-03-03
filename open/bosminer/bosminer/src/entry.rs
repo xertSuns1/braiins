@@ -20,7 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-//! This module provides top level functionality to build the bOSminer core and use it to connect
+//! This module provides top level functionality to build the BOSminer core and use it to connect
 //! the frontend and hardware specific backend.
 
 use crate::api;
