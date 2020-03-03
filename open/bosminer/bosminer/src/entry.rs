@@ -33,7 +33,7 @@ use ii_async_compat::tokio;
 
 use std::sync::Arc;
 
-pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
+pub async fn main<T: hal::Backend>(mut backend_config: T::Config, signature: &'static str) {
     // Get frontend specific settings from backend config
     let client_groups = backend_config.client_groups();
     let backend_info = backend_config.info();
@@ -74,5 +74,5 @@ pub async fn main<T: hal::Backend>(mut backend_config: T::Config) {
     }
 
     // the bosminer is controlled with API which also controls when the miner will end
-    api::run(core, frontend_config).await;
+    api::run(core, frontend_config, signature).await;
 }

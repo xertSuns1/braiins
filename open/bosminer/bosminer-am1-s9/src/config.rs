@@ -254,6 +254,8 @@ where
     fn sanity_check(&mut self) -> Result<(), String>;
 
     fn metadata() -> serde_json::Value;
+
+    fn variant() -> String;
 }
 
 #[derive(Debug)]
@@ -487,6 +489,10 @@ impl ConfigBody for Backend {
 
     fn version() -> String {
         return FORMAT_VERSION.into();
+    }
+
+    fn variant() -> String {
+        "BOSminer".into()
     }
 
     fn version_is_supported(version: &str) -> bool {

@@ -32,7 +32,7 @@ use ii_async_compat::tokio;
 
 #[tokio::main]
 async fn main() {
-    let app = clap::App::new("bosminer")
+    let app = clap::App::new("BOSminer")
         .version(bosminer::version::STRING.as_str())
         .arg(
             clap::Arg::with_name("config")
@@ -246,5 +246,5 @@ async fn main() {
     }
 
     ii_async_compat::setup_panic_handling();
-    bosminer::main::<bosminer_am1_s9::Backend>(backend_config).await;
+    bosminer::main::<bosminer_am1_s9::Backend>(backend_config, "BOSminer").await;
 }

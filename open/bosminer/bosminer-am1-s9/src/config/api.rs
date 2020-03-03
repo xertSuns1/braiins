@@ -45,8 +45,8 @@ impl UnixTime {
     }
 }
 
-fn generator_string() -> String {
-    format!("bosminer {}", bosminer::version::STRING.clone())
+fn generator_string<B: ConfigBody>() -> String {
+    format!("{} {}", B::variant(), bosminer::version::STRING.clone())
 }
 
 #[derive(Serialize_repr, Eq, PartialEq, Copy, Clone, Debug)]
@@ -70,11 +70,11 @@ struct Status {
 }
 
 impl Status {
-    fn new<T: Into<Option<String>>>(code: StatusCode, message: T) -> Self {
+    fn new<T: Into<Option<String>>, B: ConfigBody>(code: StatusCode, message: T) -> Self {
         Self {
             code,
             message: message.into(),
-            generator: generator_string(),
+            generator: generator_string::<B>(),
             timestamp: UnixTime::now(),
         }
     }
@@ -199,7 +199,7 @@ impl<'a> Handler<'a> {
         let metadata = FormatWrapper::<B>::metadata();
 
         let response = MetadataResponse {
-            status: Status::new(StatusCode::Success, None),
+            status: Status::new::<_, B>(StatusCode::Success, None),
             data: metadata,
         };
 
@@ -212,12 +212,12 @@ impl<'a> Handler<'a> {
             Ok(config)
             | Err(crate::config::FormatWrapperError::IncompatibleVersion(_, Some(config))) => {
                 DataResponse {
-                    status: Status::new(StatusCode::Success, None),
+                    status: Status::new::<_, B>(StatusCode::Success, None),
                     data: Some(config),
                 }
             }
             Err(e) => DataResponse {
-                status: Status::new(StatusCode::InvalidFormat, format!("{}", e)),
+                status: Status::new::<_, B>(StatusCode::InvalidFormat, format!("{}", e)),
                 data: None,
             },
         };
@@ -230,7 +230,7 @@ impl<'a> Handler<'a> {
             serde_json::from_reader(io::stdin()).expect("TODO: deserialize SaveRequest");
 
         let config_format = Format {
-            generator: generator_string().into(),
+            generator: generator_string::<B>().into(),
             timestamp: UnixTime::now().into(),
             version: B::version(),
             model: B::model(),
@@ -263,7 +263,7 @@ impl<'a> Handler<'a> {
         file.persist(config_path).expect("TODO: file.persist");
 
         let response = SaveResponse {
-            status: Status::new(StatusCode::Success, None),
+            status: Status::new::<_, B>(StatusCode::Success, None),
             data: Some(SaveSuccess {
                 path: config_path
                     .canonicalize()
