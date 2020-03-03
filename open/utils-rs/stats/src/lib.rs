@@ -58,12 +58,13 @@ impl WindowedTimeMeanState {
                     .checked_duration_since(start_time)
                     .expect("BUG: non-monotonic clock")
                     .as_secs_f64();
-                // check if current window is full
+                // Check if current window is full
                 if elapsed >= self.interval {
-                    // ensure that previous window isn't computed from older history than specified
-                    // self.interval itself
+                    // Start new window.
+                    // Extend the last window to reach current window and diminish the
+                    // sum inside it proportionaly.
                     let a = elapsed / self.interval;
-                    self.prev_window = if a < 2.0 { self.sum / a } else { 0.0 };
+                    self.prev_window = self.sum / a;
                     self.started = Some(now);
                     self.sum = 0.0;
                 }
@@ -82,12 +83,11 @@ impl WindowedTimeMeanState {
                     .as_secs_f64();
 
                 let a = elapsed / self.interval;
-                let sum = if a < 1.0 {
-                    self.prev_window * (1.0 - a) + self.sum * a
+                if a < 1.0 {
+                    (self.sum + self.prev_window * (1.0 - a)) / self.interval
                 } else {
-                    self.sum
-                };
-                sum / self.interval
+                    self.sum / elapsed
+                }
             }
         }
     }
