@@ -393,7 +393,7 @@ impl Handler {
             Some(password)
         };
 
-        ClientDescriptor::create(url, ClientUserInfo::new(user, password), true).map_err(|_| ())
+        ClientDescriptor::create(url, &ClientUserInfo::new(user, password), true).map_err(|_| ())
     }
 }
 
@@ -618,9 +618,10 @@ impl command::Handler for Handler {
             .create_or_get_default_group()
             .await;
         let client = group
-            .push_client(client::Handle::from_descriptor(
+            .push_client(client::Handle::new(
                 client_descriptor,
                 self.core.backend_info.clone(),
+                None,
             ))
             .await;
         let clients = group.get_clients().await;

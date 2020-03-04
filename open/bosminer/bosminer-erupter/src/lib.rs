@@ -179,11 +179,14 @@ impl hal::Backend for Backend {
     }
 
     async fn init_work_solver(
-        _config: config::Backend,
+        config: config::Backend,
         work_solver: Arc<Self>,
     ) -> bosminer::Result<hal::FrontendConfig> {
         // TODO: remove it after `node::WorkSolver` trait will be extended with `enable` method
         work_solver.enable();
+
+        // Create initial client configuration
+        config.init_client().await;
 
         Ok(hal::FrontendConfig {
             cgminer_custom_commands: None,

@@ -40,7 +40,10 @@ use crate::work;
 // Scheduler re-exports
 pub use scheduler::JobExecutor;
 
-use bosminer_config::{ClientDescriptor, ClientProtocol, GroupDescriptor, LoadBalanceStrategy};
+use bosminer_config::{
+    ClientDescriptor, ClientProtocol, ClientUserInfo, GroupConfig, GroupDescriptor,
+    LoadBalanceStrategy,
+};
 
 use futures::channel::mpsc;
 use futures::lock::Mutex;
@@ -63,7 +66,7 @@ pub struct Handle {
 impl Handle {
     /// `channel` - endpoints for 2 channels so that stratum V2 client can communicate with an
     /// external client that implements some protocol extension
-    fn new(
+    pub fn new(
         descriptor: ClientDescriptor,
         backend_info: Option<hal::BackendInfo>,
         channel: Option<(
@@ -109,24 +112,6 @@ impl Handle {
             engine_sender,
             solution_sender,
         }
-    }
-
-    pub fn from_descriptor(
-        descriptor: ClientDescriptor,
-        backend_info: Option<hal::BackendInfo>,
-    ) -> Self {
-        Handle::new(descriptor, backend_info, None)
-    }
-
-    pub fn from_config(
-        client_config: hal::ClientConfig,
-        backend_info: Option<hal::BackendInfo>,
-    ) -> Self {
-        Handle::new(
-            client_config.descriptor,
-            backend_info,
-            client_config.channel,
-        )
     }
 
     pub fn replace_engine_generator(
@@ -486,7 +471,7 @@ impl GroupRegistry {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Manager {
     midstate_count: usize,
     group_registry: Arc<Mutex<GroupRegistry>>,
@@ -498,6 +483,38 @@ impl Manager {
             midstate_count,
             group_registry: Arc::new(Mutex::new(GroupRegistry::new())),
         }
+    }
+
+    pub async fn load_config<T>(
+        &self,
+        group_configs: T,
+        backend_info: Option<&hal::BackendInfo>,
+        default_pool_enabled: bool,
+    ) -> error::Result<()>
+    where
+        T: Into<Option<Vec<GroupConfig>>>,
+    {
+        if let Some(group_configs) = group_configs.into() {
+            for group_config in group_configs {
+                let group = self.create_group(group_config.descriptor).await?;
+                if let Some(pool_configs) = group_config.pools {
+                    for pool_config in pool_configs {
+                        let descriptor = ClientDescriptor::create(
+                            pool_config.url.as_str(),
+                            &ClientUserInfo::new(
+                                pool_config.user.as_str(),
+                                pool_config.password.as_deref(),
+                            ),
+                            pool_config.enabled.unwrap_or(default_pool_enabled),
+                        )
+                        .map_err(|e| e.to_string())?;
+                        let client_handle = Handle::new(descriptor, backend_info.cloned(), None);
+                        group.push_client(client_handle).await;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     #[inline]

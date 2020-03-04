@@ -20,7 +20,6 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use bosminer::hal;
 use bosminer_erupter::config;
 
 use bosminer_config::clap;
@@ -63,19 +62,9 @@ async fn main() {
         .expect("BUG: missing 'user' attribute");
     let user_info = ClientUserInfo::parse(user_info);
 
-    let client_descriptor =
-        ClientDescriptor::create(url, user_info, true).expect("Server parameters");
-    let group_config = hal::GroupConfig {
-        descriptor: Default::default(),
-        clients: vec![hal::ClientConfig {
-            descriptor: client_descriptor,
-            channel: None,
-        }],
-    };
-
-    let backend_config = config::Backend {
-        group_config: Some(group_config),
-    };
+    let backend_config = config::Backend::new(
+        ClientDescriptor::create(url, &user_info, true).expect("Server parameters"),
+    );
 
     ii_async_compat::setup_panic_handling();
     bosminer::main::<bosminer_erupter::Backend>(backend_config, "BOSminer").await;

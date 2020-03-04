@@ -24,6 +24,8 @@ use crate::halt;
 use crate::monitor;
 use crate::Manager;
 
+use bosminer::client;
+
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -55,6 +57,9 @@ pub trait Hooks: Send + Sync + Debug {
 
     /// Called after miner has been started
     async fn miner_started(&self) {}
+
+    /// Called after all groups with clients has been loaded
+    async fn clients_loaded(&self, _client_manager: client::Manager) {}
 }
 
 /// NoHooks uses default implementation of all hooks

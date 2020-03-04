@@ -43,7 +43,9 @@ use crate::FrequencySettings;
 
 use support::OptionDefault;
 
+use bosminer::client;
 use bosminer::hal::{self, BackendConfig as _};
+
 use bosminer_config::{ClientDescriptor, ClientUserInfo};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -55,10 +57,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Vendor
-const VENDOR: &'static str = "Braiins";
+pub const VENDOR: &'static str = "Braiins";
 
 /// Hardware revision
-const HW_MODEL: &'static str = "Antminer S9";
+pub const HW_MODEL: &'static str = "Antminer S9";
 
 /// Expected configuration version
 const FORMAT_VERSION: &'static str = "1.0";
@@ -218,6 +220,10 @@ pub struct FanControl {
 #[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Backend {
+    #[serde(skip)]
+    pub info: hal::BackendInfo,
+    #[serde(skip)]
+    pub client_manager: Option<client::Manager>,
     // TODO: merge pools and clients
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hash_chain_global: Option<HashChainGlobal>,
@@ -234,8 +240,6 @@ pub struct Backend {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub groups: Option<Vec<bosminer_config::GroupConfig>>,
     #[serde(skip)]
-    pub client_groups: Vec<hal::GroupConfig>,
-    #[serde(skip)]
     pub hooks: Option<Arc<dyn hooks::Hooks>>,
     #[serde(skip)]
     pub fans_on_while_warming_up: Option<bool>,
@@ -251,7 +255,7 @@ where
 
     fn version_is_supported(version: &str) -> bool;
 
-    fn sanity_check(&mut self) -> Result<(), String>;
+    fn sanity_check(&self) -> Result<(), String>;
 
     fn metadata() -> serde_json::Value;
 
@@ -335,6 +339,19 @@ where
 }
 
 impl Backend {
+    pub fn has_groups(&self) -> bool {
+        self.groups.as_ref().map(|v| !v.is_empty()).unwrap_or(false)
+    }
+
+    pub fn has_pools(&self) -> bool {
+        match &self.groups {
+            Some(groups) => groups
+                .iter()
+                .all(|group| group.pools.as_ref().map(|v| !v.is_empty()).unwrap_or(false)),
+            None => false,
+        }
+    }
+
     pub fn resolve_chain_config(&self, hash_chain_idx: usize) -> ResolvedChainConfig {
         // Take global hash chain configuration or default value
         let overridable = self
@@ -499,7 +516,7 @@ impl ConfigBody for Backend {
         version == FORMAT_VERSION
     }
 
-    fn sanity_check(&mut self) -> Result<(), String> {
+    fn sanity_check(&self) -> Result<(), String> {
         // Check if all hash chain keys have meaningful name
         if let Some(hash_chains) = &self.hash_chains {
             for idx in hash_chains.keys() {
@@ -529,25 +546,16 @@ impl ConfigBody for Backend {
                     Err(format!("group with name '{}' already defined", name))?;
                 }
                 if let Some(pools) = &group.pools {
-                    let mut client_configs = Vec::with_capacity(pools.len());
                     for pool in pools {
-                        let client_descriptor = ClientDescriptor::create(
+                        let _ = ClientDescriptor::create(
                             pool.url.as_str(),
-                            ClientUserInfo::new(pool.user.as_str(), pool.password.as_deref()),
+                            &ClientUserInfo::new(pool.user.as_str(), pool.password.as_deref()),
                             pool.enabled.unwrap_or(DEFAULT_POOL_ENABLED),
                         )
                         .map_err(|e| {
                             format!("{} in pool '{}@{}'", e.to_string(), pool.url, pool.user)
                         })?;
-                        client_configs.push(hal::ClientConfig {
-                            descriptor: client_descriptor,
-                            channel: None,
-                        });
                     }
-                    self.client_groups.push(hal::GroupConfig {
-                        descriptor: group.descriptor.clone(),
-                        clients: client_configs,
-                    });
                 }
             }
         }
@@ -575,8 +583,8 @@ impl hal::BackendConfig for Backend {
         }
     }
 
-    fn client_groups(&mut self) -> Vec<hal::GroupConfig> {
-        self.client_groups.drain(..).collect()
+    fn set_client_manager(&mut self, client_manager: client::Manager) {
+        self.client_manager.replace(client_manager);
     }
 
     fn info(&self) -> Option<hal::BackendInfo> {

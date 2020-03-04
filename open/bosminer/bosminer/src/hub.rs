@@ -28,7 +28,7 @@ use ii_logging::macros::*;
 use crate::backend;
 use crate::client;
 use crate::error;
-use crate::hal;
+use crate::hal::{self, BackendConfig};
 use crate::node;
 use crate::work;
 
@@ -141,6 +141,7 @@ impl Core {
             self.solution_sender.clone(),
         );
 
+        backend_config.set_client_manager(self.get_client_manager().clone());
         // call backend create to determine the preferred hierarchy
         match T::create(&mut backend_config) {
             // the generic tree hierarchy where the backend consists of multiple devices

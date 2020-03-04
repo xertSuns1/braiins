@@ -23,10 +23,11 @@
 use ii_logging::macros::*;
 
 use bosminer::hal;
+
 use bosminer_am1_s9::config;
 
 use bosminer_config::clap;
-use bosminer_config::{ClientDescriptor, ClientUserInfo};
+use bosminer_config::{ClientDescriptor, ClientUserInfo, GroupConfig, PoolConfig};
 
 use ii_async_compat::tokio;
 
@@ -157,34 +158,32 @@ async fn main() {
             .expect("BUG: missing 'user' argument");
         let user_info = ClientUserInfo::parse(user_info);
 
-        let client_descriptor = match ClientDescriptor::create(url, user_info, true) {
-            Ok(value) => value,
+        match ClientDescriptor::create(url, &user_info, true) {
             Err(e) => {
                 error!("Cannot set pool from command line: {}", e.to_string());
                 return;
             }
+            Ok(_) => {}
         };
-        let group_config = hal::GroupConfig {
+        let group_config = GroupConfig {
             descriptor: Default::default(),
-            clients: vec![hal::ClientConfig {
-                descriptor: client_descriptor,
-                channel: None,
-            }],
+            pools: Some(vec![PoolConfig {
+                enabled: Default::default(),
+                url: url.to_string(),
+                user: user_info.user.to_string(),
+                password: user_info.password.map(|v| v.to_string()),
+            }]),
         };
 
-        if !backend_config.client_groups.is_empty() {
+        if backend_config.has_groups() {
             warn!("Overriding pool settings located at '{}'", config_path);
         }
 
-        backend_config.client_groups = vec![group_config];
+        backend_config.groups = Some(vec![group_config]);
     }
 
     // Check if there's enough pools
-    if backend_config
-        .client_groups
-        .iter()
-        .all(|group| group.clients.is_empty())
-    {
+    if !backend_config.has_pools() {
         error!("No pools specified!");
         info!("Use cli arguments:");
         info!("    bosminer --pool <HOSTNAME:PORT> --user <USERNAME.WORKERNAME[:PASSWORD]>");
@@ -244,6 +243,14 @@ async fn main() {
             .voltage
             .replace(voltage);
     }
+
+    backend_config.info = hal::BackendInfo {
+        vendor: config::VENDOR.to_string(),
+        hw_rev: config::HW_MODEL.to_string(),
+        fw_ver: bosminer::version::STRING.to_string(),
+        // TODO: Correctly handle error
+        dev_id: config::Backend::get_hw_id().unwrap_or_else(|_| "failed to read hwid".to_string()),
+    };
 
     ii_async_compat::setup_panic_handling();
     bosminer::main::<bosminer_am1_s9::Backend>(backend_config, "BOSminer").await;

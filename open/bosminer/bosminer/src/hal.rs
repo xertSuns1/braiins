@@ -20,7 +20,7 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
-use crate::client::stratum_v2;
+use crate::client;
 use crate::error;
 use crate::node;
 use crate::work;
@@ -54,21 +54,6 @@ pub type WorkNode<T> = node::WorkSolverType<
     Box<dyn FnOnce() -> T + Send + Sync>,
     Box<dyn FnOnce(work::Generator, work::SolutionSender) -> T + Send + Sync>,
 >;
-
-#[derive(Debug)]
-pub struct ClientConfig {
-    pub descriptor: bosminer_config::ClientDescriptor,
-    pub channel: Option<(
-        stratum_v2::ExtensionChannelToStratumReceiver,
-        stratum_v2::ExtensionChannelFromStratumSender,
-    )>,
-}
-
-#[derive(Debug)]
-pub struct GroupConfig {
-    pub descriptor: bosminer_config::GroupDescriptor,
-    pub clients: Vec<ClientConfig>,
-}
 
 #[derive(Debug, Clone)]
 pub struct BackendInfo {
@@ -113,12 +98,10 @@ impl From<BackendInfo> for DeviceInfo {
 }
 
 pub trait BackendConfig: Debug + Send + Sync {
-    /// Number of midstates that backend is able to solve at once.
+    /// Number of midstates that backend is able to solve at once
     fn midstate_count(&self) -> usize;
-    /// List of client groups which should be used after backend initialization.
-    fn client_groups(&mut self) -> Vec<GroupConfig> {
-        vec![]
-    }
+    /// Pass client manager to backend to get access to its functionality
+    fn set_client_manager(&mut self, _client_manager: client::Manager) {}
     /// Optional information about backend
     fn info(&self) -> Option<BackendInfo> {
         None

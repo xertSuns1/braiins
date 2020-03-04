@@ -625,15 +625,14 @@ pub enum ExtensionChannelMsg {
 }
 
 /// Receiver for Stratum <-- Remote direction (stratum client end)
-pub(crate) type ExtensionChannelToStratumReceiver =
-    mpsc::Receiver<<Framing as ii_wire::Framing>::Rx>;
+pub type ExtensionChannelToStratumReceiver = mpsc::Receiver<<Framing as ii_wire::Framing>::Rx>;
 /// Remote sender for Stratum <-- Remote direction (remote end)
 pub type ExtensionChannelToStratumSender = mpsc::Sender<<Framing as ii_wire::Framing>::Tx>;
 
 /// Receiver for Stratum --> Remote direction (remote end)
 pub type ExtensionChannelFromStratumReceiver = mpsc::Receiver<ExtensionChannelMsg>;
 /// Sender for Stratum --> Remote direction (stratum client end)
-pub(crate) type ExtensionChannelFromStratumSender = mpsc::Sender<ExtensionChannelMsg>;
+pub type ExtensionChannelFromStratumSender = mpsc::Sender<ExtensionChannelMsg>;
 
 #[derive(Debug, ClientNode)]
 pub struct StratumClient {

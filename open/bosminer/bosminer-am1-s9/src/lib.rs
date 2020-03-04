@@ -1681,9 +1681,18 @@ impl hal::Backend for Backend {
     }
 
     async fn init_work_hub(
-        backend_config: config::Backend,
+        mut backend_config: config::Backend,
         work_hub: work::SolverBuilder<Self>,
     ) -> bosminer::Result<hal::FrontendConfig> {
+        let hooks = backend_config.hooks.clone();
+        // Prepare data for pool configuration after successful start of backend
+        let client_manager = backend_config
+            .client_manager
+            .take()
+            .expect("BUG: missing client manager");
+        let group_configs = backend_config.groups.take();
+        let backend_info = backend_config.info();
+
         let backend = work_hub.to_node().clone();
         let gpio_mgr = gpio::ControlPinManager::new();
         let (app_halt_sender, app_halt_receiver) = halt::make_pair(HALT_TIMEOUT);
@@ -1706,6 +1715,19 @@ impl hal::Backend for Backend {
             .await;
         // Hook `Ctrl-C`, `SIGTERM` and other termination methods
         app_halt_sender.hook_termination_signals();
+
+        // Load initial pool configuration
+        client_manager
+            .load_config(
+                group_configs,
+                backend_info.as_ref(),
+                config::DEFAULT_POOL_ENABLED,
+            )
+            .await?;
+        if let Some(hooks) = hooks {
+            // Pass the client manager to hook for further processing
+            hooks.clients_loaded(client_manager).await;
+        }
 
         Ok(hal::FrontendConfig {
             cgminer_custom_commands: cgminer::create_custom_commands(backend, managers, monitor),

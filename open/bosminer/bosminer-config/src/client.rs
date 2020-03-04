@@ -135,7 +135,7 @@ impl Descriptor {
     }
 
     /// Create client `Descriptor` from information provided by user.
-    pub fn create(url: &str, user_info: UserInfo, enabled: bool) -> error::Result<Self> {
+    pub fn create(url: &str, user_info: &UserInfo, enabled: bool) -> error::Result<Self> {
         let url = Url::parse(url).context(error::ErrorKind::Client("invalid URL".to_string()))?;
 
         let protocol = Protocol::parse(url.scheme())?;

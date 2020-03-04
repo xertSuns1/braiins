@@ -20,7 +20,10 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+use bosminer::client;
 use bosminer::hal;
+
+use bosminer_config::ClientDescriptor;
 
 use std::time::Duration;
 
@@ -36,14 +39,32 @@ pub const DEFAULT_HASHRATE_INTERVAL: Duration = Duration::from_secs(60);
 /// Maximum time it takes to compute one job under normal circumstances
 pub const JOB_TIMEOUT: Duration = Duration::from_secs(30);
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Backend {
-    pub group_config: Option<hal::GroupConfig>,
+    client_manager: Option<client::Manager>,
+    client_descriptor: Option<ClientDescriptor>,
 }
 
-impl Default for Backend {
-    fn default() -> Self {
-        Self { group_config: None }
+impl Backend {
+    pub fn new(client_descriptor: ClientDescriptor) -> Self {
+        Self {
+            client_manager: None,
+            client_descriptor: Some(client_descriptor),
+        }
+    }
+
+    pub async fn init_client(self) {
+        if let Some(client_descriptor) = self.client_descriptor {
+            let group = self
+                .client_manager
+                .expect("BUG: missing client manager")
+                .create_or_get_default_group()
+                .await;
+
+            group
+                .push_client(client::Handle::new(client_descriptor, None, None))
+                .await;
+        }
     }
 }
 
@@ -53,10 +74,7 @@ impl hal::BackendConfig for Backend {
         DEFAULT_MIDSTATE_COUNT
     }
 
-    fn client_groups(&mut self) -> Vec<hal::GroupConfig> {
-        self.group_config
-            .take()
-            .map(|group_config| vec![group_config])
-            .unwrap_or_default()
+    fn set_client_manager(&mut self, client_manager: client::Manager) {
+        self.client_manager.replace(client_manager);
     }
 }

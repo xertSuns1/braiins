@@ -25,7 +25,6 @@
 
 use crate::api;
 use crate::backend;
-use crate::client;
 use crate::hal::{self, BackendConfig as _};
 use crate::hub;
 use crate::stats;
@@ -34,10 +33,9 @@ use ii_async_compat::tokio;
 
 use std::sync::Arc;
 
-pub async fn main<T: hal::Backend>(mut backend_config: T::Config, signature: &'static str) {
-    // Get frontend specific settings from backend config
-    let client_groups = backend_config.client_groups();
+pub async fn main<T: hal::Backend>(backend_config: T::Config, signature: &'static str) {
     let backend_registry = Arc::new(backend::Registry::new());
+    // Get frontend specific settings from backend config
     let backend_info = backend_config.info();
 
     // Initialize hub core which manages all resources
@@ -59,23 +57,6 @@ pub async fn main<T: hal::Backend>(mut backend_config: T::Config, signature: &'s
         core.frontend.clone(),
         T::DEFAULT_HASHRATE_INTERVAL,
     ));
-
-    // Create groups with clients based on backend configuration
-    for group_config in client_groups {
-        let group = core
-            .get_client_manager()
-            .create_group(group_config.descriptor.clone())
-            .await
-            .expect("BUG: cannot create group");
-        for client_config in group_config.clients {
-            group
-                .push_client(client::Handle::from_config(
-                    client_config,
-                    backend_info.clone(),
-                ))
-                .await;
-        }
-    }
 
     // the bosminer is controlled with API which also controls when the miner will end
     api::run(core, frontend_config, signature).await;
