@@ -33,7 +33,7 @@ use ii_async_compat::tokio;
 
 #[tokio::main]
 async fn main() {
-    let app = clap::App::new("BOSminer")
+    let app = clap::App::new(config::SIGNATURE)
         .version(bosminer::version::STRING.as_str())
         .arg(
             clap::Arg::with_name("config")
@@ -244,14 +244,19 @@ async fn main() {
             .replace(voltage);
     }
 
+    // TODO: Fill all information correctly
     backend_config.info = hal::BackendInfo {
         vendor: config::VENDOR.to_string(),
         hw_rev: config::HW_MODEL.to_string(),
-        fw_ver: bosminer::version::STRING.to_string(),
+        fw_ver: format!(
+            "{} {}",
+            config::SIGNATURE,
+            bosminer::version::STRING.to_string()
+        ),
         // TODO: Correctly handle error
         dev_id: config::Backend::get_hw_id().unwrap_or_else(|_| "failed to read hwid".to_string()),
     };
 
     ii_async_compat::setup_panic_handling();
-    bosminer::main::<bosminer_am1_s9::Backend>(backend_config, "BOSminer").await;
+    bosminer::main::<bosminer_am1_s9::Backend>(backend_config, config::SIGNATURE).await;
 }

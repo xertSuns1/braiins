@@ -56,6 +56,8 @@ use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
+pub const SIGNATURE: &str = "BOSminer";
+
 /// Vendor
 pub const VENDOR: &'static str = "Braiins";
 
@@ -509,7 +511,7 @@ impl ConfigBody for Backend {
     }
 
     fn variant() -> String {
-        "BOSminer".into()
+        SIGNATURE.into()
     }
 
     fn version_is_supported(version: &str) -> bool {
@@ -588,13 +590,6 @@ impl hal::BackendConfig for Backend {
     }
 
     fn info(&self) -> Option<hal::BackendInfo> {
-        // TODO: Fill all information correctly
-        Some(hal::BackendInfo {
-            vendor: VENDOR.to_string(),
-            hw_rev: HW_MODEL.to_string(),
-            fw_ver: bosminer::version::STRING.to_string(),
-            // TODO: Read HW id in main where error can be handled correctly
-            dev_id: Backend::get_hw_id().unwrap_or_else(|_| "failed to read hwid".to_string()),
-        })
+        Some(self.info.clone())
     }
 }
