@@ -187,11 +187,11 @@ pub struct HashChainGlobal {
 #[serde(deny_unknown_fields)]
 pub struct HashChain {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub frequency: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voltage: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
