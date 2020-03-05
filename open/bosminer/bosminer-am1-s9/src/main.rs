@@ -242,7 +242,7 @@ async fn main() {
             .replace(voltage);
     }
 
-    if let Err(e) = backend_config.fill_info() {
+    if let Err(e) = backend_config.fill_info::<config::Backend>() {
         error!("Cannot get backend information: {}", e.to_string());
         return;
     }

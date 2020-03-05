@@ -489,9 +489,13 @@ impl Backend {
         }
     }
 
-    pub fn fill_info(&mut self) -> Result<(), std::io::Error> {
+    pub fn fill_info<T>(&mut self) -> Result<(), std::io::Error>
+    where
+        T: ConfigBody,
+    {
         self.info.hw_rev = HW_MODEL.to_string();
         self.info.dev_id = fs::read_to_string(DEFAULT_HW_ID_PATH)?.trim().to_string();
+        self.info.fw_ver = format!("{} {}", T::variant(), bosminer::version::STRING.to_string());
         Ok(())
     }
 }
