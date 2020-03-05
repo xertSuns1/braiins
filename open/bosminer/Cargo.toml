@@ -7,3 +7,8 @@ members = [
     "bosminer-erupter",
     "bosminer-macros",
 ]
+
+# failure caused a problem when they used private API from quote:
+# https://users.rust-lang.org/t/failure-derive-compilation-error/39062
+[patch.crates-io.failure]
+path = "../utils-rs/failure"
