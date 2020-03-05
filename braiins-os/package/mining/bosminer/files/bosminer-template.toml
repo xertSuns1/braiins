@@ -60,16 +60,16 @@ generator = 'template'
 #              but the fans are controlled by the user through 'fan_control'
 # * disabled - WARNING: this may damage the device because no control is done!
 #mode = 'auto'
-# Set target temperature in Celsius (default=75.0)
+# Set target temperature in Celsius (default=89.0)
 # This option is ONLY used when 'temp_control.mode' is set to 'auto'!
-#target_temp = 75.0
-# Set hot temperature in Celsius (default=95.0)
+#target_temp = 89.0
+# Set hot temperature in Celsius (default=100.0)
 # When this temperature is reached, the fan speed is set to 100%.
-#hot_temp = 95.0
-# Set dangerous temperature in Celsius (default=105.0)
+#hot_temp = 100.0
+# Set dangerous temperature in Celsius (default=110.0)
 # When this temperature is reached, the mining is turned off!
 # WARNING: setting this value too high can damage the device!
-#dangerous_temp = 105.0
+#dangerous_temp = 110.0
 
 # Optional configuration for overriding fan control default settings.
 # To completely disable fan control, set 'speed' and 'min_fans' to 0.

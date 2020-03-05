@@ -93,9 +93,9 @@ pub const DEFAULT_VOLTAGE_V: f64 = 8.8;
 pub const DEFAULT_TEMP_CONTROL_MODE: TempControlMode = TempControlMode::Auto;
 
 /// Default temperatures for temperature control
-pub const DEFAULT_TARGET_TEMP_C: f64 = 75.0;
-pub const DEFAULT_HOT_TEMP_C: f64 = 95.0;
-pub const DEFAULT_DANGEROUS_TEMP_C: f64 = 105.0;
+pub const DEFAULT_TARGET_TEMP_C: f64 = 89.0;
+pub const DEFAULT_HOT_TEMP_C: f64 = 100.0;
+pub const DEFAULT_DANGEROUS_TEMP_C: f64 = 110.0;
 
 /// Default fan speed for manual target speed
 pub const DEFAULT_FAN_SPEED: usize = 100;
