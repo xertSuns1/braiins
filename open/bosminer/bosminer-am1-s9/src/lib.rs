@@ -1645,8 +1645,9 @@ impl Backend {
                 .await
                 .spawn_halt_handler(Manager::termination_handler(manager.clone()));
 
-            // Default `NoHooks` starts hashchains right away
-            if hooks.can_start_chain(manager.clone()).await {
+            // Suppress haschain start if chain is either not enabled or haschain hook doesn't
+            // want us to start it (default `NoHooks` has all chains enabled).
+            if hooks.can_start_chain(manager.clone()).await && manager.chain_config.enabled {
                 tokio::spawn(async move {
                     manager
                         .acquire("main")

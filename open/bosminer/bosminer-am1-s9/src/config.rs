@@ -143,6 +143,7 @@ pub struct ResolvedChainConfig {
     pub midstate_count: MidstateCount,
     pub frequency: FrequencySettings,
     pub voltage: power::Voltage,
+    pub enabled: bool,
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug)]
@@ -189,6 +190,8 @@ pub struct HashChain {
     pub frequency: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voltage: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
@@ -362,6 +365,7 @@ impl Backend {
             overridable.as_ref().and_then(|v| v.voltage),
             DEFAULT_VOLTAGE_V,
         );
+        let mut enabled = true;
 
         // If there's a per-chain override then apply it
         if let Some(hash_chain) = self
@@ -377,6 +381,7 @@ impl Backend {
                 .voltage
                 .map(|v| OptionDefault::Some(v))
                 .unwrap_or(voltage);
+            enabled = hash_chain.enabled.unwrap_or(enabled);
         }
 
         // Computed s9-specific values
@@ -386,6 +391,7 @@ impl Backend {
             // TODO: handle config errors
             voltage: power::Voltage::from_volts(*voltage as f32)
                 .expect("TODO: bad voltage requested"),
+            enabled,
         }
     }
 

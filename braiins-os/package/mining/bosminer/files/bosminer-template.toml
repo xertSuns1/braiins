@@ -26,6 +26,8 @@ generator = 'template'
 # Override global voltage in V for hash-chain '6'
 # (default='hash_chain_global.voltage')
 #voltage = 8.8
+# You can disable each chain individually (by default all chains are enabled)
+#enabled = false
 
 # Override global settings for hash-chain '7'
 [hash_chain.7]
@@ -35,6 +37,8 @@ generator = 'template'
 # Override global voltage in V for hash-chain '7'
 # (default='hash_chain_global.voltage')
 #voltage = 8.8
+# You can disable each chain individually (by default all chains are enabled)
+#enabled = false
 
 # Override global settings for hash-chain '8'
 [hash_chain.8]
@@ -44,6 +48,8 @@ generator = 'template'
 # Override global voltage in V for hash-chain '8'
 # (default='hash_chain_global.voltage')
 #voltage = 8.8
+# You can disable each chain individually (by default all chains are enabled)
+#enabled = false
 
 # Optional configuration for overriding temperature control default settings
 [temp_control]
