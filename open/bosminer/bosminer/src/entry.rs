@@ -33,7 +33,7 @@ use ii_async_compat::tokio;
 
 use std::sync::Arc;
 
-pub async fn main<T: hal::Backend>(backend_config: T::Config, signature: &'static str) {
+pub async fn main<T: hal::Backend>(backend_config: T::Config, signature: String) {
     let backend_registry = Arc::new(backend::Registry::new());
     // Get frontend specific settings from backend config
     let backend_info = backend_config.info();

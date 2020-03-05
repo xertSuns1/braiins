@@ -31,7 +31,7 @@ use ii_async_compat::tokio;
 
 #[tokio::main]
 async fn main() {
-    let app = clap::App::new("BOSminer")
+    let app = clap::App::new(bosminer::SIGNATURE)
         .version(bosminer::version::STRING.as_str())
         .arg(
             clap::Arg::with_name("pool")
@@ -74,5 +74,6 @@ async fn main() {
         });
 
     ii_async_compat::setup_panic_handling();
-    bosminer::main::<bosminer_erupter::Backend>(backend_config, "BOSminer").await;
+    bosminer::main::<bosminer_erupter::Backend>(backend_config, bosminer::SIGNATURE.to_string())
+        .await;
 }

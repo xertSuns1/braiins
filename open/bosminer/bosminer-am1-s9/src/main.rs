@@ -33,7 +33,7 @@ use ii_async_compat::tokio;
 
 #[tokio::main]
 async fn main() {
-    let app = clap::App::new(config::SIGNATURE)
+    let app = clap::App::new(bosminer::SIGNATURE)
         .version(bosminer::version::STRING.as_str())
         .arg(
             clap::Arg::with_name("config")
@@ -246,11 +246,11 @@ async fn main() {
 
     // TODO: Fill all information correctly
     backend_config.info = hal::BackendInfo {
-        vendor: config::VENDOR.to_string(),
+        vendor: bosminer::VENDOR.to_string(),
         hw_rev: config::HW_MODEL.to_string(),
         fw_ver: format!(
             "{} {}",
-            config::SIGNATURE,
+            bosminer::SIGNATURE,
             bosminer::version::STRING.to_string()
         ),
         // TODO: Correctly handle error
@@ -258,5 +258,6 @@ async fn main() {
     };
 
     ii_async_compat::setup_panic_handling();
-    bosminer::main::<bosminer_am1_s9::Backend>(backend_config, config::SIGNATURE).await;
+    bosminer::main::<bosminer_am1_s9::Backend>(backend_config, bosminer::SIGNATURE.to_string())
+        .await;
 }

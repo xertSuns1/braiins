@@ -27,7 +27,7 @@ use crate::hub;
 
 use std::sync::Arc;
 
-pub async fn run(core: Arc<hub::Core>, config: hal::FrontendConfig, signature: &'static str) {
+pub async fn run(core: Arc<hub::Core>, config: hal::FrontendConfig, signature: String) {
     let addr = "0.0.0.0:4028".parse().unwrap();
     cgminer::run(core, addr, config.cgminer_custom_commands, signature).await;
 }

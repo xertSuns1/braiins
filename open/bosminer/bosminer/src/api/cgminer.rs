@@ -776,12 +776,12 @@ pub async fn run(
     core: Arc<hub::Core>,
     listen_addr: SocketAddr,
     custom_commands: Option<command::Map>,
-    signature: &'static str,
+    signature: String,
 ) {
     let handler = Handler::new(core);
     let command_receiver = command::Receiver::new(
         handler,
-        signature.to_string(),
+        signature,
         version::STRING.to_string(),
         custom_commands,
     );

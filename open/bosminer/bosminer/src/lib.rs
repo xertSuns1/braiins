@@ -55,6 +55,12 @@ use bosminer_macros::WorkSolverNode;
 
 use std::fmt;
 
+/// Default version signature string
+pub const SIGNATURE: &str = "BOSminer";
+
+/// Vendor of BOSminer create
+pub const VENDOR: &'static str = "Braiins";
+
 #[derive(Debug, WorkSolverNode)]
 pub struct Frontend {
     #[member_work_solver_stats]
@@ -82,6 +88,6 @@ impl node::WorkSolver for Frontend {
 
 impl fmt::Display for Frontend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "BOSminer")
+        write!(f, "{}", SIGNATURE)
     }
 }

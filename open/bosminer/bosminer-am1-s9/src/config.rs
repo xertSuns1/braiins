@@ -56,11 +56,6 @@ use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
-pub const SIGNATURE: &str = "BOSminer";
-
-/// Vendor
-pub const VENDOR: &'static str = "Braiins";
-
 /// Hardware revision
 pub const HW_MODEL: &'static str = "Antminer S9";
 
@@ -511,7 +506,7 @@ impl ConfigBody for Backend {
     }
 
     fn variant() -> String {
-        SIGNATURE.into()
+        bosminer::SIGNATURE.into()
     }
 
     fn version_is_supported(version: &str) -> bool {
