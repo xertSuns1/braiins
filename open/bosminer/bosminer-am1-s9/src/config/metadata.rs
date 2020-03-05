@@ -222,6 +222,15 @@ pub fn for_backend() -> serde_json::Value {
                     "type": "object",
                     "fields": [
                         [
+                            "enabled",
+                            {
+                                "type": "bool",
+                                "label": "Enabled",
+                                "default": DEFAULT_HASH_CHAIN_ENABLED,
+                                "span": 1
+                            }
+                        ],
+                        [
                             "frequency",
                             {
                                 "type": "number",
@@ -244,7 +253,7 @@ pub fn for_backend() -> serde_json::Value {
                                 "max": VOLTAGE_V_MAX,
                                 "float": true,
                                 "default": ["$get", "hash_chain_global", "voltage"],
-                                "span": 6
+                                "span": 5
                             }
                         ]
                     ]

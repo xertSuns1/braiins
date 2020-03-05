@@ -74,6 +74,9 @@ pub const DEFAULT_CONFIG_PATH: &'static str = "/etc/bosminer.toml";
 /// Default Hardware ID path
 pub const DEFAULT_HW_ID_PATH: &'static str = "/tmp/miner_hwid";
 
+/// Default value for hash chain enabled flag
+pub const DEFAULT_HASH_CHAIN_ENABLED: bool = true;
+
 /// Default value for pool enabled flag
 pub const DEFAULT_POOL_ENABLED: bool = true;
 
@@ -365,7 +368,7 @@ impl Backend {
             overridable.as_ref().and_then(|v| v.voltage),
             DEFAULT_VOLTAGE_V,
         );
-        let mut enabled = true;
+        let mut enabled = DEFAULT_HASH_CHAIN_ENABLED;
 
         // If there's a per-chain override then apply it
         if let Some(hash_chain) = self
@@ -373,6 +376,7 @@ impl Backend {
             .as_ref()
             .and_then(|m| m.get(&hash_chain_idx.to_string()))
         {
+            enabled = hash_chain.enabled.unwrap_or(enabled);
             frequency = hash_chain
                 .frequency
                 .map(|v| OptionDefault::Some(v))
@@ -381,7 +385,6 @@ impl Backend {
                 .voltage
                 .map(|v| OptionDefault::Some(v))
                 .unwrap_or(voltage);
-            enabled = hash_chain.enabled.unwrap_or(enabled);
         }
 
         // Computed s9-specific values
