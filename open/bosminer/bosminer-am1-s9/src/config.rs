@@ -34,7 +34,6 @@ mod metadata;
 pub mod support;
 
 use crate::bm1387::MidstateCount;
-use crate::error;
 use crate::fan;
 use crate::hooks;
 use crate::monitor;
@@ -490,9 +489,10 @@ impl Backend {
         }
     }
 
-    pub fn get_hw_id() -> error::Result<String> {
-        let contents = fs::read_to_string(DEFAULT_HW_ID_PATH)?;
-        Ok(contents.trim().into())
+    pub fn fill_info(&mut self) -> Result<(), std::io::Error> {
+        self.info.hw_rev = HW_MODEL.to_string();
+        self.info.dev_id = fs::read_to_string(DEFAULT_HW_ID_PATH)?.trim().to_string();
+        Ok(())
     }
 }
 
@@ -503,10 +503,6 @@ impl ConfigBody for Backend {
 
     fn version() -> String {
         return FORMAT_VERSION.into();
-    }
-
-    fn variant() -> String {
-        bosminer::SIGNATURE.into()
     }
 
     fn version_is_supported(version: &str) -> bool {
@@ -562,6 +558,10 @@ impl ConfigBody for Backend {
 
     fn metadata() -> serde_json::Value {
         metadata::for_backend()
+    }
+
+    fn variant() -> String {
+        bosminer::SIGNATURE.into()
     }
 }
 

@@ -22,8 +22,6 @@
 
 use ii_logging::macros::*;
 
-use bosminer::hal;
-
 use bosminer_am1_s9::config;
 
 use bosminer_config::clap;
@@ -135,7 +133,7 @@ async fn main() {
         return;
     }
 
-    let mut backend_config = match config::FormatWrapper::<config::Backend>::parse(config_path) {
+    let mut backend_config: config::Backend = match config::FormatWrapper::parse(config_path) {
         Err(config::FormatWrapperError::IncompatibleVersion(version, Some(v))) => {
             warn!(
                 "Incompatible format version '{}', but continuing anyway",
@@ -244,18 +242,10 @@ async fn main() {
             .replace(voltage);
     }
 
-    // TODO: Fill all information correctly
-    backend_config.info = hal::BackendInfo {
-        vendor: bosminer::VENDOR.to_string(),
-        hw_rev: config::HW_MODEL.to_string(),
-        fw_ver: format!(
-            "{} {}",
-            bosminer::SIGNATURE,
-            bosminer::version::STRING.to_string()
-        ),
-        // TODO: Correctly handle error
-        dev_id: config::Backend::get_hw_id().unwrap_or_else(|_| "failed to read hwid".to_string()),
-    };
+    if let Err(e) = backend_config.fill_info() {
+        error!("Cannot get backend information: {}", e.to_string());
+        return;
+    }
 
     ii_async_compat::setup_panic_handling();
     bosminer::main::<bosminer_am1_s9::Backend>(backend_config, bosminer::SIGNATURE.to_string())

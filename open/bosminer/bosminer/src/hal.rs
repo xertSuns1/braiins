@@ -66,9 +66,13 @@ pub struct BackendInfo {
 impl Default for BackendInfo {
     fn default() -> Self {
         Self {
-            vendor: Default::default(),
+            vendor: crate::VENDOR.to_string(),
             hw_rev: Default::default(),
-            fw_ver: Default::default(),
+            fw_ver: format!(
+                "{} {}",
+                crate::SIGNATURE,
+                crate::version::STRING.to_string()
+            ),
             dev_id: Default::default(),
         }
     }
