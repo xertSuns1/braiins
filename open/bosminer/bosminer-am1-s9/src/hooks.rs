@@ -51,8 +51,8 @@ pub trait Hooks: Send + Sync + Debug {
     /// Called when init process is about to start hash chain via `Manager`.
     /// Called for each hashchain.
     /// Return value: `true` if init should start hashchain, `false` otherwise.
-    async fn can_start_chain(&self, _manager: Arc<Manager>) -> bool {
-        return true;
+    async fn can_start_chain(&self, manager: Arc<Manager>) -> bool {
+        return manager.chain_config.enabled;
     }
 
     /// Called after miner has been started
