@@ -198,6 +198,13 @@ impl Handle {
     }
 
     #[inline]
+    pub fn try_restart_if_enabled(&self) -> Result<(), ()> {
+        self.try_disable()?;
+        let _ = self.try_enable();
+        Ok(())
+    }
+
+    #[inline]
     pub(crate) fn stats(&self) -> &dyn stats::Client {
         self.node.client_stats()
     }
