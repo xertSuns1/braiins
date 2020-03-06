@@ -74,6 +74,7 @@ impl Handler {
     }
 
     async fn get_pool_status(idx: usize, client: Arc<client::Handle>) -> response::Pool {
+        let client_descriptor = client.descriptor().await;
         let last_job = client.get_last_job().await;
 
         let client_stats = client.stats();
@@ -131,7 +132,7 @@ impl Handler {
 
         response::Pool {
             idx: idx as i32,
-            url: client.descriptor.get_url(true, true, false),
+            url: client_descriptor.get_url(true, true, false),
             status,
             // The pools are sorted by its priority
             priority: idx as i32,
@@ -150,7 +151,7 @@ impl Handler {
             get_failures: 0,
             // TODO: account remote failures
             remote_failures: 0,
-            user: client.descriptor.user.clone(),
+            user: client_descriptor.user.clone(),
             last_share_time,
             diff1_shares: valid_backend_diff.solutions,
             proxy_type: "".to_string(),
@@ -162,7 +163,7 @@ impl Handler {
             work_difficulty: last_diff,
             has_stratum: true,
             stratum_active,
-            stratum_url: client.descriptor.get_url(false, true, false),
+            stratum_url: client_descriptor.get_url(false, true, false),
             stratum_difficulty: last_diff,
             // TODO: get actual value from client (Asic Boost)
             has_vmask: true,
@@ -566,7 +567,8 @@ impl command::Handler for Handler {
             .to_i32()
             .expect("BUG: invalid ENABLEPOOL parameter type");
         let (client, _) = self.get_client(idx).await?;
-        let url = client.descriptor.get_url(true, true, false);
+        let client_descriptor = client.descriptor().await;
+        let url = client_descriptor.get_url(true, true, false);
 
         client
             .try_enable()
@@ -587,7 +589,8 @@ impl command::Handler for Handler {
             .to_i32()
             .expect("BUG: invalid DISABLEPOOL parameter type");
         let (client, _) = self.get_client(idx).await?;
-        let url = client.descriptor.get_url(true, true, false);
+        let client_descriptor = client.descriptor().await;
+        let url = client_descriptor.get_url(true, true, false);
 
         client
             .try_disable()
@@ -619,7 +622,7 @@ impl command::Handler for Handler {
             .await;
         let client = group
             .push_client(client::Handle::new(
-                client_descriptor,
+                client_descriptor.clone(),
                 self.core.backend_info.clone(),
                 None,
             ))
@@ -635,7 +638,7 @@ impl command::Handler for Handler {
 
         Ok(response::AddPool {
             idx,
-            url: client.descriptor.get_url(true, true, false),
+            url: client_descriptor.get_url(true, true, false),
         })
     }
 
@@ -663,10 +666,11 @@ impl command::Handler for Handler {
             }
             None => Err(response::ErrorCode::InvalidPoolId(idx, -1))?,
         };
+        let client_descriptor = client.descriptor().await;
 
         Ok(response::RemovePool {
             idx: idx as usize,
-            url: client.descriptor.get_url(true, true, false),
+            url: client_descriptor.get_url(true, true, false),
         })
     }
 
@@ -694,10 +698,11 @@ impl command::Handler for Handler {
             }
             None => Err(response::ErrorCode::InvalidPoolId(idx, -1))?,
         };
+        let client_descriptor = client.descriptor().await;
 
         Ok(response::SwitchPool {
             idx: idx as usize,
-            url: client.descriptor.get_url(true, true, false),
+            url: client_descriptor.get_url(true, true, false),
         })
     }
 

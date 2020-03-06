@@ -56,7 +56,7 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct Handle {
     // Basic information about client used for connection to remote server
-    pub descriptor: ClientDescriptor,
+    descriptor: ClientDescriptor,
     node: Arc<dyn node::Client>,
     enabled: AtomicBool,
     engine_sender: Arc<work::EngineSender>,
@@ -112,6 +112,11 @@ impl Handle {
             engine_sender,
             solution_sender,
         }
+    }
+
+    #[inline]
+    pub async fn descriptor(&self) -> ClientDescriptor {
+        self.descriptor.clone()
     }
 
     pub fn replace_engine_generator(
