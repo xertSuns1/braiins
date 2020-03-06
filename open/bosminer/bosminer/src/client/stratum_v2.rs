@@ -1003,6 +1003,8 @@ impl node::Client for StratumClient {
             .as_ref()
             .map(|job| job.clone() as Arc<dyn job::Bitcoin>)
     }
+
+    fn update_descriptor(&self, _descriptor: &bosminer_config::ClientDescriptor) {}
 }
 
 impl fmt::Display for StratumClient {
