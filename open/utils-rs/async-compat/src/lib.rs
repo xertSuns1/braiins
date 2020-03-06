@@ -404,11 +404,7 @@ mod test {
 
         // Spawn a couple of tasks on the handle
         for _ in 0..10 {
-            handle.spawn(|tripwire| {
-                async {
-                    forever_stream(tripwire).await;
-                }
-            });
+            handle.spawn(|tripwire| forever_stream(tripwire));
         }
 
         // Signal ready, halt, and join tasks
@@ -425,11 +421,7 @@ mod test {
 
         // Spawn a couple of tasks on the handle
         for _ in 0..10 {
-            handle.spawn(|tripwire| {
-                async {
-                    forever_stream(tripwire).await;
-                }
-            });
+            handle.spawn(|tripwire| forever_stream(tripwire));
         }
 
         // Spawn a task that will halt()
