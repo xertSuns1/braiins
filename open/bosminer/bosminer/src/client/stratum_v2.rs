@@ -49,6 +49,7 @@ use ii_async_compat::select;
 use std::collections::VecDeque;
 use std::fmt;
 use std::net::ToSocketAddrs;
+use std::sync::Mutex as StdMutex;
 use std::sync::{Arc, Weak};
 use std::time;
 
@@ -472,13 +473,14 @@ impl StratumConnectionHandler {
         R: FrameStream,
         S: FrameSink,
     {
+        let connection_details = self.client.connection_details();
         let setup_msg = SetupConnection {
             protocol: 0,
             max_version: 2,
             min_version: 2,
             flags: 0,
-            endpoint_host: Str0_255::from_string(self.client.connection_details.host.clone()),
-            endpoint_port: self.client.connection_details.port,
+            endpoint_host: Str0_255::from_string(connection_details.host.clone()),
+            endpoint_port: connection_details.port,
             device: self.client.backend_info.clone().unwrap_or_default().into(),
         };
         StratumClient::send_msg(&connection_tx, setup_msg)
@@ -510,7 +512,7 @@ impl StratumConnectionHandler {
             req_id: 10, // TODO? come up with request ID sequencing
             user: self
                 .client
-                .connection_details
+                .connection_details()
                 .user
                 .clone()
                 .try_into()
@@ -539,7 +541,7 @@ impl StratumConnectionHandler {
     async fn connect(&self) -> error::Result<v2::Framed> {
         let socket_addr = self
             .client
-            .connection_details
+            .connection_details()
             .get_host_and_port()
             .to_socket_addrs()
             .context("Invalid server address")?
@@ -637,7 +639,7 @@ pub type ExtensionChannelFromStratumSender = mpsc::Sender<ExtensionChannelMsg>;
 
 #[derive(Debug, ClientNode)]
 pub struct StratumClient {
-    connection_details: ConnectionDetails,
+    connection_details: Arc<StdMutex<ConnectionDetails>>,
     backend_info: Option<hal::BackendInfo>,
     #[member_status]
     status: sync::StatusMonitor,
@@ -723,7 +725,7 @@ impl StratumClient {
         });
 
         Self {
-            connection_details,
+            connection_details: Arc::new(StdMutex::new(connection_details)),
             backend_info,
             status: Default::default(),
             client_stats: Default::default(),
@@ -736,6 +738,13 @@ impl StratumClient {
             extension_channel_receiver: Mutex::new(extension_channel_receiver),
             extension_channel_sender: Mutex::new(extension_channel_sender),
         }
+    }
+
+    fn connection_details(&self) -> ConnectionDetails {
+        self.connection_details
+            .lock()
+            .expect("BUG: cannot lock connection details")
+            .clone()
     }
 
     async fn update_last_job(&self, job: Arc<StratumJob>) {
@@ -884,11 +893,9 @@ impl StratumClient {
 
     async fn run(self: Arc<Self>) {
         let connection_handler = StratumConnectionHandler::new(self.clone());
-        let host_and_port = connection_handler
-            .client
-            .connection_details
-            .get_host_and_port();
-        let user = connection_handler.client.connection_details.user.clone();
+        let connection_details = connection_handler.client.connection_details();
+        let host_and_port = connection_details.get_host_and_port();
+        let user = connection_details.user.clone();
 
         match connection_handler
             .connect()
@@ -1004,17 +1011,24 @@ impl node::Client for StratumClient {
             .map(|job| job.clone() as Arc<dyn job::Bitcoin>)
     }
 
-    fn update_descriptor(&self, _descriptor: &bosminer_config::ClientDescriptor) {}
+    fn change_descriptor(&self, descriptor: &bosminer_config::ClientDescriptor) {
+        *self
+            .connection_details
+            .lock()
+            .expect("BUG: cannot lock connection details") =
+            ConnectionDetails::from_descriptor(descriptor);
+    }
 }
 
 impl fmt::Display for StratumClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let connection_details = self.connection_details();
         write!(
             f,
             "{}://{}@{}",
             ClientProtocol::SCHEME_STRATUM_V2,
-            self.connection_details.host,
-            self.connection_details.user
+            connection_details.host,
+            connection_details.user
         )
     }
 }

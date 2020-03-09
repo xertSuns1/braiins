@@ -59,7 +59,7 @@ pub trait Client: Info + ClientStats {
     /// Return latest received job
     async fn get_last_job(&self) -> Option<Arc<dyn job::Bitcoin>>;
     /// FIXME: Do not allow dynamic descriptor changes
-    fn update_descriptor(&self, _descriptor: &bosminer_config::ClientDescriptor) {}
+    fn change_descriptor(&self, _descriptor: &bosminer_config::ClientDescriptor) {}
 }
 
 pub trait ClientStats: Stats {

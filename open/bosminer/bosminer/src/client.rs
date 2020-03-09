@@ -56,7 +56,7 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct Handle {
     // Basic information about client used for connection to remote server
-    descriptor: ClientDescriptor,
+    descriptor: Arc<Mutex<ClientDescriptor>>,
     node: Arc<dyn node::Client>,
     enabled: AtomicBool,
     engine_sender: Arc<work::EngineSender>,
@@ -106,7 +106,7 @@ impl Handle {
         };
 
         Self {
-            descriptor,
+            descriptor: Arc::new(Mutex::new(descriptor)),
             node,
             enabled: AtomicBool::new(false),
             engine_sender,
@@ -116,7 +116,17 @@ impl Handle {
 
     #[inline]
     pub async fn descriptor(&self) -> ClientDescriptor {
-        self.descriptor.clone()
+        self.descriptor.lock().await.clone()
+    }
+
+    pub async fn change_descriptor(&self, descriptor: ClientDescriptor) {
+        // NOTE: Keep descriptor locked to synchronize descriptor changes
+        let mut current_descriptor = self.descriptor.lock().await;
+
+        self.node.change_descriptor(&descriptor);
+        *current_descriptor = descriptor;
+
+        let _ = self.try_restart_if_enabled();
     }
 
     pub fn replace_engine_generator(
@@ -286,10 +296,15 @@ impl Group {
             .await
             .push(scheduler_client_handle);
 
-        if client_handle.descriptor.enabled {
-            client_handle
-                .try_enable()
-                .expect("BUG: client is already enabled");
+        {
+            // NOTE: Keep descriptor locked to synchronize descriptor changes
+            let client_descriptor = client_handle.descriptor.lock().await;
+
+            if client_descriptor.enabled {
+                client_handle
+                    .try_enable()
+                    .expect("BUG: client is already enabled");
+            }
         }
 
         client_handle
