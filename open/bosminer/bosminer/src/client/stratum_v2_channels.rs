@@ -62,7 +62,7 @@ use ii_stratum::v2::types::*;
 use ii_stratum::v2::{build_message_from_frame, Handler};
 use ii_stratum::{v1, v2};
 use ii_stratum_proxy::translation::{V2ToV1Translation, V2ToV1TranslationOptions};
-use ii_wire::{Connection, ConnectionRx, ConnectionTx};
+use ii_wire::Connection;
 
 use std::collections::HashMap;
 
@@ -549,10 +549,7 @@ impl StratumConnectionHandler {
             .unwrap_or(Err("Unexpected response for stratum open channel".into()))
     }
 
-    async fn connect<F>(self) -> error::Result<(ConnectionRx<F>, ConnectionTx<F>)>
-    where
-        F: ii_wire::Framing,
-    {
+    async fn connect(self) -> error::Result<v1::Framed> {
         let socket_addr = self
             .client
             .connection_details
@@ -564,12 +561,11 @@ impl StratumConnectionHandler {
             .next()
             .ok_or("Cannot resolve any IP address")?;
 
-        let connection = Connection::<F>::connect(&socket_addr)
+        let connection = Connection::<v1::Framing>::connect(&socket_addr)
             .await
             .context("Cannot connect to stratum server")?;
-        let (connection_rx, connection_tx) = connection.split();
 
-        Ok((connection_rx, connection_tx))
+        Ok(connection.into_inner())
     }
 
     /// Starts mining session and provides the initial target negotiated by the upstream endpoint
@@ -752,17 +748,17 @@ impl StratumClient {
 
     async fn run(self: Arc<Self>) {
         match StratumConnectionHandler::new(self.clone())
-            .connect::<v1::Framing>()
+            .connect()
             .timeout(Self::CONNECTION_TIMEOUT)
             .await
         {
-            Ok(Ok((v1_connection_rx, v1_connection_tx))) => {
+            Ok(Ok(v1_framed_connection)) => {
                 if self.status.initiate_running() {
                     let options = V2ToV1TranslationOptions {
                         try_enable_xnsub: self.connection_details.try_enable_xnsub(),
                     };
                     let (translation_handler, v2_translation_rx, v2_translation_tx) =
-                        TranslationHandler::new(v1_connection_rx, v1_connection_tx, options);
+                        TranslationHandler::new(v1_framed_connection, options);
                     tokio::spawn(async move {
                         let status = translation_handler.run().await;
                         info!("V2->V1 translation terminated: {:?}", status);
@@ -812,10 +808,8 @@ impl StratumClient {
 struct TranslationHandler {
     /// Actual protocol translator
     translation: V2ToV1Translation,
-    /// Upstream V1 connection - rx part
-    v1_conn_rx: ConnectionRx<v1::Framing>,
-    /// Upstream V1 connection - tx part
-    v1_conn_tx: ConnectionTx<v1::Framing>,
+    /// Upstream V1 connection
+    v1_conn: v1::Framed,
     /// Receiver for V1 frames from the translator that will be sent out via V1 connection
     v1_translation_rx: mpsc::Receiver<v1::Frame>,
     /// V2 Frames from the client that we use for feeding the translator
@@ -827,8 +821,7 @@ impl TranslationHandler {
 
     /// Builds the new translation handler and provides Tx/Rx communication ends
     fn new(
-        v1_conn_rx: ConnectionRx<v1::Framing>,
-        v1_conn_tx: ConnectionTx<v1::Framing>,
+        v1_conn: v1::Framed,
         options: V2ToV1TranslationOptions,
     ) -> (Self, mpsc::Receiver<v2::Frame>, mpsc::Sender<v2::Frame>) {
         let (v1_translation_tx, v1_translation_rx) =
@@ -842,8 +835,7 @@ impl TranslationHandler {
         (
             Self {
                 translation,
-                v1_conn_rx,
-                v1_conn_tx,
+                v1_conn,
                 v1_translation_rx,
                 v2_client_rx,
             },
@@ -866,7 +858,7 @@ impl TranslationHandler {
         loop {
             select! {
                 // Receive V1 frame and translate it to V2 message
-                v1_frame = self.v1_conn_rx.next().timeout(StratumClient::EVENT_TIMEOUT).fuse() => {
+                v1_frame = self.v1_conn.next().timeout(StratumClient::EVENT_TIMEOUT).fuse() => {
                     match v1_frame {
                         Ok(Some(v1_frame)) => {
                             let v1_msg = v1::build_message_from_frame(v1_frame?)?;
@@ -894,7 +886,7 @@ impl TranslationHandler {
                 v1_frame = self.v1_translation_rx.next().fuse() => {
                     match v1_frame {
                         Some(v1_frame) => self
-                            .v1_conn_tx
+                            .v1_conn
                             .send(v1_frame)
                             // NOTE: this timeout is important otherwise the whole task could
                             // block indefinitely and the above timeout for v1_conn_rx wouldn't

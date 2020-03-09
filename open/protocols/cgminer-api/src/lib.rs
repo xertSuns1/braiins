@@ -135,8 +135,7 @@ async fn handle_connection_task(mut conn: Connection, command_receiver: Arc<comm
         _ => return, // We pretty much ignore I/O errors here
     };
 
-    conn.tx
-        .send(response)
+    conn.send(response)
         .await
         .unwrap_or_else(|e| warn!("CGMiner API: cannot send response ({})", e));
 }

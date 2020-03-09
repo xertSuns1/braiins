@@ -52,7 +52,6 @@ use std::net::ToSocketAddrs;
 use std::sync::{Arc, Weak};
 use std::time;
 
-use ii_stratum::v2::framing::{Framing, Header};
 use ii_stratum::v2::messages::{
     NewMiningJob, OpenStandardMiningChannel, OpenStandardMiningChannelError,
     OpenStandardMiningChannelSuccess, SetNewPrevHash, SetTarget, SetupConnection,
@@ -60,8 +59,12 @@ use ii_stratum::v2::messages::{
     SubmitSharesSuccess,
 };
 use ii_stratum::v2::types::*;
+use ii_stratum::v2::{
+    self,
+    framing::{Framing, Header},
+};
 use ii_stratum::v2::{build_message_from_frame, extensions, Handler};
-use ii_wire::{Connection, ConnectionRx, ConnectionTx};
+use ii_wire::Connection;
 
 use std::collections::HashMap;
 
@@ -533,7 +536,7 @@ impl StratumConnectionHandler {
             .unwrap_or(Err("Unexpected response for stratum open channel".into()))
     }
 
-    async fn connect(&self) -> error::Result<(ConnectionRx<Framing>, ConnectionTx<Framing>)> {
+    async fn connect(&self) -> error::Result<v2::Framed> {
         let socket_addr = self
             .client
             .connection_details
@@ -549,9 +552,7 @@ impl StratumConnectionHandler {
         let connection = Connection::<Framing>::connect(&socket_addr)
             .await
             .context("Cannot connect to stratum server")?;
-        let (connection_rx, connection_tx) = connection.split();
-
-        Ok((connection_rx, connection_tx))
+        Ok(connection.into_inner())
     }
 
     /// Starts mining session and provides the initial target negotiated by the upstream endpoint
@@ -895,10 +896,11 @@ impl StratumClient {
             .await
             .map_err(|_| error::ErrorKind::General("Connection timeout".to_string()).into())
         {
-            Ok(Ok((mut connection_rx, connection_tx))) => {
-                let connection_tx = Arc::new(Mutex::new(connection_tx));
+            Ok(Ok(framed_connection)) => {
+                let (framed_sink, mut framed_stream) = framed_connection.split();
+                let framed_sink = Arc::new(Mutex::new(framed_sink));
                 match connection_handler
-                    .init_mining_session(&mut connection_rx, connection_tx.clone())
+                    .init_mining_session(&mut framed_stream, framed_sink.clone())
                     .timeout(Self::CONNECTION_TIMEOUT)
                     .await
                     .map_err(|_| {
@@ -907,7 +909,7 @@ impl StratumClient {
                     Ok(Ok(init_target)) => {
                         if self.status.initiate_running() {
                             self.clone()
-                                .run_job_solver(connection_rx, connection_tx, init_target)
+                                .run_job_solver(framed_stream, framed_sink, init_target)
                                 .await;
                         }
                     }
