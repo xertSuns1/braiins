@@ -20,7 +20,10 @@
 // of such proprietary license or if you have any other questions, please
 // contact us at opensource@braiins.com.
 
+pub mod event;
+
 use std::sync::atomic::Ordering;
+use std::sync::Mutex;
 
 use atomic_enum::atomic_enum;
 
@@ -45,6 +48,7 @@ pub enum Status {
 #[derive(Debug)]
 pub struct StatusMonitor {
     status: AtomicStatus,
+    event_sender: Mutex<Option<event::Sender>>,
 }
 
 impl StatusMonitor {
@@ -124,6 +128,7 @@ impl StatusMonitor {
                             .compare_and_swap(status, Status::Running, Ordering::Relaxed);
                     if status == previous {
                         // Running has been set successfully
+                        self.notify();
                         break;
                     }
                 }
@@ -232,6 +237,7 @@ impl StatusMonitor {
                         self.status
                             .compare_and_swap(status, Status::Stopped, Ordering::Relaxed);
                     if status == previous {
+                        self.notify();
                         return true;
                     }
                 }
@@ -241,6 +247,7 @@ impl StatusMonitor {
                         self.status
                             .compare_and_swap(status, Status::Failed, Ordering::Relaxed);
                     if status == previous {
+                        self.notify();
                         return true;
                     }
                 }
@@ -271,12 +278,28 @@ impl StatusMonitor {
         // Stop cannot be done
         false
     }
+
+    pub fn set_event_sender(&self, event_sender: event::Sender) -> Option<event::Sender> {
+        self.event_sender
+            .lock()
+            .expect("BUG: cannot lock event sender for setting")
+            .replace(event_sender)
+    }
+
+    fn notify(&self) {
+        self.event_sender
+            .lock()
+            .expect("BUG: cannot lock event sender for notification")
+            .as_ref()
+            .map(|v| v.notify());
+    }
 }
 
 impl Default for StatusMonitor {
     fn default() -> Self {
         Self {
             status: AtomicStatus::new(Status::Created),
+            event_sender: Mutex::new(None),
         }
     }
 }
