@@ -125,8 +125,6 @@ impl Handle {
 
         self.node.change_descriptor(&descriptor);
         *current_descriptor = descriptor;
-
-        let _ = self.try_restart_if_enabled();
     }
 
     pub fn replace_engine_generator(
@@ -187,7 +185,7 @@ impl Handle {
     }
 
     /// Try to enable the client. Default client state should be disabled.
-    pub(crate) fn try_enable(&self) -> Result<(), ()> {
+    pub fn try_enable(&self) -> Result<(), ()> {
         let was_enabled = self.enabled.swap(true, Ordering::Relaxed);
         if !was_enabled {
             // Immediately start the client when it was disabled
@@ -200,7 +198,7 @@ impl Handle {
     }
 
     /// Try to disable the client
-    pub(crate) fn try_disable(&self) -> Result<(), ()> {
+    pub fn try_disable(&self) -> Result<(), ()> {
         let was_enabled = self.enabled.swap(false, Ordering::Relaxed);
         if was_enabled {
             // Immediately stop the client when it was disabled
@@ -213,8 +211,15 @@ impl Handle {
     }
 
     #[inline]
-    pub fn try_restart_if_enabled(&self) -> Result<(), ()> {
-        self.try_disable()?;
+    pub fn try_restart(&self, enabled: bool) -> Result<(), ()> {
+        match self.try_disable() {
+            Ok(_) => {}
+            Err(_) => {
+                if enabled {
+                    return Err(());
+                }
+            }
+        }
         let _ = self.try_enable();
         Ok(())
     }
