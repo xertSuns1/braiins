@@ -26,15 +26,31 @@ use tokio::sync::broadcast;
 type BroadcastSender = broadcast::Sender<()>;
 type BroadcastReceiver = broadcast::Receiver<()>;
 
-pub fn channel() -> (Sender, Monitor) {
-    let (broadcast_sender, _) = broadcast::channel(1);
+#[derive(Debug, Clone)]
+pub struct Monitor {
+    broadcast_sender: BroadcastSender,
+}
 
-    (
+impl Monitor {
+    pub fn new() -> Self {
+        let (broadcast_sender, _) = broadcast::channel(1);
+
+        Self { broadcast_sender }
+    }
+
+    #[inline]
+    pub fn publish(&self) -> Sender {
         Sender {
-            broadcast_sender: broadcast_sender.clone(),
-        },
-        Monitor { broadcast_sender },
-    )
+            broadcast_sender: self.broadcast_sender.clone(),
+        }
+    }
+
+    #[inline]
+    pub fn subscribe(&self) -> Receiver {
+        Receiver {
+            broadcast_receiver: self.broadcast_sender.subscribe(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -47,19 +63,6 @@ impl Sender {
     pub fn notify(&self) {
         // Ignore number of subscribers and errors because there are recoverable
         let _ = self.broadcast_sender.send(());
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Monitor {
-    broadcast_sender: BroadcastSender,
-}
-
-impl Monitor {
-    pub fn subscribe(&self) -> Receiver {
-        Receiver {
-            broadcast_receiver: self.broadcast_sender.subscribe(),
-        }
     }
 }
 

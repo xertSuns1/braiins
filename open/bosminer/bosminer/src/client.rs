@@ -35,6 +35,7 @@ use crate::hal;
 use crate::job;
 use crate::node;
 use crate::stats;
+use crate::sync::event;
 use crate::work;
 
 // Scheduler re-exports
@@ -153,6 +154,11 @@ impl Handle {
     }
 
     #[inline]
+    fn set_event_sender(&self, event_sender: event::Sender) -> Option<event::Sender> {
+        self.node.status().set_event_sender(event_sender)
+    }
+
+    #[inline]
     pub fn is_running(&self) -> bool {
         self.is_enabled() && self.status() == crate::sync::Status::Running
     }
@@ -254,15 +260,21 @@ impl PartialEq for Handle {
 pub struct Group {
     pub descriptor: GroupDescriptor,
     scheduler_client_handles: Mutex<Vec<scheduler::ClientHandle>>,
+    event_sender: event::Sender,
     /// All clients in the group must support the same amount of midstates
     midstate_count: usize,
 }
 
 impl Group {
-    fn new(descriptor: GroupDescriptor, midstate_count: usize) -> Self {
+    fn new(
+        descriptor: GroupDescriptor,
+        event_sender: event::Sender,
+        midstate_count: usize,
+    ) -> Self {
         Self {
             descriptor,
             scheduler_client_handles: Mutex::new(vec![]),
+            event_sender,
             midstate_count,
         }
     }
@@ -293,6 +305,7 @@ impl Group {
             Arc::new(work::engine::VersionRolling::new(job, midstate_count))
         }));
         let _ = client_handle.try_disable();
+        client_handle.set_event_sender(self.event_sender.clone());
 
         let client_handle = Arc::new(client_handle);
         let scheduler_client_handle = scheduler::ClientHandle::new(client_handle.clone());
@@ -377,15 +390,17 @@ impl Group {
 /// Keeps track of all active clients
 pub struct GroupRegistry {
     list: Vec<scheduler::GroupHandle>,
+    event_monitor: event::Monitor,
     total_quota: usize,
     fixed_share_ratio_count: usize,
     total_fixed_share_ratio: f64,
 }
 
 impl GroupRegistry {
-    pub fn new() -> Self {
+    pub fn new(event_monitor: event::Monitor) -> Self {
         Self {
             list: vec![],
+            event_monitor,
             total_quota: 0,
             fixed_share_ratio_count: 0,
             total_fixed_share_ratio: 0.0,
@@ -436,7 +451,11 @@ impl GroupRegistry {
             }
         }
 
-        let group_handle = Arc::new(Group::new(descriptor, midstate_count));
+        let group_handle = Arc::new(Group::new(
+            descriptor,
+            self.event_monitor.publish(),
+            midstate_count,
+        ));
         let scheduler_group_handle = scheduler::GroupHandle::new(group_handle.clone());
         self.list.push(scheduler_group_handle);
         self.recalculate_quotas(true);
@@ -505,15 +524,18 @@ impl GroupRegistry {
 
 #[derive(Debug, Clone)]
 pub struct Manager {
-    midstate_count: usize,
     group_registry: Arc<Mutex<GroupRegistry>>,
+    event_monitor: event::Monitor,
+    midstate_count: usize,
 }
 
 impl Manager {
     pub fn new(midstate_count: usize) -> Self {
+        let event_monitor = event::Monitor::new();
         Self {
+            group_registry: Arc::new(Mutex::new(GroupRegistry::new(event_monitor.clone()))),
+            event_monitor,
             midstate_count,
-            group_registry: Arc::new(Mutex::new(GroupRegistry::new())),
         }
     }
 
@@ -547,6 +569,11 @@ impl Manager {
             }
         }
         Ok(())
+    }
+
+    #[inline]
+    pub fn subscribe_to_clients_status_changes(&self) -> event::Receiver {
+        self.event_monitor.subscribe()
     }
 
     #[inline]
