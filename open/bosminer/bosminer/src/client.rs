@@ -124,7 +124,7 @@ impl Handle {
         // NOTE: Keep descriptor locked to synchronize descriptor changes
         let mut current_descriptor = self.descriptor.lock().await;
 
-        self.node.change_descriptor(&descriptor);
+        self.node.change_connection_details(&descriptor);
         *current_descriptor = descriptor;
     }
 

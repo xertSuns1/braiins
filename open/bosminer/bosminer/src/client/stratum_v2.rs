@@ -1011,7 +1011,8 @@ impl node::Client for StratumClient {
             .map(|job| job.clone() as Arc<dyn job::Bitcoin>)
     }
 
-    fn change_descriptor(&self, descriptor: &bosminer_config::ClientDescriptor) {
+    /// Build new connection details from the specified `descriptor`
+    fn change_connection_details(&self, descriptor: &bosminer_config::ClientDescriptor) {
         *self
             .connection_details
             .lock()
