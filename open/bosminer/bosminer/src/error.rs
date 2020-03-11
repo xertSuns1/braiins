@@ -106,6 +106,18 @@ impl From<ii_stratum::error::Error> for Error {
     }
 }
 
+impl From<ii_wire::AddressParseError> for Error {
+    fn from(address_error: ii_wire::AddressParseError) -> Self {
+        ErrorKind::General(address_error.to_string()).into()
+    }
+}
+
+impl From<ii_wire::AttemptError> for Error {
+    fn from(attempt_error: ii_wire::AttemptError) -> Self {
+        ErrorKind::General(attempt_error.to_string()).into()
+    }
+}
+
 impl From<Client> for Error {
     fn from(client: Client) -> Self {
         ErrorKind::Client(client).into()
