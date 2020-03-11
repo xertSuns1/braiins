@@ -21,12 +21,12 @@
 // contact us at opensource@braiins.com.
 
 use crate::client;
+use crate::sync::event;
 use crate::work;
 
 use futures::channel::mpsc;
 use futures::lock::{Mutex, MutexGuard};
-use ii_async_compat::{futures, tokio};
-use tokio::time::delay_for;
+use ii_async_compat::{futures, FutureExt};
 
 use std::sync::Arc;
 use std::time;
@@ -311,6 +311,7 @@ impl JobDispatcher {
 pub struct JobExecutor {
     frontend: Arc<crate::Frontend>,
     group_registry: Arc<Mutex<client::GroupRegistry>>,
+    event_monitor: Mutex<Option<event::Monitor>>,
     dispatcher: Mutex<JobDispatcher>,
 }
 
@@ -325,6 +326,7 @@ impl JobExecutor {
         Self {
             frontend,
             group_registry: client_manager.group_registry.clone(),
+            event_monitor: Mutex::new(Some(client_manager.event_monitor.clone())),
             dispatcher: Mutex::new(JobDispatcher::new(
                 engine_sender,
                 client_manager.group_registry,
@@ -362,11 +364,27 @@ impl JobExecutor {
     }
 
     pub async fn run(self: Arc<Self>) {
+        let mut event_receiver = self
+            .event_monitor
+            .lock()
+            .await
+            .take()
+            .expect("BUG: missing event monitor")
+            .subscribe();
+
         loop {
             let last_generated_work = self.frontend.get_generated_work();
 
-            // TODO: Interrupt waiting whenever the client state has changed
-            delay_for(Self::SCHEDULE_INTERVAL).await;
+            // Interrupt waiting when client status changes
+            match event_receiver
+                .wait_for_event()
+                .timeout(Self::SCHEDULE_INTERVAL)
+                .await
+            {
+                // Stop scheduler when event receiver ends
+                Ok(Err(_)) => break,
+                _ => {}
+            }
 
             // Determine how much work has been generated from last run
             let generated_work_delta = self.frontend.get_generated_work() - last_generated_work;
