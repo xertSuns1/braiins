@@ -33,6 +33,8 @@ pub struct Monitor {
 
 impl Monitor {
     pub fn new() -> Self {
+        // Throwaway the receiver as we provide the `subscribe()` method to create as many
+        // broadcast receivers as needed for a particular application
         let (broadcast_sender, _) = broadcast::channel(1);
 
         Self { broadcast_sender }
