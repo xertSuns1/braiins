@@ -26,6 +26,14 @@ use super::*;
 
 use bosminer_config::CLIENT_URL_JAVA_SCRIPT_REGEX;
 
+const DESCRIPTION_CAUTION_OVERCLOCKING: &'static str =
+    "Caution: Overclocking may damage your device. Proceed at your own risk!";
+const DESCRIPTION_CAUTION_CHANGING_DEFAULT: &'static str =
+    "Caution: Changing the default settings may cause overheating problems which can result in \
+     shutdown of the system or even irreversible hardware damage. Proceed at your own risk!";
+const DESCRIPTION_NUMBER_OF_FANS: &'static str =
+    "Number of fans required for system to run. For immersion cooling, use the value '0'.";
+
 use serde_json::{self, json};
 
 pub fn for_backend() -> serde_json::Value {
@@ -78,8 +86,10 @@ pub fn for_backend() -> serde_json::Value {
             "group",
             {
                 "type": "array",
-                "label": "Groups",
+                "label": "Pool Groups",
+                "add_label": "Add New Group",
                 "sortable": true,
+                "optional": true,
                 "item": {
                     "type": "object",
                     "fields": [
@@ -87,7 +97,7 @@ pub fn for_backend() -> serde_json::Value {
                             "name",
                             {
                                 "type": "string",
-                                "label": "Name",
+                                "label": "Group Name",
                                 "min_length": 1,
                                 "span": 6
                             }
@@ -118,8 +128,10 @@ pub fn for_backend() -> serde_json::Value {
                             "pool",
                             {
                                 "type": "array",
-                                "label": "List of Pools",
+                                "label": "Pools",
+                                "add_label": "Add New Pool",
                                 "sortable": true,
+                                "optional": true,
                                 "item": {
                                     "type": "object",
                                     "fields": [
@@ -136,7 +148,7 @@ pub fn for_backend() -> serde_json::Value {
                                             "url",
                                             {
                                                 "type": "url",
-                                                "label": "URL",
+                                                "label": "Pool URL",
                                                 "min_length": 1,
                                                 "match": CLIENT_URL_JAVA_SCRIPT_REGEX,
                                                 "span": 5
@@ -146,7 +158,7 @@ pub fn for_backend() -> serde_json::Value {
                                             "user",
                                             {
                                                 "type": "string",
-                                                "label": "User",
+                                                "label": "Username",
                                                 "min_length": 1,
                                                 "span": 4
                                             }
@@ -173,6 +185,7 @@ pub fn for_backend() -> serde_json::Value {
             {
                 "type": "object",
                 "label": "Global Hash Chain Settings",
+                "description": DESCRIPTION_CAUTION_OVERCLOCKING,
                 "fields": [
                     [
                         "asic_boost",
@@ -279,12 +292,12 @@ pub fn for_backend() -> serde_json::Value {
                                 {
                                     "key": TempControlMode::Manual.to_string(),
                                     "label": "Manual",
-                                    "alert": "Warning ..."
+                                    "alert": DESCRIPTION_CAUTION_CHANGING_DEFAULT
                                 },
                                 {
                                     "key": TempControlMode::Disabled.to_string(),
                                     "label": "Disabled",
-                                    "alert": "Warning ..."
+                                    "alert": DESCRIPTION_CAUTION_CHANGING_DEFAULT
                                 }
                             ],
                             "default": TempControlMode::Auto.to_string()
@@ -298,6 +311,7 @@ pub fn for_backend() -> serde_json::Value {
                             "unit": "°C",
                             "min": TEMPERATURE_C_MIN,
                             "max": TEMPERATURE_C_MAX,
+                            "step": 0.1,
                             "float": true,
                             "default": DEFAULT_TARGET_TEMP_C,
                             "disabled": ["$neq", ["$get", "temp_control", "mode"], "auto"],
@@ -312,6 +326,7 @@ pub fn for_backend() -> serde_json::Value {
                             "unit": "°C",
                             "min": TEMPERATURE_C_MIN,
                             "max": TEMPERATURE_C_MAX,
+                            "step": 0.1,
                             "float": true,
                             "default": DEFAULT_HOT_TEMP_C,
                             "disabled": ["$eq", ["$get", "temp_control", "mode"], "disabled"],
@@ -326,6 +341,7 @@ pub fn for_backend() -> serde_json::Value {
                             "unit": "°C",
                             "min": TEMPERATURE_C_MIN,
                             "max": TEMPERATURE_C_MAX,
+                            "step": 0.1,
                             "float": true,
                             "default": DEFAULT_DANGEROUS_TEMP_C,
                             "disabled": ["$eq", ["$get", "temp_control", "mode"], "disabled"],
@@ -349,6 +365,7 @@ pub fn for_backend() -> serde_json::Value {
                             "unit": "%",
                             "min": FAN_SPEED_MIN,
                             "max": FAN_SPEED_MAX,
+                            "step": 1,
                             "default": DEFAULT_FAN_SPEED,
                             "disabled": ["$eq", ["$get", "temp_control", "mode"], "auto"]
                         }
@@ -358,8 +375,10 @@ pub fn for_backend() -> serde_json::Value {
                         {
                             "type": "number",
                             "label": "Minimum Running Fans",
+                            "description": DESCRIPTION_NUMBER_OF_FANS,
                             "min": FANS_MIN,
                             "max": FANS_MAX,
+                            "step": 1,
                             "default": DEFAULT_MIN_FANS
                         }
                     ]
