@@ -159,6 +159,11 @@ impl Handle {
     }
 
     #[inline]
+    fn take_event_sender(&self) -> Option<event::Sender> {
+        self.node.status().take_event_sender()
+    }
+
+    #[inline]
     pub fn is_running(&self) -> bool {
         self.is_enabled() && self.status() == crate::sync::Status::Running
     }
@@ -313,6 +318,8 @@ impl Group {
             .lock()
             .await
             .push(scheduler_client_handle);
+        // Immediately notify about client addition to the group
+        self.event_sender.notify();
 
         {
             // NOTE: Keep descriptor locked to synchronize descriptor changes
@@ -334,6 +341,10 @@ impl Group {
             Err(error::Client::Missing)
         } else {
             let client_handle = scheduler_client_handles.remove(index).client_handle;
+            // Immediately notify about client removal from the group
+            self.event_sender.notify();
+            // Remove event sender not to notify about removed client status changes
+            client_handle.take_event_sender();
             // Immediately disable client to force scheduler to select another client
             let _ = client_handle.try_disable();
             Ok(client_handle)
@@ -370,7 +381,11 @@ impl Group {
             .concat();
         }
 
-        Ok(scheduler_client_handles[index_to].client_handle.clone())
+        let client_handle = scheduler_client_handles[index_to].client_handle.clone();
+        // Immediately notify about client move in the group
+        self.event_sender.notify();
+
+        Ok(client_handle)
     }
 
     async fn find_client(&self, solution: &work::Solution) -> Option<Arc<Handle>> {

@@ -318,6 +318,13 @@ impl StatusMonitor {
             .replace(event_sender)
     }
 
+    pub fn take_event_sender(&self) -> Option<event::Sender> {
+        self.event_sender
+            .lock()
+            .expect("BUG: cannot lock event sender for taking")
+            .take()
+    }
+
     fn notify(&self) {
         self.event_sender
             .lock()
