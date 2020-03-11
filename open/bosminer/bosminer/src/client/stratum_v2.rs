@@ -48,7 +48,7 @@ use ii_async_compat::select;
 
 use std::collections::VecDeque;
 use std::fmt;
-use std::net::ToSocketAddrs;
+use std::str::FromStr;
 use std::sync::Mutex as StdMutex;
 use std::sync::{Arc, Weak};
 use std::time;
@@ -65,7 +65,6 @@ use ii_stratum::v2::{
     framing::{Framing, Header},
 };
 use ii_stratum::v2::{build_message_from_frame, extensions, Handler};
-use ii_wire::Connection;
 
 use std::collections::HashMap;
 
@@ -539,22 +538,24 @@ impl StratumConnectionHandler {
     }
 
     async fn connect(&self) -> error::Result<v2::Framed> {
-        let socket_addr = self
-            .client
-            .connection_details()
-            .get_host_and_port()
-            .to_socket_addrs()
-            .context("Invalid server address")?
-            // TODO: this is not correct as it always only attempts to ever connect to the first
-            //  IP address from the resolved set. We should use wire 'client' functionality for
-            //  this...
-            .next()
-            .ok_or("Cannot resolve any IP address")?;
+        let addr = ii_wire::Address::from_str(
+            self.client
+                .connection_details()
+                .get_host_and_port()
+                .as_str(),
+        )?;
+        let mut client = ii_wire::Client::new(addr);
+        // Attempt only once to connect (as the stratum client is being managed externally)
+        let connection = client.next().await?;
 
-        let connection = Connection::<Framing>::connect(&socket_addr)
-            .await
-            .context("Cannot connect to stratum server")?;
-        Ok(connection.into_inner())
+        // Successful noise initiator handshake results in a stream/sink for V2 frames
+        // TODO: this initiator still lacks the target pool's master public key that has
+        //  be used to verify the authenticity of the endpoint we are connecting to. This is yet to
+        //  be implemented.
+        let noise_initiator = v2::noise::Initiator::new();
+        let client_framed_stream = noise_initiator.connect(connection).await?;
+
+        Ok(client_framed_stream)
     }
 
     /// Starts mining session and provides the initial target negotiated by the upstream endpoint
