@@ -264,7 +264,7 @@ impl Handler {
             hardware_error_mhs_15m: error_backend_diff
                 .to_mega_hashes(*INTERVAL_15M, now)
                 .into_f64(),
-            expected_mhs: work_solver
+            nominal_mhs: work_solver
                 .get_nominal_hashrate()
                 .await
                 .map(|hashrate| hashrate.into_mega_hashes().into_f64())

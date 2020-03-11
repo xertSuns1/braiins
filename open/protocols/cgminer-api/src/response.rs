@@ -491,8 +491,8 @@ pub struct Asc {
     // Follows attribute extensions
     #[serde(rename = "Hardware Error MHS 15m")]
     pub hardware_error_mhs_15m: MegaHashes,
-    #[serde(rename = "Expected MHS")]
-    pub expected_mhs: MegaHashes,
+    #[serde(rename = "Nominal MHS")]
+    pub nominal_mhs: MegaHashes,
 }
 
 impl From<Asc> for Dispatch {
