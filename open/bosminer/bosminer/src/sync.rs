@@ -22,6 +22,7 @@
 
 pub mod event;
 
+use std::fmt;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 
@@ -36,12 +37,19 @@ pub enum Status {
     Running,
     Stopping,
     Failing,
+    Declining,
     Restarting,
     Recovering,
     // TODO: Destroying
     Stopped,
     Failed,
     // TODO: Destroyed
+}
+
+impl fmt::Display for Status {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 /// Monitor is intended for generic synchronization of node states
@@ -90,7 +98,7 @@ impl StatusMonitor {
                         break;
                     }
                 }
-                Status::Failing => {
+                Status::Failing | Status::Declining => {
                     // Try to change state to `Recovering`
                     status =
                         self.status
@@ -119,7 +127,7 @@ impl StatusMonitor {
         loop {
             let previous = status;
             match status {
-                Status::Created | Status::Stopped | Status::Failed => {
+                Status::Created | Status::Stopped | Status::Failing | Status::Failed => {
                     panic!("BUG: 'report_fail': unexpected state '{:?}'", status)
                 }
                 Status::Starting | Status::Retrying => {
@@ -133,10 +141,11 @@ impl StatusMonitor {
                     }
                 }
                 Status::Running => break,
-                Status::Stopping | Status::Failing | Status::Restarting | Status::Recovering => {
+                Status::Stopping | Status::Declining | Status::Restarting | Status::Recovering => {
                     return false
-                } // Try it again because another task change the state
+                }
             }
+            // Try it again because another task change the state
         }
 
         // Running can be done
@@ -152,6 +161,7 @@ impl StatusMonitor {
                 Status::Created
                 | Status::Stopping
                 | Status::Failing
+                | Status::Declining
                 | Status::Stopped
                 | Status::Failed => break,
                 // Client is currently started
@@ -167,7 +177,7 @@ impl StatusMonitor {
                 Status::Retrying | Status::Recovering => {
                     status =
                         self.status
-                            .compare_and_swap(status, Status::Failing, Ordering::Relaxed);
+                            .compare_and_swap(status, Status::Declining, Ordering::Relaxed);
                     if status == previous {
                         // Stopping has been initiated successfully
                         return true;
@@ -190,7 +200,7 @@ impl StatusMonitor {
                 Status::Created | Status::Stopped | Status::Failed => {
                     panic!("BUG: 'report_fail': unexpected state '{:?}'", status)
                 }
-                Status::Starting | Status::Retrying | Status::Running | Status::Stopping => {
+                Status::Running | Status::Stopping => {
                     status =
                         self.status
                             .compare_and_swap(status, Status::Failing, Ordering::Relaxed);
@@ -199,7 +209,18 @@ impl StatusMonitor {
                         break;
                     }
                 }
-                Status::Failing | Status::Restarting | Status::Recovering => break,
+                Status::Starting | Status::Retrying => {
+                    status =
+                        self.status
+                            .compare_and_swap(status, Status::Declining, Ordering::Relaxed);
+                    if status == previous {
+                        // Failing has been set successfully
+                        break;
+                    }
+                }
+                Status::Failing | Status::Declining | Status::Restarting | Status::Recovering => {
+                    break
+                }
             };
             // Try it again because another task change the state
         }
@@ -207,7 +228,7 @@ impl StatusMonitor {
 
     pub fn is_shutting_down(&self) -> bool {
         match self.status() {
-            Status::Stopping | Status::Failing => true,
+            Status::Stopping | Status::Failing | Status::Declining => true,
             Status::Created
             | Status::Starting
             | Status::Running
@@ -248,6 +269,17 @@ impl StatusMonitor {
                             .compare_and_swap(status, Status::Failed, Ordering::Relaxed);
                     if status == previous {
                         self.notify();
+                        return true;
+                    }
+                }
+                Status::Declining => {
+                    // Try to change state to `Failed`
+                    status =
+                        self.status
+                            .compare_and_swap(status, Status::Failed, Ordering::Relaxed);
+                    if status == previous {
+                        // Do not notify about repeated failures when status wasn't in running
+                        // state before
                         return true;
                     }
                 }

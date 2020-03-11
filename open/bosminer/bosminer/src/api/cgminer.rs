@@ -122,6 +122,7 @@ impl Handler {
             | sync::Status::Restarting
             | sync::Status::Stopped => (response::PoolStatus::Alive, false),
             sync::Status::Failing
+            | sync::Status::Declining
             | sync::Status::Retrying
             | sync::Status::Recovering
             | sync::Status::Failed => (response::PoolStatus::Dead, false),
