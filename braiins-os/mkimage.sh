@@ -80,7 +80,6 @@ mcopy -i $tmpdir/part1.img $src/* ::/
 # TODO: this ought to be moved to bb script or have base per-target uEnv.txt commited in repo
 mtdparts="mtdparts=pl35x-nand:512k(boot),2560k(uboot),2m(fpga1),2m(fpga2),512k(uboot_env),512k(miner_cfg),22m(recovery),95m(firmware1),95m(firmware2)"
 recovery_mtdparts="${mtdparts},144m@0x2000000(antminer_rootfs)"
-cp $src/uEnv.txt $tmpdir/
 echo "recovery_mtdparts='$recovery_mtdparts'" >> $tmpdir/uEnv.txt
 mcopy -o -i $tmpdir/part1.img $tmpdir/uEnv.txt ::/
 
