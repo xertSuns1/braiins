@@ -749,6 +749,7 @@ dependencies = [
  "packed_struct_codegen 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.41 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "uint 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
