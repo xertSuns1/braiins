@@ -120,9 +120,6 @@ impl ii_wire::Framing for Framing {
     type Codec = Codec;
 }
 
-/// wire-based server type
-type Server = ii_wire::Server<Framing>;
-
 /// wire-based connection type
 type Connection = ii_wire::Connection<Framing>;
 
@@ -142,12 +139,15 @@ async fn handle_connection_task(mut conn: Connection, command_receiver: Arc<comm
 
 /// Start up an API server with a `command_receiver` object, listening on `listen_addr`
 pub async fn run(command_receiver: command::Receiver, listen_addr: SocketAddr) -> io::Result<()> {
-    let mut server = Server::bind(&listen_addr)?;
+    let mut server = ii_wire::Server::bind(&listen_addr)?;
     let command_receiver = Arc::new(command_receiver);
 
     while let Some(conn) = server.next().await {
         if let Ok(conn) = conn {
-            tokio::spawn(handle_connection_task(conn, command_receiver.clone()));
+            tokio::spawn(handle_connection_task(
+                Connection::new(conn),
+                command_receiver.clone(),
+            ));
         }
     }
 
