@@ -103,10 +103,8 @@ remote:
       branch: ac6415e61f147a6892fd2785337aec93ddc68fa9
     luci:
       project: luci.git
-    platform:
-      match:
-        zynq:
-          project: zynq-io-bin.git
+    binary:
+      project: braiins-bin.git
     u-boot:
       config_name: UBOOT
       project: u-boot-xlnx.git

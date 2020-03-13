@@ -91,12 +91,14 @@ class Builder:
 
     LEDE = 'lede'
     LUCI = 'luci'
-    PLATFORM = 'platform'
+    BINARY = 'binary'
     FEEDS_CONF = 'feeds.conf'
     FEEDS_DIR = 'feeds'
     CONFIG_NAME = '.config'
     BUILD_KEY_NAME = 'key-build'
     BUILD_KEY_PUB_NAME = 'key-build.pub'
+
+    BITSTREAM_DIR = 'bitstream'
 
     UENV_TXT = 'uEnv.txt'
 
@@ -1187,9 +1189,9 @@ class Builder:
         :return:
             String with path to FPGA bitstream.
         """
-        platform_dir = self._get_repo_path(self.PLATFORM)
-        platform_subtarget = self._split_platform()[1]
-        return os.path.join(platform_dir, platform_subtarget, 'system.bit')
+        binary_dir = self._get_repo_path(self.BINARY)
+        platform_target, platform_subtarget = self._split_platform()
+        return os.path.join(binary_dir, platform_target, self.BITSTREAM_DIR, platform_subtarget, 'system.bit')
 
     @staticmethod
     def _get_firmware_mtd(index) -> str:
