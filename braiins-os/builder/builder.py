@@ -100,6 +100,7 @@ class Builder:
     BUILD_KEY_PUB_NAME = 'key-build.pub'
 
     BITSTREAM_DIR = 'bitstream'
+    BOOTLOADERS_DIR = 'bootloaders'
 
     BOOT_BIN = 'boot.bin'
     BOOT_BIN_SD = 'boot_sd.bin'
@@ -1196,8 +1197,22 @@ class Builder:
             String with path to FPGA bitstream.
         """
         binary_dir = self._get_repo_path(self.BINARY)
-        platform_target, platform_subtarget = self._split_platform()
+        platform_target, platform_subtarget = self._split_platform(platform)
         return os.path.join(binary_dir, platform_target, self.BITSTREAM_DIR, platform_subtarget, 'system.bit')
+
+    def _get_bootloaders_dir(self, platform: str=None) -> str:
+        """
+        Return directory with bootloaders for selected platform
+
+        :param platform:
+            Name of selected platform.
+            When platform is omitted then platform from current configuration is used.
+        :return:
+            String with directory to bootloaders.
+        """
+        binary_dir = self._get_repo_path(self.BINARY)
+        platform_target, platform_subtarget = self._split_platform(platform)
+        return os.path.join(binary_dir, platform_target, self.BOOTLOADERS_DIR, platform_subtarget)
 
     @staticmethod
     def _get_firmware_mtd(index) -> str:
@@ -2018,7 +2033,7 @@ class Builder:
         shutil.copy(src_package, target_dir)
         shutil.copy(local_feeds.sysupgrade, dst_sysupgrade)
 
-    def _get_recovery_image(self, platform: str, generic_dir: str, uboot_dir: str):
+    def _get_recovery_image(self, platform: str, generic_dir: str, boot_path: str, uboot_path: str):
         """
         Return recovery image for SD or NAND version
 
@@ -2026,14 +2041,16 @@ class Builder:
             Name of platform.
         :param generic_dir:
             Path to LEDE output target directory.
-        :param uboot_dir:
-            Relative path to output U-Boot directory.
+        :param boot_path:
+            Path to first bootloader (SPL).
+        :param uboot_path:
+            Path to U-Boot.
         :return:
             Recovery image with all image files.
         """
         return ImageRecovery(
-                    boot=os.path.join(generic_dir, uboot_dir, 'boot.bin'),
-                    uboot=os.path.join(generic_dir, uboot_dir, 'u-boot.img'),
+                    boot=boot_path,
+                    uboot=uboot_path,
                     fpga=self._get_bitstream_path(),
                     kernel=os.path.join(generic_dir, 'lede-{}-recovery-squashfs-fit.itb'.format(platform)),
                     factory=os.path.join(generic_dir, 'lede-{}-nand-squashfs-factory.bin'.format(platform))
@@ -2114,11 +2131,12 @@ class Builder:
                     uboot_sd=os.path.join(generic_dir, uboot_sd_dir, 'u-boot.img')
                 )
                 images_local['bootloaders'] = bootloaders
+
+            bootloaders_dir = self._get_bootloaders_dir()
             if any(target in targets for target in ('sd', 'local_sd')):
-                uboot_dir = 'uboot-{}-sd'.format(platform)
                 sd = ImageSd(
-                    boot=os.path.join(generic_dir, uboot_dir, 'boot.bin'),
-                    uboot=os.path.join(generic_dir, uboot_dir, 'u-boot.img'),
+                    boot=os.path.join(generic_dir, bootloaders_dir, self.BOOT_BIN_SD),
+                    uboot=os.path.join(generic_dir, bootloaders_dir, self.UBOOT_SD),
                     fpga=self._get_bitstream_path(),
                     kernel=os.path.join(generic_dir, 'lede-{}-sd-squashfs-fit.itb'.format(platform))
                 )
@@ -2127,39 +2145,40 @@ class Builder:
                 if 'local_sd' in targets:
                     images_local['sd'] = sd
             if any(target in targets for target in ('sd_recovery', 'local_sd_recovery')):
-                uboot_dir = 'uboot-{}-sd'.format(platform)
-                sd_recovery = self._get_recovery_image(platform, generic_dir, uboot_dir)
+                boot_path = os.path.join(generic_dir, bootloaders_dir, self.BOOT_BIN_SD)
+                uboot_path = os.path.join(generic_dir, bootloaders_dir, self.UBOOT_SD)
+                sd_recovery = self._get_recovery_image(platform, generic_dir, boot_path, uboot_path)
                 if 'sd_recovery' in targets:
                     images_ssh['sd'] = sd_recovery
                 if 'local_sd_recovery' in targets:
                     images_local['sd_recovery'] = sd_recovery
             if any(target in targets for target in ('nand_recovery', 'local_nand_recovery')):
-                uboot_dir = 'uboot-{}'.format(platform)
-                nand_recovery = self._get_recovery_image(platform, generic_dir, uboot_dir)
+                boot_path = os.path.join(generic_dir, bootloaders_dir, self.BOOT_BIN)
+                uboot_path = os.path.join(generic_dir, bootloaders_dir, self.UBOOT)
+                nand_recovery = self._get_recovery_image(platform, generic_dir, boot_path, uboot_path)
                 if 'nand_recovery' in targets:
                     images_ssh['nand_recovery'] = nand_recovery
                 if 'local_nand_recovery' in targets:
                     images_local['nand_recovery'] = nand_recovery
             if any(target in targets for target in ('nand_firmware1', 'nand_firmware2')):
-                uboot_dir = 'uboot-{}'.format(platform)
                 images_ssh['nand'] = ImageNand(
-                    boot=os.path.join(generic_dir, uboot_dir, 'boot.bin'),
-                    uboot=os.path.join(generic_dir, uboot_dir, 'u-boot.img'),
+                    boot=os.path.join(generic_dir, bootloaders_dir, self.BOOT_BIN),
+                    uboot=os.path.join(generic_dir, bootloaders_dir, self.UBOOT),
                     fpga=self._get_bitstream_path(),
                     factory=os.path.join(generic_dir, 'lede-{}-nand-squashfs-factory.bin'.format(platform)),
                     sysupgrade=os.path.join(generic_dir, 'lede-{}-nand-squashfs-sysupgrade.tar'.format(platform))
                 )
             if 'local_upgrade' in targets:
-                uboot_dir = 'uboot-{}'.format(platform)
                 upgrade = ImageUpgrade(
-                    boot=os.path.join(generic_dir, uboot_dir, 'boot.bin'),
-                    uboot=os.path.join(generic_dir, uboot_dir, 'u-boot.img'),
+                    boot=os.path.join(generic_dir, bootloaders_dir, self.BOOT_BIN),
+                    uboot=os.path.join(generic_dir, bootloaders_dir, self.UBOOT),
                     fpga=self._get_bitstream_path(),
                     kernel=os.path.join(generic_dir, 'lede-{}-upgrade-squashfs-fit.itb'.format(platform)),
                     kernel_recovery=os.path.join(generic_dir, 'lede-{}-recovery-squashfs-fit.itb'.format(platform)),
                     factory=os.path.join(generic_dir, 'lede-{}-nand-squashfs-factory.bin'.format(platform))
                 )
                 images_local['upgrade'] = upgrade
+
             if 'local_feeds' in targets:
                 feeds = ImageFeeds(
                     key=os.path.join(self._working_dir, self.BUILD_KEY_NAME),
