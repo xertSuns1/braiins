@@ -120,6 +120,7 @@ monorepo:
 
 local:
   # list of output directories for local targets
+  bootloaders: output/{platform}/bootloaders/
   sd: output/{platform}/sd/
   sd_config: output/{platform}/sd/
   sd_recovery: output/{platform}/sd_recovery/
@@ -175,6 +176,7 @@ deploy:
 #  - nand_firmware1
 #  - nand_firmware2
 #  - nand_config
+  - local_bootloaders
   - local_sd
   - local_sd_config
   - local_sd_recovery

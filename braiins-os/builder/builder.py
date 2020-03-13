@@ -58,6 +58,7 @@ class BuilderStop(Exception):
     pass
 
 
+ImageBootloaders = namedtuple('ImageBootloaders', ['boot', 'uboot', 'boot_sd', 'uboot_sd'])
 ImageSd = namedtuple('ImageSd', ['boot', 'uboot', 'fpga', 'kernel'])
 ImageRecovery = namedtuple('ImageRecovery', ['boot', 'uboot', 'fpga', 'kernel', 'factory'])
 ImageNand = namedtuple('ImageNand', ['boot', 'uboot', 'fpga', 'factory', 'sysupgrade'])
@@ -99,6 +100,11 @@ class Builder:
     BUILD_KEY_PUB_NAME = 'key-build.pub'
 
     BITSTREAM_DIR = 'bitstream'
+
+    BOOT_BIN = 'boot.bin'
+    BOOT_BIN_SD = 'boot_sd.bin'
+    UBOOT = 'u-boot.img'
+    UBOOT_SD = 'u-boot_sd.img'
 
     UENV_TXT = 'uEnv.txt'
 
@@ -1915,10 +1921,23 @@ class Builder:
                     src_file.close()
                 return True
 
+        image_bootloaders = images.get('bootloaders')
         image_sd = images.get('sd')
         image_sd_recovery = images.get('sd_recovery')
         image_nand_recovery = images.get('nand_recovery')
         image_upgrade = images.get('upgrade')
+
+        if image_bootloaders:
+            target_dir = self._get_local_target_dir('bootloaders')
+            upload_manager = UploadManager(target_dir)
+            upload = [
+                (image_bootloaders.boot, self.BOOT_BIN),
+                (image_bootloaders.uboot, self.UBOOT),
+                (image_bootloaders.boot_sd, self.BOOT_BIN_SD),
+                (image_bootloaders.uboot_sd, self.UBOOT_SD)
+            ]
+            for local, remote in upload:
+                upload_manager.put(local, remote, False)
 
         if image_sd:
             target_dir = self._get_local_target_dir('sd')
@@ -2040,6 +2059,7 @@ class Builder:
             'nand_recovery',
             'nand_firmware1',
             'nand_firmware2',
+            'local_bootloaders',
             'local_sd_config',
             'local_sd_recovery_config',
             'local_nand_recovery',
@@ -2084,6 +2104,16 @@ class Builder:
                 logging.error("Targets 'sd' and 'sd_recovery' are mutually exclusive")
                 raise BuilderStop
 
+            if 'local_bootloaders' in targets:
+                uboot_dir = 'uboot-{}'.format(platform)
+                uboot_sd_dir = 'uboot-{}-sd'.format(platform)
+                bootloaders = ImageBootloaders(
+                    boot=os.path.join(generic_dir, uboot_dir, 'boot.bin'),
+                    uboot=os.path.join(generic_dir, uboot_dir, 'u-boot.img'),
+                    boot_sd=os.path.join(generic_dir, uboot_sd_dir, 'boot.bin'),
+                    uboot_sd=os.path.join(generic_dir, uboot_sd_dir, 'u-boot.img')
+                )
+                images_local['bootloaders'] = bootloaders
             if any(target in targets for target in ('sd', 'local_sd')):
                 uboot_dir = 'uboot-{}-sd'.format(platform)
                 sd = ImageSd(
