@@ -36,6 +36,7 @@ core:
     - luci-mod-admin-full
     - luci-proto-ipv6
     - luci-theme-bosminer
+    - luci-theme-bosminer-common
     - opkg
     - rpcd
     - strace
