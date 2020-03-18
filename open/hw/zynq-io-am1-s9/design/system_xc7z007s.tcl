@@ -271,7 +271,7 @@ proc create_root_design { parentCell } {
   # Create instance: axi_iic_hb, and set properties
   set axi_iic_hb [ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_iic:2.0 axi_iic_hb ]
   set_property -dict [ list \
-   CONFIG.IIC_FREQ_KHZ {100} \
+   CONFIG.IIC_FREQ_KHZ {33} \
  ] $axi_iic_hb
 
   # Create instance: axi_iic_psu_0, and set properties
