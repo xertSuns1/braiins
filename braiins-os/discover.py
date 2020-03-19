@@ -75,6 +75,7 @@ class DeviceInfo:
         self.os = None
         self.net = None
         self.version = None
+        self.hwid = None
         self.mode = None
         self.ram_size = None
         self.pools = None
@@ -84,6 +85,7 @@ class DeviceInfo:
         self.os = await self._get_os(conn)
         self.net = await self._get_net_info_cls()().refresh(conn)
         self.version = await self._get_version(conn)
+        self.hwid = await self._get_hwid(conn)
         self.mode = await self._get_mode(conn)
         self.ram_size = await self._get_ram_size(conn)
         self.pools = await self._get_pools(conn)
@@ -98,6 +100,9 @@ class DeviceInfo:
 
     async def _get_version(self, conn):
         return DeviceInfo.INFO_UNKNOWN
+
+    async def _get_hwid(self, conn):
+        return None
 
     async def _get_mode(self, conn):
         return None
@@ -145,6 +150,7 @@ class DeviceInfo:
         info = list()
         info.append(self.os)
         info.append(self.version)
+        self.hwid and info.append('<{}>'.format(self.hwid))
         self.mode and info.append('[{}]'.format(self.mode))
         self.ram_size and info.append('{{{} RAM}}'.format(self.int2size(self.ram_size)))
         if self.net.proto == NetworkInfo.PROTO_DHCP:
@@ -234,6 +240,10 @@ class BosInfo(DeviceInfo):
             return 'sd'
         else:
             return 'recovery'
+
+    async def _get_hwid(self, conn):
+        return await asyncssh_run(conn, "cat /tmp/miner_hwid") or \
+               DeviceInfo.INFO_UNKNOWN
 
     async def _get_mode(self, conn):
         return await asyncssh_run(conn, "cat /etc/bos_mode") or \
