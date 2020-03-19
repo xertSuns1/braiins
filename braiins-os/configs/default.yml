@@ -70,7 +70,7 @@ build:
     zynq-am1:
       major: yes
       require: 2018-10-24-0-9e5687a2
-      include: [command, spl, fpga]
+      include: [command, spl, uboot, fpga]
 
 remote:
   # default configuration for fetching latest repository
@@ -104,6 +104,7 @@ remote:
     luci:
       project: luci.git
     binary:
+      config_name: BINARY
       project: braiins-bin.git
     u-boot:
       config_name: UBOOT

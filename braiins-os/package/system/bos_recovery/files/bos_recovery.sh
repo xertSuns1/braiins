@@ -106,10 +106,7 @@ if [ x${FACTORY_RESET} == x"yes" ]; then
 		nanddump -s ${FPGA_OFFSET} -l ${FPGA_SIZE} ${RECOVERY_MTD} \
 		> "$SYSTEM_BIT_PATH"
 
-		# get uncompressed SPL bootloader
-		nanddump -s ${BOOT_OFFSET} -l ${BOOT_SIZE} ${RECOVERY_MTD} \
-		| gunzip \
-		> "$BOOT_BIN_PATH"
+		# SPL bootloader is already recovered in U-Boot during factory reset
 	fi
 
 	# write the same FPGA bitstream to both MTD partitions
@@ -129,7 +126,7 @@ if [ x${FACTORY_RESET} == x"yes" ]; then
 	fw_setenv factory_reset
 
 	# the SPL is restored as last one
-	mtd_write "$BOOT_BIN_PATH" boot
+	[ -f "$BOOT_BIN_PATH" ] && mtd_write "$BOOT_BIN_PATH" boot
 
 	sync
 	echo "recovery: factory reset has been successful!"

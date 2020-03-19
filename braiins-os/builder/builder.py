@@ -44,6 +44,7 @@ from functools import partial
 from datetime import datetime, timezone
 from doit.tools import run_once, config_changed, check_timestamp_unchanged
 from urllib.request import Request, urlopen
+from elftools.elf.elffile import ELFFile
 
 from builder.config import ListWalker, RemoteWalker, load_config
 from builder.repo import RepoProgressPrinter
@@ -90,9 +91,11 @@ class Builder:
     LEDE_META_SSH = 'ssh.py'
     LEDE_META_HWID = 'hwid.py'
 
-    LEDE = 'lede'
-    LUCI = 'luci'
-    BINARY = 'binary'
+    REPO_BINARY = 'binary'
+    REPO_LEDE = 'lede'
+    REPO_LUCI = 'luci'
+    REPO_UBOOT = 'u-boot'
+
     FEEDS_CONF = 'feeds.conf'
     FEEDS_DIR = 'feeds'
     CONFIG_NAME = '.config'
@@ -104,8 +107,8 @@ class Builder:
 
     BOOT_BIN = 'boot.bin'
     BOOT_BIN_SD = 'boot_sd.bin'
-    UBOOT = 'u-boot.img'
-    UBOOT_SD = 'u-boot_sd.img'
+    UBOOT_IMG = 'u-boot.img'
+    UBOOT_SD_IMG = 'u-boot_sd.img'
 
     UENV_TXT = 'uEnv.txt'
 
@@ -241,7 +244,6 @@ class Builder:
         platform = self._config.bos.platform
         target_name, _ = self._split_platform(platform)
         device_name = platform.replace('-', '_')
-        bitstream_path = self._get_bitstream_path()
 
         stream.write('{}{}=y\n'.format(config, target_name))
         stream.write('{}{}=y\n'.format(config, device_name))
@@ -252,9 +254,6 @@ class Builder:
             packages = ' '.join(ListWalker(image_packages, self.PACKAGE_LIST_PREFIX + image))
             stream.write('{}DEVICE_{}_DEVICE_{}=y\n'.format(config, device_name, image))
             stream.write('{}DEVICE_PACKAGES_{}_DEVICE_{}="{}"\n'.format(config, device_name, image, packages))
-
-        logging.debug("Set bitstream target path to '{}'".format(bitstream_path))
-        stream.write('{}FPGA="{}"\n'.format(config, bitstream_path))
 
     def _write_sysupgrade(self, stream, config):
         """
@@ -472,7 +471,7 @@ class Builder:
         # add build_dir tag after it has been initialized
         self._config.formatter.add_tag('build_dir', self._build_dir)
         # set working directory to LEDE root directory
-        self._working_dir = self._get_repo_path(self.LEDE)
+        self._working_dir = self._get_repo_path(self.REPO_LEDE)
         self._tmp_dir = os.path.join(self._working_dir, 'tmp')
         self._repos = OrderedDict()
         self._init_repos()
@@ -1196,9 +1195,9 @@ class Builder:
         :return:
             String with path to FPGA bitstream.
         """
-        binary_dir = self._get_repo_path(self.BINARY)
+        binary_dir = self._get_repo_path(self.REPO_BINARY)
         platform_target, platform_subtarget = self._split_platform(platform)
-        return os.path.join(binary_dir, platform_target, self.BITSTREAM_DIR, platform_subtarget, 'system.bit')
+        return os.path.join(binary_dir, platform_target, self.BITSTREAM_DIR, platform_subtarget, 'system.bit.gz')
 
     def _get_bootloaders_dir(self, platform: str=None) -> str:
         """
@@ -1210,7 +1209,7 @@ class Builder:
         :return:
             String with directory to bootloaders.
         """
-        binary_dir = self._get_repo_path(self.BINARY)
+        binary_dir = self._get_repo_path(self.REPO_BINARY)
         platform_target, platform_subtarget = self._split_platform(platform)
         return os.path.join(binary_dir, platform_target, self.BOOTLOADERS_DIR, platform_subtarget)
 
@@ -1259,7 +1258,7 @@ class Builder:
         upload = [
             (image.boot, 'boot.bin'),
             (image.uboot, 'u-boot.img'),
-            (image.fpga, 'system.bit'),
+            (image.fpga, 'system.bit.gz'),
             (image.kernel, 'fit.itb')
         ]
         if recovery:
@@ -1331,12 +1330,17 @@ class Builder:
         local = image.fpga
         logging.info("Writing '{}' to NAND partition '{}'..."
                      .format(os.path.basename(local), mtd_name))
-        self._mtd_write(ssh, local, mtd_name, offset=0x1400000, compress=True, erase=False)
+        self._mtd_write(ssh, local, mtd_name, offset=0x1400000, compress=False, erase=False)
 
         local = image.boot
         logging.info("Writing '{}' to NAND partition '{}'..."
                      .format(os.path.basename(local), mtd_name))
         self._mtd_write(ssh, local, mtd_name, offset=0x1500000, compress=True, erase=False)
+
+        local = image.uboot
+        logging.info("Writing '{}' to NAND partition '{}'..."
+                     .format(os.path.basename(local), mtd_name))
+        self._mtd_write(ssh, local, mtd_name, offset=0x1520000, compress=True, erase=False)
 
     def _deploy_ssh_nand(self, ssh, image):
         """
@@ -1581,6 +1585,36 @@ class Builder:
         file_path = os.path.abspath(os.path.join(self._bos_dir, *path))
         return file_path if os.path.isfile(file_path) else None
 
+    def _create_uboot_default_env_script(self):
+        """
+        Create U-Boot default environment script for `fw_setenv`. The script is generated from
+        ELF file `env_common.o` used for building latest U-Boot.
+
+        :return:
+            Bytes stream with U-Boot default environment script.
+        """
+        uboot_dir = self._get_repo_path(self.REPO_UBOOT)
+        env_common_path = os.path.join(uboot_dir, 'common', 'env_common.o')
+        env = {}
+        with open(env_common_path, 'rb') as input:
+            elffile = ELFFile(input)
+            default_environment_sec = elffile.get_section_by_name('.rodata.default_environment')
+            default_environment = default_environment_sec.data().decode("ascii")
+            for line in filter(lambda l: l, default_environment.split(chr(0))):
+                env_var, env_value = line.split('=', 1)
+                env[env_var] = env_value
+
+        # change default env to the state after factory reset
+        env['nandboot'] = env['nandboot_default']
+        del env['nandboot_init']
+        del env['nandboot_default']
+
+        default_env_script = io.BytesIO()
+        for env_var, env_value in sorted(env.items()):
+            default_env_script.write('{}={}\n'.format(env_var, env_value).encode())
+        default_env_script.seek(0)
+        return default_env_script
+
     def _create_upgrade_miner_cfg_input(self):
         """
         Create input source for mkenvimage with miner configuration
@@ -1664,9 +1698,11 @@ class Builder:
         # add recovery image
         tar.add(image.kernel_recovery, arcname='fit.itb')
 
-        # add compressed system.bin and factory.bin
+        # add FPGA bitstream
+        tar.add(image.fpga, arcname='system.bit.gz')
+
+        # add compressed boot.bin and factory.bin
         self._add2tar_compressed_file(tar, image.boot, 'boot.bin.gz')
-        self._add2tar_compressed_file(tar, image.fpga, 'system.bit.gz')
         self._add2tar_compressed_file(tar, image.factory, 'factory.bin.gz')
 
         # add miner_cfg.config file
@@ -1752,7 +1788,7 @@ class Builder:
         # copy all files for transfer to subdirectory
         upload_manager.push_dir(self.UPGRADE_FIRMWARE_DIR)
 
-        self._upload_images(upload_manager, image, compressed=('system.bit',))
+        self._upload_images(upload_manager, image)
 
         # copy uboot_env.config file
         uboot_env_config = self._get_project_file(self.UPGRADE_DIR, self.UPGRADE_UBOOT_ENV_CONFIG)
@@ -1943,16 +1979,18 @@ class Builder:
         image_upgrade = images.get('upgrade')
 
         if image_bootloaders:
+            default_env_script = self._create_uboot_default_env_script()
             target_dir = self._get_local_target_dir('bootloaders')
             upload_manager = UploadManager(target_dir)
+            upload_manager.put(default_env_script, self.UENV_TXT)
             upload = [
                 (image_bootloaders.boot, self.BOOT_BIN),
-                (image_bootloaders.uboot, self.UBOOT),
+                (image_bootloaders.uboot, self.UBOOT_IMG),
                 (image_bootloaders.boot_sd, self.BOOT_BIN_SD),
-                (image_bootloaders.uboot_sd, self.UBOOT_SD)
+                (image_bootloaders.uboot_sd, self.UBOOT_SD_IMG)
             ]
             for local, remote in upload:
-                upload_manager.put(local, remote, False)
+                upload_manager.put(local, remote)
 
         if image_sd:
             target_dir = self._get_local_target_dir('sd')
@@ -2136,7 +2174,7 @@ class Builder:
             if any(target in targets for target in ('sd', 'local_sd')):
                 sd = ImageSd(
                     boot=os.path.join(generic_dir, bootloaders_dir, self.BOOT_BIN_SD),
-                    uboot=os.path.join(generic_dir, bootloaders_dir, self.UBOOT_SD),
+                    uboot=os.path.join(generic_dir, bootloaders_dir, self.UBOOT_SD_IMG),
                     fpga=self._get_bitstream_path(),
                     kernel=os.path.join(generic_dir, 'lede-{}-sd-squashfs-fit.itb'.format(platform))
                 )
@@ -2146,7 +2184,7 @@ class Builder:
                     images_local['sd'] = sd
             if any(target in targets for target in ('sd_recovery', 'local_sd_recovery')):
                 boot_path = os.path.join(generic_dir, bootloaders_dir, self.BOOT_BIN_SD)
-                uboot_path = os.path.join(generic_dir, bootloaders_dir, self.UBOOT_SD)
+                uboot_path = os.path.join(generic_dir, bootloaders_dir, self.UBOOT_SD_IMG)
                 sd_recovery = self._get_recovery_image(platform, generic_dir, boot_path, uboot_path)
                 if 'sd_recovery' in targets:
                     images_ssh['sd'] = sd_recovery
@@ -2154,7 +2192,7 @@ class Builder:
                     images_local['sd_recovery'] = sd_recovery
             if any(target in targets for target in ('nand_recovery', 'local_nand_recovery')):
                 boot_path = os.path.join(generic_dir, bootloaders_dir, self.BOOT_BIN)
-                uboot_path = os.path.join(generic_dir, bootloaders_dir, self.UBOOT)
+                uboot_path = os.path.join(generic_dir, bootloaders_dir, self.UBOOT_IMG)
                 nand_recovery = self._get_recovery_image(platform, generic_dir, boot_path, uboot_path)
                 if 'nand_recovery' in targets:
                     images_ssh['nand_recovery'] = nand_recovery
@@ -2163,7 +2201,7 @@ class Builder:
             if any(target in targets for target in ('nand_firmware1', 'nand_firmware2')):
                 images_ssh['nand'] = ImageNand(
                     boot=os.path.join(generic_dir, bootloaders_dir, self.BOOT_BIN),
-                    uboot=os.path.join(generic_dir, bootloaders_dir, self.UBOOT),
+                    uboot=os.path.join(generic_dir, bootloaders_dir, self.UBOOT_IMG),
                     fpga=self._get_bitstream_path(),
                     factory=os.path.join(generic_dir, 'lede-{}-nand-squashfs-factory.bin'.format(platform)),
                     sysupgrade=os.path.join(generic_dir, 'lede-{}-nand-squashfs-sysupgrade.tar'.format(platform))
@@ -2171,7 +2209,7 @@ class Builder:
             if 'local_upgrade' in targets:
                 upgrade = ImageUpgrade(
                     boot=os.path.join(generic_dir, bootloaders_dir, self.BOOT_BIN),
-                    uboot=os.path.join(generic_dir, bootloaders_dir, self.UBOOT),
+                    uboot=os.path.join(generic_dir, bootloaders_dir, self.UBOOT_IMG),
                     fpga=self._get_bitstream_path(),
                     kernel=os.path.join(generic_dir, 'lede-{}-upgrade-squashfs-fit.itb'.format(platform)),
                     kernel_recovery=os.path.join(generic_dir, 'lede-{}-recovery-squashfs-fit.itb'.format(platform)),

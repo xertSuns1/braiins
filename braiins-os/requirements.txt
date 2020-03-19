@@ -7,3 +7,4 @@ Paramiko==2.4.2
 doit==0.31.1
 asyncssh==1.15.0
 nulltype==2.3.1
+pyelftools==0.24
