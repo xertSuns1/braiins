@@ -1,0 +1,53 @@
+#!/bin/sh
+
+# Copyright (C) 2020  Braiins Systems s.r.o.
+#
+# This file is part of Braiins Open-Source Initiative (BOSI).
+#
+# BOSI is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# Please, keep in mind that we may also license BOSI or any part thereof
+# under a proprietary license. For more information on the terms and conditions
+# of such proprietary license or if you have any other questions, please
+# contact us at opensource@braiins.com.
+
+USER_STAGE3_SCRIPT="./stage3_usr.sh"
+FIRMWARE_IMG="{firmware_name}"
+
+result=0
+# test for user defined stage3 script
+[ -f "$USER_STAGE3_SCRIPT" ] && {{
+	# run the script in separate shell
+	/bin/sh "$USER_STAGE3_SCRIPT"
+	# exit with return code of user stage3 script
+	result=$?
+}}
+
+set -e
+
+[ -f "$FIRMWARE_IMG" ] || exit 1
+
+# move firmware out of temporal stage3 directory which will be
+# deleted after exiting this script
+mv "$FIRMWARE_IMG" /tmp/
+
+(
+	# sleep for some time to finish system post-upgrade script
+	# which triggerd this stage3 script
+    sleep 2
+    echo "Upgrading to current firmware..."
+    sysupgrade "/tmp/$FIRMWARE_IMG"
+)&
+
+exit $result

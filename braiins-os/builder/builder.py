@@ -63,7 +63,7 @@ ImageBootloaders = namedtuple('ImageBootloaders', ['boot', 'uboot', 'boot_sd', '
 ImageSd = namedtuple('ImageSd', ['boot', 'uboot', 'fpga', 'kernel'])
 ImageRecovery = namedtuple('ImageRecovery', ['boot', 'uboot', 'fpga', 'kernel', 'factory'])
 ImageNand = namedtuple('ImageNand', ['boot', 'uboot', 'fpga', 'factory', 'sysupgrade'])
-ImageUpgrade = namedtuple('ImageUpgrade', ['boot', 'uboot', 'fpga', 'kernel', 'kernel_recovery', 'factory'])
+ImageUpgrade = namedtuple('ImageUpgrade', ['boot', 'uboot', 'fpga', 'kernel', 'kernel_recovery', 'factory', 'sysupgrade'])
 ImageFeeds = namedtuple('ImageFeeds', ['key', 'packages', 'sysupgrade'])
 
 
@@ -122,11 +122,12 @@ class Builder:
     ARCHIVE_TGZ = 'tar.gz'
     ARCHIVE_TBZ2 = 'tar.bz2'
 
+    UPGRADE_SSH = 'ssh'
     UPGRADE_DM1 = 'dm1'
-    UPGRADE_DM1_SSH = (UPGRADE_DM1, 'ssh')
+    UPGRADE_DM1_SSH = (UPGRADE_DM1, UPGRADE_SSH)
     UPGRADE_DM1_TELNET = (UPGRADE_DM1, 'telnet')
     UPGRADE_AM1 = 'am1'
-    UPGRADE_AM1_SSH = (UPGRADE_AM1, 'ssh')
+    UPGRADE_AM1_SSH = (UPGRADE_AM1, UPGRADE_SSH)
     UPGRADE_AM1_WEB = (UPGRADE_AM1, 'web')
     UPGRADE_VERSION = {
         'zynq-dm1': (
@@ -141,6 +142,8 @@ class Builder:
 
     UPGRADE_DIR = 'upgrade'
     UPGRADE_FIRMWARE_DIR = 'firmware'
+    UPGRADE_SYSTEM_DIR = 'system'
+    UPGRADE_POST_UPGRADE_DIR = 'post-upgrade'
     UPGRADE_UBOOT_ENV = 'uboot_env.bin'
     UPGRADE_UBOOT_ENV_CONFIG = 'uboot_env.config'
     UPGRADE_UBOOT_ENV_TXT = 'uboot_env.txt'
@@ -164,6 +167,8 @@ class Builder:
     UPGRADE_STAGE1_CONTROL = 'CONTROL'
     UPGRADE_STAGE1_SCRIPT = 'stage1.sh'
     UPGRADE_STAGE2_SCRIPT = 'stage2.sh'
+    UPGRADE_STAGE3_SCRIPT_TEMPLATE = 'stage3.sh.template'
+    UPGRADE_STAGE3_SCRIPT = 'stage3.sh'
     UPGRADE_STAGE2 = 'stage2.tgz'
     UPGRADE_FACTORY_RESTORE_SRC = 'restore.sh'
     UPGRADE_FACTORY_RESTORE = 'restore.sh'
@@ -1738,7 +1743,7 @@ class Builder:
         """
         # try file paths from the most specific to more generic one
         relative_paths = [
-            os.path.join(*version, name),
+            os.path.join(version[0], version[1], name),
             os.path.join(version[0], name),
             name
         ]
@@ -1785,47 +1790,67 @@ class Builder:
         :param version:
             Version of target firmware.
         """
+        base_system = version[2] if len(version) == 3 else None
+
         # copy all files for transfer to subdirectory
         upload_manager.push_dir(self.UPGRADE_FIRMWARE_DIR)
+        if not base_system:
+            self._upload_images(upload_manager, image)
 
-        self._upload_images(upload_manager, image)
+            # copy uboot_env.config file
+            uboot_env_config = self._get_project_file(self.UPGRADE_DIR, self.UPGRADE_UBOOT_ENV_CONFIG)
+            upload_manager.put(uboot_env_config, self.UPGRADE_UBOOT_ENV_CONFIG)
 
-        # copy uboot_env.config file
-        uboot_env_config = self._get_project_file(self.UPGRADE_DIR, self.UPGRADE_UBOOT_ENV_CONFIG)
-        upload_manager.put(uboot_env_config, self.UPGRADE_UBOOT_ENV_CONFIG)
+            # create U-Boot environment
+            uboot_env = self._create_upgrade_uboot_env()
+            upload_manager.put(uboot_env, self.UPGRADE_UBOOT_ENV)
 
-        # create U-Boot environment
-        uboot_env = self._create_upgrade_uboot_env()
-        upload_manager.put(uboot_env, self.UPGRADE_UBOOT_ENV)
+            # create tar with images for stage2 upgrade
+            stage2 = None
+            while not upload_manager.put(stage2, self.UPGRADE_STAGE2, cache=self.UPGRADE_STAGE2):
+                stage2 = self._create_upgrade_stage2(image)
 
-        # create tar with images for stage2 upgrade
-        stage2 = None
-        while not upload_manager.put(stage2, self.UPGRADE_STAGE2, cache=self.UPGRADE_STAGE2):
-            stage2 = self._create_upgrade_stage2(image)
+            # create env.sh with script variables
+            stage1_env = self._create_upgrade_stage1_control(version)
+            upload_manager.put(stage1_env, self.UPGRADE_STAGE1_CONTROL)
 
-        # create env.sh with script variables
-        stage1_env = self._create_upgrade_stage1_control(version)
-        upload_manager.put(stage1_env, self.UPGRADE_STAGE1_CONTROL)
-
-        # copy stage1 upgrade script
-        upgrade = self._get_project_file(self.UPGRADE_DIR, self.UPGRADE_STAGE1_SCRIPT)
-        upload_manager.put(upgrade, self.UPGRADE_STAGE1_SCRIPT)
-
+            # copy stage1 upgrade script
+            upgrade = self._get_project_file(self.UPGRADE_DIR, self.UPGRADE_STAGE1_SCRIPT)
+            upload_manager.put(upgrade, self.UPGRADE_STAGE1_SCRIPT)
+        else:
+            # firmware files are obtained from previous version
+            upload_manager.put_all(os.path.join(base_system[1], self.UPGRADE_FIRMWARE_DIR))
         # change to original target directory
         upload_manager.pop_dir()
 
         # copy system dependencies
         if version[0] == self.UPGRADE_AM1:
-            build_dir = os.path.join(self._working_dir, 'build_dir', 'target-arm_cortex-a9+neon_musl-1.1.16_eabi')
-            upload_manager.push_dir('system')
+            upload_manager.push_dir(self.UPGRADE_SYSTEM_DIR)
+            if not base_system:
+                build_dir = os.path.join(self._working_dir, 'build_dir', 'target-arm_cortex-a9+neon_musl-1.1.16_eabi')
 
-            upload_manager.put(os.path.join(build_dir, 'toolchain', 'ipkg-arm_cortex-a9_neon', 'libc', 'lib',
-                                            'ld-musl-armhf.so.1'), 'ld-musl-armhf.so.1')
-            upload_manager.put(os.path.join(build_dir, 'u-boot-2018.03', 'ipkg-arm_cortex-a9_neon', 'uboot-envtools',
-                                            'usr', 'sbin', 'fw_printenv'), 'fw_printenv')
-            if version != self.UPGRADE_AM1_WEB:
-                upload_manager.put(os.path.join(build_dir, 'openssh-without-pam', 'openssh-7.4p1',
-                                                'sftp-server'), 'sftp-server')
+                upload_manager.put(os.path.join(build_dir, 'toolchain', 'ipkg-arm_cortex-a9_neon', 'libc', 'lib',
+                                                'ld-musl-armhf.so.1'), 'ld-musl-armhf.so.1')
+                upload_manager.put(os.path.join(build_dir, 'u-boot-2018.03', 'ipkg-arm_cortex-a9_neon',
+                                                'uboot-envtools', 'usr', 'sbin', 'fw_printenv'), 'fw_printenv')
+                if version != self.UPGRADE_AM1_WEB:
+                    upload_manager.put(os.path.join(build_dir, 'openssh-without-pam', 'openssh-7.4p1',
+                                                    'sftp-server'), 'sftp-server')
+            else:
+                # system files are obtained from previous version
+                upload_manager.put_all(os.path.join(base_system[1], self.UPGRADE_SYSTEM_DIR))
+            upload_manager.pop_dir()
+
+        # copy post-upgrade script and files
+        if base_system:
+            firmware_name = "firmware_{}.tar".format(self.get_firmware_version())
+            stage3_script_path = self._get_project_file(self.UPGRADE_DIR, self.UPGRADE_STAGE3_SCRIPT_TEMPLATE)
+            with open(stage3_script_path, 'r') as f:
+                stage3_script = f.read().format(firmware_name=firmware_name)
+                stage3_script = io.BytesIO(stage3_script.encode())
+            upload_manager.push_dir(self.UPGRADE_POST_UPGRADE_DIR)
+            upload_manager.put(stage3_script, self.UPGRADE_STAGE3_SCRIPT)
+            upload_manager.put(image.sysupgrade, firmware_name)
             upload_manager.pop_dir()
 
         # copy upgrade scripts
@@ -1888,15 +1913,26 @@ class Builder:
                 yield target_dir
 
         cache = None
-        versions = next((value for pattern, value in sorted(self.UPGRADE_VERSION.items(), reverse=True)
-                         if self._config.bos.platform.startswith(pattern)), None)
+        base_system = None
+
+        cfg_base_system = self._config.get('upgrade.base_system')
+        if cfg_base_system:
+            base_system = [cfg_base_system.version, cfg_base_system.dirpath]
+
+        versions = []
+        for pattern, values in sorted(self.UPGRADE_VERSION.items(), reverse=True):
+            if self._config.bos.platform.startswith(pattern):
+                for value in values:
+                    versions.append(value)
+                    if base_system and value[0][1] == self.UPGRADE_SSH:
+                        versions.append(((value[0][0], value[0][1], base_system), value[1]))
 
         for version, (archive, archive_flags) in versions:
             # create subdirectory for specific version
             subtarget_path = '{}_{}_{}_{}'.format(
                 self.UPGRADE_IMAGE_PREFIX,
                 self._split_platform()[1],
-                version[1],
+                version[1] if len(version) == 2 else "{}_{}".format(version[1], version[2][0]),
                 self.get_firmware_version())
 
             with get_dst_path(archive is not None) as dst_path:
@@ -1971,6 +2007,18 @@ class Builder:
                 if src_path:
                     src_file.close()
                 return True
+
+            def put_all(self, path):
+                target_dir = self._target_dir
+                for root, dirs, files in os.walk(path):
+                    root_remote = os.path.relpath(root, path)
+                    self._target_dir = os.path.join(target_dir, root_remote)
+                    for name in files:
+                        local_file = os.path.join(root, name)
+                        self.put(local_file, name)
+                    for name in dirs:
+                        os.makedirs(os.path.join(self._target_dir, name), exist_ok=True)
+                self._target_dir = target_dir
 
         image_bootloaders = images.get('bootloaders')
         image_sd = images.get('sd')
@@ -2213,7 +2261,8 @@ class Builder:
                     fpga=self._get_bitstream_path(),
                     kernel=os.path.join(generic_dir, 'lede-{}-upgrade-squashfs-fit.itb'.format(platform)),
                     kernel_recovery=os.path.join(generic_dir, 'lede-{}-recovery-squashfs-fit.itb'.format(platform)),
-                    factory=os.path.join(generic_dir, 'lede-{}-nand-squashfs-factory.bin'.format(platform))
+                    factory=os.path.join(generic_dir, 'lede-{}-nand-squashfs-factory.bin'.format(platform)),
+                    sysupgrade=os.path.join(generic_dir, 'lede-{}-nand-squashfs-sysupgrade.tar'.format(platform))
                 )
                 images_local['upgrade'] = upgrade
 

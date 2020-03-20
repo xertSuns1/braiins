@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2019  Braiins Systems s.r.o.
+# Copyright (C) 2020  Braiins Systems s.r.o.
 #
 # This file is part of Braiins Open-Source Initiative (BOSI).
 #
@@ -44,9 +44,11 @@ SYSTEM_DIR = 'system'
 SOURCE_DIR = 'firmware'
 TARGET_DIR = '/tmp/firmware'
 
+STAGE3_BUILTIN_DIR = 'post-upgrade'
 STAGE3_DIR = 'upgrade'
 STAGE3_FILE = 'stage3.tgz'
 STAGE3_SCRIPT = 'stage3.sh'
+STAGE3_USER_SCRIPT = 'stage3_usr.sh'
 
 REBOOT_DELAY = (3, 5)
 
@@ -74,15 +76,24 @@ def cleanup_system(ssh):
     platform.cleanup_system(ssh)
 
 
+def check_stage3_path(path):
+    if not os.path.isdir(path):
+        print("Post-upgrade path '{}' is missing or is not a directory!".format(path))
+        raise UpgradeStop
+    if not os.path.isfile(os.path.join(path, STAGE3_SCRIPT)):
+        print("Script '{}' is missing in '{}'!".format(STAGE3_SCRIPT, path))
+        raise UpgradeStop
+
+
 def main(args):
-    stage3_path = args.post_upgrade
-    if stage3_path:
-        if not os.path.isdir(stage3_path):
-            print("Post-upgrade path '{}' is missing or is not a directory!".format(stage3_path))
-            raise UpgradeStop
-        if not os.path.isfile(os.path.join(stage3_path, STAGE3_SCRIPT)):
-            print("Script '{}' is missing in '{}'!".format(STAGE3_SCRIPT, stage3_path))
-            raise UpgradeStop
+    stage3_user_path = args.post_upgrade
+    stage3_builtin_path = None
+
+    if stage3_user_path:
+        check_stage3_path(stage3_user_path)
+    if os.path.isdir(STAGE3_BUILTIN_DIR):
+        check_stage3_path(STAGE3_BUILTIN_DIR)
+        stage3_builtin_path = STAGE3_BUILTIN_DIR
 
     print("Connecting to remote host...")
     with SSHManager(args.hostname, USERNAME, PASSWORD) as ssh:
@@ -108,12 +119,20 @@ def main(args):
         sftp.chdir(TARGET_DIR)
         print("Uploading firmware...")
         upload_local_files(sftp, SOURCE_DIR)
-        if stage3_path:
+        if stage3_user_path or stage3_builtin_path:
             print("Uploading post-upgrade (stage3)...")
             with tempfile.TemporaryDirectory() as stage3_dir:
                 stage3_file = os.path.join(stage3_dir, STAGE3_FILE)
                 with tarfile.open(stage3_file, "w:gz") as stage3:
-                    stage3.add(stage3_path, STAGE3_DIR)
+                    if stage3_builtin_path:
+                        stage3.add(stage3_builtin_path, STAGE3_DIR)
+                    if stage3_user_path:
+                        stage3_user_exclude = None
+                        if stage3_builtin_path:
+                            stage3_user_script_path = os.path.join(stage3_user_path, STAGE3_SCRIPT)
+                            stage3.add(stage3_user_script_path, arcname="{}/{}".format(STAGE3_DIR, STAGE3_USER_SCRIPT))
+                            stage3_user_exclude = lambda path: path == stage3_user_script_path
+                        stage3.add(stage3_user_path, STAGE3_DIR, exclude=stage3_user_exclude)
                     stage3.close()
                     with Progress(STAGE3_FILE, os.path.getsize(stage3_file)) as progress:
                         sftp.put(stage3_file, STAGE3_FILE, callback=progress)

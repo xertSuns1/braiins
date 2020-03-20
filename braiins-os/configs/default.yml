@@ -156,6 +156,14 @@ uenv:
   # boot Linux from SD instead of NAND
   sd_boot: no
 
+upgrade:
+  # specify previous firmware version used as a base for current version
+  # this is useful for beta releases where factory reset return system to
+  # previous version
+  base_system:
+    version: 2019-02-21-0-572dd48c
+    dirpath: '{build_dir}/binary/{target}/upgrade/{subtarget}/2019-02-21-0-572dd48c'
+
 deploy:
   # default targets
   # some targets are aliases with predefined behaviour:
