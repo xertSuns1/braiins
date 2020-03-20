@@ -69,7 +69,7 @@ impl Control {
     pub fn new() -> error::Result<Self> {
         let name = "fan-control".to_string();
         let uio = uio_async::UioDevice::open_by_name(&name).with_context(|_| {
-            ErrorKind::UioDevice(name.clone(), "cannot find uio device".to_string())
+            ErrorKind::UioDevice(name.clone(), "cannot open uio device".to_string())
         })?;
         let map = uio.map_mapping(0).with_context(|_| {
             ErrorKind::UioDevice(name.clone(), "cannot map uio device".to_string())

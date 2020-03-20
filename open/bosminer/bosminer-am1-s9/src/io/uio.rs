@@ -59,7 +59,7 @@ impl Device {
         assert!(hashboard_idx > 0);
         let uio_name = format!("chain{}-{}", hashboard_idx, uio_type.as_str());
         let uio = uio_async::UioDevice::open_by_name(&uio_name).with_context(|_| {
-            ErrorKind::UioDevice(uio_name.clone(), "cannot find uio device".to_string())
+            ErrorKind::UioDevice(uio_name.clone(), "cannot open uio device".to_string())
         })?;
         Ok(Self { uio, uio_name })
     }
