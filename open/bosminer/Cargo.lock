@@ -1000,6 +1000,7 @@ dependencies = [
  "ii-stratum 0.1.0",
  "ii-wire 0.1.0",
  "serde_json 1.0.41 (registry+https://github.com/rust-lang/crates.io-index)",
+ "structopt 0.3.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "uint 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
