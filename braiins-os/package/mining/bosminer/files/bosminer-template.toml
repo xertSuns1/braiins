@@ -45,6 +45,13 @@ generator = 'template'
 # (default='hash_chain_global.voltage')
 #voltage = 8.8
 
+# Optional configuration for overriding autotuning default settings
+[autotuning]
+# Set true to start autotuner automatically
+#enabled = true
+# Set PSU power limit (in watts) for three hashboards and control board
+#psu_power_limit = 1420
+
 # Optional configuration for overriding temperature control default settings
 [temp_control]
 # Set temperature control mode (default='auto')
