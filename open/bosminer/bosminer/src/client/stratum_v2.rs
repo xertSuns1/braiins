@@ -73,6 +73,9 @@ const VERSION_MASK: u32 = 0x1fffe000;
 
 #[derive(Debug, Clone)]
 pub struct ConnectionDetails {
+    /// TODO temporary field that denotes the protocol, it will be replaced by a `Connector`
+    /// object that will have the information about a specific protocol already built-in
+    pub protocol: ClientProtocol,
     pub user: String,
     pub host: String,
     pub port: u16,
@@ -81,6 +84,7 @@ pub struct ConnectionDetails {
 impl ConnectionDetails {
     pub fn from_descriptor(descriptor: &ClientDescriptor) -> Self {
         Self {
+            protocol: descriptor.protocol.clone(),
             user: descriptor.user.clone(),
             host: descriptor.host.clone(),
             port: descriptor.port,
@@ -538,22 +542,29 @@ impl StratumConnectionHandler {
     }
 
     async fn connect(&self) -> error::Result<v2::Framed> {
-        let addr = ii_wire::Address::from_str(
-            self.client
-                .connection_details()
-                .get_host_and_port()
-                .as_str(),
-        )?;
+        let connection_details = self.client.connection_details();
+        let addr = ii_wire::Address::from_str(connection_details.get_host_and_port().as_str())?;
         let mut client = ii_wire::Client::new(addr);
         // Attempt only once to connect (as the stratum client is being managed externally)
         let connection = client.next().await?;
 
-        // Successful noise initiator handshake results in a stream/sink for V2 frames
-        // TODO: this initiator still lacks the target pool's master public key that has
-        //  be used to verify the authenticity of the endpoint we are connecting to. This is yet to
-        //  be implemented.
-        let noise_initiator = v2::noise::Initiator::new();
-        let client_framed_stream = noise_initiator.connect(connection).await?;
+        // TODO this will be replaced by a 'connector' that will be set when building stratum
+        // client instance
+        let client_framed_stream = match connection_details.protocol {
+            // V2 secure connector
+            ClientProtocol::StratumV2(upstream_authority_public_key) => {
+                let noise_initiator =
+                    v2::noise::Initiator::new(upstream_authority_public_key.into_inner());
+                // Successful noise initiator handshake results in a stream/sink for V2 frames
+                noise_initiator.connect(connection).await?
+            }
+            // V2 insecure connector
+            ClientProtocol::StratumV2Insecure => {
+                ii_wire::Connection::<v2::Framing>::new(connection).into_inner()
+            }
+            // Anything else is considered a bug
+            _ => panic!("BUG: client supports only stratum V2 protocols!"),
+        };
 
         Ok(client_framed_stream)
     }
@@ -1028,9 +1039,7 @@ impl fmt::Display for StratumClient {
         write!(
             f,
             "{}://{}@{}",
-            ClientProtocol::SCHEME_STRATUM_V2,
-            connection_details.host,
-            connection_details.user
+            connection_details.protocol, connection_details.host, connection_details.user
         )
     }
 }

@@ -98,7 +98,13 @@ impl Handle {
                     job_solver,
                 ))
             }
-            ClientProtocol::StratumV2 => Arc::new(stratum_v2::StratumClient::new(
+            ClientProtocol::StratumV2(_) => Arc::new(stratum_v2::StratumClient::new(
+                stratum_v2::ConnectionDetails::from_descriptor(&descriptor),
+                backend_info,
+                job_solver,
+                channel,
+            )),
+            ClientProtocol::StratumV2Insecure => Arc::new(stratum_v2::StratumClient::new(
                 stratum_v2::ConnectionDetails::from_descriptor(&descriptor),
                 backend_info,
                 job_solver,

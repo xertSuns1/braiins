@@ -22,8 +22,11 @@
 
 use crate::error;
 
+use ii_stratum::v2;
+
 use url::Url;
 
+use std::convert::TryFrom;
 use std::fmt;
 
 use failure::ResultExt;
@@ -31,23 +34,47 @@ use failure::ResultExt;
 pub const URL_JAVA_SCRIPT_REGEX: &'static str =
     "(?:drain|(?:stratum2?\\+tcp(?:\\+insecure)?)):\\/\\/[\\w\\.-]+(?::\\d+)?(?:\\/[\\dA-HJ-NP-Za-km-z]+)?";
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum Protocol {
     Drain,
     StratumV1,
-    StratumV2,
+    StratumV2(v2::noise::auth::EncodedEd25519PublicKey),
+    StratumV2Insecure,
 }
 
 impl Protocol {
     pub const SCHEME_DRAIN: &'static str = "drain";
     pub const SCHEME_STRATUM_V1: &'static str = "stratum+tcp";
     pub const SCHEME_STRATUM_V2: &'static str = "stratum2+tcp";
+    pub const SCHEME_STRATUM_V2_INSECURE: &'static str = "stratum2+tcp+insecure";
 
-    pub fn parse(scheme: &str) -> error::Result<Self> {
+    /// Helper that builds authority public key
+    fn get_upstream_auth_public_key_from_string(
+        public_key: &str,
+    ) -> error::Result<v2::noise::auth::EncodedEd25519PublicKey> {
+        v2::noise::auth::EncodedEd25519PublicKey::try_from(public_key.to_string())
+            .context(format!(
+                "invalid upstream authority public key: {}",
+                public_key
+            ))
+            .map_err(Into::into)
+    }
+
+    pub fn parse(scheme: &str, path: &str) -> error::Result<Self> {
         Ok(match scheme {
             Self::SCHEME_DRAIN => Self::Drain,
             Self::SCHEME_STRATUM_V1 => Self::StratumV1,
-            Self::SCHEME_STRATUM_V2 => Self::StratumV2,
+            Self::SCHEME_STRATUM_V2 => {
+                let upstream_authority_public_key = match path.get(1..) {
+                    Some(s) => Self::get_upstream_auth_public_key_from_string(s)?,
+                    None => Err(error::ErrorKind::Client(format!(
+                        "missing upstream authority key for securing {} connection",
+                        scheme
+                    )))?,
+                };
+                Self::StratumV2(upstream_authority_public_key)
+            }
+            Self::SCHEME_STRATUM_V2_INSECURE => Self::StratumV2Insecure,
             _ => Err(error::ErrorKind::Client(format!(
                 "unknown protocol '{}'",
                 scheme
@@ -59,17 +86,21 @@ impl Protocol {
         match self {
             Self::Drain => Self::SCHEME_DRAIN,
             Self::StratumV1 => Self::SCHEME_STRATUM_V1,
-            Self::StratumV2 => Self::SCHEME_STRATUM_V2,
+            Self::StratumV2(_) => Self::SCHEME_STRATUM_V2,
+            Self::StratumV2Insecure => Self::SCHEME_STRATUM_V2_INSECURE,
         }
     }
 }
 
 impl fmt::Display for Protocol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
+        match self {
             Protocol::Drain => write!(f, "Drain"),
             Protocol::StratumV1 => write!(f, "Stratum V1"),
-            Protocol::StratumV2 => write!(f, "Stratum V2"),
+            Protocol::StratumV2(public_key) => {
+                write!(f, "Stratum V2 (authority key: {})", public_key)
+            }
+            Protocol::StratumV2Insecure => write!(f, "Stratum V2 Insecure"),
         }
     }
 }
@@ -138,7 +169,7 @@ impl Descriptor {
     pub fn create(url: &str, user_info: &UserInfo, enabled: bool) -> error::Result<Self> {
         let url = Url::parse(url).context(error::ErrorKind::Client("invalid URL".to_string()))?;
 
-        let protocol = Protocol::parse(url.scheme())?;
+        let protocol = Protocol::parse(url.scheme(), url.path())?;
         let host = url
             .host()
             .ok_or(error::ErrorKind::Client("missing hostname".to_string()))?

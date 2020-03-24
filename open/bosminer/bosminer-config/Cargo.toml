@@ -11,3 +11,4 @@ config = "0.9"
 failure = "0.1.5"
 serde = { version = "1.0", features = ["derive"] }
 url = "2.1"
+ii-stratum = { path = "../../protocols/stratum" }
