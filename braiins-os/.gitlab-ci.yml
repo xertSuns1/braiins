@@ -1,0 +1,70 @@
+# Copyright (C) 2020  Braiins Systems s.r.o.
+#
+# This file is part of Braiins Open-Source Initiative (BOSI).
+#
+# BOSI is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# Please, keep in mind that we may also license BOSI or any part thereof
+# under a proprietary license. For more information on the terms and conditions
+# of such proprietary license or if you have any other questions, please
+# contact us at opensource@braiins.com.
+
+.on-time: &on-time
+    only:
+        - schedules
+
+.on-push: &on-push
+    except:
+        - schedules
+
+braiins-os-build:
+    <<: *on-push
+    image: $BOS_BUILDER_IMG
+    tags:
+        - p_image_builder
+
+    variables:
+        TARGET: $BOS_TARGET-$BOS_SUBTARGET
+        BOS_OUTPUT_DIR: braiins-os_$BOS_SUBTARGET
+
+    script:
+        # Have logged rust version in case there is unannounced upgrade
+        - rustup show
+        - cd braiins-os/
+
+        # Additional config with git access token for other repositories
+        # also override branch to be checked out from those other repos,
+        # as default config assumes this to be same as ours, which wont
+        # fly with detached heads produced by gitlab
+        - eval sed "s/\{CI_JOB_TOKEN\}/${CI_JOB_TOKEN}/g" "$BOS_LOCAL_CONFIG" > .local.yml
+
+        # Build system files
+        - ./bb.py --platform $TARGET prepare
+        - ./bb.py --platform $TARGET clean
+        - ./bb.py --platform $TARGET prepare --update-feeds
+        - ./bb.py --platform $TARGET build
+        - ./bb.py --platform $TARGET deploy
+
+        # Create disk image
+        - ./mkimage.sh
+
+        # Cut down artifacts path
+        - mv output/$TARGET ../$BOS_OUTPUT_DIR
+
+    artifacts:
+        name: "braiins-os-$(date +\"%Y-%m-%d\")"
+        when: on_success
+        expire_in: 1 week
+        paths:
+            - $BOS_OUTPUT_DIR
