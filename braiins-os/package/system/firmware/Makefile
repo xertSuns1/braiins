@@ -29,7 +29,7 @@ PKG_MAINTAINER:=Braiins <braiins@braiins.com>
 # set firmware version
 PKG_RELEASE:=$(call qstrip,$(CONFIG_FIRMWARE_VERSION))
 
-BOS_FEEDS_SERVER:=https://feeds.braiins-os.org/$(SUBTARGET)
+BOS_FEEDS_SERVER:=$(call qstrip,$(CONFIG_FIRMWARE_FEEDS_SERVER))/$(SUBTARGET)
 BOS_FEEDS_CONFIG:=/etc/opkg/bosfeeds.conf
 
 include $(INCLUDE_DIR)/package.mk

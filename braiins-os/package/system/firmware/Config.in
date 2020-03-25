@@ -9,3 +9,7 @@ config FIRMWARE_VERSION
 config FIRMWARE_REQUIRE
     string "Previous firmware version required by this firmware"
     default ""
+
+config FIRMWARE_FEEDS_SERVER
+    string "URL of feeds server with firmware packages"
+    default "https://feeds.braiins-os.org"
