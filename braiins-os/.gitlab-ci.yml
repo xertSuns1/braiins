@@ -58,6 +58,8 @@ braiins-os-build:
 
         # Create disk image
         - ./mkimage.sh
+        - upgrade_file="braiins-os_am1-s9_ssh_$(./bb.py build-version).tar.gz"
+        - ./mkimage.sh output/$TARGET/sd output/$TARGET/upgrade/$upgrade_file output/$TARGET/
 
         # Cut down artifacts path
         - mv output/$TARGET ../$BOS_OUTPUT_DIR

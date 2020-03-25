@@ -23,8 +23,10 @@
 # contact us at opensource@braiins.com.
 
 # this script is used to automate disk image creation
-# usage: mkimage.sh [source [dest]]
+# usage:
+#   mkimage.sh [source [[upgrade] dest]]
 #   source is directory with files for u-boot
+#   upgrade is optional path to lede upgrade tarball
 #   dest is file or directory (default name will be used) for resulting image
 #
 # image contains a fat32 partition and ext4 partition of fixed size
@@ -50,10 +52,16 @@ die() { echo "$@" ; exit 1; }
 
 # image source dir (created by bb)
 src=${1:-output/zynq-am1-s9/sd}
+# if we have three params, second one is a path to upgrade file to be copied onto image
+if [[ ${#*} == 3 ]]; then
+    src_upgrade=$2
+    shift
+fi
 # name or dir for created image
 dest=${2:-output/zynq-am1-s9}
 
 test -d $src || die "source must be a directory"
+test -z "$src_upgrade" -o -f "$src_upgrade" || die "upgrade file does not exist: $src_upgrade"
 
 # cook up a default name if dest is a directory
 if [ -d $dest ]; then
@@ -64,12 +72,13 @@ if [ -d $dest ]; then
     dest=$dest/$image
 fi
 echo packing $src into $dest
+echo upgrade $src_upgrade
 tmpdir=$(mktemp -d)
 
 # os partition size in MB (fat one)
 image_ospart_size=16
-# upgrade partition size in MB (fat one)
-image_upgpart_size=32
+# upgrade partition size in MB (ext one)
+image_upgpart_size=64
 
 # first partition (fat)
 dd if=/dev/zero of=$tmpdir/part1.img bs=1M count=$image_ospart_size
@@ -85,8 +94,12 @@ mcopy -o -i $tmpdir/part1.img $tmpdir/uEnv.txt ::/
 
 # second partition (ext)
 dd if=/dev/zero of=$tmpdir/part2.img bs=1M count=$image_upgpart_size
-mkdir $tmpdir/part2
-date +'%Y-%m-%d' > $tmpdir/part2/created    # TODO upgrade stuff belongs here
+mkdir $tmpdir/part2     # this will be copied onto upgrade pertition
+if [[ -n "$src_upgrade" ]]; then
+    echo Copying upgrade package: $src_upgrade
+    mkdir -p $tmpdir/part2/upper/usr/share/upgrade
+    cp "$src_upgrade" $tmpdir/part2/upper/usr/share/upgrade/firmware.tar.gz
+fi
 mkfs.ext4 $tmpdir/part2.img -d $tmpdir/part2 -L braiins-upgrade
 
 # assemble whole image
