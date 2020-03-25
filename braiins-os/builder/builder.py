@@ -1330,7 +1330,7 @@ class Builder:
         local = image.factory
         logging.info("Writing '{}' to NAND partition '{}'..."
                      .format(os.path.basename(local), mtd_name))
-        self._mtd_write(ssh, local, mtd_name, offset=0x800000, compress=True, erase=False)
+        self._mtd_write(ssh, local, mtd_name, offset=0x600000, compress=True, erase=False)
 
         local = image.fpga
         logging.info("Writing '{}' to NAND partition '{}'..."

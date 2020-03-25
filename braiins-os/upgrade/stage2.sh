@@ -52,7 +52,7 @@ MINER_FIXED_FREQ=$(fw_printenv -n miner_fixed_freq 2> /dev/null)
 set -e
 
 mtd_write fit.itb recovery
-mtd -n -p 0x0800000 write factory.bin.gz recovery
+mtd -n -p 0x0600000 write factory.bin.gz recovery
 mtd -n -p 0x1400000 write system.bit.gz recovery
 mtd -n -p 0x1500000 write boot.bin.gz recovery
 mtd -n -p 0x1520000 write uboot.img.gz recovery
