@@ -1708,6 +1708,7 @@ class Builder:
 
         # add compressed boot.bin and factory.bin
         self._add2tar_compressed_file(tar, image.boot, 'boot.bin.gz')
+        self._add2tar_compressed_file(tar, image.uboot, 'uboot.img.gz')
         self._add2tar_compressed_file(tar, image.factory, 'factory.bin.gz')
 
         # add miner_cfg.config file
