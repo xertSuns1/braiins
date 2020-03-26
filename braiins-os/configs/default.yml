@@ -195,6 +195,9 @@ deploy:
   - local_feeds
   # base file which is used for concatenation with new firmware meta information
   feeds_base: defaults/{subtarget}/Packages
+  # list of packages which will be published to feeds
+  feeds_packages:
+  - bos_plus
   # use factory or sysupgrade image for formating/updating UBI partition
   # for first load is needed factory image
   # factory image swipes rootfs_data overlay!

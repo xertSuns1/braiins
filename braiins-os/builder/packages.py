@@ -24,11 +24,59 @@ from itertools import chain
 from collections import OrderedDict
 
 
+class Package:
+    # feeds index constants
+    FEEDS_ATTR_PACKAGE = 'Package'
+    FEEDS_ATTR_FILENAME = 'Filename'
+    FEEDS_ATTR_VERSION = 'Version'
+    FEEDS_ATTR_REQUIRE = 'Require'
+    FEEDS_EXCLUDED_ATTRIBUTES = ['Source', 'Maintainer']
+
+    @property
+    def name(self):
+        return self._attributes.get(self.FEEDS_ATTR_PACKAGE)
+
+    @property
+    def filename(self):
+        return self._attributes.get(self.FEEDS_ATTR_FILENAME)
+
+    @property
+    def version(self):
+        return self._attributes.get(self.FEEDS_ATTR_VERSION)
+
+    @property
+    def require(self):
+        return self._attributes.get(self.FEEDS_ATTR_REQUIRE)
+
+    @require.setter
+    def require(self, require):
+        self._attributes[self.FEEDS_ATTR_REQUIRE] = require
+
+    def __init__(self, attributes):
+        self._attributes = attributes
+
+    def __hash__(self):
+        return hash((self.name, self.version))
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.name == other.name and self.version == other.version
+
+    def __lt__(self, other):
+        return self.filename < other.filename
+
+    def __iter__(self):
+        for attribute, value in self._attributes.items():
+            if attribute not in self.FEEDS_EXCLUDED_ATTRIBUTES:
+                yield attribute, value
+
+
 class Packages:
     """
     Class for parsing LEDE feeds index with packages
     """
-    def __init__(self, path):
+    def __init__(self, path, input=None):
         """
         Initialize parser with path to feeds index file
 
@@ -36,7 +84,7 @@ class Packages:
             File path to feeds index file.
         """
         self._path = path
-        self._input = None
+        self._input = input
 
     def __enter__(self):
         """
@@ -60,7 +108,7 @@ class Packages:
         :param stream:
         :return:
         """
-        package = OrderedDict()
+        attributes = OrderedDict()
         attribute = None
         value = None
         for line in stream:
@@ -71,7 +119,9 @@ class Packages:
                 # found new package attribute
                 if attribute:
                     # store previous attribute
-                    package[attribute] = value
+                    attributes[attribute] = value
+                    if attribute == Package.FEEDS_ATTR_VERSION and not attributes.get(Package.FEEDS_ATTR_REQUIRE):
+                        attributes[Package.FEEDS_ATTR_REQUIRE] = None
                 # attribute has format 'name: value\n'
                 attribute, value = line.split(': ', 1)
                 # remove newline
@@ -81,8 +131,10 @@ class Packages:
                 value = '{}\n{}'.format(value, line.rstrip())
         if attribute:
             # store previous attribute
-            package[attribute] = value
-        return package
+            attributes[attribute] = value
+        if Package.FEEDS_ATTR_REQUIRE not in attributes:
+            attributes[Package.FEEDS_ATTR_REQUIRE] = None
+        return Package(attributes)
 
     def __iter__(self):
         """

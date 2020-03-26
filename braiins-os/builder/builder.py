@@ -182,14 +182,7 @@ class Builder:
     SYSUPGRADE_ATTR_REQUIRE = 'require'
     SYSUPGRADE_ATTR_INCLUDE = 'include'
 
-    # feeds index constants
     FEEDS_INDEX = 'Packages'
-    FEEDS_ATTR_PACKAGE = 'Package'
-    FEEDS_ATTR_FILENAME = 'Filename'
-    FEEDS_ATTR_VERSION = 'Version'
-    FEEDS_ATTR_REQUIRE = 'Require'
-    FEEDS_EXCLUDED_ATTRIBUTES = ['Source', 'Maintainer']
-
     FEED_FIRMWARE = 'firmware'
 
     # list of supported utilities
@@ -2073,40 +2066,59 @@ class Builder:
         src_feeds_index = os.path.join(local_feeds.packages, self.FEEDS_INDEX)
         dst_feeds_index = os.path.join(target_dir, self.FEEDS_INDEX)
 
-        # find package firmware meta information
+        # prepare base feeds index
+        feeds_index = set()
+        feeds_base_url = self._config.deploy.get('feeds_base', None)
+        fw_require = self._get_sysupgrade_attr(self.SYSUPGRADE_ATTR_REQUIRE)
+
+        packages_for_publishing = self._config.get('deploy.feeds_packages', [])
+        # find package firmware meta information and all packages requested to be published
+        firmware_package = None
         with Packages(src_feeds_index) as src_packages:
-            firmware_package = next((package for package in src_packages
-                                     if package[self.FEEDS_ATTR_PACKAGE] == self.FEED_FIRMWARE), None)
+            for package in src_packages:
+                if not firmware_package and package.name == self.FEED_FIRMWARE:
+                    firmware_package = package
+                elif package.name in packages_for_publishing:
+                    feeds_index.add(package)
+
         if not firmware_package:
             logging.error("Missing firmware package in '{}'".format(src_feeds_index))
             raise BuilderStop
 
-        # prepare base feeds index
-        feeds_base = None
-        feeds_base_url = self._config.deploy.get('feeds_base', None)
-        fw_require = self._get_sysupgrade_attr(self.SYSUPGRADE_ATTR_REQUIRE)
+        firmware_package.require = fw_require
+        feeds_index.add(firmware_package)
 
+        # copy all packages for publishing
+        for package in feeds_index:
+            package_ipk = package.filename
+            src_package = os.path.join(local_feeds.packages, package_ipk)
+            shutil.copy(src_package, target_dir)
+
+        # copy sysupgrade tarball for current firmware
+        firmware_ipk = firmware_package.filename
+        dst_sysupgrade = os.path.join(target_dir, os.path.splitext(firmware_ipk)[0] + '.tar')
+        shutil.copy(local_feeds.sysupgrade, dst_sysupgrade)
+
+        feeds_base_index = set()
         if feeds_base_url:
             # appending to previous index
             if os.path.isfile(feeds_base_url):
-                with open(feeds_base_url, 'rb') as package:
-                    feeds_base = package.read().decode('utf-8')
+                with Packages(feeds_base_url) as base_packages:
+                    feeds_base_index = {package for package in base_packages}
             else:
                 feeds_base = urlopen(Request(feeds_base_url, headers={'User-Agent': 'Mozilla/5.0'}))
                 feeds_base = feeds_base.read().decode('utf-8')
+                base_packages = Packages(feeds_base_url, iter(feeds_base.splitlines()))
+                feeds_base_index = {package for package in base_packages}
 
         # create destination feeds index
         with open(dst_feeds_index, 'w') as dst_packages:
-            if feeds_base:
-                dst_packages.write(feeds_base)
-            for attribute, value in firmware_package.items():
-                if attribute not in self.FEEDS_EXCLUDED_ATTRIBUTES:
-                    dst_packages.write('{}: {}\n'.format(attribute, value))
-                if fw_require and attribute == self.FEEDS_ATTR_VERSION:
-                    # insert previous firmware requirements after version attribute
-                    dst_packages.write('{}: {}\n'.format(self.FEEDS_ATTR_REQUIRE, fw_require))
-            # empty line at the end of file is required!
-            dst_packages.write('\n')
+            for package in sorted(feeds_index | feeds_base_index):
+                for attribute, value in package:
+                    if value is not None:
+                        dst_packages.write('{}: {}\n'.format(attribute, value))
+                # empty line at the end of file is required!
+                dst_packages.write('\n')
 
         # sign the created index file
         usign = self._get_utility(self.LEDE_USIGN)
@@ -2115,14 +2127,6 @@ class Builder:
         # compress signed index file
         with open(dst_feeds_index, 'rb') as file_in, gzip.open(dst_feeds_index + '.gz', 'wb') as file_out:
             shutil.copyfileobj(file_in, file_out)
-
-        # copy firmware packages
-        firmware_ipk = firmware_package[self.FEEDS_ATTR_FILENAME]
-        src_package = os.path.join(local_feeds.packages, firmware_ipk)
-        dst_sysupgrade = os.path.join(target_dir, os.path.splitext(firmware_ipk)[0] + '.tar')
-
-        shutil.copy(src_package, target_dir)
-        shutil.copy(local_feeds.sysupgrade, dst_sysupgrade)
 
     def _get_recovery_image(self, platform: str, generic_dir: str, boot_path: str, uboot_path: str):
         """
