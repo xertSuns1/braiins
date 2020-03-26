@@ -1,0 +1,3 @@
+config BOS_PLUS_FEEDS_SERVER
+    string "URL of feeds server with BOS+ firmware packages"
+    default "https://feeds.braiins-os.com"

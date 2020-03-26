@@ -24,12 +24,11 @@ include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=bos_plus
-PKG_RELEASE:=1
+PKG_RELEASE:=latest
 
 PKG_MAINTAINER:=Braiins <braiins@braiins.com>
 
-BOS_FEEDS_SERVER:=https://feeds.braiins-os.org/$(SUBTARGET)
-BOS_FEEDS_CONFIG:=/etc/opkg/bosfeeds.conf
+BOS_FEEDS_SERVER:=$(call qstrip,$(CONFIG_BOS_PLUS_FEEDS_SERVER))/$(SUBTARGET)
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -41,6 +40,10 @@ endef
 
 define Package/bos_plus/description
  Meta package for firmware upgrade to BOS+.
+endef
+
+define Package/bos_plus/config
+	source "$(SOURCE)/Config.in"
 endef
 
 define Build/Compile
@@ -69,20 +72,9 @@ fi
 PACKAGES_NAME="Packages"
 PACKAGES_PATH="/tmp/$${PACKAGES_NAME}"
 SYSUPGRADE_PATH="/tmp/sysupgrade.tar"
-BOS_FEEDS="/etc/bosplusfeeds.conf"
-
-if [ ! -f "$${BOS_FEEDS}" ]; then
-	echo "Missing configuration file $${BOS_FEEDS}!" >&2
-	exit 1
-fi
 
 # parse server address from opkg configuration file
-feeds_server=$$(cat "$${BOS_FEEDS}")
-
-if [ -z "$${feeds_server}" ]; then
-	echo "Cannot find feeds server in $${BOS_FEEDS}!" >&2
-	exit 1
-fi
+feeds_server="${BOS_FEEDS_SERVER}"
 
 current_fw_version() {
 	if ! cat /etc/bos_version 2>/dev/null; then
@@ -119,7 +111,7 @@ get_firmware_name() {
 	local require
 	latest_fw_version "$${PACKAGES_PATH}" filename require
 	if [ ! "$${fw_version}" "<" "$${require}" ]; then
-		eval $$1=$${filename}
+		eval $$1="$${filename%.ipk}.tar"
 		return 0
 	fi
 
