@@ -151,7 +151,7 @@ pub fn for_backend() -> serde_json::Value {
                                                 "label": "Pool URL",
                                                 "min_length": 1,
                                                 "match": CLIENT_URL_JAVA_SCRIPT_REGEX,
-                                                "span": 5
+                                                "span": 11
                                             }
                                         ],
                                         [
@@ -160,7 +160,7 @@ pub fn for_backend() -> serde_json::Value {
                                                 "type": "string",
                                                 "label": "Username",
                                                 "min_length": 1,
-                                                "span": 4
+                                                "span": 7
                                             }
                                         ],
                                         [
@@ -169,7 +169,7 @@ pub fn for_backend() -> serde_json::Value {
                                                 "type": "password",
                                                 "label": "Password",
                                                 "default": null,
-                                                "span": 2
+                                                "span": 5
                                             }
                                         ]
                                     ]

@@ -29,7 +29,7 @@ use std::fmt;
 use failure::ResultExt;
 
 pub const URL_JAVA_SCRIPT_REGEX: &'static str =
-    "^(?:drain|(?:stratum2?\\+tcp)):\\/\\/[\\w\\.-]+:\\d+$";
+    "(?:drain|(?:stratum2?\\+tcp(?:\\+insecure)?)):\\/\\/[\\w\\.-]+(?::\\d+)?(?:\\/[\\dA-HJ-NP-Za-km-z]+)?";
 
 #[derive(Copy, Clone, Debug)]
 pub enum Protocol {
