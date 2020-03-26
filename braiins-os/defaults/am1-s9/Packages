@@ -1,0 +1,83 @@
+Package: firmware
+Version: 2018-09-22-0-853643de
+Depends: libc
+Section: utils
+Architecture: arm_cortex-a9_neon
+Installed-Size: 300
+Filename: firmware_2018-09-22-0-853643de_arm_cortex-a9_neon.ipk
+Size: 137
+SHA256sum: 19205bb52f56e7e4dcbeb938988289d4402117c7279620fea1ee80b6e3b3ee24
+Description:  Meta package for automated firmware upgrades.
+
+Package: firmware
+Version: 2018-09-22-1-8d9b127d
+Require: 2018-09-22-0-853643de
+Depends: libc
+Section: utils
+Architecture: arm_cortex-a9_neon
+Installed-Size: 300
+Filename: firmware_2018-09-22-1-8d9b127d_arm_cortex-a9_neon.ipk
+Size: 137
+SHA256sum: 4ff2207e9da5be627520291a23fb72e633a6e1876ce386d41dd28b9b7500356e
+Description:  Meta package for automated firmware upgrades.
+
+Package: firmware
+Version: 2018-10-24-0-9e5687a2
+Require: 2018-09-22-1-8d9b127d
+Depends: libc
+Section: utils
+Architecture: arm_cortex-a9_neon
+Installed-Size: 301
+Filename: firmware_2018-10-24-0-9e5687a2_arm_cortex-a9_neon.ipk
+Size: 112
+SHA256sum: e6f66b36f7930c3266dfed68f070fdc68cbf201f27118fb28f4db2a39368a984
+Description:  Meta package for automated firmware upgrades.
+
+Package: firmware
+Version: 2018-11-27-0-c34516b0
+Require: 2018-10-24-0-9e5687a2
+Depends: libc
+Section: utils
+Architecture: arm_cortex-a9_neon
+Installed-Size: 300
+Filename: firmware_2018-11-27-0-c34516b0_arm_cortex-a9_neon.ipk
+Size: 112
+SHA256sum: c96ee81aebfe423bc0bec91f553d73546859fed6fdd0ebf590e0c62df11456e4
+Description:  Meta package for automated firmware upgrades.
+
+Package: firmware
+Version: 2019-01-24-0-d3cc7c87
+Require: 2018-10-24-0-9e5687a2
+Depends: libc
+Section: utils
+Architecture: arm_cortex-a9_neon
+Installed-Size: 296
+Filename: firmware_2019-01-24-0-d3cc7c87_arm_cortex-a9_neon.ipk
+Size: 112
+SHA256sum: 344abf15fe1a5374f9e274557ed661eab7e461d3ea7bd9266b6b5694303e14a7
+Description:  Meta package for automated firmware upgrades.
+
+Package: firmware
+Version: 2019-02-21-0-572dd48c
+Require: 2018-10-24-0-9e5687a2
+Depends: libc
+Section: utils
+Architecture: arm_cortex-a9_neon
+Installed-Size: 298
+Filename: firmware_2019-02-21-0-572dd48c_arm_cortex-a9_neon.ipk
+Size: 110
+SHA256sum: b2aec4f50ec6c6a03d9af27bcf9d1507d69083037d96ef2485c3e686130e755f
+Description:  Meta package for automated firmware upgrades.
+
+Package: firmware
+Version: 2019-06-05-0-0de55997
+Require: 2018-10-24-0-9e5687a2
+Depends: libc
+Section: utils
+Architecture: arm_cortex-a9_neon
+Installed-Size: 297
+Filename: firmware_2019-06-05-0-0de55997_arm_cortex-a9_neon.ipk
+Size: 110
+SHA256sum: 3b07be9f778733b92f2cae3ee27a3e59acaa0d6b143a3d381e5a54ccf26e44b2
+Description:  Meta package for automated firmware upgrades.
+

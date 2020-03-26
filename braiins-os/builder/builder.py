@@ -2088,8 +2088,12 @@ class Builder:
 
         if feeds_base_url:
             # appending to previous index
-            feeds_base = urlopen(Request(feeds_base_url, headers={'User-Agent': 'Mozilla/5.0'}))
-            feeds_base = feeds_base.read().decode('utf-8')
+            if os.path.isfile(feeds_base_url):
+                with open(feeds_base_url, 'rb') as package:
+                    feeds_base = package.read().decode('utf-8')
+            else:
+                feeds_base = urlopen(Request(feeds_base_url, headers={'User-Agent': 'Mozilla/5.0'}))
+                feeds_base = feeds_base.read().decode('utf-8')
 
         # create destination feeds index
         with open(dst_feeds_index, 'w') as dst_packages:
