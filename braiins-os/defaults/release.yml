@@ -3,6 +3,7 @@ core:
   list:
     - bosminer
     - bosminer_monitor
+    - entropy_source
     - ca-bundle
     - ca-certificates
     - gdbserver
