@@ -162,7 +162,7 @@ function Led:set_mode(mode)
 	end
 end
 
--- BOSMiner class
+-- BOSMinerStatus class
 function BOSMinerStatus.new(response)
 	local self = setmetatable({}, BOSMinerStatus)
 	local json = response and CJSON.decode(response)
@@ -317,7 +317,7 @@ while true do
 		local bosminer = assert(SOCKET.tcp())
 		local result = nil
 		local new_state = 'dead'
-		local reason = "BOSMiner API doesn't respond"
+		local reason = "BOSminer API doesn't respond"
 		bosminer:settimeout(3)
 		local ret, err = bosminer:connect(BOSMINER_HOST, BOSMINER_PORT)
 		if ret then

@@ -32,12 +32,12 @@ include $(INCLUDE_DIR)/package.mk
 define Package/bosminer_monitor
   SECTION:=utils
   CATEGORY:=Utilities
-  TITLE:=Monitor for BOSMiner
+  TITLE:=Monitor for BOSminer
   DEPENDS:=+bosminer
 endef
 
 define Package/bosminer_monitor/description
- Monitors if BOSMiner is working properly and provide signalization about its
+ Monitors if BOSminer is working properly and provide signalization about its
  current state.
 endef
 

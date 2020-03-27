@@ -53,7 +53,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/bosminer
   SECTION:=utils
   CATEGORY:=Utilities
-  TITLE:=BOSMiner mining software with Stratum V2
+  TITLE:=BOSminer mining software with Stratum V2
   URL:=https://braiins-os.org/
 endef
 
