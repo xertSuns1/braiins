@@ -9,7 +9,7 @@ from scratch and written in a more modern programming language, Rust.
 ## Backend Agnostic Features
 
 - native **Stratum V2** support. The miner can be tested against `v2.stratum.slushpool.com:3336`. Alternatively it can be tested in combination with a *V2->V1* [mining proxy](../stratum-proxy/README.md) running locally in your environment. 
-- **toml** based persistent configuration, default path (`/etc/bosminer/bosminer.toml`) can be overridden on the command line. The configuration file is schema based, therefore the software would **complain** about **missing** or **unknown** configuration fields.
+- **toml** based persistent configuration, default path (`/etc/bosminer.toml`) can be overridden on the command line. The configuration file is schema based, therefore the software would **complain** about **missing** or **unknown** configuration fields.
 - **weighted pool switching** - user can specify multiple pools in the configuration and **bOSminer** will balance the hash rate across multiple pools. Currently it is not possible to specify weights for individual pools in the configuration nor on the command line.
 - **cgminer** compatible *read-only* **API**
 - **fan control** - user may specify a target temperature and the software will optimally control fan speed to reach the desired temperature. Alternatively, this mechanism can be overridden by a fixed fan speed.
@@ -110,14 +110,11 @@ Example output:
 ```
 
 
-# Known Issues and Next Iteration Roadmap (MVP Beta)
+# Known Issues and Next Iteration Roadmap
 
 Below is a list of use cases that we plan on implementing in the Beta MVP phase of the project:
 
-- fail-over between pools and upstream connection handling. The bOSminer Alpha doesn't handle any upstream connectivity issues (i.e. if the upstream fails, the software wouldn't try to reconnect).
 - currently the API implements the read-only subset, while the writable part of cgminer compatible API is still to be implemented.
-- stratum V1 support - legacy mining protocol support is necessary for production environments.
-- linear frequency scaling of factory calibration frequencies.
 
 
 # Configuration and Command Line Options
@@ -128,93 +125,11 @@ The software can be configured in 2 ways - sorted by priority:
 - configuration file
 
 
-## Command Line Options
-
-Command line options always override any configuration values. Currently, not all configuration aspects are covered by command line options. The easiest way to find out about supported command line options is to run:
-
-`bosminer --help`
-
-Expected output for an S9:
-
-```
-USAGE:
-    bosminer-am1-s9 [FLAGS] [OPTIONS]
-
-FLAGS:
-        --disable-asic-boost    Disable ASIC boost (use just one mid-state)
-    -h, --help                  Prints help information
-    -V, --version               Prints version information
-
-OPTIONS:
-        --config <config>               Set config file path
-        --frequency <frequency>         Set chip frequency (in MHz)
-    -p, --pool <HOSTNAME:PORT>          Address the stratum V2 server
-    -u, --user <USERNAME.WORKERNAME>    Specify user and worker name
-        --voltage <voltage>             Set chip voltage (in volts)
-```
-
-
-## Configuration File
-
-Below is an example configuration file for Antminer S9 with explanatory comments of all options.
-
-```
-# bOSminer configuration
-
-# This option tells bosminer that we are using "alpha" version of config
-# file format. It's mandatory.
-config_version = "alpha"
-
-asic_boost = true
-
-# Frequency and voltage are set for all chains
-frequency = 650
-voltage = 9
-
-# Override frequency and voltage for chain 8
-[chain.8]
-frequency = 560
-voltage = 8.9
-
-# Override voltage for chain 7
-[chain.7]
-voltage = 8.8
-
-# Configuration of temperature control
-#
-# If you want to disable temperature control, then comment-out the following
-# section.
-[temperature]
-dangerous_temp = 105.0
-hot_temp = 95.0
-
-# Configuration of fans
-#
-# If you want to disable fan control completely, then comment-out this section.
-[fans]
-# You can either control fans with target temperature (in Celsius):
-temperature = 75
-# Or you can set fixed fan speed (in %):
-#speed = 70
-# but these two options are mutually exclusive.
-
-# Set this to minimum number of fans required for bOSminer to run
-min_fans = 1
-
-# Declares pools. This section can be repeated.
-[[pool]]
-url = "v2.stratum.slushpool.com:3336"
-user = "YOURUSERNAME.WORKERNAME"
-```
-
-
-
-
 # Developer Information
 
-From here on, you can read if you are interested in building bOSminer from sources.
+From here on, you can read if you are interested in building BOSminer from sources.
 
-*Note: If you are interested in trying out the bOSminer preview right away, there is a pre-built version which you can download here:* [https://feeds.braiins-os.org/](https://feeds.braiins-os.org/)
+*Note: If you are interested in trying out the BOSminer preview right away, there is a pre-built version which you can download here:* [https://feeds.braiins-os.org/](https://feeds.braiins-os.org/)
 
 ## Directory Layout
 
@@ -229,7 +144,7 @@ you can follow specific details for each backend.
 
 ## Build
 
-We assume you have setup the generic part of the build environment as specified in the [generic documentation](../../README.md).
+We assume you have setup the generic part of the build environment as specified in the [generic documentation](../../braiins-os/README.md).
 Follow the steps below and proceed to the subdirectory of the selected backend (e.g. [bosminer-am1-s9](bosminer-am1-s9/README.md)).
 
 ### Prerequisites
@@ -250,7 +165,6 @@ python3 -m pip3 install -r scripts/requirements.txt
 
 ```shell
 cargo install svd2rust
-cargo install form
 rustup component add rustfmt
 ```
 
@@ -270,8 +184,7 @@ Authentication method "none" (no password) DOES NOT WORK.
 
 For authentication, you MUST use either "publickey" authentication or "password" (although beware, this is not confirmed to be working from all sources).
 
-NOTE: for the time being, the key MUST NOT have a passphrase. Therefore, only a
-temporary development key should be used.
+NOTE: for the time being, the key MUST NOT have a passphrase. Therefore, only a temporary development key should be used.
 
 ### Running the Test suite Remotely
 ```shell
@@ -292,7 +205,7 @@ It is possible to call the following command with these settings:
 cargo test
 ```
 
-## Running the bOSminer
+## Running the BOSminer
 
 The miner can be run on a host target or on a remote one depending on the backend and supported targets. Again, the *Test.toml* allows remote hostname specification so that we don't have to specify the hostname every time on the command line.
 
