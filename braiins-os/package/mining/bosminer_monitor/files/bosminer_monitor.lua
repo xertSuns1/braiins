@@ -170,7 +170,7 @@ function BOSMinerStatus.new(response)
 	for _, dev in ipairs(json.devs[1].DEVS) do
 		local chain = {
 			mhs_cur = tonumber(dev["MHS 5m"]) or 0,
-			mhs_nom = tonumber(dev["Expected MHS"]) or 0,
+			mhs_nom = tonumber(dev["Nominal MHS"]) or 0,
 		}
 		push(self.chains, chain)
 	end
