@@ -129,6 +129,7 @@ local:
   nand_recovery: output/{platform}/nand_recovery/
   upgrade: output/{platform}/upgrade/
   feeds: output/{platform}/feeds/
+  feeds_packages: output/{platform}/feeds_packages/
 
 feeds:
   # always create feeds.conf
@@ -193,6 +194,7 @@ deploy:
   - local_nand_recovery
   - local_upgrade
   - local_feeds
+  - local_feeds_packages
   # base file which is used for concatenation with new firmware meta information
   feeds_base: defaults/{subtarget}/Packages
   # list of packages which will be published to feeds

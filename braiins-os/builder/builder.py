@@ -2053,67 +2053,30 @@ class Builder:
             target_dir = self._get_local_target_dir('upgrade')
             self._deploy_local_upgrades(UploadManager, target_dir, image_upgrade)
 
-    def _deploy_feeds(self, images):
+    def _upload_feeds_packages(self, local_feeds, target_dir, feeds_base_index, feeds_packages):
         """
-        Deploy package feeds to local file system
+        Create signed index from provided packages in target directory and upload all related packages
 
-        :param images:
-            List of images for deployment.
+        :param local_feeds:
+            Feeds image with all required data.
+        :param target_dir:
+            Path to target directory.
+        :param feeds_base_index:
+            Set of packages from previous release.
+        :param feeds_packages:
+            Set of packages for upload.
         """
-        local_feeds = images.get('local')
-        target_dir = self._get_local_target_dir('feeds')
-
-        src_feeds_index = os.path.join(local_feeds.packages, self.FEEDS_INDEX)
         dst_feeds_index = os.path.join(target_dir, self.FEEDS_INDEX)
 
-        # prepare base feeds index
-        feeds_index = set()
-        feeds_base_url = self._config.deploy.get('feeds_base', None)
-        fw_require = self._get_sysupgrade_attr(self.SYSUPGRADE_ATTR_REQUIRE)
-
-        packages_for_publishing = self._config.get('deploy.feeds_packages', [])
-        # find package firmware meta information and all packages requested to be published
-        firmware_package = None
-        with Packages(src_feeds_index) as src_packages:
-            for package in src_packages:
-                if not firmware_package and package.name == self.FEED_FIRMWARE:
-                    firmware_package = package
-                elif package.name in packages_for_publishing:
-                    feeds_index.add(package)
-
-        if not firmware_package:
-            logging.error("Missing firmware package in '{}'".format(src_feeds_index))
-            raise BuilderStop
-
-        firmware_package.require = fw_require
-        feeds_index.add(firmware_package)
-
         # copy all packages for publishing
-        for package in feeds_index:
+        for package in feeds_packages:
             package_ipk = package.filename
             src_package = os.path.join(local_feeds.packages, package_ipk)
             shutil.copy(src_package, target_dir)
 
-        # copy sysupgrade tarball for current firmware
-        firmware_ipk = firmware_package.filename
-        dst_sysupgrade = os.path.join(target_dir, os.path.splitext(firmware_ipk)[0] + '.tar')
-        shutil.copy(local_feeds.sysupgrade, dst_sysupgrade)
-
-        feeds_base_index = set()
-        if feeds_base_url:
-            # appending to previous index
-            if os.path.isfile(feeds_base_url):
-                with Packages(feeds_base_url) as base_packages:
-                    feeds_base_index = {package for package in base_packages}
-            else:
-                feeds_base = urlopen(Request(feeds_base_url, headers={'User-Agent': 'Mozilla/5.0'}))
-                feeds_base = feeds_base.read().decode('utf-8')
-                base_packages = Packages(feeds_base_url, iter(feeds_base.splitlines()))
-                feeds_base_index = {package for package in base_packages}
-
         # create destination feeds index
         with open(dst_feeds_index, 'w') as dst_packages:
-            for package in sorted(feeds_index | feeds_base_index):
+            for package in sorted(feeds_packages | feeds_base_index):
                 for attribute, value in package:
                     if value is not None:
                         dst_packages.write('{}: {}\n'.format(attribute, value))
@@ -2127,6 +2090,63 @@ class Builder:
         # compress signed index file
         with open(dst_feeds_index, 'rb') as file_in, gzip.open(dst_feeds_index + '.gz', 'wb') as file_out:
             shutil.copyfileobj(file_in, file_out)
+
+    def _deploy_feeds(self, images, fw_with_packages: bool, packages_only: bool):
+        """
+        Deploy package feeds to local file system
+
+        :param images:
+            List of images for deployment.
+        """
+        local_feeds = images.get('local')
+        src_feeds_index = os.path.join(local_feeds.packages, self.FEEDS_INDEX)
+
+        feeds_base_url = self._config.deploy.get('feeds_base', None)
+        feeds_base_index = set()
+
+        if feeds_base_url:
+            # appending to previous index
+            if os.path.isfile(feeds_base_url):
+                with Packages(feeds_base_url) as base_packages:
+                    feeds_base_index = {package for package in base_packages}
+            else:
+                feeds_base = urlopen(Request(feeds_base_url, headers={'User-Agent': 'Mozilla/5.0'}))
+                feeds_base = feeds_base.read().decode('utf-8')
+                base_packages = Packages(feeds_base_url, iter(feeds_base.splitlines()))
+                feeds_base_index = {package for package in base_packages}
+
+        # prepare base feeds index
+        feeds_packages = set()
+        fw_require = self._get_sysupgrade_attr(self.SYSUPGRADE_ATTR_REQUIRE)
+
+        packages_for_publishing = self._config.get('deploy.feeds_packages', [])
+        # find package firmware meta information and all packages requested to be published
+        firmware_package = None
+        with Packages(src_feeds_index) as src_packages:
+            for package in src_packages:
+                if not firmware_package and package.name == self.FEED_FIRMWARE:
+                    firmware_package = package
+                    # fill missing information
+                    firmware_package.require = fw_require
+                elif package.name in packages_for_publishing:
+                    feeds_packages.add(package)
+
+        if not firmware_package:
+            logging.error("Missing firmware package in '{}'".format(src_feeds_index))
+            raise BuilderStop
+
+        if fw_with_packages:
+            target_dir = self._get_local_target_dir('feeds')
+            self._upload_feeds_packages(local_feeds, target_dir, feeds_base_index, feeds_packages | {firmware_package})
+
+            # copy sysupgrade tarball for current firmware
+            firmware_ipk = firmware_package.filename
+            dst_sysupgrade = os.path.join(target_dir, os.path.splitext(firmware_ipk)[0] + '.tar')
+            shutil.copy(local_feeds.sysupgrade, dst_sysupgrade)
+
+        if packages_only:
+            target_dir = self._get_local_target_dir('feeds_packages')
+            self._upload_feeds_packages(local_feeds, target_dir, feeds_base_index, feeds_packages)
 
     def _get_recovery_image(self, platform: str, generic_dir: str, boot_path: str, uboot_path: str):
         """
@@ -2176,7 +2196,8 @@ class Builder:
             'local_sd_recovery_config',
             'local_nand_recovery',
             'local_upgrade',
-            'local_feeds'
+            'local_feeds',
+            'local_feeds_packages'
         ]
         aliased_targets = {
             'nand': {
@@ -2275,7 +2296,7 @@ class Builder:
                 )
                 images_local['upgrade'] = upgrade
 
-            if 'local_feeds' in targets:
+            if any(target in targets for target in ('local_feeds', 'local_feeds_packages')):
                 feeds = ImageFeeds(
                     key=os.path.join(self._working_dir, self.BUILD_KEY_NAME),
                     packages=os.path.join(self._working_dir, 'staging_dir', 'packages', platform_target),
@@ -2294,7 +2315,9 @@ class Builder:
         if images_local or sd_config_local or sd_recovery_config:
             self._deploy_local(images_local, sd_config_local, sd_recovery_config)
         if images_feeds:
-            self._deploy_feeds(images_feeds)
+            feeds = 'local_feeds' in targets
+            feeds_packages = 'local_feeds_packages' in targets
+            self._deploy_feeds(images_feeds, feeds, feeds_packages)
 
     @staticmethod
     def _count_commits(repo, branch_name=None):
