@@ -1,17 +1,20 @@
 ## Overview
 
-This release marks a significant step in **Braiins OS** development since it replaces **cgminer** with a new software called **bOSminer** written from scratch.
-The goal of the release was to approach the existing feature set of the **cgminer** based **Braiins OS**, while using the new mining software.
+Dear **CGminer**, thank you for all the delivered proof of works and uneasy source code live. We kindly thank to **Con Kolivas** - the original author of cgminer for all the years of hardwork on this fundamental component of Bitcoin ecosystem. This release marks a significant step in **Braiins OS** development since it replaces **CGminer** with a new software called **BOSminer** written from scratch in Rust.
+The goal of the release was to approach the existing feature set of the **CGminer** based **Braiins OS**, while using the new mining software.
 
-*NOTE:* This release is not **production ready** and is intended to preview the **bOSminer** software. Therefore, it is exclusively distributed as an **SD card** image for **Antminer S9**.
 
 ## All mining hardware types
 
-- [feature] cgminer has been replaced by *bOSminer*. [README](../open/bosminer/README.md) provides additional details about features and known issues
-- [missing-feature] *web interface* currently lacks statistics, hashrate charts and configuration. A simple **overview page** with howto is provided instead
+- [feature] cgminer has been replaced by *BOSminer*. [README](../open/bosminer/README.md) provides additional details about features and known issues
+- [feature] *secure* connection support for Stratum V2 base based on noise protocol framework. How it works: your pool operator provides you his/her public key. This allows the software verifying identity of the upstream mining endpoint. The certificate of the upstream mining endpoint should have a limitted lifetime. The security on the connection is mandatory under the standard URL prefix.
+- [feature] Stratum V2 URL doesn't require specifying ports. Just fill-in: `stratum2+tcp://v2.stratum.slushpool.com/u95GEReVMjK6k5YqiSFNqqTnKU4ypU2Wm8awa6tmbmDmk1bWt` and you are ready to go. The default port is 3336 or 3337 depending on the protocol release cycle. Motivation: we wanted to push the new protocol as much as possible since it represents a significant quality improvement (see https://stratumprotocol.org/ for details). At the same time since it is in draft form, so changes may happen. Therefore, with every protocol breaking release, we would switch to the other port from the pair. Right now, we are starting with port number **3336**. This approach means that users don't have to switch ports manually and edit their configuration after upgrading to a new release that may contain also protocol upgrade. Protocol upgrades will always be listed in this document.
+- [feature] *web interface* has been completely reworked including statistics, configuration editor etc.
+- [feature] 
 
 ## Antminer S9
-- no changes
+
+- [feature] Current software is not suitable for custom built hardware with more than 3 hashboards. Currently, BOSminer support only standard 3 hashboard stock S9, S9i, S9j
 
 ## Dragonmint T1
 
