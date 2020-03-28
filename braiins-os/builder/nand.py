@@ -45,6 +45,7 @@ HW_FIXED_FREQ = 'miner_fixed_freq'
 MINER_HWID = 'miner_hwid'
 MINER_POOL_HOST = 'miner_pool_host'
 MINER_POOL_PORT = 'miner_pool_port'
+MINER_POOL_PATH = 'miner_pool_path'
 MINER_POOL_USER = 'miner_pool_user'
 MINER_POOL_PASS = 'miner_pool_pass'
 
@@ -59,8 +60,9 @@ MINER_CFG_INPUT = [
     (HW_VOLTAGE, 'miner.hw.voltage', ''),
     (HW_FIXED_FREQ, 'miner.hw.fixed_freq', ''),
     (MINER_HWID, 'miner.hwid', hwid.generate),
-    (MINER_POOL_HOST, 'miner.pool.host', 'stratum+tcp://stratum.slushpool.com'),
-    (MINER_POOL_PORT, 'miner.pool.port', 3333),
+    (MINER_POOL_HOST, 'miner.pool.host', 'stratum2+tcp://v2.stratum.slushpool.com'),
+    (MINER_POOL_PORT, 'miner.pool.port', ''),
+    (MINER_POOL_PATH, 'miner.pool.path', 'u95GEReVMjK6k5YqiSFNqqTnKU4ypU2Wm8awa6tmbmDmk1bWt'),
     (MINER_POOL_USER, 'miner.pool.user', '!non-existent-user!'),
     (MINER_POOL_PASS, 'miner.pool.pass', '')
 ]

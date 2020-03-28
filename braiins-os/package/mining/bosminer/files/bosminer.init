@@ -42,11 +42,15 @@ boot()
 		local bos_mode=$(cat /etc/bos_mode)
 		local pool_host=$(get_env_config miner_pool_host)
 		local pool_port=$(get_env_config miner_pool_port)
+		local pool_path=$(get_env_config miner_pool_path)
 		local pool_user=$(get_env_config miner_pool_user)
 		local pool_pass=$(get_env_config miner_pool_pass)
 		local miner_freq=$(get_env_config miner_freq)
 		local miner_voltage=$(get_env_config miner_voltage)
 		local miner_fixed_freq=$(get_env_config miner_fixed_freq)
+
+		pool_host=${pool_host:-stratum2+tcp://v2.stratum.slushpool.com}
+		pool_user=${pool_user:-!non-existent-user!}
 
 		cat > "$CONF" <<-END
 			[format]
@@ -68,12 +72,12 @@ boot()
 			name = 'Default'
 
 			[[group.pool]]
-			url = '${pool_host:-stratum2+tcp://v2.stratum.slushpool.com}:${pool_port:-3336}'
-			user = '${pool_user:-!non-existent-user!}'
+			url = '${pool_host}${pool_port:+:$pool_port}${pool_path:+/$pool_path}'
+			user = '${pool_user}'
 
 			[[group.pool]]
 			url = 'stratum+tcp://stratum.slushpool.com:3333'
-			user = '!non-existent-user!'
+			user = '${pool_user}'
 		END
 		[ -n "$pool_pass" ] && \
 		cat >> "$CONF" <<-END
