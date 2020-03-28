@@ -48,6 +48,20 @@ impl Protocol {
     pub const SCHEME_STRATUM_V2: &'static str = "stratum2+tcp";
     pub const SCHEME_STRATUM_V2_INSECURE: &'static str = "stratum2+tcp+insecure";
 
+    pub const DEFAULT_PORT_DRAIN: u16 = 0;
+    pub const DEFAULT_PORT_STRATUM_V1: u16 = 3333;
+    pub const DEFAULT_PORT_STRATUM_V2: u16 = 3336;
+    pub const DEFAULT_PORT_STRATUM_V2_INSECURE: u16 = 3336;
+
+    pub fn default_port(&self) -> u16 {
+        match self {
+            Self::Drain => Self::DEFAULT_PORT_DRAIN,
+            Self::StratumV1 => Self::DEFAULT_PORT_STRATUM_V1,
+            Self::StratumV2(_) => Self::DEFAULT_PORT_STRATUM_V2,
+            Self::StratumV2Insecure => Self::DEFAULT_PORT_STRATUM_V2_INSECURE,
+        }
+    }
+
     /// Helper that builds authority public key
     fn get_upstream_auth_public_key_from_string(
         public_key: &str,
@@ -137,12 +151,19 @@ pub struct Descriptor {
     pub user: String,
     pub password: Option<String>,
     pub host: String,
-    pub port: u16,
+    pub port: Option<u16>,
     // Currently used only for `#xnsub`: `stratum+tcp://equihash.eu.nicehash.com:3357#xnsub`
     pub fragment: Option<String>,
 }
 
 impl Descriptor {
+    pub fn port(&self) -> u16 {
+        match self.port {
+            Some(value) => value,
+            None => self.protocol.default_port(),
+        }
+    }
+
     pub fn get_url(&self, protocol: bool, port: bool, user: bool) -> String {
         let mut result = if protocol {
             self.protocol.scheme().to_string() + "://"
@@ -153,8 +174,9 @@ impl Descriptor {
             result += format!("{}@", self.user).as_str();
         }
         result += self.host.as_str();
-        if port {
-            result += format!(":{}", self.port).as_str();
+        match self.port {
+            Some(value) if port => result += format!(":{}", value).as_str(),
+            _ => {}
         }
 
         result
@@ -174,9 +196,7 @@ impl Descriptor {
             .host()
             .ok_or(error::ErrorKind::Client("missing hostname".to_string()))?
             .to_string();
-        let port = url
-            .port()
-            .ok_or(error::ErrorKind::Client("missing port".to_string()))?;
+        let port = url.port();
 
         // Parse fragment part
         let fragment = url.fragment().map(|s| s.to_string());

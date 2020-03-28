@@ -82,7 +82,7 @@ impl ConnectionDetails {
         Self {
             user: descriptor.user.clone(),
             host: descriptor.host.clone(),
-            port: descriptor.port,
+            port: descriptor.port(),
             fragment: descriptor.fragment.clone(),
         }
     }

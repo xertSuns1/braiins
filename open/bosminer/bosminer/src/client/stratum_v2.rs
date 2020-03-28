@@ -87,7 +87,7 @@ impl ConnectionDetails {
             protocol: descriptor.protocol.clone(),
             user: descriptor.user.clone(),
             host: descriptor.host.clone(),
-            port: descriptor.port,
+            port: descriptor.port(),
         }
     }
 
