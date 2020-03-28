@@ -1,20 +1,19 @@
 ## Overview
 
-Dear **CGminer**, thank you for all the delivered proof of works and uneasy source code live. We kindly thank to **Con Kolivas** - the original author of cgminer for all the years of hardwork on this fundamental component of Bitcoin ecosystem. This release marks a significant step in **Braiins OS** development since it replaces **CGminer** with a new software called **BOSminer** written from scratch in Rust.
-The goal of the release was to approach the existing feature set of the **CGminer** based **Braiins OS**, while using the new mining software.
+Dear **CGminer**, thank you for all the proof of works you've delivered and for the many challenges provided after your source code was forked and closed by hardware manufacturers. Special thanks to **Con Kolivas** - the original author of CGminer - for all the years of hard work on creating and maintaining this fundamental component of Bitcoin ecosystem, even as it became an impossible task. This release marks a significant step forward in **Braiins OS** development, since it replaces **CGminer** with a new software called **BOSminer** written from scratch in Rust. CGminer has been with us since the GPU days and helped Bitcoin grow to what it is today. RIP - Rust In Peace, CGminer.
+The goal of the release was to replicate the existing feature set of the **CGminer**-based **Braiins OS**, while using the new mining software.
 
 
 ## All mining hardware types
 
-- [feature] cgminer has been replaced by *BOSminer*. [README](../open/bosminer/README.md) provides additional details about features and known issues
-- [feature] *secure* connection support for Stratum V2 base based on noise protocol framework. How it works: your pool operator provides you his/her public key. This allows the software verifying identity of the upstream mining endpoint. The certificate of the upstream mining endpoint should have a limitted lifetime. The security on the connection is mandatory under the standard URL prefix.
-- [feature] Stratum V2 URL doesn't require specifying ports. Just fill-in: `stratum2+tcp://v2.stratum.slushpool.com/u95GEReVMjK6k5YqiSFNqqTnKU4ypU2Wm8awa6tmbmDmk1bWt` and you are ready to go. The default port is 3336 or 3337 depending on the protocol release cycle. Motivation: we wanted to push the new protocol as much as possible since it represents a significant quality improvement (see https://stratumprotocol.org/ for details). At the same time since it is in draft form, so changes may happen. Therefore, with every protocol breaking release, we would switch to the other port from the pair. Right now, we are starting with port number **3336**. This approach means that users don't have to switch ports manually and edit their configuration after upgrading to a new release that may contain also protocol upgrade. Protocol upgrades will always be listed in this document.
-- [feature] *web interface* has been completely reworked including statistics, configuration editor etc.
-- [feature] 
+- [feature] CGminer has been replaced by *BOSminer*. [README](../open/bosminer/README.md) provides additional details about features and known issues
+- [feature] *secure* connection support for Stratum V2 based on a Noise protocol framework. How it works: your pool operator provides you with their public key. This allows the software to verify the identity of the upstream mining endpoint. The certificate of the upstream mining endpoint should have a limited lifetime. The security on the connection is mandatory under the standard URL prefix.
+- [feature] Stratum V2 URL doesn't require specifying ports. Just fill-in: `stratum2+tcp://v2.stratum.slushpool.com/u95GEReVMjK6k5YqiSFNqqTnKU4ypU2Wm8awa6tmbmDmk1bWt` and you are ready to go. The default port is 3336 or 3337 depending on the protocol release cycle. Motivation: we wanted to push the new protocol as much as possible since it represents a significant quality improvement (see https://stratumprotocol.org/ for details). At the same time since it is in draft form, so changes may happen. Therefore, with every protocol breaking release, we would switch to the other port from the pair. Right now, we are starting with port number **3336**. This approach means that users don't have to switch ports manually and edit their configuration after upgrading to a new release that may also contain a protocol upgrade. Protocol upgrades will always be listed in this document.
+- [feature] *web interface* has been completely reworked including statistics, configuration editor, etc.
 
 ## Antminer S9
 
-- [feature] Current software is not suitable for custom built hardware with more than 3 hashboards. Currently, BOSminer support only standard 3 hashboard stock S9, S9i, S9j
+- [feature] currently, BOSminer supports only standard 3 hashboard builds (stock S9, S9i, S9j), meaning it is not currently suitable for custom-built hardware with more than 3 hashboards.
 
 ## Dragonmint T1
 
@@ -24,31 +23,31 @@ The goal of the release was to approach the existing feature set of the **CGmine
 
 ## All mining hardware types
 
-- [feature] YES, we have a **new logo** that is consistent with the new Braiins logo, hope, you like it ;-)
+- [feature] YES, we have a **new logo** that is consistent with the new Braiins logo, hope you like it ;-)
 - [feature] the **IP report button** feature now broadcasts a UDP datagram compatible with the original S9 factory firmware
 - [feature] the miner now stores the reason of the **last cgminer exit/failure** in ```/tmp/cgminer_quit_reason```. The miner status page now presents the actual reason along with a confirmation button to clear the last failure status
 - [feature] fix **web status** data loading when connecting to miners in remote locations with considerable latencies
-- [feature] **universal SD card images** - each SD card image tries to detect device MAC address from any firmware image that is present in NAND flash. This simplifies using the same SD card image on multiple devices without the need for manually generating editing ```uEnv.txt``` on each card
-- [feature] it is now possible to install bOS into flash memory from a running **SD card** - see the docs for details
-- [feature] increase stratum connect() timeout to 3 seconds to prevent harassing stratum servers to early when probing all IP address for a given URL
-- [feature] attempt to perform ```opkg install firmware``` on bOS instance **running from SD card** now visibly tells the user that this is not a supported operation (= you should obtain a new SD card image and write it to your SD card)
+- [feature] **universal SD card images** - each SD card image tries to detect the device MAC address from any firmware image that is present in NAND flash. This simplifies using the same SD card image on multiple devices without the need for manually generating editing ```uEnv.txt``` on each card
+- [feature] it is now possible to install Braiins OS into flash memory from a running **SD card** - see the docs for details
+- [feature] increase stratum connect() timeout to 3 seconds to prevent harassing stratum servers too early when probing all the IP addresses for a given URL
+- [feature] attempting to perform ```opkg install firmware``` on a Braiins OS instance **running from SD card** now visibly tells the user that this is not a supported operation (i.e. you should obtain a new SD card image and flash it to your SD card)
 - [feature] **TUN/TAP module** is now part of the base system as we cannot use upstream modules due to custom kernel. These can be useful for OpenVPN
 - [bug] ```#xnsub``` support for NH stratum extension has been fixed
-- [bug] a few **memory leaks** in bmminer and cgminer API have been fixed
+- [bug] a few **memory leaks** in bmminer and CGminer API have been fixed
 
 ## Antminer S9
 
 - [feature] there are 2 new options:
-   ```--disable-sensors``` - the mining software acts as if there were no temperature sensors found. That is fan would be running at 100% unless set to some manually override value
-   ```--disable-remote-sensors``` - mining software only takes temperature measurement from the hash boards and doesn't try to measure temperature on the mining chips. The actual mining chip temperature is being estimated as hash board temperature plus some empirically set offset (15 C)
+   ```--disable-sensors``` - the mining software acts as if there were no temperature sensors found, meaning that the fan would be running at 100% unless set to some manually override value.
+   ```--disable-remote-sensors``` - the mining software only takes temperature measurements from the hash boards and doesn't try to measure temperatures on the mining chips. The actual mining chip temperature is being estimated based on the hash board temperature plus some empirically set offset (15 C)
 - [bug] fix support for non-asicboost pools by eliminating **mining.configure** in case the number of configured midstates is 1 (AsicBoost disabled)
 
 # 2019-02-21-0
 
 ## All mining hardware types
 
-- [feature] **temperature limits** are now configurable via configuration file. The two new configuration options are: ```--fan-hot-temp``` and ```--fan-dangerous-temp```. These options effectively override the temp limits in ```temp-def.h```
-- [fix] **15m** and **24h hash rate** shows up only if the **full time period** of hash rate data has been collected
+- [feature] **temperature limits** are now configurable via the configuration file. The two new configuration options are: ```--fan-hot-temp``` and ```--fan-dangerous-temp```. These options effectively override the temperature limits in ```temp-def.h```
+- [fix] **15m** and **24h hash rate** show up only if the **full time period** of hash rate data has been collected
 - [fix] enabled/disabled **indicator** for **Asic Boost** now works again in the overview status page
 - [feature] **fan control** now has a new option ```--min-fans``` that specifies the minimum amount of fans that have to be operational (defaults to 1). Setting the option to "0" results in skipping the check for working fans.
 
