@@ -22,6 +22,7 @@
 -- contact us at opensource@braiins.com.
 
 ADC_PATH = '/sys/devices/soc0/amba/f8007100.adc/iio:device0/in_voltage0_vccint_raw'
+CONSTANT_VALUE_LIMIT = 1024
 
 function getbit()
 	local f = io.open(ADC_PATH, 'r') or error('cannot open '..ADC_PATH)
@@ -31,10 +32,15 @@ function getbit()
 end
 
 function getbit_debias()
+	local count = 0
 	while true do
 		local a, b = getbit(), getbit()
 		if a ~= b then
 			return a
+		end
+		count = count + 1
+		if count > CONSTANT_VALUE_LIMIT then
+			error('ADC has constant value')
 		end
 	end
 end
@@ -47,6 +53,8 @@ function getbyte()
 	return n
 end
 
+io.stdout:setvbuf('no')
 while true do
-	io.write(string.char(getbyte()))
+	local ok, err = io.stdout:write(string.char(getbyte()))
+	if not ok then break end
 end

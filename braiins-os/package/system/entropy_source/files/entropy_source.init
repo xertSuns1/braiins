@@ -26,5 +26,5 @@ START=23
 USE_PROCD=1
 
 boot() {
-	adc-noise.lua | head -c 1024 | add-entropy
+	adc-noise.lua | head -c 1024 | add-entropy &
 }
