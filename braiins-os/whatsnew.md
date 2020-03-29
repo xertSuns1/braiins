@@ -1,3 +1,5 @@
+# 2020-03-29-0
+
 ## Overview
 
 Dear **CGminer**, thank you for all the proof of works you've delivered and for the many challenges provided after your source code was forked and closed by hardware manufacturers. Special thanks to **Con Kolivas** - the original author of CGminer - for all the years of hard work on creating and maintaining this fundamental component of Bitcoin ecosystem, even as it became an impossible task. This release marks a significant step forward in **Braiins OS** development, since it replaces **CGminer** with a new software called **BOSminer** written from scratch in Rust. CGminer has been with us since the GPU days and helped Bitcoin grow to what it is today. RIP - Rust In Peace, CGminer.
