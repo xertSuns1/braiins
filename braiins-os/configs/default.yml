@@ -77,19 +77,18 @@ remote:
   # default configuration for fetching latest repository
   fetch: no
   # always fetch each repositories (it cannot be overridden)
-  fetch_always: no
+  fetch_always: yes
   # location aliases for remote repositories
   aliases:
     bos: '{meta_repo}'
     openwrt_feed: git://git.openwrt.org/feed
   # default location for remote repositories
   location: bos
-  # default branch for repositories
-  branch: '{meta_branch}'
   # list of remote repositories
   repos:
     lede:
       project: lede.git
+      branch: c6325031a2026cae09825980260f07e026cd7e2e
     lede-packages:
       location: openwrt_feed
       project: packages.git
@@ -104,15 +103,19 @@ remote:
       branch: ac6415e61f147a6892fd2785337aec93ddc68fa9
     luci:
       project: luci.git
+      branch: a6ca9f6a13b60a114c9943f4a579947b32ed1527
     binary:
       config_name: BINARY
       project: braiins-bin.git
+      branch: 6c2c98388a8693d0aed497211c413cd13dc1611e
     u-boot:
       config_name: UBOOT
       project: u-boot-xlnx.git
+      branch: ecf87166e1b2ce6b84c8e47f60502ba65930ce4c
     linux:
       config_name: KERNEL
       project: linux-xlnx.git
+      branch: 4e459eb5fbb6179488ddc4e8f542ad01b4224499
     # it is possible to continue with any user repositories
 
 monorepo:
