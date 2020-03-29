@@ -69,7 +69,7 @@ build:
       major: no
       include: [command]
     zynq-am1:
-      major: yes
+      major: 2020-03-29-0-6ec1a631
       require: 2018-10-24-0-9e5687a2
       include: [command, spl, uboot, fpga]
 
