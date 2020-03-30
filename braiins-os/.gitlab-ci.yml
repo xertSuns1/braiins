@@ -31,6 +31,7 @@
 braiins-os-build:
     <<: *on-push
     image: $BOS_BUILDER_IMG
+    interruptible: true
     tags:
         - p_image_builder
 
@@ -63,6 +64,8 @@ braiins-os-build:
 
         # Cut down artifacts path
         - mv output/$TARGET ../$BOS_OUTPUT_DIR
+        # note our job id for pages job
+        - echo $CI_JOB_ID > ../$BOS_OUTPUT_DIR/jobid
 
     artifacts:
         name: "braiins-os-$(date +\"%Y-%m-%d\")"
@@ -70,3 +73,23 @@ braiins-os-build:
         expire_in: 1 week
         paths:
             - $BOS_OUTPUT_DIR
+
+pages:
+    stage: deploy
+    image: $BOS_BUILDER_IMG
+
+    only:
+        - bos-devel
+
+    variables:
+        BOS_OUTPUT_DIR: braiins-os_$BOS_SUBTARGET
+
+    script:
+        - mkdir public/
+        - build_job=$(< $BOS_OUTPUT_DIR/jobid)
+        - build_version=$(cd braiins-os; ./bb.py build-version)
+        - echo "<html><body>build <a href='${CI_PROJECT_URL}/-/jobs/${build_job}/artifacts/browse'>${build_version}</a></body></html>" > public/index.html
+
+    artifacts:
+        paths:
+            - public
